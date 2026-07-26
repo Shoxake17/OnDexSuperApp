@@ -1,0 +1,221 @@
+package users
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+type fakeUserRepo struct {
+	mu   sync.Mutex
+	data map[string]*User // phone -> user
+}
+
+func (r *fakeUserRepo) GetByPhone(_ context.Context, phone string) (*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if u, ok := r.data[phone]; ok {
+		return u, nil
+	}
+	return nil, ErrUserNotFound
+}
+func (r *fakeUserRepo) GetByID(_ context.Context, _ string) (*User, error) {
+	return nil, ErrUserNotFound
+}
+func (r *fakeUserRepo) Create(_ context.Context, u *User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.data[u.Phone] = u
+	return nil
+}
+func (r *fakeUserRepo) UpdateRole(_ context.Context, id string, role Role, entityID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.Role = role
+			u.EntityID = entityID
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) DeleteByRoleEntity(_ context.Context, role Role, entityID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for phone, u := range r.data {
+		if u.Role == role && u.EntityID == entityID {
+			delete(r.data, phone)
+		}
+	}
+	return nil
+}
+func (r *fakeUserRepo) ListByRole(_ context.Context, role Role) ([]*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var list []*User
+	for _, u := range r.data {
+		if u.Role == role {
+			list = append(list, u)
+		}
+	}
+	return list, nil
+}
+
+type fakeCodeStore struct {
+	mu   sync.Mutex
+	data map[string]*Code
+}
+
+func (s *fakeCodeStore) Save(_ context.Context, c *Code) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *c
+	s.data[c.Phone] = &cp
+	return nil
+}
+func (s *fakeCodeStore) Get(_ context.Context, phone string) (*Code, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.data[phone]; ok {
+		cp := *c
+		return &cp, nil
+	}
+	return nil, ErrInvalidCode
+}
+func (s *fakeCodeStore) IncrementAttempts(_ context.Context, phone string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.data[phone]; ok {
+		c.Attempts++
+	}
+	return nil
+}
+func (s *fakeCodeStore) Delete(_ context.Context, phone string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, phone)
+	return nil
+}
+
+type noopSms struct{}
+
+func (noopSms) Send(_, _ string) error { return nil }
+
+func newTestService() *Service {
+	n := 0
+	return NewService(
+		&fakeUserRepo{data: make(map[string]*User)},
+		&fakeCodeStore{data: make(map[string]*Code)},
+		noopSms{},
+		NewTokenIssuer("test-secret", time.Hour),
+		func() string { n++; return "id" + string(rune('0'+n)) },
+	)
+}
+
+func TestNormalizePhone(t *testing.T) {
+	valid := map[string]string{
+		"+998901234567":     "+998901234567",
+		"998901234567":      "+998901234567",
+		"+998 90 123-45-67": "+998901234567",
+	}
+	for in, want := range valid {
+		got, err := NormalizePhone(in)
+		if err != nil || got != want {
+			t.Errorf("NormalizePhone(%q) = %q, %v; kutilgan %q", in, got, err, want)
+		}
+	}
+	invalid := []string{"", "901234567", "+7999123456", "+99890123456", "+9989012345678", "salom"}
+	for _, in := range invalid {
+		if _, err := NormalizePhone(in); err == nil {
+			t.Errorf("NormalizePhone(%q): xato kutilgan edi", in)
+		}
+	}
+}
+
+func TestRequestAndVerifyFlow(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+
+	phone, code, err := s.RequestCode(ctx, "+998901234567")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(code) != 6 {
+		t.Fatalf("6 xonali kod kutilgan, olindi %q", code)
+	}
+
+	token, u, err := s.Verify(ctx, phone, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Role != RoleCustomer {
+		t.Errorf("yangi foydalanuvchi mijoz bo'lishi kerak, olindi %s", u.Role)
+	}
+	if token == "" {
+		t.Error("token bo'sh")
+	}
+
+	// Kod bir marta ishlaydi
+	if _, _, err := s.Verify(ctx, phone, code); err == nil {
+		t.Error("ishlatilgan kod qayta qabul qilindi")
+	}
+}
+
+func TestVerifyWrongCode(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+	phone, code, _ := s.RequestCode(ctx, "+998901234567")
+
+	wrong := "000000"
+	if wrong == code {
+		wrong = "000001"
+	}
+	if _, _, err := s.Verify(ctx, phone, wrong); !errors.Is(err, ErrInvalidCode) {
+		t.Errorf("noto'g'ri kod ErrInvalidCode berishi kerak, olindi %v", err)
+	}
+	// To'g'ri kod hali ham ishlaydi (urinishlar chegarada)
+	if _, _, err := s.Verify(ctx, phone, code); err != nil {
+		t.Errorf("to'g'ri kod ishlashi kerak edi: %v", err)
+	}
+}
+
+func TestResendCooldown(t *testing.T) {
+	s := newTestService()
+	ctx := context.Background()
+	if _, _, err := s.RequestCode(ctx, "+998901234567"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RequestCode(ctx, "+998901234567"); !errors.Is(err, ErrTooSoon) {
+		t.Errorf("qayta so'rash ErrTooSoon berishi kerak, olindi %v", err)
+	}
+}
+
+func TestTokenIssueAndParse(t *testing.T) {
+	issuer := NewTokenIssuer("secret1", time.Hour)
+	u := &User{ID: "u1", Role: RoleCourier, EntityID: "c1"}
+	tok, err := issuer.Issue(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := issuer.Parse(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.Subject != "u1" || claims.Role != RoleCourier || claims.EntityID != "c1" {
+		t.Errorf("claims noto'g'ri: %+v", claims)
+	}
+
+	// Boshqa secret bilan imzolangan token rad etiladi
+	other := NewTokenIssuer("secret2", time.Hour)
+	if _, err := other.Parse(tok); err == nil {
+		t.Error("begona secret bilan token qabul qilindi")
+	}
+	// Buzilgan token rad etiladi
+	if _, err := issuer.Parse(strings.TrimSuffix(tok, "=") + "x"); err == nil {
+		t.Error("buzilgan token qabul qilindi")
+	}
+}
