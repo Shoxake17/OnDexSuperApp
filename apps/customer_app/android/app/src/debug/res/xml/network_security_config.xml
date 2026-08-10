@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FAQAT DEBUG BUILD UCHUN. Release APK bunga umuman ega bo'lmaydi —
+  u `src/main/res/xml/network_security_config.xml` ni ishlatadi
+  (qat'iy: faqat localhost).
+
+  ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+  WebView (Chromium) Network Security Config'ni QAT'IY qo'llaydi —
+  Dart'ning `http` paketidan farqli, u Flutter'ning o'z tarmoq
+  stack'idan foydalanadi va bu cheklovga bog'liq emas. Shuning uchun
+  Dart so'rovlari ISHLAB TURGANDA ham WebView aynan shu manzilga
+  `net::ERR_CLEARTEXT_NOT_PERMITTED` beradi — bu chalg'ituvchi va
+  haqiqiy qurilmada soatlab izlangan xato edi.
+
+  ┌─ NEGA IP RO'YXATI EMAS ───────────────────────────────────────────┐
+  Avval `main` dagi konfigga aniq IP yozilardi. Ikki muammo:
+
+    1. Kompyuterning Wi-Fi IP'i tez-tez o'zgaradi (bir kunda ikki marta
+       kuzatilgan). Har safar shu faylni tahrirlab, APK'ni QAYTA
+       yig'ish kerak bo'lardi — va bu doim unutilardi;
+    2. Muhimrogʻi — LAN IP RELEASE build'ga ham tushib ketardi.
+       Ya'ni "qulaylik uchun" qo'yilgan dev sozlamasi do'konga
+       chiqadigan APK'da qolib ketardi.
+
+  Endi cheklovsiz cleartext FAQAT debug variantida. Release build
+  o'zgarishsiz qat'iy qoladi va uni buzib bo'lmaydi — chunki bu fayl
+  u yerga umuman qo'shilmaydi.
+
+  Production'da (https://...) bu fayl keraksiz: HTTPS standart
+  ruxsatli.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

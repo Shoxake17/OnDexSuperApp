@@ -1,8 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Ilova qulfi: barmoq izi / yuz / grafik kalit / PIN.
+         `local_auth` shu ruxsatsiz BiometricPrompt'ni ocha olmaydi.
+         Ruxsat "xavfli" toifada EMAS — foydalanuvchidan alohida
+         so'ralmaydi, faqat e'lon qilinadi. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
         android:label="chust_customer"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyDGPUoZy8185Gi5csIdeIfiJZaPnDhqM0k"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,6 +36,30 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Telegramdan ilovaga QAYTISH uchun.
+
+                 Bot tasdiqlagandan keyin "OnDex'ga qaytish" tugmasini
+                 yuboradi va u shu havolani ochadi.
+
+                 NEGA TUGMA KERAK: Android 10 dan boshlab fondagi ilova
+                 O'ZINI oldinga chiqara olmaydi (aks holda istalgan
+                 ilova foydalanuvchini bo'lib, ekranni egallab olardi).
+                 Shuning uchun "butunlay avtomatik qaytish" MUMKIN EMAS
+                 — eng yaxshisi Telegramning o'zida bitta bosish.
+
+                 Havolaning ichida ma'lumot YO'Q va u O'QILMAYDI ham:
+                 yagona vazifasi — ilovani oldinga chiqarish. Kirish
+                 tokenini ilova allaqachon o'zi so'rab olyapti
+                 (`telegram_auth.dart` dagi polling). Shu sabab bu
+                 havola orqali hech narsani "uzatib" bo'lmaydi va u
+                 hujum yuzasi hosil qilmaydi. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="ondex" android:host="auth"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -40,6 +76,27 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+
+        <!-- Telegram O'RNATILGANLIGINI aniqlash uchun.
+
+             Android 11 (API 30) dan boshlab ilova boshqa ilovalarni
+             "ko'ra" olmaydi, agar ular shu ro'yxatda bo'lmasa. Busiz
+             `canLaunchUrl(tg://)` HAR DOIM `false` qaytaradi va OTP
+             zanjiri Telegram o'rnatilgan bo'lsa ham darhol Firebase'ga
+             o'tib ketardi.
+
+             Paket nomi bo'yicha emas, SXEMA bo'yicha so'raymiz:
+             Telegram'ning bir nechta paketi bor (rasmiy, web versiyasi,
+             forklar) va ularning hammasini sanab chiqish ishonchsiz. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="tg"/>
+        </intent>
+        <!-- `t.me` havolasini brauzer/Telegram bilan ochish uchun. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

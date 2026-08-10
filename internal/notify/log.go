@@ -11,6 +11,10 @@ import (
 
 type LogNotifier struct{}
 
+func (LogNotifier) OrderCreated(o *orders.Order) {
+	slog.Info("notify: yangi buyurtma", "order", o.ID, "restaurant", o.RestaurantID, "total", o.TotalTiyin)
+}
+
 func (LogNotifier) OrderStatusChanged(o *orders.Order, from orders.Status) {
 	slog.Info("notify: buyurtma holati o'zgardi",
 		"order", o.ID, "from", from, "to", o.Status, "courier", o.CourierID)

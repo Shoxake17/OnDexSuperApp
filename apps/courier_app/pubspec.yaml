@@ -1,0 +1,50 @@
+name: chust_courier
+description: ChustApp — Kuryer ilovasi
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  ondex_core:
+    path: ../../packages/ondex_core
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  shared_preferences: ^2.2.0
+  # Sessiya tokeni uchun — Android Keystore bilan shifrlangan ombor.
+  # `shared_preferences` (shifrlanmagan XML) faqat eski tokenni bir
+  # martalik ko'chirish uchun qoldirilgan (lib/token_store.dart).
+  flutter_secure_storage: ^10.3.1
+  web_socket_channel: ^3.0.0
+  geolocator: ^13.0.1
+  google_maps_flutter: ^2.10.0
+  web: ^1.1.0
+  # Google Maps veb'da xom HTML platform-view (HtmlElementView) sifatida
+  # chiziladi — Flutter'ning gesture arenasidan TASHQARIDA. Shuning uchun
+  # xarita ustiga qo'yilgan har qanday Flutter vidjeti (suzuvchi panel,
+  # dumaloq tugmalar) uchun `PointerInterceptor` bilan o'ralmasa, sichqoncha/
+  # barmoq harakati pastdagi xaritaga "sizib o'tib", uni ham surib/aylantirib
+  # yuboradi — aynan shu www.pointer_interceptor'ning rasmiy vazifasi.
+  pointer_interceptor: ^0.10.1+2
+  # Eski (5.x) versiyalar audioplayers_android'ni compileSdk 33ga QATTIQ
+  # yozib qo'yadi (loyiha sozlamasidan mustaqil) — zamonaviy AndroidX bilan
+  # mos kelmaydi. Eng so'nggi versiya to'g'ri sozlangan (compileSdk 36
+  # bilan mos), shuning uchun caret bilan.
+  audioplayers: ^6.0.0
+  # Restoranga "Qo'ng'iroq qilish" tugmasi uchun (tel: havolasini ochadi).
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/navi.png
+    - assets/box.png
+    - assets/ondex.png
+    - assets/sound/kuryersound.mp3

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"chustapp/internal/catalog"
@@ -84,11 +85,25 @@ func (r *MemoryCatalogRepo) ListProducts(_ context.Context, restaurantID string)
 	return list, nil
 }
 
+// GetProductsByIDs — takroriy ID'lar uchun mahsulot BIR MARTA
+// qaytariladi.
+//
+// Nima uchun muhim: Postgres (`= ANY($1)`) va Mongo (`$in`) tabiiy
+// ravishda dedupe qiladi, bu implementatsiya esa qilmasdi. Natijada
+// chaqiruvchilardagi `len(products) != len(ids)` shaklidagi tekshiruvlar
+// (masalan aksiya handleridagi "tanlangan mahsulotlardan biri topilmadi")
+// backend'ga qarab HAR XIL ishlardi: memory'da o'tib ketardi, DB'da rad
+// etilardi. Xatti-harakat uch backend'da ham bir xil bo'lishi shart.
 func (r *MemoryCatalogRepo) GetProductsByIDs(_ context.Context, ids []string) ([]*catalog.Product, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var list []*catalog.Product
+	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		if x, ok := r.products[id]; ok {
 			cp := x
 			list = append(list, &cp)
@@ -97,10 +112,50 @@ func (r *MemoryCatalogRepo) GetProductsByIDs(_ context.Context, ids []string) ([
 	return list, nil
 }
 
+func (r *MemoryCatalogRepo) SearchProducts(_ context.Context, query string) ([]*catalog.ProductSearchResult, error) {
+	nq := catalog.NormalizeForSearch(query)
+	if nq == "" {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var list []*catalog.ProductSearchResult
+	for _, p := range r.products {
+		if !p.Available {
+			continue
+		}
+		if !strings.Contains(catalog.NormalizeForSearch(p.Name), nq) &&
+			!strings.Contains(catalog.NormalizeForSearch(p.Category), nq) {
+			continue
+		}
+		rest, ok := r.restaurants[p.RestaurantID]
+		if !ok {
+			continue
+		}
+		list = append(list, &catalog.ProductSearchResult{
+			Product:           p,
+			RestaurantName:    rest.Name,
+			RestaurantLogoURL: rest.LogoURL,
+			RestaurantOpen:    rest.Open,
+		})
+	}
+	return list, nil
+}
+
 func (r *MemoryCatalogRepo) SaveProduct(_ context.Context, x *catalog.Product) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.products[x.ID] = *x
+	return nil
+}
+
+func (r *MemoryCatalogRepo) DeleteProduct(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.products[id]; !ok {
+		return catalog.ErrNotFound
+	}
+	delete(r.products, id)
 	return nil
 }
 
@@ -113,8 +168,8 @@ func DemoRestaurants() []catalog.Restaurant {
 
 func DemoProducts() []catalog.Product {
 	return []catalog.Product{
-		{ID: "p1", RestaurantID: "r1", Name: "Osh", PriceTiyin: 3500000, Available: true},
-		{ID: "p2", RestaurantID: "r1", Name: "Lag'mon", PriceTiyin: 3000000, Available: true},
-		{ID: "p3", RestaurantID: "r1", Name: "Choy (damlama)", PriceTiyin: 500000, Available: true},
+		{ID: "p1", RestaurantID: "r1", Name: "Osh", Category: "Milliy taomlar", PriceTiyin: 3500000, Available: true},
+		{ID: "p2", RestaurantID: "r1", Name: "Lag'mon", Category: "Milliy taomlar", PriceTiyin: 3000000, Available: true},
+		{ID: "p3", RestaurantID: "r1", Name: "Choy (damlama)", Category: "Ichimliklar", PriceTiyin: 500000, Available: true},
 	}
 }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WebView (webview_flutter) — Android'ning Chromium asosidagi WebKit
+  qatlami — Network Security Config'ni QAT'IY qo'llaydi, api.dart'dagi
+  oddiy `http` paketidan farqli (Flutter'ning o'z bundle qilingan tarmoq
+  stack'i bu cheklovga bog'liq emas). Shuning uchun WebView'da plain
+  HTTP (masalan bridge handoff) `net::ERR_CLEARTEXT_NOT_PERMITTED` bilan
+  bloklanadi, garchi Dart'ning o'z so'rovlari xuddi shu manzilga ishlab
+  tursa ham — bu haqiqiy Android qurilmada topilgan real xato edi.
+
+  Bu — RELEASE (va profile) build uchun QAT'IY konfig: faqat localhost.
+  Production'da (https://...) u umuman kerak bo'lmaydi — HTTPS standart
+  ruxsatli.
+
+  ┌─ LAN IP BU YERDA YO'Q — ATAYLAB ──────────────────────────────────┐
+  Avval bu yerga dev mashinasining IP'i yozilardi va u release APK'ga
+  ham tushib ketardi. Endi LAN uchun cleartext FAQAT debug variantida:
+  `app/src/debug/res/xml/network_security_config.xml` (u shu faylni
+  debug build'da butunlay ALMASHTIRADI).
+
+  Ya'ni Wi-Fi IP o'zgarganda BU FAYLGA TEGISH SHART EMAS — faqat
+  `--dart-define=ONDEX_API_URL/ONDEX_WEB_URL` yangilanadi.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

@@ -109,7 +109,7 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               for (final e in byStatus.entries)
                 Chip(
-                  label: Text('${statusLabels[e.key] ?? e.key}: ${e.value}'),
+                  label: Text('${orderStatusLabel(e.key)}: ${e.value}'),
                 ),
             ],
           ),

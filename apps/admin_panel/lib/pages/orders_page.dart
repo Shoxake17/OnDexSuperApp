@@ -90,7 +90,7 @@ class _OrdersPageState extends State<OrdersPage> {
                           child: DataTable(
                             columns: const [
                               DataColumn(label: Text('Vaqt')),
-                              DataColumn(label: Text('ID')),
+                              DataColumn(label: Text('№')),
                               DataColumn(label: Text('Restoran')),
                               DataColumn(label: Text('Kuryer')),
                               DataColumn(label: Text('Summa')),
@@ -101,16 +101,15 @@ class _OrdersPageState extends State<OrdersPage> {
                                 DataRow(cells: [
                                   DataCell(Text(_time(o['created_at']))),
                                   DataCell(Text(
-                                      (o['id'] as String? ?? '').substring(0, 8))),
+                                      o['order_number']?.toString() ?? '—')),
                                   DataCell(Text(o['restaurant_id'] ?? '')),
                                   DataCell(Text(o['courier_id'] ?? '—')),
                                   DataCell(
                                       Text(formatSum((o['total_tiyin'] ?? 0) as int))),
                                   DataCell(Chip(
                                     label: Text(
-                                      statusLabels[o['status']] ??
-                                          o['status'] ??
-                                          '',
+                                      orderStatusLabel(
+                                          (o['status'] as String?) ?? ''),
                                       style: const TextStyle(
                                           color: Colors.white, fontSize: 12),
                                     ),

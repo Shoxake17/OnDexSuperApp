@@ -22,7 +22,14 @@ func (r *fakeUserRepo) GetByPhone(_ context.Context, phone string) (*User, error
 	}
 	return nil, ErrUserNotFound
 }
-func (r *fakeUserRepo) GetByID(_ context.Context, _ string) (*User, error) {
+func (r *fakeUserRepo) GetByID(_ context.Context, id string) (*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			return u, nil
+		}
+	}
 	return nil, ErrUserNotFound
 }
 func (r *fakeUserRepo) Create(_ context.Context, u *User) error {
@@ -30,6 +37,77 @@ func (r *fakeUserRepo) Create(_ context.Context, u *User) error {
 	defer r.mu.Unlock()
 	r.data[u.Phone] = u
 	return nil
+}
+func (r *fakeUserRepo) GetByEmail(_ context.Context, email string) (*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.Email != "" && strings.EqualFold(u.Email, email) {
+			return u, nil
+		}
+	}
+	return nil, ErrUserNotFound
+}
+func (r *fakeUserRepo) UpdateProfile(_ context.Context, id string, p ProfileUpdate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID != id {
+			continue
+		}
+		if p.FirstName != nil {
+			u.FirstName = *p.FirstName
+		}
+		if p.LastName != nil {
+			u.LastName = *p.LastName
+		}
+		if p.Email != nil {
+			u.Email = *p.Email
+		}
+		if p.PasswordHash != nil {
+			u.PasswordHash = *p.PasswordHash
+		}
+		// Haqiqiy repolar bilan bir xil: `Name` faqat ism/familiya
+		// berilganda qayta hisoblanadi.
+		if p.FirstName != nil || p.LastName != nil {
+			u.Name = strings.TrimSpace(u.FirstName + " " + u.LastName)
+		}
+		return nil
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) SetPasswordHash(_ context.Context, id, hash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.PasswordHash = hash
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) MarkEmailVerified(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.EmailVerified = true
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) MarkPhoneVerified(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.PhoneVerified = true
+			return nil
+		}
+	}
+	return ErrUserNotFound
 }
 func (r *fakeUserRepo) UpdateRole(_ context.Context, id string, role Role, entityID string) error {
 	r.mu.Lock()
@@ -43,15 +121,28 @@ func (r *fakeUserRepo) UpdateRole(_ context.Context, id string, role Role, entit
 	}
 	return ErrUserNotFound
 }
-func (r *fakeUserRepo) DeleteByRoleEntity(_ context.Context, role Role, entityID string) error {
+func (r *fakeUserRepo) UpdateAddress(_ context.Context, id string, addr AddressDetails) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.Address = addr
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) DeleteByRoleEntity(_ context.Context, role Role, entityID string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var ids []string
 	for phone, u := range r.data {
 		if u.Role == role && u.EntityID == entityID {
+			ids = append(ids, u.ID)
 			delete(r.data, phone)
 		}
 	}
-	return nil
+	return ids, nil
 }
 func (r *fakeUserRepo) ListByRole(_ context.Context, role Role) ([]*User, error) {
 	r.mu.Lock()
@@ -74,7 +165,7 @@ func (s *fakeCodeStore) Save(_ context.Context, c *Code) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cp := *c
-	s.data[c.Phone] = &cp
+	s.data[c.Target] = &cp
 	return nil
 }
 func (s *fakeCodeStore) Get(_ context.Context, phone string) (*Code, error) {
@@ -86,13 +177,14 @@ func (s *fakeCodeStore) Get(_ context.Context, phone string) (*Code, error) {
 	}
 	return nil, ErrInvalidCode
 }
-func (s *fakeCodeStore) IncrementAttempts(_ context.Context, phone string) error {
+func (s *fakeCodeStore) IncrementAttempts(_ context.Context, phone string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if c, ok := s.data[phone]; ok {
 		c.Attempts++
+		return c.Attempts, nil
 	}
-	return nil
+	return 0, nil
 }
 func (s *fakeCodeStore) Delete(_ context.Context, phone string) error {
 	s.mu.Lock()
@@ -105,15 +197,45 @@ type noopSms struct{}
 
 func (noopSms) Send(_, _ string) error { return nil }
 
+// noopEmail — testlarda "SMTP ulangan" holatni ifodalaydi. Yuborilgan
+// xatlarni saqlab qo'yadi, shunda testlar kod haqiqatan jo'natilganini
+// tekshira oladi.
+type noopEmail struct {
+	mu   sync.Mutex
+	sent []string // "to|subject"
+}
+
+func (e *noopEmail) Send(to, subject, _, _ string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.sent = append(e.sent, to+"|"+subject)
+	return nil
+}
+
+func (e *noopEmail) count() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.sent)
+}
+
 func newTestService() *Service {
+	s, _ := newTestServiceWithEmail()
+	return s
+}
+
+// newTestServiceWithEmail — email yuboruvchiga ham murojaat kerak
+// bo'lgan testlar uchun.
+func newTestServiceWithEmail() (*Service, *noopEmail) {
 	n := 0
-	return NewService(
+	mail := &noopEmail{}
+	s := NewService(
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		noopSms{},
 		NewTokenIssuer("test-secret", time.Hour),
 		func() string { n++; return "id" + string(rune('0'+n)) },
-	)
+	).WithEmail(mail, true)
+	return s, mail
 }
 
 func TestNormalizePhone(t *testing.T) {

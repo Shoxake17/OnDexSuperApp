@@ -10,7 +10,33 @@ import (
 type Claims struct {
 	Role     Role   `json:"role"`
 	EntityID string `json:"entity_id,omitempty"`
+	// PhoneProven — token SMS kod tasdig'i orqali berilgan (`Verify`),
+	// ya'ni egasi shu telefon raqamiga HOZIRGINA ega ekanini isbotladi.
+	//
+	// Bu FAQAT parol o'rnatishda ishlatiladi (`POST /me/password`):
+	// parolini unutgan odam joriy parolni ayta olmaydi, lekin SMS kod
+	// egalikni kamida parol darajasida isbotlaydi. Boshqa hech qanday
+	// imtiyoz bermaydi.
+	PhoneProven bool `json:"pv,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// PhoneProofWindow — SMS tasdig'i "yangi" hisoblanadigan muddat.
+//
+// NEGA CHEKLANGAN: `PhoneProven` tokenga 30 kunga yozilib qolsa,
+// o'g'irlangan token butun shu muddat davomida parolni almashtirish
+// (va haqiqiy egani `Revoke` bilan tizimdan chiqarib yuborish)
+// huquqini berardi. 15 daqiqa — kirgandan keyin parol qo'yish uchun
+// yetarli, hujum oynasi uchun esa juda tor.
+const PhoneProofWindow = 15 * time.Minute
+
+// HasFreshPhoneProof — token SMS tasdig'i orqali va YAQINDA berilganmi.
+func (c *Claims) HasFreshPhoneProof(now time.Time) bool {
+	if c == nil || !c.PhoneProven || c.IssuedAt == nil {
+		return false
+	}
+	d := now.Sub(c.IssuedAt.Time)
+	return d >= 0 && d <= PhoneProofWindow
 }
 
 type TokenIssuer struct {
@@ -22,14 +48,28 @@ func NewTokenIssuer(secret string, ttl time.Duration) *TokenIssuer {
 	return &TokenIssuer{secret: []byte(secret), ttl: ttl}
 }
 
+// Issue — oddiy kirish tokeni (parol bilan kirish, admin amallari).
 func (t *TokenIssuer) Issue(u *User) (string, error) {
+	return t.issue(u, false)
+}
+
+// IssuePhoneProven — SMS kod tasdiqlangandan keyingi token. `Verify`
+// dan boshqa joyda ISHLATILMASLIGI kerak (`Claims.PhoneProven` izohiga
+// qarang).
+func (t *TokenIssuer) IssuePhoneProven(u *User) (string, error) {
+	return t.issue(u, true)
+}
+
+func (t *TokenIssuer) issue(u *User, phoneProven bool) (string, error) {
+	now := time.Now()
 	claims := Claims{
-		Role:     u.Role,
-		EntityID: u.EntityID,
+		Role:        u.Role,
+		EntityID:    u.EntityID,
+		PhoneProven: phoneProven,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   u.ID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(t.ttl)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(now.Add(t.ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(t.secret)

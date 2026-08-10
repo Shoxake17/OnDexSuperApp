@@ -18,7 +18,36 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # 6379 emas — kompyuterda ALLAQACHON eski, tashlab qo'yilgan Windows
+      # Redis xizmati (v3.0.504, ko'p-maydonli HSET'ni qo'llamaydigan)
+      # o'sha portni band qilib turibdi (Get-Service "Redis"). Konflikt
+      # aniqlangan (jonli sinovda "wrong number of arguments" xatosi orqali
+      # topildi) — Docker konteyneri host tomonda 6380'ga chiqariladi.
+      - "6380:6379"
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+  # apps/web (Next.js) — mijoz mini-app'lari (WebView/sayt/Telegram) uchun
+  # BFF. Go API hozircha konteynerlanmagan (to'g'ridan-to'g'ri hostda
+  # ishlaydi), shuning uchun host.docker.internal orqali unga chiqadi.
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      GO_API_URL: http://host.docker.internal:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   dbdata:
+  mongodata:

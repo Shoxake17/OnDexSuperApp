@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Real bug found via live browser testing (Phase 5 checkout): several
+   components use `dark:bg-black`/`dark:bg-neutral-900` for sticky bars
+   without ever setting a matching light text color, so in dark mode
+   (prefers-color-scheme: dark) black text silently rendered on a black
+   background (e.g. Checkout's "Jami" total, Cart's no-discount total).
+   Fix at the root instead of patching each component: body always has an
+   explicit, theme-appropriate default color. */
+body {
+  color: #171717;
+  background: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #ededed;
+    /* #121212 — AYNAN Flutter'dagi `scaffoldBackgroundColor` (main.dart)
+       bilan bir xil. Sabab: WebView SafeArea ichida bo'lgani uchun tepada/
+       pastda Flutter'ning o'z foni ko'rinadi — agar ranglar farq qilsa,
+       chok (seam) sezilib qoladi. Avvalgi #000011 ko'kimtir edi (B=17)
+       va native bar bilan mos kelmasdi. */
+    background: #121212;
+  }
+}
+
+/* MobileSheet'ning eng tashqi qatlami — status-bar tagidagi bo'shliq.
+   MUHIM (haqiqiy qurilmada o'lchab topilgan bug): bu yerda AVVAL
+   `env(safe-area-inset-top)` ishlatilardi va bu bo'shliqni IKKI MARTA
+   hisoblardi — Flutter tomonda `SafeArea` (home_shell.dart) status-bar
+   joyini ALLAQACHON ajratib bergan, lekin WebView bundan bexabar bo'lib
+   `viewport-fit=cover` tufayli o'sha 75px insetni QAYTA qo'shardi.
+   O'lchov: status-bar 75px'da tugardi, karta esa 151px'da boshlanardi —
+   ortiqcha 76px (= aynan inset qiymati, zichlik 2.8125). Endi tekis
+   kichik qiymat — karta status-bar tagiga yopishib turadi. */
+.sheet-top {
+  padding-top: 4px;
+}
+
+/* MUHIM — `.sheet-top` bilan BIR XIL sabab (yuqoridagi izohga qarang):
+   Flutter tomonda `SafeArea` status-bar VA pastki gesture/navigatsiya
+   panelining joyini ALLAQACHON ajratib beradi, WebView esa bundan
+   bexabar bo'lib `viewport-fit=cover` tufayli o'sha insetlarni QAYTA
+   qo'shardi. Natijada pastdagi tugmalar ("Buyurtma rasmiylashtirish",
+   "Tayyor", "Buyurtma berish") ekran pastidan sezilarli baland turardi.
+   Endi ikkalasi ham TEKIS kichik qiymat — insetlar faqat bir marta,
+   Flutter tomonda hisoblanadi. */
+.safe-top {
+  padding-top: 12px;
+}
+
+.safe-bottom {
+  padding-bottom: 6px;
+}

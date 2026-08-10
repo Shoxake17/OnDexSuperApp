@@ -1,0 +1,11 @@
+-- Optimistik parallel boshqaruv (optimistic concurrency control) uchun
+-- versiya ustuni. Muammo: avval Save() so'zsiz UPDATE qilardi (WHERE
+-- status/versiyani tekshirmasdan) — ikkita parallel so'rov (masalan kuryer
+-- "picked_up" bosayotganda admin "cancel" bossa) bir xil eski holatni
+-- o'qib, ikkalasi ham yozib yuborishi mumkin edi, kim oxirgi yozsa g'olib
+-- chiqib, boshqasining yozuvi (va history yozuvi) jimgina yo'qolardi.
+-- Endi UPDATE FAQAT o.Version bazadagi bilan bir xil bo'lsa qo'llanadi
+-- (internal/storage/postgres.go PgOrderRepo.Save), mos kelmasa
+-- orders.ErrConflict qaytariladi, chaqiruvchi (Service) yangi holatni
+-- qayta o'qib qayta uradi.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;

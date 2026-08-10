@@ -1,17 +1,19 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:ondex_core/ondex_core.dart';
+
+// Umumiy yadro qayta eksport qilinadi - sahifalar api.dart ni import
+// qilgani uchun formatSum, ApiException va boshqalarga o'zgarishsiz
+// kirishda davom etadi. Ular endi 4 ta ilovada takrorlanmaydi.
+export 'package:ondex_core/ondex_core.dart';
+
+
 
 /// Admin panel — faqat brauzerda (desktop) ishlatiladi, server localhost'da.
 /// Production'da bu https://api.chustapp.uz kabi domen bo'ladi.
-const baseUrl = 'http://localhost:8080';
-
-class ApiException implements Exception {
-  final String message;
-  ApiException(this.message);
-  @override
-  String toString() => message;
-}
+const baseUrl = apiBaseUrl;
 
 class AdminApi {
   String? token;
@@ -32,6 +34,10 @@ class AdminApi {
     } else {
       r = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
     }
+    return _parse(r);
+  }
+
+  dynamic _parse(http.Response r) {
     final data = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
     if (r.statusCode >= 400) {
       throw ApiException(
@@ -55,6 +61,15 @@ class AdminApi {
   Future<String> mapsApiKey() async {
     final d = await _send('GET', '/config/maps');
     return d['maps_api_key'] as String;
+  }
+
+  /// Koordinatani manzil matniga aylantiradi — server orqali (Google
+  /// Geocoding API'ni brauzerdan to'g'ridan-to'g'ri chaqirish CORS
+  /// tomonidan bloklanadi, shuning uchun backend proksi qiladi).
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    final d = await _send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
+    final addr = d['address'] as String?;
+    return (addr == null || addr.isEmpty) ? null : addr;
   }
 
   Future<Map<String, dynamic>> stats() async =>
@@ -94,22 +109,54 @@ class AdminApi {
 
   Future<void> deleteRestaurant(String id) =>
       _send('DELETE', '/admin/restaurants/$id');
+
+  /// Restoran ma'lumotlarini (nomi, manzili, joylashuvi, logo, cover)
+  /// tahrirlaydi. Har doim TO'LIQ holatni yuboradi (edit oynasi mavjud
+  /// qiymatlar bilan oldindan to'ldirilgan).
+  Future<Map<String, dynamic>> editRestaurant({
+    required String id,
+    required String name,
+    required String address,
+    required double lat,
+    required double lng,
+    String logoUrl = '',
+    String coverUrl = '',
+    String tags = '',
+  }) async =>
+      Map<String, dynamic>.from(await _send('POST', '/admin/restaurants/$id', {
+        'name': name,
+        'address': address,
+        'lat': lat,
+        'lng': lng,
+        'logo_url': logoUrl,
+        'cover_url': coverUrl,
+        'tags': tags,
+      }));
+
+  /// Rasm yuklaydi. `type`: 'cover' — restoran banneri (keng, to'ldirib
+  /// kesiladi), 'logo' — restoran logosi (kvadrat, TO'LDIRIB kesiladi,
+  /// oq joysiz), bo'sh — mahsulot rasmi (kvadrat, oq joy bilan).
+  Future<String> uploadImage(Uint8List bytes, String filename,
+      {String type = ''}) async {
+    final uri = Uri.parse(
+        '$baseUrl/uploads${type.isEmpty ? '' : '?type=$type'}');
+    final req = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $token'
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    final data = _parse(resp);
+    return data['url'] as String;
+  }
 }
 
 final api = AdminApi();
 
-String formatSum(int tiyin) {
-  final sum = tiyin ~/ 100;
-  return '${sum.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ')} so\'m';
+/// Server qaytargan rasm manzilini ko'rsatish uchun tayyorlaydi: lokal disk
+/// rejimida nisbiy yo'l ("/uploads/...") keladi — baseUrl qo'shiladi; R2
+/// rejimida to'liq URL keladi — o'zgartirmasdan ishlatiladi.
+String imageUrl(String? path) {
+  if (path == null || path.isEmpty) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return '$baseUrl$path';
 }
-
-const statusLabels = {
-  'created': 'Yangi',
-  'accepted': 'Qabul qilindi',
-  'preparing': 'Tayyorlanmoqda',
-  'ready': 'Tayyor',
-  'picked_up': 'Yo\'lda',
-  'delivered': 'Yetkazildi',
-  'cancelled': 'Bekor',
-  'rejected': 'Rad etildi',
-};

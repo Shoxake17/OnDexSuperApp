@@ -2,31 +2,55 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
-	"slices"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"chustapp/internal/cache"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
+	"chustapp/internal/favorites"
+	"chustapp/internal/firebaseauth"
+	"chustapp/internal/geo"
+	"chustapp/internal/httpapi"
+	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
+	"chustapp/internal/promotions"
+	"chustapp/internal/telegram"
+	"chustapp/internal/revoke"
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
 	"chustapp/internal/ws"
 )
 
-// devMode — production'da APP_ENV=production qo'yiladi; unda SMS kodlar
-// HTTP javobda qaytarilmaydi va zaif JWT_SECRET bilan ishga tushmaydi.
+// devMode — SMS kodlarni HTTP javobda qaytarish va zaif sozlamalarga
+// ruxsat berish kabi FAQAT ishlab chiqish uchun mo'ljallangan
+// yengilliklar.
+//
+// XAVFSIZLIK (fail-closed): bu bayroq faqat ANIQ `APP_ENV=development`
+// bo'lgandagina yoqiladi. Avval teskari edi — `APP_ENV != "production"`,
+// ya'ni bo'sh qiymat, `"Production"` (katta harf bilan), `"prod"` yoki
+// oddiy xato yozuv ham dev rejimni YOQIB YUBORARDI. U holda:
+//   - haqiqiy OTP kod HTTP javobda qaytarilardi (istalgan raqamga kirish),
+//   - bo'sh JWT_SECRET qabul qilinib, hammaga ma'lum standart kalit
+//     ishlatilardi (admin tokenini soxta yasash mumkin).
+//
+// Endi noto'g'ri/yetishmayotgan konfiguratsiya XAVFSIZ tomonga
+// (production) og'adi.
 var devMode bool
+
+// devEnvValue — dev rejimni yoqadigan YAGONA qiymat.
+const devEnvValue = "development"
 
 // loadDotEnv — loyiha ildizidagi .env faylni o'qiydi (bor bo'lsa).
 // Tizim muhitida allaqachon o'rnatilgan o'zgaruvchilar ustun turadi.
@@ -55,17 +79,65 @@ func loadDotEnv() {
 	slog.Info(".env yuklandi")
 }
 
+// firebaseServiceAccount — FCM xizmat akkaunti JSON'ini ikki
+// manbadan biridan oladi.
+//
+// ┌─ NEGA IKKI YO'L ──────────────────────────────────────────────────┐
+// `.env` parseri QATORMA-QATOR ishlaydi (`loadDotEnv`). Xizmat
+// akkaunti JSON'i esa Google'dan CHIROYLI (ko'p qatorli) holda
+// yuklab olinadi. Uni to'g'ridan-to'g'ri `.env` ga ko'chirsangiz
+// faqat BIRINCHI QATOR o'qiladi va xato "kalit PEM formatida emas"
+// bo'lib chiqadi — sababi esa umuman ko'rinmaydi.
+//
+// Shuning uchun FAYL YO'LI afzal: JSON o'z holicha qoladi, hech
+// nimani bitta qatorga siqish shart emas.
+//
+//	FIREBASE_SERVICE_ACCOUNT_FILE=./secrets/fcm.json   (tavsiya)
+//	FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+//
+// Ikkalasi ham berilsa INLINE ustun turadi (konteynerlarda odatda
+// muhit o'zgaruvchisi ishlatiladi).
+// └───────────────────────────────────────────────────────────────────┘
+func firebaseServiceAccount() string {
+	if v := strings.TrimSpace(os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")); v != "" {
+		return v
+	}
+	path := strings.TrimSpace(os.Getenv("FIREBASE_SERVICE_ACCOUNT_FILE"))
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Yo'l berilgan, lekin o'qib bo'lmadi — bu ANIQ konfiguratsiya
+		// xatosi, jimgina "push o'chirilgan" deb o'tib ketmaymiz.
+		slog.Error("FIREBASE_SERVICE_ACCOUNT_FILE o'qib bo'lmadi — push o'chirilgan holda davom etiladi",
+			"path", path, "err", err)
+		return ""
+	}
+	return string(data)
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	loadDotEnv()
-	devMode = os.Getenv("APP_ENV") != "production"
+	appEnv := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
+	devMode = appEnv == devEnvValue
+	if devMode {
+		slog.Warn("DEV REJIM yoqilgan (APP_ENV=development) — OTP kodlar javobda qaytariladi, zaif sozlamalarga ruxsat beriladi")
+	} else {
+		slog.Info("production rejim", "app_env", appEnv)
+	}
 
 	var orderRepo orders.Repository
 	var courierRepo couriers.Repository
 	var userRepo users.Repository
 	var codeStore users.CodeStore
 	var catalogRepo catalog.Repository
+	var promotionsRepo promotions.Repository
+	var favoritesRepo favorites.Repository
+	var pgPool *pgxpool.Pool // katalog Mongo'da bo'lmasa zaxira sifatida ishlatiladi
 
+	// ---------- Buyurtmalar, foydalanuvchilar, kuryerlar: PostgreSQL ----------
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -90,735 +162,396 @@ func main() {
 			slog.Error("users seed xatosi", "err", err)
 			os.Exit(1)
 		}
-		if err := storage.SeedDemoCatalog(ctx, pool); err != nil {
-			slog.Error("catalog seed xatosi", "err", err)
-			os.Exit(1)
-		}
+		pgPool = pool
 		orderRepo = storage.NewPgOrderRepo(pool)
 		courierRepo = storage.NewPgCourierRepo(pool)
 		userRepo = storage.NewPgUserRepo(pool)
 		codeStore = storage.NewPgCodeStore(pool)
-		catalogRepo = storage.NewPgCatalogRepo(pool)
-		slog.Info("rejim: PostgreSQL")
+		favoritesRepo = storage.NewPgFavoritesRepo(pool)
+		slog.Info("rejim: PostgreSQL (buyurtmalar, foydalanuvchilar, kuryerlar)")
 	} else {
 		courierRepo = storage.NewMemoryCourierRepo(
-			couriers.Courier{ID: "c1", Name: "Aziz", Lat: 41.0056, Lng: 71.2378, Available: true, Approved: true},
-			couriers.Courier{ID: "c2", Name: "Bekzod", Lat: 41.0010, Lng: 71.2400, Available: true, Approved: true},
-			couriers.Courier{ID: "c3", Name: "Doniyor", Lat: 40.9980, Lng: 71.2330, Available: true, Approved: true},
+			couriers.Courier{ID: "c1", Name: "Aziz", Lat: 41.0056, Lng: 71.2378, Available: true, Approved: true, VehicleType: couriers.VehicleMoped, Rating: 5.0},
+			couriers.Courier{ID: "c2", Name: "Bekzod", Lat: 41.0010, Lng: 71.2400, Available: true, Approved: true, VehicleType: couriers.VehicleBike, Rating: 5.0},
+			couriers.Courier{ID: "c3", Name: "Doniyor", Lat: 40.9980, Lng: 71.2330, Available: true, Approved: true, VehicleType: couriers.VehicleFoot, Rating: 5.0},
 		)
 		orderRepo = storage.NewMemoryOrderRepo()
 		userRepo = storage.NewMemoryUserRepo(storage.DemoUsers()...)
 		codeStore = storage.NewMemoryCodeStore()
-		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
+		favoritesRepo = storage.NewMemoryFavoritesRepo()
 		slog.Warn("rejim: in-memory (DATABASE_URL berilmagan — ma'lumotlar server o'chsa yo'qoladi)")
 	}
 
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		if !devMode {
-			slog.Error("production rejimda JWT_SECRET majburiy")
+	// ---------- Katalog (restoranlar+menyu): MongoDB ----------
+	// Polyglot persistence: tranzaksion, munosabatli ma'lumotlar (buyurtma,
+	// to'lov, foydalanuvchi) PostgreSQL'da; hujjat-shaklidagi, tez o'zgaruvchi
+	// katalog MongoDB'da. MONGODB_URI berilmasa PostgreSQL'ga (bor bo'lsa)
+	// yoki xotiraga tushib qoladi — production'da MongoDB tavsiya etiladi.
+	if mongoURI := os.Getenv("MONGODB_URI"); mongoURI != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+		if err != nil {
+			slog.Error("MongoDB konfiguratsiya xatosi", "err", err)
 			os.Exit(1)
 		}
-		jwtSecret = "dev-secret-almashtiring"
-		slog.Warn("JWT_SECRET berilmagan — dev secret ishlatilyapti")
+		if err := client.Ping(ctx, nil); err != nil {
+			slog.Error("MongoDB'ga ulanib bo'lmadi (docker compose up -d qilinganmi?)", "err", err)
+			os.Exit(1)
+		}
+		dbName := os.Getenv("MONGODB_DB")
+		if dbName == "" {
+			dbName = "chustapp"
+		}
+		mdb := client.Database(dbName)
+		if err := storage.EnsureMongoIndexes(ctx, mdb); err != nil {
+			slog.Error("mongo indeks xatosi", "err", err)
+			os.Exit(1)
+		}
+		if err := storage.EnsureMongoPromotionsIndexes(ctx, mdb); err != nil {
+			slog.Error("mongo indeks xatosi (aksiyalar)", "err", err)
+			os.Exit(1)
+		}
+		if err := storage.SeedDemoCatalogMongo(ctx, mdb); err != nil {
+			slog.Error("catalog seed xatosi (mongo)", "err", err)
+			os.Exit(1)
+		}
+		catalogRepo = storage.NewMongoCatalogRepo(mdb)
+		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
+		slog.Info("rejim: MongoDB (katalog)")
+	} else if pgPool != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := storage.SeedDemoCatalog(ctx, pgPool); err != nil {
+			slog.Error("catalog seed xatosi", "err", err)
+			os.Exit(1)
+		}
+		catalogRepo = storage.NewPgCatalogRepo(pgPool)
+		promotionsRepo = storage.NewPgPromotionsRepo(pgPool)
+		slog.Warn("rejim: PostgreSQL (katalog) — MONGODB_URI berilmagan, production uchun tavsiya etilmaydi")
+	} else {
+		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
+		promotionsRepo = storage.NewMemoryPromotionsRepo()
+		slog.Warn("rejim: in-memory (katalog)")
 	}
-	tokens := users.NewTokenIssuer(jwtSecret, 30*24*time.Hour)
 
-	hub := ws.NewHub()
-	notifier := notify.NewLive(hub)
-	authSvc := users.NewService(userRepo, codeStore, notify.LogSms{}, tokens, newID)
-	orderSvc := orders.NewService(orderRepo, notifier, newID)
-	catalogSvc := catalog.NewService(catalogRepo)
-	dispatcher := couriers.NewDispatcher(courierRepo, notifier, 30*time.Second, 5)
-
-	mux := http.NewServeMux()
-
-	// GET /ws — jonli eventlar oqimi. Token query'da (?token=...) yoki
-	// Authorization header'da. Ulangach: buyurtma holati o'zgarishlari,
-	// kuryer uchun takliflar shu kanaldan keladi.
-	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
-		tokenStr := r.URL.Query().Get("token")
-		if tokenStr == "" {
-			tokenStr = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	// ---------- Mahsulot rasmlari: Cloudflare R2 yoki lokal disk ----------
+	var imageStore images.Store
+	if r2Bucket := os.Getenv("R2_BUCKET"); r2Bucket != "" {
+		accountID := os.Getenv("R2_ACCOUNT_ID")
+		accessKey := os.Getenv("R2_ACCESS_KEY_ID")
+		secretKey := os.Getenv("R2_SECRET_ACCESS_KEY")
+		publicURL := os.Getenv("R2_PUBLIC_URL")
+		if accountID == "" || accessKey == "" || secretKey == "" || publicURL == "" {
+			slog.Error("R2_BUCKET berilgan, lekin R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_PUBLIC_URL to'liq emas")
+			os.Exit(1)
 		}
-		claims, err := tokens.Parse(tokenStr)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		r2, err := images.NewR2Store(ctx, accountID, accessKey, secretKey, r2Bucket, publicURL)
+		cancel()
 		if err != nil {
-			httpError(w, http.StatusUnauthorized, err)
-			return
+			slog.Error("R2 konfiguratsiya xatosi", "err", err)
+			os.Exit(1)
 		}
-		hub.Serve(w, r, claims.Subject, claims.EntityID)
-	})
+		imageStore = r2
+		slog.Info("rejim: Cloudflare R2 (rasm saqlash)")
+	} else {
+		imageStore = images.NewLocalStore("uploads")
+		slog.Warn("rejim: lokal disk (rasm saqlash) — R2_BUCKET berilmagan, production uchun tavsiya etilmaydi")
+	}
 
-	// ---------- Katalog ----------
+	// ---------- Redis: kesh + OTP kodlar (ixtiyoriy) ----------
+	// Redis bo'lmasa (REDIS_ADDR berilmagan yoki ulanib bo'lmasa) — kesh
+	// butunlay o'chirilgan holda ishlaydi (har so'rov to'g'ridan-to'g'ri
+	// bazaga tushadi, faqat sekinroq) va OTP kodlar yuqorida tanlangan
+	// asosiy bazada (Postgres yoki xotira) qolaveradi — Mongo/R2 kabi boshqa
+	// ixtiyoriy komponentlar bilan bir xil falsafa: Redis hech qachon
+	// ilovani to'xtatmaydi, faqat mavjud bo'lganda tezlashtiradi.
+	redisClient := cache.Connect(os.Getenv("REDIS_ADDR"))
+	redisCache := cache.New(redisClient)
+	if redisClient != nil {
+		codeStore = storage.NewRedisCodeStore(redisClient)
+		slog.Info("rejim: Redis (OTP kodlar)")
+	}
 
-	// GET /restaurants — ochiq: mijoz ilovasining bosh sahifasi
-	mux.HandleFunc("GET /restaurants", func(w http.ResponseWriter, r *http.Request) {
-		list, err := catalogRepo.ListRestaurants(r.Context())
-		if err != nil {
-			httpError(w, http.StatusInternalServerError, err)
-			return
+	// JWT_SECRET — production'da MAJBURIY va yetarlicha uzun bo'lishi
+	// shart. Avval faqat bo'sh-emaslik tekshirilardi, ya'ni bir belgili
+	// kalit ham o'tib ketardi (HS256 uchun bu amalda brute-force
+	// qilinadigan darajada zaif).
+	const minSecretLen = 32
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if !devMode {
+		if jwtSecret == "" {
+			slog.Error("JWT_SECRET majburiy (production rejim)")
+			os.Exit(1)
 		}
-		writeJSON(w, http.StatusOK, list)
-	})
-
-	// GET /restaurants/{id}/menu — ochiq
-	mux.HandleFunc("GET /restaurants/{id}/menu", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := catalogRepo.GetRestaurant(r.Context(), r.PathValue("id")); err != nil {
-			httpError(w, http.StatusNotFound, err)
-			return
+		if len(jwtSecret) < minSecretLen {
+			slog.Error("JWT_SECRET juda qisqa",
+				"uzunligi", len(jwtSecret), "kamida", minSecretLen)
+			os.Exit(1)
 		}
-		list, err := catalogRepo.ListProducts(r.Context(), r.PathValue("id"))
-		if err != nil {
-			httpError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, list)
-	})
+	} else if jwtSecret == "" {
+		jwtSecret = "dev-secret-almashtiring"
+		slog.Warn("JWT_SECRET berilmagan — FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
+	}
+	const tokenTTL = 30 * 24 * time.Hour
+	tokens := users.NewTokenIssuer(jwtSecret, tokenTTL)
+	// revoked — muddatidan oldin bekor qilingan sessiyalar (chiqish,
+	// akkaunt o'chirilishi, kuryer tasdig'ining bekor qilinishi).
+	// Qarang: internal/revoke.
+	revokedSessions := revoke.New(redisClient, tokenTTL)
 
-	// ---------- Superadmin API ----------
+	// Tezlik cheklovi mijoz IP'siga tayanadi. `X-Forwarded-For` FAQAT
+	// shu ro'yxatdagi manbalardan qabul qilinadi — aks holda istalgan
+	// mijoz sarlavhani o'zi yozib, barcha IP cheklovlarini (SMS, login,
+	// pullik geokodlash) chetlab o'tardi. Bo'sh bo'lsa sarlavha umuman
+	// o'qilmaydi; reverse-proxy orqasiga qo'yilganda sozlash SHART.
+	httpapi.SetTrustedProxies(strings.Split(os.Getenv("TRUSTED_PROXIES"), ","))
 
-	// POST /admin/restaurants — restoran + unga kirish akkaunti bir amalda.
-	// Restoranlar o'zi ro'yxatdan o'tmaydi: akkauntni faqat superadmin yaratadi,
-	// restoran o'z paneliga shu telefon raqami bilan (SMS kod) kiradi.
-	mux.HandleFunc("POST /admin/restaurants", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Name      string  `json:"name"`
-				Address   string  `json:"address"`
-				Lat       float64 `json:"lat"`
-				Lng       float64 `json:"lng"`
-				Phone     string  `json:"phone"`      // akkaunt telefoni (majburiy)
-				StaffName string  `json:"staff_name"` // akkaunt egasi ismi
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			if req.Name == "" || req.Phone == "" {
-				httpError(w, http.StatusBadRequest, errors.New("name va phone majburiy"))
-				return
-			}
-			phone, err := users.NormalizePhone(req.Phone)
-			if err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			if _, err := userRepo.GetByPhone(r.Context(), phone); err == nil {
-				httpError(w, http.StatusConflict, errors.New("bu telefon raqam allaqachon ro'yxatda"))
-				return
-			}
-			rest := catalog.Restaurant{
-				ID: newID(), Name: req.Name, Address: req.Address,
-				Lat: req.Lat, Lng: req.Lng, Open: true,
-			}
-			if err := catalogRepo.SaveRestaurant(r.Context(), &rest); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			account := users.User{
-				ID: newID(), Phone: phone, Name: req.StaffName,
-				Role: users.RoleRestaurant, EntityID: rest.ID, CreatedAt: time.Now(),
-			}
-			if err := userRepo.Create(r.Context(), &account); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, map[string]any{"restaurant": rest, "account": account})
-		}))
+	allowedOrigins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+	hub := ws.NewHub(allowedOrigins)
+	wsTickets := ws.NewTicketStore()
+	// ---------- Bildirishnoma qatlami ----------
+	//
+	// Tartib: DB'ga yozish -> WebSocket -> (ilova yopiq bo'lsa) push.
+	// Yuborish HTTP so'rov yo'lini BLOKLAMAYDI (`notify.Service`).
+	var notifStore notify.Store
+	var tokenStore notify.TokenStore
+	if pgPool != nil {
+		notifStore = storage.NewPgNotificationStore(pgPool)
+		tokenStore = storage.NewPgTokenStore(pgPool)
+	} else {
+		// Postgres yo'q (dev/test) — xotirada. Server qayta ishga
+		// tushganda tarix yo'qoladi, lekin oqim bir xil ishlaydi.
+		notifStore = storage.NewMemoryNotificationStore()
+		tokenStore = storage.NewMemoryTokenStore()
+		slog.Warn("bildirishnomalar XOTIRADA saqlanadi (DATABASE_URL yo'q) — restartda yo'qoladi")
+	}
+	notifSvc := notify.NewService(notifStore, hub, httpapi.NewID)
 
-	// DELETE /admin/restaurants/{id} — restoranni butunlay o'chirish.
-	// Qoidalar: faol (yakunlanmagan) buyurtmasi bo'lsa o'chirib bo'lmaydi;
-	// o'chirilganda menyu taomlari va kirish akkauntlari ham o'chadi;
-	// eski buyurtmalar tarixi hisobotlar uchun SAQLANADI.
-	mux.HandleFunc("DELETE /admin/restaurants/{id}", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			id := r.PathValue("id")
-			if _, err := catalogRepo.GetRestaurant(r.Context(), id); err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			active, err := orderRepo.HasActiveByRestaurant(r.Context(), id)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			if active {
-				httpError(w, http.StatusConflict,
-					errors.New("bu restoranning faol buyurtmalari bor — avval ular yakunlanishi kerak"))
-				return
-			}
-			if err := catalogRepo.DeleteRestaurant(r.Context(), id); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			if err := userRepo.DeleteByRoleEntity(r.Context(), users.RoleRestaurant, id); err != nil {
-				slog.Error("restoran akkauntini o'chirishda xato", "restaurant", id, "err", err)
-			}
-			slog.Info("restoran o'chirildi", "restaurant", id, "by", claimsFrom(r).Subject)
-			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
-		}))
+	// FCM push — `FIREBASE_SERVICE_ACCOUNT_JSON` bo'lmasa o'chirilgan
+	// holda davom etadi (SMTP/Eskiz bilan bir xil naqsh).
+	if fcm, err := notify.NewFCM(firebaseServiceAccount()); err != nil {
+		slog.Error("FCM sozlamasi noto'g'ri — push o'chirilgan holda davom etiladi", "err", err)
+	} else if fcm != nil {
+		notifSvc = notifSvc.WithPush(fcm, tokenStore)
+		slog.Info("rejim: FCM push yoqilgan")
+	} else {
+		slog.Warn("FIREBASE_SERVICE_ACCOUNT_JSON yo'q — push yuborilmaydi (ilova yopiq bo'lsa xabar yetmaydi)")
+	}
 
-	// POST /admin/restaurants/{id}/open  {"open":true|false}
-	mux.HandleFunc("POST /admin/restaurants/{id}/open", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			rest, err := catalogRepo.GetRestaurant(r.Context(), r.PathValue("id"))
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			var req struct {
-				Open bool `json:"open"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			rest.Open = req.Open
-			if err := catalogRepo.SaveRestaurant(r.Context(), rest); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, rest)
-		}))
+	notifier := notify.NewLive(notifSvc)
+	// Email yuborish — SMS bilan bir xil naqsh: `.env` da SMTP_HOST
+	// bo'lsa haqiqiy yuborish, bo'lmasa dev log. Sozlanmagan bo'lsa
+	// email oqimlari ANIQ xato bilan rad etiladi (`users` paketidagi
+	// `ErrEmailSendUnavailable`) — jimgina "yuborildi" deyilmaydi.
+	emailSender, emailConfigured := notify.NewEmailSender()
+	if emailConfigured {
+		slog.Info("rejim: SMTP (email tasdiqlash yoqilgan)", "host", os.Getenv("SMTP_HOST"))
+	} else if devMode {
+		slog.Warn("SMTP sozlanmagan — email kodlar faqat logga yoziladi (dev)")
+	} else {
+		slog.Warn("SMTP sozlanmagan — email orqali ro'yxatdan o'tish/tiklash ISHLAMAYDI")
+	}
 
-	// GET /admin/couriers — barcha kuryerlar (telefon raqamlari bilan)
-	mux.HandleFunc("GET /admin/couriers", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			list, err := courierRepo.ListAll(r.Context())
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			courierUsers, err := userRepo.ListByRole(r.Context(), users.RoleCourier)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			phoneByEntity := make(map[string]string, len(courierUsers))
-			for _, u := range courierUsers {
-				phoneByEntity[u.EntityID] = u.Phone
-			}
-			type row struct {
-				couriers.Courier
-				Phone string `json:"phone"`
-			}
-			out := make([]row, 0, len(list))
-			for _, c := range list {
-				out = append(out, row{Courier: *c, Phone: phoneByEntity[c.ID]})
-			}
-			writeJSON(w, http.StatusOK, out)
-		}))
+	// Firebase Phone Auth — SMS kodni FIREBASE yuboradi va tekshiradi;
+	// biz faqat natijadagi ID tokenni tekshiramiz. Maxfiy kalit KERAK
+	// EMAS: tekshiruv Google'ning ochiq sertifikatlari bilan bajariladi,
+	// shuning uchun `.env` da faqat loyiha ID'si turadi.
+	firebaseVerifier := firebaseauth.New(strings.TrimSpace(os.Getenv("FIREBASE_PROJECT_ID")))
+	if firebaseVerifier.ProjectID() != "" {
+		slog.Info("rejim: Firebase Phone Auth yoqilgan", "project", firebaseVerifier.ProjectID())
+	} else {
+		slog.Warn("FIREBASE_PROJECT_ID yo'q — /auth/firebase o'chirilgan")
+	}
 
-	// POST /admin/couriers/{id}/approve  {"approved":true|false}
-	mux.HandleFunc("POST /admin/couriers/{id}/approve", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Approved bool `json:"approved"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			courierID := r.PathValue("id")
-			if err := courierRepo.SetApproved(r.Context(), courierID, req.Approved); err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			// Blok qilinganda darhol offline ham qilamiz
-			if !req.Approved {
-				courierRepo.SetAvailable(r.Context(), courierID, false)
-			}
-			writeJSON(w, http.StatusOK, map[string]bool{"approved": req.Approved})
-		}))
+	// ---------- OTP yetkazish zanjiri ----------
+	//
+	// Uchta pog'ona, har biri MUSTAQIL sozlanadi va biri yo'q bo'lsa
+	// ilova keyingisiga o'tadi:
+	//
+	//   1. Telegram bot   — bepul; foydalanuvchi botni ochishi kerak
+	//   2. Firebase       — ilova tomonida (client SDK), pullik SMS
+	//   3. Eskiz.uz       — mahalliy SMS provayderi, so'mda
+	//
+	// Uchalasi ham OXIRIDA BIR XIL yo'lga tushadi: kod `CodeStore` ga
+	// yoziladi va `POST /auth/verify` bilan tekshiriladi (Firebase
+	// bundan mustasno — u o'z tokenini beradi). Shu sabab yangi
+	// tasdiqlash mantiqi yozilmadi.
+	var smsSender users.SmsSender = notify.LogSms{}
+	if eskiz, ok := notify.NewEskizFromEnv(); ok {
+		smsSender = eskiz
+		slog.Info("rejim: Eskiz.uz (SMS)")
+	} else {
+		slog.Warn("Eskiz sozlanmagan — SMS kodlar faqat logga yoziladi")
+	}
 
-	// GET /admin/orders — so'nggi buyurtmalar
-	mux.HandleFunc("GET /admin/orders", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			list, err := orderRepo.ListRecent(r.Context(), 100)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, list)
-		}))
+	authSvc := users.NewService(userRepo, codeStore, smsSender, tokens, httpapi.NewID)
+	// Dev rejimda SMTP bo'lmasa ham email oqimini SINASH mumkin bo'lsin:
+	// kod logga chiqadi va `dev_code` javobda qaytadi. Production'da
+	// esa haqiqiy SMTP shart.
+	authSvc = authSvc.WithEmail(emailSender, emailConfigured || devMode)
 
-	// GET /admin/stats — boshqaruv paneli ko'rsatkichlari
-	mux.HandleFunc("GET /admin/stats", auth(tokens, []users.Role{users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			recent, err := orderRepo.ListRecent(r.Context(), 500)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			now := time.Now()
-			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			byStatus := map[orders.Status]int{}
-			var ordersToday, deliveredToday int
-			var revenueToday int64
-			for _, o := range recent {
-				byStatus[o.Status]++
-				if o.CreatedAt.After(today) {
-					ordersToday++
-					if o.Status == orders.StatusDelivered {
-						deliveredToday++
-						revenueToday += o.TotalTiyin
-					}
-				}
-			}
-			allCouriers, err := courierRepo.ListAll(r.Context())
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			var online, pending int
-			for _, c := range allCouriers {
-				if c.Available && c.Approved {
-					online++
-				}
-				if !c.Approved {
-					pending++
-				}
-			}
-			restaurants, _ := catalogRepo.ListRestaurants(r.Context())
-			writeJSON(w, http.StatusOK, map[string]any{
-				"orders_today":        ordersToday,
-				"delivered_today":     deliveredToday,
-				"revenue_today_tiyin": revenueToday,
-				"by_status":           byStatus,
-				"couriers_online":     online,
-				"couriers_pending":    pending,
-				"restaurants_total":   len(restaurants),
-			})
-		}))
-
-	// POST /restaurants/{id}/products — restoran o'z menyusini boshqaradi (yoki admin)
-	mux.HandleFunc("POST /restaurants/{id}/products", auth(tokens, []users.Role{users.RoleRestaurant, users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID := r.PathValue("id")
-			claims := claimsFrom(r)
-			if claims.Role == users.RoleRestaurant && claims.EntityID != restaurantID {
-				httpError(w, http.StatusForbidden, errors.New("boshqa restoran menyusini o'zgartirib bo'lmaydi"))
-				return
-			}
-			if _, err := catalogRepo.GetRestaurant(r.Context(), restaurantID); err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			var p catalog.Product
-			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			if p.Name == "" || p.PriceTiyin <= 0 {
-				httpError(w, http.StatusBadRequest, errors.New("name va musbat price_tiyin majburiy"))
-				return
-			}
-			p.RestaurantID = restaurantID
-			if p.ID == "" {
-				p.ID = newID()
-			}
-			if err := catalogRepo.SaveProduct(r.Context(), &p); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, p)
-		}))
-
-	// ---------- Auth (ochiq endpoint'lar) ----------
-
-	// POST /auth/request-code  {"phone":"+998901234567"}
-	mux.HandleFunc("POST /auth/request-code", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Phone string `json:"phone"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			httpError(w, http.StatusBadRequest, err)
-			return
-		}
-		phone, code, err := authSvc.RequestCode(r.Context(), req.Phone)
-		if err != nil {
-			status := http.StatusBadRequest
-			if errors.Is(err, users.ErrTooSoon) {
-				status = http.StatusTooManyRequests
-			}
-			httpError(w, status, err)
-			return
-		}
-		resp := map[string]any{"sent": true, "phone": phone}
+	// Telegram bot — birinchi pog'ona.
+	//
+	// Kod bot tomonida YARATILMAYDI: raqam tasdiqlangach `RequestCode`
+	// chaqiriladi va kod odatdagi do'konga tushadi. Ya'ni bot faqat
+	// YETKAZISH kanali, tasdiqlash mantiqi bitta joyda qoladi.
+	tgClient := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	var tgVerifier *telegram.Verifier
+	if tgClient.Configured() {
+		tgVerifier = telegram.NewVerifier(tgClient,
+			func(ctx context.Context, phone string) (string, error) {
+				_, code, err := authSvc.RequestCode(ctx, phone)
+				return code, err
+			},
+			users.NormalizePhone,
+			5, // kod amal qilish muddati (daqiqa) — users.codeTTL bilan bir xil
+		)
+		// PUBLIC_BASE_URL — "OnDex'ga qaytish" tugmasi ishora qiladigan
+		// manzil. TELEFON BRAUZERI unga chiqa olishi SHART.
+		//
+		// Dev'da `adb reverse tcp:8080 tcp:8080` bo'lsa `http://localhost:8080`
+		// ishlaydi (telefondagi localhost kompyuterga tunnellanadi).
+		// Wi-Fi orqali ishlansa LAN IP yozilishi kerak, production'da esa
+		// haqiqiy domen.
+		publicURL := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL"))
+		// Kalit PRODUCTION'da majburiy, dev'da emas — sabab
+		// `telegram.Verifier.requireSecret` izohida batafsil.
+		tgVerifier = tgVerifier.
+			WithPublicURL(publicURL).
+			WithConfirmSecretRequired(!devMode)
 		if devMode {
-			resp["dev_code"] = code // faqat dev: SMS o'rniga kod javobda
+			slog.Warn("Telegram bilan kirish: tasdiq kaliti TALAB QILINMAYDI " +
+				"(dev). Bu fishingga ochiq — havolani qurbonga yuborgan odam " +
+				"uning akkauntiga kira oladi. Production'da kalit majburiy " +
+				"bo'ladi, lekin buning uchun PUBLIC_BASE_URL OMMAVIY domen " +
+				"bo'lishi SHART (Telegram localhost'ni rad etadi)")
+		} else if publicURL == "" {
+			slog.Error("PUBLIC_BASE_URL yo'q — \"Telegram bilan kirish\" " +
+				"YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
-		writeJSON(w, http.StatusOK, resp)
+		go tgVerifier.Run(context.Background())
+		slog.Info("rejim: Telegram bot (OTP yetkazish) yoqilgan",
+			"qaytish_manzili", publicURL, "kalit_majburiy", !devMode)
+	} else {
+		slog.Warn("TELEGRAM_BOT_TOKEN yo'q — /auth/telegram/start o'chirilgan")
+	}
+	orderSvc := orders.NewService(orderRepo, notifier, httpapi.NewID, promotionsRepo)
+	catalogSvc := catalog.NewService(catalogRepo)
+
+	// Dispatch matching engine — Google Distance Matrix orqali HAQIQIY ETA.
+	// MUHIM: bu ham xuddi geokodlash kabi SERVER-SERVER chaqiruv, shuning
+	// uchun veb (HTTP referrer bilan cheklangan) yoki Android (paket+SHA-1
+	// bilan cheklangan) kaliti ISHLAMAYDI — ikkalasi ham to'g'ridan-to'g'ri
+	// Go serveridan kelgan so'rovni rad etadi. Shu sabab mavjud
+	// GOOGLE_GEOCODING_API_KEY (allaqachon server-server uchun, cheklovsiz/
+	// IP-cheklangan) qayta ishlatiladi — Cloud Console'da shu KALITGA
+	// "Distance Matrix API"ni ham qo'shib yoqish kifoya, uchinchi kalit
+	// yaratish shart emas.
+	distanceMatrixKey := os.Getenv("GOOGLE_GEOCODING_API_KEY")
+	if distanceMatrixKey == "" {
+		slog.Warn("GOOGLE_GEOCODING_API_KEY berilmagan — dispatch har doim zaxira (to'g'ri chiziq masofa) ETA'ga tushadi")
+	}
+	geoClient := geo.NewClient(distanceMatrixKey)
+	dispatcher := couriers.NewDispatcher(courierRepo, notifier, geoClient, 20*time.Second)
+
+	// ---------- HTTP qatlami ----------
+	// Barcha endpointlar `internal/httpapi` da (routes_*.go). Bu yerda
+	// faqat bog'liqliklar yig'iladi — Express'dagi `app.js` kabi.
+	api := httpapi.New(httpapi.Deps{
+		OrderRepo:      orderRepo,
+		CourierRepo:    courierRepo,
+		UserRepo:       userRepo,
+		CatalogRepo:    catalogRepo,
+		PromotionsRepo: promotionsRepo,
+		FavoritesRepo:  favoritesRepo,
+		Cache:          redisCache,
+		Tokens:         tokens,
+		Revoked:        revokedSessions,
+		Hub:            hub,
+		WsTickets:      wsTickets,
+		ImageStore:     imageStore,
+		AuthSvc:        authSvc,
+		OrderSvc:       orderSvc,
+		CatalogSvc:     catalogSvc,
+		Dispatcher:     dispatcher,
+		DevMode:        devMode,
+		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI —
+		// u haqiqatan pochtaga boradi (`Deps.EmailConfigured` izohi).
+		EmailConfigured: emailConfigured,
+		// Email orqali KIRISH — standart holda O'CHIQ. Mijoz ilovasida
+		// bu yo'l olib tashlangan (ROADMAP 62-band), SMTP esa
+		// chek/bildirishnoma uchun ishlashda davom etadi.
+		EmailLoginEnabled: strings.EqualFold(
+			strings.TrimSpace(os.Getenv("EMAIL_LOGIN_ENABLED")), "true"),
+		Firebase:      firebaseVerifier,
+		Telegram:      tgVerifier,
+		Notifications: notifStore,
+		PushTokens:    tokenStore,
 	})
 
-	// POST /auth/verify  {"phone":"+998901234567","code":"123456"} -> {token, user}
-	mux.HandleFunc("POST /auth/verify", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Phone string `json:"phone"`
-			Code  string `json:"code"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			httpError(w, http.StatusBadRequest, err)
-			return
-		}
-		token, u, err := authSvc.Verify(r.Context(), req.Phone, req.Code)
+	// Dispatch tiklash (crash-recovery) — dispatch holati FAQAT xotirada
+	// (Dispatcher.pending map + fon goroutine) saqlanadi. Server process
+	// biror sababdan (deploy, qulash, qayta ishga tushirish) o'chib-yonsa,
+	// avvalgi dispatch IZSIZ yo'qoladi — "accepted" holatida qolib ketgan-u
+	// hali kuryer biriktirilmagan buyurtma hech qachon qayta qidirilmay,
+	// abadiy shu holatda qotib qolardi. Shuning uchun HAR server startida
+	// so'nggi buyurtmalar orasidan aynan shunday holatdagilarni topib,
+	// ularga dispatch qayta boshlanadi.
+	{
+		recent, err := orderRepo.ListRecent(context.Background(), 500)
 		if err != nil {
-			httpError(w, http.StatusUnauthorized, err)
-			return
+			slog.Error("dispatch tiklashda buyurtmalarni o'qib bo'lmadi", "err", err)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
-	})
-
-	// GET /config/maps — Google Maps kaliti. Frontend kodida saqlanmaydi:
-	// server .env dan o'qib, faqat tizimga kirgan foydalanuvchilarga beradi.
-	// Qo'shimcha himoya Google Console'da: kalit domen (referrer) va API
-	// turi bo'yicha cheklanadi.
-	mux.HandleFunc("GET /config/maps", auth(tokens, nil,
-		func(w http.ResponseWriter, r *http.Request) {
-			key := os.Getenv("GOOGLE_MAPS_API_KEY")
-			if key == "" {
-				httpError(w, http.StatusServiceUnavailable,
-					errors.New("xarita kaliti sozlanmagan (.env: GOOGLE_MAPS_API_KEY)"))
-				return
+		for _, o := range recent {
+			if o.Status == orders.StatusAccepted && o.CourierID == "" && o.PreparationMinutes > 0 {
+				slog.Warn("dispatch tiklanmoqda (server qayta ishga tushgandan keyin topilgan kuryersiz buyurtma)",
+					"order", o.ID, "order_number", o.OrderNumber)
+				oID, rID, prep := o.ID, o.RestaurantID, o.PreparationMinutes
+				api.RecoverDispatch(oID, rID, prep)
 			}
-			writeJSON(w, http.StatusOK, map[string]string{"maps_api_key": key})
-		}))
-
-	// ---------- Buyurtmalar (token talab qilinadi) ----------
-
-	// POST /orders — faqat mijoz. Mijoz faqat product_id + qty yuboradi;
-	// narx, nom va restoran katalogdan aniqlanadi (narxni soxtalashtirib bo'lmaydi).
-	mux.HandleFunc("POST /orders", auth(tokens, []users.Role{users.RoleCustomer},
-		func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Items       []catalog.ItemRequest `json:"items"`
-				DeliveryLat float64               `json:"delivery_lat"`
-				DeliveryLng float64               `json:"delivery_lng"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			restaurantID, items, err := catalogSvc.PriceOrder(r.Context(), req.Items)
-			if err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			o := orders.Order{
-				CustomerID:   claimsFrom(r).Subject,
-				RestaurantID: restaurantID,
-				Items:        items,
-				DeliveryLat:  req.DeliveryLat,
-				DeliveryLng:  req.DeliveryLng,
-			}
-			created, err := orderSvc.Create(r.Context(), &o)
-			if err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, created)
-		}))
-
-	// GET /orders/{id} — faqat aloqador tomonlar ko'ra oladi
-	mux.HandleFunc("GET /orders/{id}", auth(tokens, nil,
-		func(w http.ResponseWriter, r *http.Request) {
-			o, err := orderSvc.Get(r.Context(), r.PathValue("id"))
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			if !canSeeOrder(claimsFrom(r), o) {
-				httpError(w, http.StatusForbidden, errors.New("bu buyurtma sizga tegishli emas"))
-				return
-			}
-			writeJSON(w, http.StatusOK, o)
-		}))
-
-	// POST /orders/{id}/transition  {"to":"accepted"} — aktor tokendagi roldan aniqlanadi
-	mux.HandleFunc("POST /orders/{id}/transition", auth(tokens, nil,
-		func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				To orders.Status `json:"to"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			claims := claimsFrom(r)
-			o, err := orderSvc.Get(r.Context(), r.PathValue("id"))
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			if !ownsOrderAction(claims, o) {
-				httpError(w, http.StatusForbidden, errors.New("bu buyurtma sizga tegishli emas"))
-				return
-			}
-			o, err = orderSvc.ChangeStatus(r.Context(), o.ID, req.To, roleToActor(claims.Role))
-			if err != nil {
-				var terr *orders.TransitionError
-				if errors.As(err, &terr) {
-					httpError(w, http.StatusConflict, err)
-				} else {
-					httpError(w, http.StatusBadRequest, err)
-				}
-				return
-			}
-			// Buyurtma yakunlandi — kuryer yana bo'sh
-			if o.IsTerminal() && o.CourierID != "" {
-				if err := courierRepo.SetAvailable(r.Context(), o.CourierID, true); err != nil {
-					slog.Error("kuryerni bo'shatishda xato", "courier", o.CourierID, "err", err)
-				}
-			}
-			writeJSON(w, http.StatusOK, o)
-		}))
-
-	// POST /orders/{id}/dispatch — restoran (o'z buyurtmasi uchun) yoki admin
-	mux.HandleFunc("POST /orders/{id}/dispatch", auth(tokens, []users.Role{users.RoleRestaurant, users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			claims := claimsFrom(r)
-			orderID := r.PathValue("id")
-			o, err := orderSvc.Get(r.Context(), orderID)
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			if claims.Role == users.RoleRestaurant && o.RestaurantID != claims.EntityID {
-				httpError(w, http.StatusForbidden, errors.New("bu buyurtma sizning restoraningizniki emas"))
-				return
-			}
-			if o.IsTerminal() || o.CourierID != "" {
-				httpError(w, http.StatusConflict, errors.New("bu buyurtma uchun dispatch mumkin emas"))
-				return
-			}
-			// Kuryer restoranga yaqinidan qidiriladi (taomni olib ketish nuqtasi).
-			searchLat, searchLng := o.DeliveryLat, o.DeliveryLng
-			if rest, err := catalogRepo.GetRestaurant(r.Context(), o.RestaurantID); err == nil {
-				searchLat, searchLng = rest.Lat, rest.Lng
-			}
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				defer cancel()
-				courierID, err := dispatcher.Dispatch(ctx, orderID, searchLat, searchLng)
-				if err != nil {
-					slog.Error("dispatch muvaffaqiyatsiz", "order", orderID, "err", err)
-					return
-				}
-				if _, err := orderSvc.AssignCourier(ctx, orderID, courierID); err != nil {
-					slog.Error("kuryer biriktirishda xato", "order", orderID, "err", err)
-				}
-			}()
-			writeJSON(w, http.StatusAccepted, map[string]string{"status": "dispatch boshlandi"})
-		}))
-
-	// ---------- Kuryer amallari ----------
-
-	// POST /couriers/register — mijoz kuryer bo'lishga ariza beradi.
-	// Kuryer yaratiladi, lekin approved=false: superadmin tasdiqlamaguncha
-	// online bo'la olmaydi va taklif olmaydi. Yangi token qaytariladi
-	// (eski tokenda rol hali "customer" edi).
-	mux.HandleFunc("POST /couriers/register", auth(tokens, []users.Role{users.RoleCustomer},
-		func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Name string `json:"name"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			if req.Name == "" {
-				httpError(w, http.StatusBadRequest, errors.New("name majburiy"))
-				return
-			}
-			claims := claimsFrom(r)
-			u, err := userRepo.GetByID(r.Context(), claims.Subject)
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			c := couriers.Courier{ID: newID(), Name: req.Name}
-			if err := courierRepo.Create(r.Context(), &c); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			if err := userRepo.UpdateRole(r.Context(), u.ID, users.RoleCourier, c.ID); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			u.Role = users.RoleCourier
-			u.EntityID = c.ID
-			newToken, err := tokens.Issue(u)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, map[string]any{
-				"courier": c,
-				"token":   newToken,
-				"message": "Ariza qabul qilindi. Admin tasdiqlagach ishlay boshlaysiz.",
-			})
-		}))
-
-	// POST /couriers/{id}/respond — faqat o'sha kuryerning o'zi
-	mux.HandleFunc("POST /couriers/{id}/respond", auth(tokens, []users.Role{users.RoleCourier},
-		func(w http.ResponseWriter, r *http.Request) {
-			courierID := r.PathValue("id")
-			if claimsFrom(r).EntityID != courierID {
-				httpError(w, http.StatusForbidden, errors.New("boshqa kuryer nomidan javob berib bo'lmaydi"))
-				return
-			}
-			var req struct {
-				OrderID  string `json:"order_id"`
-				Accepted bool   `json:"accepted"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			ok := dispatcher.HandleResponse(req.OrderID, couriers.Response{CourierID: courierID, Accepted: req.Accepted})
-			if !ok {
-				httpError(w, http.StatusConflict, errors.New("taklif eskirgan yoki sizga tegishli emas"))
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]bool{"received": true})
-		}))
-
-	// POST /couriers/{id}/available — kuryerning o'zi yoki admin
-	mux.HandleFunc("POST /couriers/{id}/available", auth(tokens, []users.Role{users.RoleCourier, users.RoleAdmin},
-		func(w http.ResponseWriter, r *http.Request) {
-			claims := claimsFrom(r)
-			courierID := r.PathValue("id")
-			if claims.Role == users.RoleCourier && claims.EntityID != courierID {
-				httpError(w, http.StatusForbidden, errors.New("boshqa kuryer holatini o'zgartirib bo'lmaydi"))
-				return
-			}
-			var req struct {
-				Available bool `json:"available"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			c, err := courierRepo.GetByID(r.Context(), courierID)
-			if err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			if req.Available && !c.Approved {
-				httpError(w, http.StatusForbidden,
-					errors.New("kuryerlik arizangiz hali admin tomonidan tasdiqlanmagan"))
-				return
-			}
-			if err := courierRepo.SetAvailable(r.Context(), courierID, req.Available); err != nil {
-				httpError(w, http.StatusNotFound, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]bool{"available": req.Available})
-		}))
+		}
+	}
 
 	addr := ":8080"
+	// ANIQ timeout'lar — `http.ListenAndServe` nol-qiymatli serverdan
+	// foydalanadi, ya'ni o'qish/yozish CHEKSIZ kutadi. Bir necha o'nlab
+	// sekin (baytma-bayt yozadigan) ulanish barcha goroutine'larni band
+	// qilib, serverni arzimas kuch bilan to'xtatishi mumkin (Slowloris).
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           api.Routes(allowedOrigins),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		// Yozish uchun kengroq: rasm yuklash (5MB) sekin tarmoqda
+		// uzoqroq davom etishi mumkin.
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Graceful shutdown — SIGTERM/SIGINT kelganda ishlab turgan
+	// so'rovlar tugatiladi, DB pool'lari yopiladi (avval jarayon
+	// darhol o'lardi va so'rovlar yarim yo'lda uzilardi).
+	shutdownDone := make(chan struct{})
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+		slog.Info("to'xtatish signali qabul qilindi — so'rovlar yakunlanmoqda")
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Error("graceful shutdown xatosi", "err", err)
+		}
+		close(shutdownDone)
+	}()
+
 	slog.Info("ChustApp API ishga tushdi", "addr", addr, "dev_mode", devMode)
-	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("server to'xtadi", "err", err)
 		os.Exit(1)
 	}
-}
-
-// withCORS — brauzerdan (Flutter web) kelgan so'rovlar uchun CORS ruxsatlari.
-// Dev'da hamma originga ochiq; production'da o'z domenlarimizga cheklanadi.
-func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// ---------- Auth middleware ----------
-
-type ctxKey int
-
-const claimsKey ctxKey = 0
-
-// auth — Bearer tokenni tekshiradi; roles bo'sh bo'lmasa rol ham talab qilinadi.
-func auth(tokens *users.TokenIssuer, roles []users.Role, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		h := r.Header.Get("Authorization")
-		if !strings.HasPrefix(h, "Bearer ") {
-			httpError(w, http.StatusUnauthorized, errors.New("Authorization: Bearer <token> talab qilinadi"))
-			return
-		}
-		claims, err := tokens.Parse(strings.TrimPrefix(h, "Bearer "))
-		if err != nil {
-			httpError(w, http.StatusUnauthorized, err)
-			return
-		}
-		if len(roles) > 0 && !slices.Contains(roles, claims.Role) {
-			httpError(w, http.StatusForbidden, errors.New("bu amal sizning rolingizga ochiq emas"))
-			return
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))
-	}
-}
-
-func claimsFrom(r *http.Request) *users.Claims {
-	return r.Context().Value(claimsKey).(*users.Claims)
-}
-
-func roleToActor(role users.Role) orders.Actor {
-	switch role {
-	case users.RoleCustomer:
-		return orders.ActorCustomer
-	case users.RoleRestaurant:
-		return orders.ActorRestaurant
-	case users.RoleCourier:
-		return orders.ActorCourier
-	case users.RoleAdmin:
-		return orders.ActorAdmin
-	}
-	return ""
-}
-
-// ownsOrderAction — holatni o'zgartirish huquqi: mijoz o'z buyurtmasi, restoran
-// o'z restorani buyurtmasi, kuryer o'ziga biriktirilgan buyurtma; admin hammasi.
-func ownsOrderAction(c *users.Claims, o *orders.Order) bool {
-	switch c.Role {
-	case users.RoleCustomer:
-		return o.CustomerID == c.Subject
-	case users.RoleRestaurant:
-		return o.RestaurantID == c.EntityID
-	case users.RoleCourier:
-		return o.CourierID == c.EntityID
-	case users.RoleAdmin:
-		return true
-	}
-	return false
-}
-
-func canSeeOrder(c *users.Claims, o *orders.Order) bool {
-	// Ko'rish huquqi hozircha o'zgartirish huquqi bilan bir xil, faqat kuryer
-	// hali biriktirilmagan bo'lsa ham taklif bosqichida ko'rishi kerak bo'ladi —
-	// bu WebSocket bosqichida qayta ko'riladi.
-	return ownsOrderAction(c, o)
-}
-
-func newID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
-func httpError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	<-shutdownDone
+	slog.Info("server to'xtadi")
 }

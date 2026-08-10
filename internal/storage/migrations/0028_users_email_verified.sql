@@ -1,0 +1,17 @@
+-- Email tasdiqlash (bir martalik kod emailga yuboriladi).
+--
+-- Telefon bilan BIR XIL qoida: email orqali ro'yxatdan o'tilsa akkaunt
+-- `email_verified = FALSE` holatida yaratiladi va parol bilan kirish
+-- FAQAT kod tasdiqlangandan keyin ochiladi.
+--
+-- NEGA MUHIM: bugungacha email yo'li UMUMAN tasdiqlanmasdi — istalgan
+-- odam BEGONA email bilan akkaunt ochib, o'sha manzilni band qilib
+-- qo'yishi va uni parol bilan ishlatishi mumkin edi.
+--
+-- DEFAULT TRUE — `phone_verified` bilan bir xil sabab: mavjud
+-- qatorlar (allaqachon ishlatilayotgan akkauntlar) tizimdan chiqib
+-- qolmasligi kerak. Yangi yozuvlarda qiymat kod tomonidan ANIQ
+-- `false` qilib beriladi (`users.Repository.Create` ustunni ochiq
+-- yozadi), shuning uchun standart qiymat yangi ro'yxatdan o'tishlarga
+-- ta'sir qilmaydi.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;

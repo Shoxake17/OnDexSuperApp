@@ -14,6 +14,9 @@ func TestValidTransitions(t *testing.T) {
 		{StatusAccepted, StatusPreparing, ActorRestaurant},
 		{StatusAccepted, StatusCancelled, ActorCustomer},
 		{StatusPreparing, StatusReady, ActorRestaurant},
+		// Ready->PickedUp endi kuryer TO'G'RIDAN-TO'G'RI o'zi qiladi —
+		// alohida tasdiqlash kodi yo'q, restoran ham tugma bosmaydi
+		// (Yandex Eats uslubi, foydalanuvchi so'rovi bo'yicha).
 		{StatusReady, StatusPickedUp, ActorCourier},
 		{StatusPickedUp, StatusDelivered, ActorCourier},
 	}
@@ -35,6 +38,7 @@ func TestForbiddenTransitions(t *testing.T) {
 		{StatusCreated, StatusAccepted, ActorCourier, "kuryer restoran nomidan"},
 		{StatusPreparing, StatusCancelled, ActorCustomer, "tayyorlanayotganda mijoz bekor qila olmaydi"},
 		{StatusReady, StatusPickedUp, ActorRestaurant, "faqat kuryer oladi"},
+		{StatusReady, StatusPickedUp, ActorSystem, "endi ActorSystem emas, ActorCourier oladi"},
 		{StatusDelivered, StatusCreated, ActorAdmin, "terminal holatdan chiqish"},
 		{StatusCancelled, StatusAccepted, ActorRestaurant, "terminal holatdan chiqish"},
 		{StatusRejected, StatusAccepted, ActorAdmin, "terminal holatdan chiqish"},

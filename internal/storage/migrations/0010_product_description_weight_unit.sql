@@ -1,0 +1,4 @@
+ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS weight_unit TEXT NOT NULL DEFAULT 'g';
+ALTER TABLE products RENAME COLUMN weight_grams TO weight;
+ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION USING weight::double precision;

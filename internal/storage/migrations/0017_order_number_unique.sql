@@ -1,0 +1,11 @@
+-- order_number (mijoz/restoran/kuryerga ko'rsatiladigan "DDMMYY-N" raqami,
+-- migration 0013/0014) hech qachon DB darajasida UNIQUE bilan
+-- himoyalanmagan edi — faqat DEFAULT ifoda tasodifiy qiymat generatsiya
+-- qilardi, lekin ikkita qator nazariy jihatdan bir xil raqamga ega bo'lishi
+-- (amalda ehtimoli juda past, ammo yo'q emas) hech narsa bilan
+-- to'xtatilmasdi. Indeks nomi ("idx_orders_number_unique")
+-- internal/storage/postgres.go PgOrderRepo.Save()da pgconn.PgError.
+-- ConstraintName orqali aniq shu satr bilan solishtirilib, kolliziya
+-- bo'lsa DEFAULT'ni qayta hisoblatish uchun avtomatik qayta uriniladi —
+-- o'zgartirilsa o'sha yerda ham yangilanishi SHART.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_number_unique ON orders (order_number);

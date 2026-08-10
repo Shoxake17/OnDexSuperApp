@@ -1,17 +1,209 @@
-# Maxfiy sozlamalar — hech qachon commit qilinmaydi
+# Env 
 .env
+.env.*
+*.env
+!.env.example
+!.env.*.example
+!**/.env.example
+.env.example.*
 
-# Go
+# Firevase
+/secrets/
+secrets/
+*service-account*.json
+*serviceaccount*.json
+firebase-adminsdk-*.json
+*-adminsdk-*.json
+
+# Shaxsiy kalitlar va sertifikatlar (har qanday joyda)
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.cer
+*.der
+id_rsa
+id_rsa.*
+*.ppk
+
+# Bulut provayderlari
+.aws/
+gcloud-service-key.json
+*.tfvars
+!*.tfvars.example
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Android / Java / Kotlin
+*.jks
+*.keystore
+key.properties
+keystore.properties
+upload-keystore.*
+android/key.properties
+**/android/key.properties
+
+# Play Console API kaliti (CI'dan avtomatik yuklash uchun)
+play-store-*.json
+*play-publisher*.json
+
+# Google / Firebase json
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase_options.dart
+.firebase/
+firebase-debug.log
+.firebaserc
+
+# Image
+/uploads/
+/tmp/
+/temp/
+
+
+# ───────────────────────────────────────────────────────────────────
+#  6. GO
+# ───────────────────────────────────────────────────────────────────
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
+*.out
+/api
+/api.exe
+/bin/
+/dist/
+coverage.txt
+coverage.html
+go.work
+go.work.sum
+# vendor/ ataylab ro'yxatda YO'Q — u ishlatilsa commit qilinishi kerak.
 
-# Flutter/Dart
+
+# ───────────────────────────────────────────────────────────────────
+#  7. FLUTTER / DART
+# ───────────────────────────────────────────────────────────────────
 **/.dart_tool/
+**/.packages
+**/.pub-cache/
+**/.pub/
 **/build/
+**/.flutter-plugins
 **/.flutter-plugins-dependencies
-**/.idea/
-*.iml
+**/generated_plugin_registrant.*
+**/.metadata
+*.lock.bak
 
-# OS
-Thumbs.db
+# Android (Flutter ichida)
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/.cxx/
+*.iml
+*.jar.asc
+
+# iOS / macOS (Flutter ichida)
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/macos/Pods/
+**/Podfile.lock
+*.ipa
+*.app.dSYM.zip
+
+# Chiqish artefaktlari
+*.apk
+*.aab
+*.aar
+
+
+# ───────────────────────────────────────────────────────────────────
+#  8. NODE / NEXT.JS (apps/web)
+# ───────────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+.npm/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+.pnp.*
+
+
+# ───────────────────────────────────────────────────────────────────
+#  9. LOGLAR VA DIAGNOSTIKA
+# ───────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.pid
+*.seed
+*.pid.lock
+crash-report*.txt
+
+
+# ───────────────────────────────────────────────────────────────────
+#  10. MA'LUMOTLAR BAZASI (mahalliy)
+# ───────────────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+/pgdata/
+/mongodata/
+dump.rdb
+
+
+# ───────────────────────────────────────────────────────────────────
+#  11. IDE VA MUHARRIRLAR
+# ───────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+.history/
+*.sublime-workspace
+*.sublime-project
+
+
+# ───────────────────────────────────────────────────────────────────
+#  12. OPERATSION TIZIM
+# ───────────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+
+# ───────────────────────────────────────────────────────────────────
+#  13. AI / AGENT ISH FAYLLARI
+# ───────────────────────────────────────────────────────────────────
+.claude/
+*.scratch.md
+*.md

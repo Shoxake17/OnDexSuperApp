@@ -3,8 +3,11 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"chustapp/internal/users"
@@ -22,11 +25,45 @@ func (r *PgUserRepo) GetByID(ctx context.Context, id string) (*users.User, error
 	return r.getBy(ctx, "id", id)
 }
 
+const userColumns = `id, phone, name, role, entity_id, created_at,
+	address_lat, address_lng, address_text, address_entrance, address_floor,
+	address_apartment, address_intercom, address_comment,
+	first_name, last_name, email, password_hash, phone_verified, email_verified`
+
+func scanUser(row pgx.Row, u *users.User) error {
+	return row.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt,
+		&u.Address.Lat, &u.Address.Lng, &u.Address.Text, &u.Address.Entrance,
+		&u.Address.Floor, &u.Address.Apartment, &u.Address.Intercom, &u.Address.Comment,
+		&u.FirstName, &u.LastName, &u.Email, &u.PasswordHash, &u.PhoneVerified,
+		&u.EmailVerified)
+}
+
+// getBy — foydalanuvchini telefon yoki ID bo'yicha o'qiydi.
+//
+// So'rov matni ustun nomi bilan KONKATENATSIYA QILINMAYDI. Avval
+// `WHERE `+col+` = $1` shaklida edi: qiymat parametrlangani uchun
+// amalda ekspluatatsiya qilib bo'lmasdi (`col` har doim kodda yozilgan
+// literal), lekin bu SQL-injection naqshining o'zi — kelajakda kimdir
+// `col`ni foydalanuvchi kiritmasidan berib yuborsa, zaiflik jimgina
+// paydo bo'lardi. Endi ruxsat etilgan har bir ustun uchun TO'LIQ
+// alohida, o'zgarmas so'rov ishlatiladi.
 func (r *PgUserRepo) getBy(ctx context.Context, col, val string) (*users.User, error) {
+	var query string
+	switch col {
+	case "phone":
+		query = `SELECT ` + userColumns + ` FROM users WHERE phone = $1`
+	case "id":
+		query = `SELECT ` + userColumns + ` FROM users WHERE id = $1`
+	case "email":
+		// Email REGISTRGA BOG'LIQ EMAS taqqoslanadi — "Ali@mail.uz" va
+		// "ali@mail.uz" bitta akkaunt. Indeks ham `lower(email)` bo'yicha
+		// (migratsiya 0026), shuning uchun so'rov indeksdan foydalanadi.
+		query = `SELECT ` + userColumns + ` FROM users WHERE lower(email) = lower($1) AND email <> ''`
+	default:
+		return nil, fmt.Errorf("getBy: ruxsat etilmagan ustun %q", col)
+	}
 	var u users.User
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, phone, name, role, entity_id, created_at FROM users WHERE `+col+` = $1`, val,
-	).Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt)
+	err := scanUser(r.pool.QueryRow(ctx, query, val), &u)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, users.ErrUserNotFound
 	}
@@ -38,10 +75,104 @@ func (r *PgUserRepo) getBy(ctx context.Context, col, val string) (*users.User, e
 
 func (r *PgUserRepo) Create(ctx context.Context, u *users.User) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO users (id, phone, name, role, entity_id, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
-		u.ID, u.Phone, u.Name, u.Role, u.EntityID, u.CreatedAt)
+		`INSERT INTO users (id, phone, name, role, entity_id, created_at,
+		                    first_name, last_name, email, password_hash, phone_verified,
+		                    email_verified)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		u.ID, u.Phone, u.Name, u.Role, u.EntityID, u.CreatedAt,
+		u.FirstName, u.LastName, u.Email, u.PasswordHash, u.PhoneVerified,
+		u.EmailVerified)
+	return mapUserConstraint(err)
+}
+
+// mapUserConstraint — DB unikal cheklovlarini ANIQ xatolarga aylantiradi.
+//
+// Busiz takroriy telefon/email `23505` xom holda chiqib, HTTP 500 va
+// constraint matnini (ya'ni ichki sxemani) foydalanuvchiga ko'rsatardi.
+func mapUserConstraint(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if strings.Contains(pgErr.ConstraintName, "email") {
+			return users.ErrEmailTaken
+		}
+		return users.ErrPhoneTaken
+	}
 	return err
+}
+
+func (r *PgUserRepo) GetByEmail(ctx context.Context, email string) (*users.User, error) {
+	return r.getBy(ctx, "email", email)
+}
+
+func (r *PgUserRepo) UpdateProfile(ctx context.Context, id string, p users.ProfileUpdate) error {
+	// COALESCE naqshi: nil uzatilgan maydon TEGILMAYDI, ya'ni "ismni
+	// yangilash" parolni tasodifan o'chirib yubormaydi.
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE users SET
+			first_name    = COALESCE($2, first_name),
+			last_name     = COALESCE($3, last_name),
+			email         = COALESCE($4, email),
+			password_hash = COALESCE($5, password_hash),
+			-- name ustuni FAQAT ism yoki familiya berilganda qayta
+			-- hisoblanadi. Busiz "faqat parolni yangilash" chaqiruvi
+			-- ham nomni first/last dan qayta yigib, admin yaratgan
+			-- (nomi bor, first/last si bosh) restoran/kuryer
+			-- akkauntlarining nomini ochirib yuborardi.
+			name          = CASE WHEN $2::text IS NULL AND $3::text IS NULL THEN name
+			                     ELSE TRIM(COALESCE($2, first_name) || ' ' || COALESCE($3, last_name))
+			                END
+		WHERE id = $1`,
+		id, p.FirstName, p.LastName, p.Email, p.PasswordHash)
+	if err != nil {
+		return mapUserConstraint(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+// SetPasswordHash — FAQAT `password_hash`. `UpdateProfile` dan farqli
+// o'laroq `name` ni qayta hisoblamaydi (u yerdagi COALESCE naqshi
+// admin yaratgan, `first_name`/`last_name` si bo'sh akkauntlarning
+// nomini o'chirib yuborardi).
+func (r *PgUserRepo) SetPasswordHash(ctx context.Context, id, hash string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $2 WHERE id = $1`, id, hash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *PgUserRepo) MarkEmailVerified(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET email_verified = TRUE WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *PgUserRepo) MarkPhoneVerified(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET phone_verified = TRUE WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *PgUserRepo) UpdateRole(ctx context.Context, id string, role users.Role, entityID string) error {
@@ -56,15 +187,43 @@ func (r *PgUserRepo) UpdateRole(ctx context.Context, id string, role users.Role,
 	return nil
 }
 
-func (r *PgUserRepo) DeleteByRoleEntity(ctx context.Context, role users.Role, entityID string) error {
-	_, err := r.pool.Exec(ctx,
-		`DELETE FROM users WHERE role = $1 AND entity_id = $2`, role, entityID)
-	return err
+func (r *PgUserRepo) DeleteByRoleEntity(ctx context.Context, role users.Role, entityID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`DELETE FROM users WHERE role = $1 AND entity_id = $2 RETURNING id`, role, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (r *PgUserRepo) UpdateAddress(ctx context.Context, id string, a users.AddressDetails) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET address_lat = $2, address_lng = $3, address_text = $4,
+			address_entrance = $5, address_floor = $6, address_apartment = $7,
+			address_intercom = $8, address_comment = $9
+		 WHERE id = $1`,
+		id, a.Lat, a.Lng, a.Text, a.Entrance, a.Floor, a.Apartment, a.Intercom, a.Comment)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *PgUserRepo) ListByRole(ctx context.Context, role users.Role) ([]*users.User, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, phone, name, role, entity_id, created_at FROM users WHERE role = $1 ORDER BY created_at`, role)
+		`SELECT `+userColumns+` FROM users WHERE role = $1 ORDER BY created_at`, role)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +231,7 @@ func (r *PgUserRepo) ListByRole(ctx context.Context, role users.Role) ([]*users.
 	var list []*users.User
 	for rows.Next() {
 		var u users.User
-		if err := rows.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt); err != nil {
+		if err := scanUser(rows, &u); err != nil {
 			return nil, err
 		}
 		list = append(list, &u)
@@ -93,7 +252,7 @@ func (s *PgCodeStore) Save(ctx context.Context, c *users.Code) error {
 			expires_at = EXCLUDED.expires_at,
 			created_at = EXCLUDED.created_at,
 			attempts = 0`,
-		c.Phone, c.CodeHash, c.ExpiresAt, c.CreatedAt)
+		c.Target, c.CodeHash, c.ExpiresAt, c.CreatedAt)
 	return err
 }
 
@@ -101,7 +260,7 @@ func (s *PgCodeStore) Get(ctx context.Context, phone string) (*users.Code, error
 	var c users.Code
 	err := s.pool.QueryRow(ctx,
 		`SELECT phone, code_hash, expires_at, created_at, attempts FROM phone_codes WHERE phone = $1`, phone,
-	).Scan(&c.Phone, &c.CodeHash, &c.ExpiresAt, &c.CreatedAt, &c.Attempts)
+	).Scan(&c.Target, &c.CodeHash, &c.ExpiresAt, &c.CreatedAt, &c.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, users.ErrInvalidCode
 	}
@@ -111,10 +270,20 @@ func (s *PgCodeStore) Get(ctx context.Context, phone string) (*users.Code, error
 	return &c, nil
 }
 
-func (s *PgCodeStore) IncrementAttempts(ctx context.Context, phone string) error {
-	_, err := s.pool.Exec(ctx,
-		`UPDATE phone_codes SET attempts = attempts + 1 WHERE phone = $1`, phone)
-	return err
+// IncrementAttempts — bitta atomik UPDATE ... RETURNING: oshirish va
+// yangi qiymatni o'qish bir amalda bajariladi, shuning uchun parallel
+// so'rovlar bir xil qiymatni ko'ra olmaydi.
+func (s *PgCodeStore) IncrementAttempts(ctx context.Context, phone string) (int, error) {
+	var attempts int
+	err := s.pool.QueryRow(ctx,
+		`UPDATE phone_codes SET attempts = attempts + 1 WHERE phone = $1
+		 RETURNING attempts`, phone).Scan(&attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Kod yozuvi yo'q (muddati o'tgan/o'chirilgan) — chaqiruvchi
+		// buni "noto'g'ri kod" deb qaraydi.
+		return 0, nil
+	}
+	return attempts, err
 }
 
 func (s *PgCodeStore) Delete(ctx context.Context, phone string) error {

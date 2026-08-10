@@ -50,7 +50,14 @@ func (r *fakeRepo) GetProductsByIDs(_ context.Context, ids []string) ([]*Product
 	}
 	return out, nil
 }
+func (r *fakeRepo) SearchProducts(_ context.Context, _ string) ([]*ProductSearchResult, error) {
+	return nil, nil
+}
 func (r *fakeRepo) SaveProduct(_ context.Context, _ *Product) error { return nil }
+func (r *fakeRepo) DeleteProduct(_ context.Context, id string) error {
+	delete(r.products, id)
+	return nil
+}
 
 func TestPriceOrderComputesFromCatalog(t *testing.T) {
 	s := NewService(newFakeRepo())

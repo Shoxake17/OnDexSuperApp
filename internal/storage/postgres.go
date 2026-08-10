@@ -5,12 +5,24 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"chustapp/internal/couriers"
 	"chustapp/internal/orders"
+)
+
+// Postgres unique indeks nomlari — migration 0016/0017'ga qarang. Save()
+// ularni pgconn.PgError.ConstraintName orqali aniqlab, mos xatoga
+// (orders.ErrDuplicateIdempotencyKey) aylantiradi yoki (order_number
+// kolliziyasida) qayta uradi.
+const (
+	idxOrdersIdempotency  = "idx_orders_idempotency"
+	idxOrdersNumberUnique = "idx_orders_number_unique"
 )
 
 type PgOrderRepo struct{ pool *pgxpool.Pool }
@@ -20,13 +32,17 @@ func NewPgOrderRepo(pool *pgxpool.Pool) *PgOrderRepo { return &PgOrderRepo{pool:
 func (r *PgOrderRepo) GetByID(ctx context.Context, id string) (*orders.Order, error) {
 	var o orders.Order
 	var courierID *string
-	var itemsJSON, historyJSON []byte
+	var itemsJSON, historyJSON, addressJSON []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, customer_id, restaurant_id, courier_id, status, total_tiyin,
-		       delivery_lat, delivery_lng, items, history, created_at, updated_at
+		SELECT id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
+		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
+		       preparation_minutes, ready_at, version,
+		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address
 		FROM orders WHERE id = $1`, id,
-	).Scan(&o.ID, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
-		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt)
+	).Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
+		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
+		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
+		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, orders.ErrNotFound
 	}
@@ -42,9 +58,74 @@ func (r *PgOrderRepo) GetByID(ctx context.Context, id string) (*orders.Order, er
 	if err := json.Unmarshal(historyJSON, &o.History); err != nil {
 		return nil, err
 	}
+	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
+		return nil, err
+	}
 	return &o, nil
 }
 
+// unmarshalAddress — `delivery_address` JSONB'ni o'qiydi. Eski (0025
+// migratsiyasidan oldingi) buyurtmalarda bo'sh/`{}` bo'lishi normal,
+// shuning uchun bo'sh qiymat xato emas.
+func unmarshalAddress(raw []byte, dst *orders.Address) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, dst)
+}
+
+// FindByIdempotencyKey — Service.Create()dagi "shu mijoz avval xuddi shu
+// kalit bilan buyurtma yaratganmi" tekshiruvi uchun. Topilmasa
+// orders.ErrNotFound (Service shuni kutadi).
+func (r *PgOrderRepo) FindByIdempotencyKey(ctx context.Context, customerID, key string) (*orders.Order, error) {
+	if key == "" {
+		return nil, orders.ErrNotFound
+	}
+	var o orders.Order
+	var courierID *string
+	var itemsJSON, historyJSON, addressJSON []byte
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
+		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
+		       preparation_minutes, ready_at, version,
+		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address
+		FROM orders WHERE customer_id = $1 AND idempotency_key = $2`, customerID, key,
+	).Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
+		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
+		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
+		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, orders.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	o.IdempotencyKey = key
+	if courierID != nil {
+		o.CourierID = *courierID
+	}
+	if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(historyJSON, &o.History); err != nil {
+		return nil, err
+	}
+	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+// Save — yangi buyurtma bo'lsa qo'shadi, mavjud bo'lsa yangilaydi.
+// Optimistik parallel boshqaruv (orders.ErrConflict): UPDATE FAQAT o.Version
+// hali ham bazadagi bilan bir xil bo'lsa qo'llanadi (`WHERE orders.version =
+// EXCLUDED.version`) — mos kelmasa (chaqiruvchi eskirgan holatni o'qib,
+// o'sha oraliqda boshqa so'rov allaqachon yozib ulgurgan bo'lsa) Postgres
+// DO UPDATE'ni o'tkazib yuboradi, RETURNING hech narsa qaytarmaydi (0 qator)
+// — buni pgx.ErrNoRows sifatida ushlaymiz va orders.ErrConflict'ga
+// aylantiramiz. Bu — klassik "compare-and-swap orqali WHERE" naqshi,
+// SELECT FOR UPDATE'dan farqli, qulf USHLAMAYDI (parallel o'qishlarga
+// to'sqinlik qilmaydi, faqat ziddiyatli yozuvni aniqlaydi).
 func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 	itemsJSON, err := json.Marshal(o.Items)
 	if err != nil {
@@ -54,22 +135,72 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 	if err != nil {
 		return err
 	}
+	addressJSON, err := json.Marshal(o.DeliveryAddress)
+	if err != nil {
+		return err
+	}
 	var courierID *string
 	if o.CourierID != "" {
 		courierID = &o.CourierID
 	}
-	_, err = r.pool.Exec(ctx, `
-		INSERT INTO orders (id, customer_id, restaurant_id, courier_id, status, total_tiyin,
-		                    delivery_lat, delivery_lng, items, history, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (id) DO UPDATE SET
-			courier_id = EXCLUDED.courier_id,
-			status     = EXCLUDED.status,
-			history    = EXCLUDED.history,
-			updated_at = EXCLUDED.updated_at`,
-		o.ID, o.CustomerID, o.RestaurantID, courierID, o.Status, o.TotalTiyin,
-		o.DeliveryLat, o.DeliveryLng, itemsJSON, historyJSON, o.CreatedAt, o.UpdatedAt)
-	return err
+	// order_number ustunga umuman yozilmaydi — DEFAULT ifoda orqali faqat
+	// INSERT'da avtomatik hisoblanadi ("DDMMYY-0000001" formatida, ichki
+	// ketma-ketlikka asoslanib — 0013-migratsiyaga qarang), keyingi
+	// UPDATE'larda o'zgarmaydi. RETURNING orqali haqiqiy qiymatini Go
+	// strukturasiga o'qib olamiz. idempotency_key ham xuddi shunday —
+	// faqat INSERT'da yoziladi, UPDATE'larda o'zgarmaydi.
+	//
+	// Qayta urinish sikli FAQAT order_number kolliziyasi (idxOrdersNumberUnique,
+	// amalda deyarli imkonsiz — 7 xonali tasodifiy son) uchun: DEFAULT
+	// har safar YANGI qiymat hisoblaydi, shuning uchun oddiy qayta so'rov
+	// yetarli. idempotency-key kolliziyasi va versiya ziddiyati qayta
+	// urinilmaydi — ular chaqiruvchiga (Service) aniq xato sifatida
+	// qaytariladi (u alohida qaror qabul qiladi: eski buyurtmani
+	// qaytarish yoki 409 berish).
+	const maxOrderNumberRetries = 3
+	for attempt := 0; attempt < maxOrderNumberRetries; attempt++ {
+		err = r.pool.QueryRow(ctx, `
+			INSERT INTO orders (id, customer_id, restaurant_id, courier_id, status, total_tiyin,
+			                    delivery_lat, delivery_lng, items, history, created_at, updated_at,
+			                    preparation_minutes, ready_at, version, idempotency_key,
+			                    subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
+			                    delivery_address)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+			ON CONFLICT (id) DO UPDATE SET
+				courier_id           = EXCLUDED.courier_id,
+				status               = EXCLUDED.status,
+				history              = EXCLUDED.history,
+				updated_at           = EXCLUDED.updated_at,
+				preparation_minutes  = EXCLUDED.preparation_minutes,
+				ready_at             = EXCLUDED.ready_at,
+				version              = orders.version + 1
+			WHERE orders.version = EXCLUDED.version
+			RETURNING order_number, version`,
+			o.ID, o.CustomerID, o.RestaurantID, courierID, o.Status, o.TotalTiyin,
+			o.DeliveryLat, o.DeliveryLng, itemsJSON, historyJSON, o.CreatedAt, o.UpdatedAt,
+			o.PreparationMinutes, o.ReadyAt, o.Version, o.IdempotencyKey,
+			o.SubtotalTiyin, o.DiscountTiyin, o.PromotionID, o.PromotionName,
+			addressJSON,
+		).Scan(&o.OrderNumber, &o.Version)
+
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return orders.ErrConflict
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			switch pgErr.ConstraintName {
+			case idxOrdersIdempotency:
+				return orders.ErrDuplicateIdempotencyKey
+			case idxOrdersNumberUnique:
+				continue // DEFAULT keyingi urinishda yangi tasodifiy raqam beradi
+			}
+		}
+		return err
+	}
+	return fmt.Errorf("order_number generatsiyasida qayta-qayta kolliziya (juda kamdan-kam holat)")
 }
 
 func (r *PgOrderRepo) HasActiveByRestaurant(ctx context.Context, restaurantID string) (bool, error) {
@@ -83,26 +214,91 @@ func (r *PgOrderRepo) HasActiveByRestaurant(ctx context.Context, restaurantID st
 	return exists, err
 }
 
+// GetActiveByCourier — kuryerning hozir yetkazib berayotgan buyurtmasi
+// (bo'lsa, eng so'nggisi). Kuryer GPS joylashuvini yangilaganda mijozga
+// jonli yuborish uchun (cmd/api/main.go, POST /couriers/{id}/location).
+func (r *PgOrderRepo) GetActiveByCourier(ctx context.Context, courierID string) (*orders.Order, error) {
+	var id string
+	err := r.pool.QueryRow(ctx, `
+		SELECT id FROM orders
+		WHERE courier_id = $1 AND status NOT IN ('delivered', 'rejected', 'cancelled')
+		ORDER BY created_at DESC LIMIT 1`, courierID,
+	).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, orders.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.GetByID(ctx, id)
+}
+
+const orderColumns = `id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
+		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
+		       preparation_minutes, ready_at, version,
+		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address`
+
 func (r *PgOrderRepo) ListRecent(ctx context.Context, limit int) ([]*orders.Order, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id, customer_id, restaurant_id, courier_id, status, total_tiyin,
-		       delivery_lat, delivery_lng, items, history, created_at, updated_at
-		FROM orders ORDER BY created_at DESC LIMIT $1`, limit)
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+orderColumns+` FROM orders ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return scanOrderRows(rows)
+}
+
+func (r *PgOrderRepo) ListByRestaurant(ctx context.Context, restaurantID string, limit int) ([]*orders.Order, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE restaurant_id = $1
+		 ORDER BY created_at DESC LIMIT $2`, restaurantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanOrderRows(rows)
+}
+
+func (r *PgOrderRepo) ListByCustomer(ctx context.Context, customerID string, limit int) ([]*orders.Order, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE customer_id = $1
+		 ORDER BY created_at DESC LIMIT $2`, customerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanOrderRows(rows)
+}
+
+// CountByCustomerAndRestaurant — bekor qilingan/rad etilganlarni
+// HISOBGA OLMASDAN sanaydi (promotions.TypeLoyalty uchun "haqiqiy
+// buyurtma bergan" degani, urinib bekor qilinganini emas).
+func (r *PgOrderRepo) CountByCustomerAndRestaurant(ctx context.Context, customerID, restaurantID string) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM orders
+		 WHERE customer_id = $1 AND restaurant_id = $2 AND status NOT IN ('cancelled', 'rejected')`,
+		customerID, restaurantID).Scan(&count)
+	return count, err
+}
+
+func scanOrderRows(rows pgx.Rows) ([]*orders.Order, error) {
 	var list []*orders.Order
 	for rows.Next() {
 		var o orders.Order
 		var courierID *string
-		var itemsJSON, historyJSON []byte
-		if err := rows.Scan(&o.ID, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
-			&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		var itemsJSON, historyJSON, addressJSON []byte
+		if err := rows.Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
+			&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
+			&o.PreparationMinutes, &o.ReadyAt, &o.Version,
+			&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON); err != nil {
 			return nil, err
 		}
 		if courierID != nil {
 			o.CourierID = *courierID
+		}
+		if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
+			return nil, err
 		}
 		if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
 			return nil, err
@@ -119,11 +315,14 @@ type PgCourierRepo struct{ pool *pgxpool.Pool }
 
 func NewPgCourierRepo(pool *pgxpool.Pool) *PgCourierRepo { return &PgCourierRepo{pool: pool} }
 
+const courierColumns = `id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders`
+
 func (r *PgCourierRepo) GetByID(ctx context.Context, id string) (*couriers.Courier, error) {
 	var c couriers.Courier
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, lat, lng, available, approved FROM couriers WHERE id = $1`, id,
-	).Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved)
+		`SELECT `+courierColumns+` FROM couriers WHERE id = $1`, id,
+	).Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved,
+		&c.VehicleType, &c.Rating, &c.CompletedOrders)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, couriers.ErrNoCourier
 	}
@@ -134,21 +333,41 @@ func (r *PgCourierRepo) GetByID(ctx context.Context, id string) (*couriers.Couri
 }
 
 func (r *PgCourierRepo) Create(ctx context.Context, c *couriers.Courier) error {
+	if c.VehicleType == "" {
+		c.VehicleType = couriers.VehicleMoped
+	}
+	if c.Rating == 0 {
+		c.Rating = 5.0
+	}
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO couriers (id, name, lat, lng, available, approved)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
-		c.ID, c.Name, c.Lat, c.Lng, c.Available, c.Approved)
+		`INSERT INTO couriers (id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		c.ID, c.Name, c.Lat, c.Lng, c.Available, c.Approved, c.VehicleType, c.Rating, c.CompletedOrders)
 	return err
 }
 
 func (r *PgCourierRepo) ListAll(ctx context.Context) ([]*couriers.Courier, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, lat, lng, available, approved FROM couriers ORDER BY name`)
+		`SELECT `+courierColumns+` FROM couriers ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanCouriers(rows)
+}
+
+// IncrementCompletedOrders — buyurtma "delivered" bo'lganda +1. Haqiqiy,
+// obyektiv tajriba hisoblagichi — ScoreCandidates shundan foydalanadi.
+func (r *PgCourierRepo) IncrementCompletedOrders(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE couriers SET completed_orders = completed_orders + 1, updated_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return couriers.ErrNoCourier
+	}
+	return nil
 }
 
 func (r *PgCourierRepo) SetApproved(ctx context.Context, id string, approved bool) error {
@@ -163,13 +382,77 @@ func (r *PgCourierRepo) SetApproved(ctx context.Context, id string, approved boo
 	return nil
 }
 
-func (r *PgCourierRepo) FindNearby(ctx context.Context, lat, lng float64, limit int) ([]*couriers.Courier, error) {
+// ListAvailable — barcha tasdiqlangan va onlayn kuryerlar — bu FAQAT
+// nomzodlar havuzi. Ularning qaysi biriga birinchi navbatda taklif
+// yuborilishi ETA/reyting/tajriba asosida ScoreCandidates orqali
+// hisoblanadi (dispatch.go).
+func (r *PgCourierRepo) ListAvailable(ctx context.Context) ([]*couriers.Courier, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, lat, lng, available, approved
+		SELECT `+courierColumns+`
+		FROM couriers
+		WHERE available AND approved`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCouriers(rows)
+}
+
+// ListAvailableNear — nomzodlarni YAQINLIK bo'yicha DB darajasida
+// tanlaydi (migration 0029).
+//
+// ┌─ SO'ROV NEGA AYNAN SHUNDAY ───────────────────────────────────────┐
+//
+//	ST_MakePoint($2, $1)  — argumentlar (LNG, LAT), ya'ni X, Y.
+//	                        Almashtirilsa kod xatosiz ishlaydi, lekin
+//	                        kuryerlar butunlay boshqa joyda bo'ladi.
+//	                        Test bilan qoplangan.
+//	::geography           — metrlarda hisoblash uchun (geometry bo'lsa
+//	                        natija GRADUSDA chiqardi va radius ma'nosiz
+//	                        bo'lardi).
+//	ST_DWithin            — GiST indeksdan foydalanadi (`&&` +
+//	                        `_st_expand`). `ST_Distance(...) < r`
+//	                        yozilsa indeks ISHLATILMASDI va har so'rov
+//	                        to'liq jadval skanerlashga aylanardi.
+//	ORDER BY <->          — eng yaqinidan boshlab.
+//	LIMIT                 — Google Distance Matrix pullik, nomzodlar
+//	                        soni CHEKLANISHI shart.
+//
+// └───────────────────────────────────────────────────────────────────┘
+func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
+	radiusMeters float64, maxAge time.Duration, limit int) ([]*couriers.Courier, error) {
+
+	// Chegaralar — chaqiruvchi xato qiymat bersa ham so'rov xavfsiz
+	// qolsin (LIMIT 0 hech narsa qaytarmasdi, manfiy radius esa
+	// PostGIS'da xatoga olib kelardi).
+	if limit <= 0 {
+		limit = 20
+	}
+	if radiusMeters <= 0 {
+		radiusMeters = 5000
+	}
+
+	// maxAge = 0 -> eskilik tekshirilmaydi. `$5::interval` NULL
+	// bo'lganda shart o'z-o'zidan TRUE bo'ladi.
+	var age any
+	if maxAge > 0 {
+		age = fmt.Sprintf("%d seconds", int(maxAge.Seconds()))
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT `+courierColumns+`
 		FROM couriers
 		WHERE available AND approved
-		ORDER BY ST_DistanceSphere(ST_MakePoint(lng, lat), ST_MakePoint($2, $1))
-		LIMIT $3`, lat, lng, limit)
+		  AND ($5::interval IS NULL
+		       OR location_updated_at IS NULL
+		       OR location_updated_at > now() - $5::interval)
+		  AND ST_DWithin(
+		        location,
+		        ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+		        $3)
+		ORDER BY location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
+		LIMIT $4`,
+		lat, lng, radiusMeters, limit, age)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +464,8 @@ func scanCouriers(rows pgx.Rows) ([]*couriers.Courier, error) {
 	var list []*couriers.Courier
 	for rows.Next() {
 		var c couriers.Courier
-		if err := rows.Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved,
+			&c.VehicleType, &c.Rating, &c.CompletedOrders); err != nil {
 			return nil, err
 		}
 		list = append(list, &c)
@@ -201,13 +485,73 @@ func (r *PgCourierRepo) SetAvailable(ctx context.Context, id string, available b
 	return nil
 }
 
+// ClaimIfAvailable — shartli UPDATE (`WHERE available = true`). Postgres
+// qatorni yangilash paytida qulflaydi, shuning uchun bir vaqtda kelgan
+// ikki chaqiruvdan FAQAT bittasi 1 qator yangilaydi — ikkinchisi 0
+// oladi va `false` qaytaradi.
+//
+// `approved = true` sharti ham SHU YERDA: taklif yuborilgandan keyin,
+// lekin kuryer "Qabul qilaman" bosgunga qadar superadmin uni bloklashi
+// mumkin (tor, lekin haqiqiy oyna) — busiz bloklangan kuryer buyurtmani
+// baribir olib ketardi. Tekshiruvni aynan shu atomik UPDATE ichiga
+// qo'yish alohida so'rovdan ko'ra ishonchli (yana race qolmaydi).
+func (r *PgCourierRepo) ClaimIfAvailable(ctx context.Context, id string) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE couriers SET available = false, updated_at = now()
+		 WHERE id = $1 AND available = true AND approved = true`, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// UpdateLocation — `location` ustuni GENERATED, ya'ni `lat`/`lng`
+// yozilishi bilan O'ZI yangilanadi (migration 0029). Alohida yozish
+// SHART EMAS va mumkin ham emas.
+//
+// `location_updated_at` esa ALOHIDA yangilanadi: `updated_at` boshqa
+// amallarda ham o'zgaradi va "joylashuv yangimi?" savoliga javob bera
+// olmaydi (0029 dagi izoh).
+func (r *PgCourierRepo) UpdateLocation(ctx context.Context, id string, lat, lng float64) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE couriers
+		    SET lat = $2, lng = $3,
+		        location_updated_at = now(),
+		        updated_at = now()
+		  WHERE id = $1`, id, lat, lng)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return couriers.ErrNoCourier
+	}
+	return nil
+}
+
 // SeedDemoCouriers — demo kuryerlar (faqat dev muhit uchun; bor bo'lsa tegmaydi).
+// Turli transport turlarida — dispatch matching engine'ni haqiqiy sharoitda
+// (turli ETA rejimlari bilan) sinash uchun.
 func SeedDemoCouriers(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
-		INSERT INTO couriers (id, name, lat, lng, available, approved) VALUES
-			('c1', 'Aziz',    41.0056, 71.2378, TRUE, TRUE),
-			('c2', 'Bekzod',  41.0010, 71.2400, TRUE, TRUE),
-			('c3', 'Doniyor', 40.9980, 71.2330, TRUE, TRUE)
+		INSERT INTO couriers (id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders) VALUES
+			('c1', 'Aziz',    41.0056, 71.2378, TRUE, TRUE, 'moped', 5.0, 0),
+			('c2', 'Bekzod',  41.0010, 71.2400, TRUE, TRUE, 'bike',  5.0, 0),
+			('c3', 'Doniyor', 40.9980, 71.2330, TRUE, TRUE, 'foot',  5.0, 0)
 		ON CONFLICT (id) DO NOTHING`)
+	if err != nil {
+		return err
+	}
+	// Demo kuryerlarning joylashuvini "yangi" deb belgilaymiz.
+	//
+	// NEGA KERAK: dispatch endi joylashuvi `locationMaxAge` dan eski
+	// bo'lgan kuryerni nomzod qilmaydi (migration 0029). Seed bir
+	// marta bajarilgani uchun demo kuryerlar bir necha kundan keyin
+	// "eskirgan" bo'lib qolardi va DEV muhitda dispatch hech kimni
+	// topa olmasdi — sabab esa umuman ko'rinmasdi.
+	//
+	// Faqat DEMO ID'lar (c1..c3) — haqiqiy kuryerlarga tegmaydi.
+	_, err = pool.Exec(ctx, `
+		UPDATE couriers SET location_updated_at = now()
+		 WHERE id IN ('c1','c2','c3')`)
 	return err
 }

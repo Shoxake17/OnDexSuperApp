@@ -2,10 +2,14 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Firebase Phone Auth (`google-services.json` shu plagin orqali
+    // o'qiladi). Fayl `android/app/google-services.json` da bo'lishi
+    // SHART — u `.gitignore` da, chunki loyihaga xos konfiguratsiya.
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.chust_customer"
+    namespace = "com.ondex.customer"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +20,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.chust_customer"
+        applicationId = "com.ondex.customer"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

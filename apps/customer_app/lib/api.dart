@@ -1,87 +1,347 @@
-import 'dart:convert';
+import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:http/http.dart' as http;
+import 'package:ondex_core/ondex_core.dart';
 
-/// Backend manzili.
-/// - Web (Chrome): localhost — avtomatik tanlanadi.
-/// - Android emulyator: kompyuterdagi server `10.0.2.2` orqali ko'rinadi.
-/// - Haqiqiy telefonda: kompyuteringizning tarmoqdagi IP sini yozing (masalan `http://192.168.1.5:8080`).
-const baseUrl = kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+// Umumiy yadro qayta eksport qilinadi — mavjud ekranlar `api.dart` ni
+// import qilgani uchun ular tegilmasdan ishlashda davom etadi.
+export 'package:ondex_core/ondex_core.dart';
 
-String wsUrl(String token) =>
-    '${baseUrl.replaceFirst('http', 'ws')}/ws?token=$token';
-
-class ApiException implements Exception {
-  final String message;
-  ApiException(this.message);
-  @override
-  String toString() => message;
+/// Buyurtma yaratishda ishlatiladigan bir martalik tasodifiy kalit
+/// (idempotency key) — tarmoq uzilib, javob kelmay qolgan holatda
+/// foydalanuvchi qayta bossa, server SHU KALITNI oldin ko'rgan-ko'rmaganini
+/// tekshirib, ikkinchi (dublikat) buyurtma yaratmaydi. Chaqiruvchi buni
+/// BIR MARTA generatsiya qilib, muvaffaqiyatli buyurtmagacha bo'lgan
+/// BARCHA qayta urinishlarda AYNAN SHU qiymatni qayta ishlatishi kerak.
+String newIdempotencyKey() {
+  final rnd = Random.secure();
+  final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
+  return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 }
 
-class ApiClient {
-  String? token;
+/// Backend manzili — endi `--dart-define=ONDEX_API_URL=...` orqali
+/// beriladi (qarang: ondex_core/config.dart). Avval bu yerda LAN IP
+/// QATTIQ yozilgan edi va tarmoq o'zgarganda to'rtta faylni qo'lda
+/// tahrirlash kerak bo'lardi.
+const baseUrl = apiBaseUrl;
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
-
-  Future<dynamic> _send(String method, String path,
-      [Map<String, dynamic>? body]) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final http.Response r;
-    if (method == 'GET') {
-      r = await http.get(uri, headers: _headers);
-    } else {
-      r = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
-    }
-    final data = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
-    if (r.statusCode >= 400) {
-      throw ApiException(
-          (data is Map && data['error'] != null) ? data['error'] : 'Server xatosi');
-    }
-    return data;
-  }
-
-  /// SMS kod so'raydi. Dev rejimda server kodni javobda qaytaradi (dev_code).
-  Future<String?> requestCode(String phone) async {
-    final d = await _send('POST', '/auth/request-code', {'phone': phone});
-    return d['dev_code'] as String?;
-  }
-
-  /// Kodni tekshiradi, token oladi. Javob: {token, user}.
-  Future<Map<String, dynamic>> verify(String phone, String code) async {
-    final d = await _send('POST', '/auth/verify', {'phone': phone, 'code': code});
-    token = d['token'] as String;
-    return Map<String, dynamic>.from(d);
-  }
-
+/// Mijoz ilovasiga XOS endpointlar. Umumiy qismi (`send`, xato
+/// ishlash, timeout, 401, `requestCode`/`verify`/`me`/`logout`/
+/// `wsTicket`/`mapsApiKey`) `ondex_core.ApiClient` da — u yerda BIR
+/// marta yozilgan va to'rtala ilovaga birdan yetadi.
+class CustomerApi extends ApiClient {
+  CustomerApi() : super(baseUrl: apiBaseUrl);
   Future<List<dynamic>> restaurants() async =>
-      (await _send('GET', '/restaurants')) as List<dynamic>? ?? [];
+      (await send('GET', '/restaurants')) as List<dynamic>? ?? [];
+
+  /// Barcha restoranlar uchun umumiy, standart taom turkumlari (backend'da
+  /// bitta joyda saqlanadi — restoran paneli ham xuddi shu ro'yxatdan
+  /// foydalanadi). Restoranlar sahifasidagi turkum qatori HAR DOIM shu
+  /// to'liq ro'yxatni ko'rsatadi — biror restoranda hozircha o'sha
+  /// turkumdan taom bo'lmasa ham (bosilganda "taom topilmadi" chiqadi).
+  Future<List<dynamic>> categories() async =>
+      (await send('GET', '/categories')) as List<dynamic>? ?? [];
 
   Future<List<dynamic>> menu(String restaurantId) async =>
-      (await _send('GET', '/restaurants/$restaurantId/menu')) as List<dynamic>? ?? [];
+      (await send('GET', '/restaurants/$restaurantId/menu'))
+          as List<dynamic>? ??
+      [];
 
-  /// items: [{product_id, qty}] — narx yuborilmaydi, server katalogdan hisoblaydi.
-  Future<Map<String, dynamic>> createOrder(
-      List<Map<String, dynamic>> items, double lat, double lng) async {
-    final d = await _send('POST', '/orders', {
+  /// Shu restoranning HOZIR faol aksiyalari — menyuda chegirma
+  /// belgisi ko'rsatish uchun (taxminiy, faqat vizual). Haqiqiy chegirma
+  /// har doim quote()/createOrder() orqali serverda hisoblanadi.
+  Future<List<dynamic>> activePromotions(String restaurantId) async =>
+      (await send('GET', '/restaurants/$restaurantId/active-promotions'))
+          as List<dynamic>? ??
+      [];
+
+  /// Savat holatini checkout'dan OLDIN ko'rish uchun HAQIQIY narxlash —
+  /// real buyurtma yaratmaydi. createOrder() bilan bir xil backend
+  /// mantig'idan foydalanadi, shuning uchun bu yerda ko'rsatilgan
+  /// summa buyurtma yaratilganda yozilgan summa bilan har doim mos keladi.
+  Future<Map<String, dynamic>> quote(
+          String restaurantId, List<Map<String, dynamic>> items) async =>
+      Map<String, dynamic>.from(await send(
+          'POST', '/restaurants/$restaurantId/quote', {'items': items}));
+
+  /// Turkum (yoki nom) bo'yicha BARCHA restoranlardagi mos taomlarni
+  /// qidiradi — restoranga bog'liq emas. Har bir natijada qaysi
+  /// restorandan ekanligi ham keladi (restaurant_id/name/logo_url/open).
+  Future<List<dynamic>> searchProducts(String query) async =>
+      (await send(
+              'GET', '/products/search?q=${Uri.encodeQueryComponent(query)}'))
+          as List<dynamic>? ??
+      [];
+
+  /// "Istaklarim" — mijoz yurak belgisi bilan saqlagan mahsulotlar,
+  /// searchProducts() bilan bir xil to'liq shaklda (mahsulot + qaysi
+  /// restorandan ekanligi) — eng yangi qo'shilgani birinchi. FAQAT
+  /// "Istaklarim" sahifasining o'zi uchun (to'liq kartochka chizish kerak
+  /// bo'lganda) — boshqa joyda faqat yurak belgisi holatini bilish uchun
+  /// favoriteIds() (yengilroq) ishlatiladi.
+  Future<List<dynamic>> favorites() async =>
+      (await send('GET', '/favorites')) as List<dynamic>? ?? [];
+
+  /// Faqat ID'lar — mahsulot/restoran ma'lumotisiz (favorites()dan farqli,
+  /// hech qanday katalog boyitish qilinmaydi). Menyu/turkum ekranlarida
+  /// kartochkalardagi yurak belgisining boshlang'ich holatini bilish
+  /// uchun shu YETARLI — to'liq ro'yxatni so'rash har safar keraksiz
+  /// server ishiga (mahsulot+restoran qidiruviga) olib kelardi.
+  Future<Set<String>> favoriteIds() async {
+    final list = await send('GET', '/favorites/ids') as List<dynamic>? ?? [];
+    return list.cast<String>().toSet();
+  }
+
+  Future<void> addFavorite(String productId) =>
+      send('POST', '/favorites/$productId');
+
+  Future<void> removeFavorite(String productId) =>
+      send('DELETE', '/favorites/$productId');
+
+  /// items: [{product_id, qty}] — narx yuborilmaydi, server katalogdan
+  /// hisoblaydi. idempotencyKey — newIdempotencyKey() bilan BIR MARTA
+  /// generatsiya qilinib, muvaffaqiyatli javob kelguncha bo'lgan BARCHA
+  /// qayta urinishlarda o'zgarmasdan qayta ishlatilishi kerak (tarmoq
+  /// uzilib qayta bosilganda dublikat buyurtma yaratilmasligi uchun).
+  Future<Map<String, dynamic>> createOrder(List<Map<String, dynamic>> items,
+      double lat, double lng, String idempotencyKey) async {
+    final d = await send('POST', '/orders', {
       'items': items,
       'delivery_lat': lat,
       'delivery_lng': lng,
+      'idempotency_key': idempotencyKey,
     });
     return Map<String, dynamic>.from(d);
   }
 
   Future<Map<String, dynamic>> getOrder(String id) async =>
-      Map<String, dynamic>.from(await _send('GET', '/orders/$id'));
+      Map<String, dynamic>.from(await send('GET', '/orders/$id'));
+
+  // `me()`, `logout()`, `mapsApiKey()`, `wsTicket()`, `requestCode()`,
+  // `verify()` — hammasi `ondex_core.ApiClient` da (meros orqali
+  // mavjud). Bu yerda TAKRORLANMAYDI.
+
+  /// Mijozning o'z buyurtmalari tarixi — har birida restoran nomi/logotipi
+  /// ham keladi ("Buyurtmalarim" bo'limi).
+  Future<List<dynamic>> myOrders() async =>
+      (await send('GET', '/me/orders')) as List<dynamic>? ?? [];
+
+  /// Ro'yxatdan o'tish. TOKEN QAYTARMAYDI — akkaunt tasdiqlanmagan
+  /// holatda yaratiladi va SMS kod yuboriladi. Token faqat
+  /// `verify()` dan keyin olinadi (register_screen.dart izohiga qarang).
+  /// Dev rejimda server SMS kodni javobda qaytaradi — OTP kataklarini
+  /// avtomatik to'ldirish uchun. Production'da har doim `null`.
+  Future<String?> register({
+    required String phone,
+    required String firstName,
+    required String lastName,
+    required String password,
+    required String passwordConfirm,
+    String email = '',
+  }) async {
+    final d = await send('POST', '/auth/register', {
+      'phone': phone,
+      'email': email,
+      'first_name': firstName,
+      'last_name': lastName,
+      'password': password,
+      'password_confirm': passwordConfirm,
+    });
+    return (d is Map) ? d['dev_code'] as String? : null;
+  }
+
+  /// Parol bilan kirish — telefon YOKI email.
+  Future<Map<String, dynamic>> loginWithPassword(
+      String login, String password) async {
+    final d = await send('POST', '/auth/login', {
+      'login': login,
+      'password': password,
+    });
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// Google hisobi bilan kirish / ro'yxatdan o'tish.
+  ///
+  /// `firebaseIdToken` — Google hisobi tanlangandan keyin Firebase
+  /// bergan ID token. Email SO'ROVGA QO'SHILMAYDI: server uni
+  /// tokenning imzosini tekshirib, token ICHIDAN oladi va ustiga
+  /// `sign_in_provider == google.com` hamda `email_verified == true`
+  /// ekanini talab qiladi.
+  Future<Map<String, dynamic>> loginWithGoogle(String firebaseIdToken) async {
+    final d = await send('POST', '/auth/google', {'id_token': firebaseIdToken});
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// "Telegram bilan kirish" — deep link va kuzatish tokenini beradi.
+  ///
+  /// Kod oqimidan FARQI: bu yerda telefon raqami yuborilmaydi —
+  /// kimlikni Telegram belgilaydi (`internal/telegram` izohiga qarang).
+  Future<({String deepLink, String token})> telegramLoginStart() async {
+    final d = await send('POST', '/auth/telegram/login/start');
+    return (deepLink: d['deep_link'] as String, token: d['token'] as String);
+  }
+
+  /// Kirish tasdiqlanganini tekshiradi va yakunlaydi.
+  ///
+  /// `confirmSecret` — bot yuborgan "OnDex'ga qaytish" havolasidagi
+  /// (`ondex://auth?c=...`) maxfiy kalit. U MAJBURIY: kalitsiz server
+  /// har doim "hali tayyor emas" deb javob beradi.
+  ///
+  /// NEGA: kuzatish tokenining o'zi yetarli bo'lganda, deep linkni
+  /// qurbonga yuborgan hujumchi uning akkauntiga kirib olardi. Kalit
+  /// esa tasdiqlagan odamning QURILMASIGA tushadi — hujumchining
+  /// qurilmasi uni hech qachon ko'rmaydi (backend
+  /// `telegram.Pending.ConfirmSecret` izohiga qarang).
+  ///
+  /// `null` — hali tasdiqlanmagan (foydalanuvchi Telegramda).
+  Future<Map<String, dynamic>?> telegramLoginStatus(
+      String pollToken, String confirmSecret) async {
+    final d = await send(
+        'GET',
+        '/auth/telegram/login/status'
+        '?token=${Uri.encodeQueryComponent(pollToken)}'
+        '&c=${Uri.encodeQueryComponent(confirmSecret)}');
+    if (d is Map && d['pending'] == true) return null;
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// Telegram bot orqali kod olish — deep link qaytaradi.
+  ///
+  /// Kod SHU YERDA yaratilmaydi: bot avval foydalanuvchidan raqamni
+  /// ulashishni so'raydi va u ilovada kiritilgan raqam bilan mos
+  /// kelsagina kod yuboradi (backend `internal/telegram` izohiga
+  /// qarang). Kod keyin odatdagi `verify()` bilan tekshiriladi.
+  Future<String> telegramStart(String phone) async {
+    final d = await send('POST', '/auth/telegram/start', {'phone': phone});
+    return d['deep_link'] as String;
+  }
+
+  /// Firebase Phone Auth bilan kirish.
+  ///
+  /// `idToken` — Firebase SDK bergan ID token. Telefon raqami
+  /// SO'ROVGA QO'SHILMAYDI: server uni tokenning IMZOSINI tekshirib,
+  /// token ICHIDAN oladi. Aks holda istalgan odam istalgan raqamni
+  /// yozib yuborardi.
+  Future<Map<String, dynamic>> loginWithFirebase(String idToken) async {
+    final d = await send('POST', '/auth/firebase', {'id_token': idToken});
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// Emailga 6 xonali tasdiqlash kodi so'raydi.
+  ///
+  /// Dev rejimda server kodni javobda qaytaradi (SMTP ulanmagan
+  /// bo'lsa ham sinash mumkin). Production'da har doim `null`.
+  Future<String?> requestEmailCode(String email) async {
+    final d = await send('POST', '/auth/email/request-code', {'email': email});
+    return (d is Map) ? d['dev_code'] as String? : null;
+  }
+
+  /// Email kodini tasdiqlaydi va tokenni o'rnatadi.
+  ///
+  /// Telefon oqimidagi `verify()` bilan bir xil: qaytgan token
+  /// "kod bilan tasdiqlangan" deb belgilanadi, ya'ni keyingi 15
+  /// daqiqada `setPassword()` joriy parolni so'ramaydi.
+  Future<Map<String, dynamic>> verifyEmail(String email, String code) async {
+    final d = await send(
+        'POST', '/auth/email/verify', {'email': email, 'code': code});
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// Parol o'rnatish yoki o'zgartirish.
+  ///
+  /// Akkauntda parol ALLAQACHON bo'lsa `current` majburiy (server
+  /// tekshiradi). Ro'yxatdan o'tish oqimida esa parol hali yo'q —
+  /// u SMS tasdig'idan KEYIN, aynan shu chaqiruv bilan o'rnatiladi.
+  /// Sabab: parolni faqat amaldagi token egasi (ya'ni raqamni
+  /// tasdiqlagan odam) qo'ya olishi kerak — aks holda begona odam
+  /// ro'yxatdan o'tish orqali sizning akkauntingizga o'z parolini
+  /// qo'yib qo'yardi.
+  ///
+  /// Server barcha eski sessiyalarni bekor qiladi va javobda YANGI
+  /// token beradi — uni darhol o'rnatamiz, aks holda foydalanuvchi
+  /// parolini o'zgartirgani uchun tizimdan chiqib ketardi.
+  Future<void> setPassword({
+    String current = '',
+    required String password,
+    required String passwordConfirm,
+  }) async {
+    final d = await send('POST', '/me/password', {
+      'current_password': current,
+      'password': password,
+      'password_confirm': passwordConfirm,
+    });
+    if (d is Map && d['token'] is String) {
+      token = d['token'] as String;
+    }
+  }
+
+  /// Ism/familiyani saqlash (profil).
+  Future<Map<String, dynamic>> updateName(String first, String last) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/me', {'first_name': first, 'last_name': last}));
+
+  /// Koordinatani manzil matniga aylantiradi — server orqali (Google
+  /// Geocoding API'ni brauzerdan to'g'ridan-to'g'ri chaqirish CORS
+  /// tomonidan bloklanadi, shuning uchun backend proksi qiladi).
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    final d = await send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
+    final addr = d['address'] as String?;
+    return (addr == null || addr.isEmpty) ? null : addr;
+  }
+
+  /// Foydalanuvchi yozgan matnga mos manzil takliflari ro'yxati.
+  Future<List<Map<String, String>>> addressAutocomplete(String input) async {
+    final d = await send('GET',
+        '/geocode/autocomplete?input=${Uri.encodeQueryComponent(input)}');
+    if (d is! List) return [];
+    return d
+        .map((e) => Map<String, String>.from(e as Map))
+        .toList(growable: false);
+  }
+
+  /// Tanlangan taklif uchun aniq koordinata + to'liq manzil.
+  Future<Map<String, dynamic>> placeDetails(String placeId) async {
+    final d = await send(
+        'GET', '/geocode/place?place_id=${Uri.encodeQueryComponent(placeId)}');
+    return Map<String, dynamic>.from(d);
+  }
+
+  /// Mijozning xaritadan tanlab saqlagan yetkazib berish manzili
+  /// (hali tanlanmagan bo'lsa lat/lng == 0 va matn maydonlari bo'sh keladi).
+  Future<Map<String, dynamic>> getMyAddress() async =>
+      Map<String, dynamic>.from(await send('GET', '/me/address'));
+
+  Future<Map<String, dynamic>> saveAddress({
+    required double lat,
+    required double lng,
+    required String text,
+    String entrance = '',
+    String floor = '',
+    String apartment = '',
+    String intercom = '',
+    String comment = '',
+  }) async {
+    final d = await send('POST', '/me/address', {
+      'lat': lat,
+      'lng': lng,
+      'text': text,
+      'entrance': entrance,
+      'floor': floor,
+      'apartment': apartment,
+      'intercom': intercom,
+      'comment': comment,
+    });
+    return Map<String, dynamic>.from(d);
+  }
 }
 
 /// Butun ilova uchun bitta umumiy client.
-final api = ApiClient();
+final api = CustomerApi();
 
-String formatSum(int tiyin) {
-  final sum = tiyin ~/ 100;
-  return '${sum.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]} ')} so\'m';
-}
+/// Rasm manzili — `ondex_core.fullImageUrl` ustidagi yupqa o'ram
+/// (baseUrl har safar yozilmasligi uchun).
+String fullImageUrl(String? path) => coreFullImageUrl(path, apiBaseUrl);

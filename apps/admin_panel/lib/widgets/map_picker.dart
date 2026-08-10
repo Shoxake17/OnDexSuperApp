@@ -1,10 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
 
+import '../api.dart';
 import 'maps_loader.dart';
 
 /// Google Cloud'dan olingan vector Map ID (ixtiyoriy).
@@ -69,13 +67,15 @@ class _MapPickerDialogState extends State<_MapPickerDialog> {
       _address = null;
     });
     try {
-      // Teskari geokodlash: koordinata -> manzil matni.
-      final r = await http.get(Uri.parse(
-          'https://nominatim.openstreetmap.org/reverse?format=jsonv2'
-          '&lat=${p.latitude}&lon=${p.longitude}&accept-language=uz'));
-      final d = jsonDecode(utf8.decode(r.bodyBytes));
+      // Teskari geokodlash — backend orqali (`/geocode/reverse`), chunki
+      // Google Geocoding API'ni brauzerdan to'g'ridan-to'g'ri chaqirish
+      // CORS tomonidan bloklanadi (bu API faqat server-server foydalanish
+      // uchun mo'ljallangan).
+      final addr = await api
+          .reverseGeocode(p.latitude, p.longitude)
+          .timeout(const Duration(seconds: 10));
       if (!mounted) return;
-      setState(() => _address = (d is Map ? d['display_name'] : null) ?? '');
+      setState(() => _address = addr ?? '');
     } catch (_) {
       if (!mounted) return;
       setState(() => _address = ''); // koordinata bilan davom etamiz

@@ -7,14 +7,45 @@ environment:
   sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
+  # Umumiy yadro — API klienti, sessiya, format, holat yorliqlari.
+  # 4 ta ilovada takrorlangan kod shu yerda BIR marta yozilgan.
+  ondex_core:
+    path: ../../packages/ondex_core
   flutter:
     sdk: flutter
   http: ^1.2.0
   web_socket_channel: ^3.0.0
   shared_preferences: ^2.2.0
+  geolocator: ^13.0.1
+  google_maps_flutter: ^2.10.0
+  web: ^1.1.0
+  webview_flutter: ^4.9.0
+  webview_flutter_android: ^4.0.0
+  flutter_secure_storage: ^10.3.1
+  firebase_core: ^4.13.0
+  firebase_auth: ^6.5.7
+  url_launcher: ^6.3.2
+  google_sign_in: ^7.2.0
+  app_links: ^7.2.1
+  local_auth: ^3.0.2
+  local_auth_android: ^2.0.9
+  crypto: ^3.0.7
+  firebase_messaging: ^16.5.0
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/categories/
+    - assets/eltago.png
+    # Ro'yxatdan o'tish / kirish ekranlaridagi brend illyustratsiyasi
+    # (image/ondeximage.png dan olingan).
+    - assets/ondex_hero.png
+    # Google rasmiy logotipi (image/google.png dan).
+    - assets/google_logo.png
+    # O'zbekiston bayrog'i (image/uzb.png dan).
+    - assets/uz_flag.png

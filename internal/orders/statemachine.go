@@ -19,6 +19,14 @@ var transitions = map[Status]map[Status][]Actor{
 		StatusCancelled: {ActorAdmin},
 	},
 	StatusReady: {
+		// Yandex Eats uslubi (foydalanuvchi so'rovi bo'yicha, 2026-07-30):
+		// alohida tasdiqlash kodi YO'Q, restoran ham hech qanday tugma
+		// bosmaydi — kuryer restoranda buyurtma raqamining OXIRGI 4
+		// xonasini xodimga og'zaki aytadi, taomni qo'lga olgach O'ZI
+		// "Buyurtma olindi" tugmasini bosadi. Dastur darajasida bu
+		// tekshirilmaydi (kamroq ishqalanish — restoran xodimi doim
+		// tugma bosib turishga majbur bo'lmaydi); bu ataylab tanlangan
+		// murosaga kelish, xavfsizlikdan qulaylik foydasiga.
 		StatusPickedUp:  {ActorCourier},
 		StatusCancelled: {ActorAdmin},
 	},

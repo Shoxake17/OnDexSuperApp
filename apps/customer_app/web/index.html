@@ -31,6 +31,17 @@
 
   <title>chust_customer</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Google Maps'ning o'z "to'liq ekran" va zoom tugmalari yashiriladi —
+       ularning o'rniga ilova ichida maxsus tugmalar chiziladi
+       (address_screen.dart), Google logotipi/atributsiyasi tegilmaydi. -->
+  <style>
+    .gm-fullscreen-control,
+    .gm-bundled-control,
+    .gm-svpc {
+      display: none !important;
+    }
+  </style>
 </head>
 <body>
   <!--
