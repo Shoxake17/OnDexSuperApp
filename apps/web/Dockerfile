@@ -42,6 +42,46 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# ┌─ BAZANI YAMOQLASH ────────────────────────────────────────────────┐
+# `node:20-alpine` Alpine'ning xavfsizlik yangilanishlaridan ORQADA
+# qoladi: image haftada bir marta qayta yig'iladi, Alpine esa
+# yamoqlarni kunlik chiqaradi.
+#
+# Trivy shu sababdan `libcrypto3`/`libssl3` da HIGH darajali CVE topdi
+# (CVE-2026-45447, OpenSSL PKCS7_verify da use-after-free):
+#     o'rnatilgan 3.5.6-r0  ->  tuzatilgan 3.5.7-r0
+#
+# `apk upgrade` yamoqni build vaqtida oladi. Bu har qurilishda
+# bajariladi, ya'ni image har doim eng so'nggi yamoqlar bilan chiqadi
+# va yangi baza chiqishini kutish shart emas.
+# └───────────────────────────────────────────────────────────────────┘
+RUN apk upgrade --no-cache
+
+# ┌─ NPM, YARN, COREPACK OLIB TASHLANADI ─────────────────────────────┐
+# Next.js `standalone` chiqishi FAQAT `node` ni talab qiladi — paket
+# menejerlari ishlash vaqtida umuman kerak emas.
+#
+# Ularni qoldirish ikki narsani beradi, ikkalasi ham yomon:
+#
+#  1. ZAIFLIKLAR. npm o'z ichida `tar`, `glob`, `cross-spawn`,
+#     `ip-address` kabi paketlarni olib yuradi. Trivy ularda 9 ta
+#     CVE topdi (node-tar'da yo'l bo'ylab chiqish, ixtiyoriy fayl
+#     yozish) — ILOVA kodida emas, aynan shu paket menejerida.
+#     Biz ularni ishlatmaymiz, lekin skaner (haqli ravishda) image
+#     ichida borligini ko'radi.
+#
+#  2. HUJUM YUZASI. Konteynerga kirgan hujumchi uchun `npm install`
+#     — tashqaridan kod tortib olishning tayyor yo'li.
+#
+# Natijada image ham kichrayadi.
+# └───────────────────────────────────────────────────────────────────┘
+RUN rm -rf \
+      /usr/local/lib/node_modules/npm \
+      /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx \
+      /usr/local/bin/corepack \
+      /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
 # ┌─ NEGA `USER node` ────────────────────────────────────────────────┐
 # Avval bu qator YO'Q edi va konteyner ROOT ostida ishlardi. Buni
 # Trivy konfiguratsiya skaneri topdi (DS-0002, HIGH).

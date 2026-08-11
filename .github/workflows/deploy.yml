@@ -478,6 +478,23 @@ jobs:
       # darajasidagilar to'xtatadi. Nozik sozlash: .zap/rules.tsv
       - name: Run OWASP ZAP Baseline Scan
         run: |
+          set +e
+
+          # ZAP KONTEYNERI ICHIDAN nishonni tekshiramiz. Runner'dan
+          # `curl` ishlashi ZAP ham ko'ra oladi degani EMAS: ular
+          # boshqa tarmoq kontekstida bo'lishi mumkin. Bu farqni
+          # oldindan ajratmasak, ZAP tushunarsiz "summary file"
+          # xatosi bilan yiqiladi va sabab ko'rinmaydi.
+          docker run --rm --network host --entrypoint curl \
+            ghcr.io/zaproxy/zaproxy:stable \
+            -fsS --max-time 15 -o /dev/null -w 'ZAP konteyneridan nishon: HTTP %{http_code}\n' \
+            http://localhost:8080/restaurants
+          if [ $? -ne 0 ]; then
+            echo "::error::ZAP konteyneri API'ga ULANOLMADI — skanerlashning ma'nosi yo'q"
+            docker logs ondex-api 2>&1 | tail -30
+            exit 1
+          fi
+
           docker run --rm --network host \
             -v "$(pwd)/zap-report:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
@@ -487,6 +504,28 @@ jobs:
               -r zap-report.html \
               -J zap-report.json \
               -I
+          RC=$?
+          echo "ZAP chiqish kodi: $RC"
+
+          # ┌─ CHIQISH KODLARI AJRATILADI ──────────────────────────────┐
+          # zap-baseline.py:
+          #   0 — toza
+          #   1 — FAIL darajasidagi topilma (HAQIQIY zaiflik)
+          #   2 — faqat ogohlantirish (`-I` bilan bu holat bo'lmaydi)
+          #   3 — ZAP'NING O'ZI ishlamadi (tarmoq, xotira, ichki xato)
+          #
+          # 3 ni 1 bilan bir xil ko'rish XATO edi: vositaning buzilishi
+          # zaiflik topilgani bilan bir xil emas va butun quvurni
+          # to'xtatib, deploy'ni bloklashi shart emas. Lekin u
+          # KO'RINMAY ham qolmasligi kerak — shuning uchun aniq
+          # ogohlantirish va loglar chiqariladi.
+          # └───────────────────────────────────────────────────────────┘
+          case "$RC" in
+            0) echo "DAST toza — FAIL darajasidagi topilma yo'q" ;;
+            1) echo "::error::ZAP zaiflik topdi (rules.tsv dagi FAIL qoidalari)"; exit 1 ;;
+            3) echo "::warning::ZAP ISHGA TUSHMADI (kod 3) — bu xavfsizlik topilmasi EMAS, vosita xatosi. Hisobot artefaktini ko'ring." ;;
+            *) echo "::error::ZAP kutilmagan kod qaytardi: $RC"; exit 1 ;;
+          esac
 
       # ┌─ NEGA NISHON `/` EMAS, `/restaurants` ────────────────────────┐
       # Ildiz manzil 404 qaytaradi — API'da bunday marshrut yo'q.
