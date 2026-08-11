@@ -1,6 +1,17 @@
 module chustapp
 
-go 1.25.0
+// PATCH versiyasi ATAYLAB aniq ko'rsatilgan (1.25.0 emas).
+//
+// Bu qator toolchain uchun ENG KAM talab. `go 1.25.0` turganda CI
+// `setup-go` ga aynan shuni o'rnatardi — ya'ni 1.25 ning ENG BIRINCHI
+// relizini, 12 ta xavfsizlik patchisiz. `govulncheck` shunda standart
+// kutubxonada 23 ta CVE topgandi (crypto/tls, crypto/x509, net/url,
+// net/http) — ularning hammasi 1.25.6...1.25.12 da tuzatilgan.
+//
+// Yangi CVE chiqqanda bu raqamni oshiring. CI `1.25.x` ishlatadi va
+// eng yangi patchni o'zi oladi, shuning uchun kunlik skanerlash
+// ogohlantirishni oldindan beradi.
+go 1.25.12
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.43.0
