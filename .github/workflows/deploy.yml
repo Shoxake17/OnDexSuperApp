@@ -517,6 +517,47 @@ jobs:
     # production'ga chiqishni QO'LDA tasdiqlash talab qilinishi mumkin.
     environment: production
     steps:
+      # ┌─ NEGA ALOHIDA DIAGNOSTIKA ────────────────────────────────────┐
+      # `dial tcp ***:22: i/o timeout` xatosi HECH NARSA aytmaydi:
+      # host noto'g'rimi, port boshqami, firewall bloklayaptimi —
+      # uchalasi bir xil ko'rinadi. Sir esa `***` bilan yashiriladi.
+      #
+      # Bu qadam sirni OSHKOR QILMASDAN farqni ko'rsatadi: uzunlik
+      # (probel/yangi qator bormi), DNS yechilishi va TCP holati.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: SSH preflight diagnostics
+        env:
+          H: ${{ secrets.SSH_HOST }}
+          P: ${{ secrets.SSH_PORT }}
+        run: |
+          PORT="${P:-22}"
+          echo "SSH_HOST uzunligi : ${#H} belgi"
+          echo "SSH_PORT          : $PORT"
+
+          # Tasodifiy probel yoki yangi qator — eng ko'p uchraydigan
+          # va eng ko'rinmas xato.
+          case "$H" in
+            *" "*|*$'\t'*|*$'\n'*) echo "::warning::SSH_HOST ichida PROBEL yoki YANGI QATOR bor" ;;
+          esac
+
+          if getent hosts "$H" >/dev/null 2>&1; then
+            echo "DNS               : yechildi"
+          else
+            echo "DNS               : yechilmadi (IP bo'lsa bu normal)"
+          fi
+
+          echo "Runner tashqi IP  : $(curl -fsS --max-time 10 https://api.ipify.org || echo 'aniqlanmadi')"
+
+          if timeout 10 bash -c "cat < /dev/null > /dev/tcp/$H/$PORT" 2>/dev/null; then
+            echo "TCP $PORT         : OCHIQ"
+          else
+            echo "::error::TCP $PORT yopiq — server javob bermayapti."
+            echo "Sabablari: (1) SSH_HOST noto'g'ri  (2) SSH boshqa portda"
+            echo "           (3) firewall GitHub IP'larini bloklagan"
+            echo "           (4) provayder tarmoq firewall'i (IBM Cloud/SoftLayer)"
+            exit 1
+          fi
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
@@ -527,7 +568,25 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          # ┌─ PAROLLI KALIT ────────────────────────────────────────────┐
+          # Kalitda parol bo'lsa `SSH_PASSPHRASE` sirini qo'shing —
+          # busiz action "this private key is passphrase protected"
+          # bilan yiqiladi.
+          #
+          # LEKIN TAVSIYA ETILMAYDI: parol ham kalitning YONIDA, xuddi
+          # shu GitHub secrets ichida saqlanadi. Ya'ni u hech qanday
+          # qo'shimcha himoya bermaydi — sirlar omboriga kirgan odam
+          # ikkalasini ham oladi.
+          #
+          # To'g'ri yo'l — CI UCHUN ALOHIDA, PAROLSIZ kalit
+          # (`ssh-keygen -t ed25519 -N ""`). Shaxsiy kalitingiz esa
+          # parolli qoladi va CI'ga umuman berilmaydi.
+          # └────────────────────────────────────────────────────────────┘
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT || 22 }}
+          # Ulanish 30 soniyada uzilib qolmasin (standart qiymat kichik).
+          timeout: 30s
+          command_timeout: 10m
           envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN
           script: |
             set -euo pipefail
