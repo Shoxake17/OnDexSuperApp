@@ -1,0 +1,56 @@
+# Next.js build konteksti.
+#
+# ┌─ NEGA BU FAYL ZARUR ──────────────────────────────────────────────┐
+# Ildizdagi `.dockerignore` BU YERGA TA'SIR QILMAYDI: Docker faqat
+# build kontekstining ILDIZIDAGI faylni o'qiydi, bu esa `apps/web`.
+# Fayl bo'lmagani uchun `COPY . .` hamma narsani olardi.
+#
+# Ikki oqibati bor edi, ikkinchisi jiddiyroq:
+#
+#  1. `.env.local` image ichiga tushardi. Hozir unda faqat URL'lar,
+#     lekin bir kun u yerga haqiqiy kalit yozilsa — u jimgina
+#     image qatlamida tarqalardi.
+#
+#  2. MUHIMROG'I — Next.js `.env.local` ni BUILD VAQTIDA o'qiydi va
+#     `NEXT_PUBLIC_*` qiymatlarini klient paketiga singdiradi. Ya'ni
+#     ishlab chiqish mashinasidagi `http://localhost:8080` manzili
+#     PRODUCTION image'ga qotib qolardi va sayt hech qayerga
+#     ulanolmasdi. Build logida buni ko'rish mumkin edi:
+#         "- Environments: .env.local"
+# └───────────────────────────────────────────────────────────────────┘
+
+# --- Muhit sozlamalari ---
+# `.env.example` ham kerak emas: u faqat hujjat.
+.env
+.env.*
+.env.local
+
+# --- Qayta yig'iladigan narsalar ---
+# `npm ci` ularni konteyner ichida O'ZI o'rnatadi. Nusxalash faqat
+# build kontekstini shishiradi (yuzlab megabayt) va host'dagi
+# platformaga xos binarlarni (Windows) Linux image'ga olib kirardi.
+node_modules
+.next
+out
+dist
+build
+
+# --- Git va CI ---
+.git
+.gitignore
+.github
+
+# --- Testlar va hujjatlar ---
+*.md
+coverage
+.nyc_output
+
+# --- IDE / OS ---
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# --- Loglar ---
+*.log
+npm-debug.log*

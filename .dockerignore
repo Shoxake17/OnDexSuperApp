@@ -39,6 +39,7 @@ apps/
 packages/
 image/
 uploads/
+deploy/
 
 # --- Build chiqishlari ---
 *.exe
