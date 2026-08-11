@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,15 +20,43 @@ import (
 // to'g'ridan-to'g'ri bazaga tushishi kerak (graceful degradation — Redis
 // o'chib qolishi/ulanmasligi ilovani HECH QACHON to'xtatmasligi kerak,
 // faqat javoblar biroz sekinroq bo'ladi).
+//
+// ┌─ PAROL ────────────────────────────────────────────────────────────┐
+// `REDIS_PASSWORD` muhit o'zgaruvchisidan olinadi. Bo'sh bo'lsa parolsiz
+// ulaniladi — mahalliy ishlab chiqishda Redis parolsiz turadi.
+//
+// Production'da u MAJBURIY: Redis ichki tarmoqda bo'lsa ham, boshqa
+// konteyner buzilsa (masalan Next.js'da RCE) parolsiz Redis darhol
+// OTP kodlar va sessiya keshiga to'liq kirish beradi. Tarmoq izolyatsiyasi
+// — birinchi qatlam, parol — ikkinchisi.
+//
+// DIQQAT: parol NOTO'G'RI bo'lsa `Ping` xato beradi va bu funksiya `nil`
+// qaytaradi — ya'ni ilova ishlashda davom etadi, lekin keshsiz va OTP
+// xotirada. Shuning uchun xato matni logda ANIQ ajratiladi.
+// └────────────────────────────────────────────────────────────────────┘
 func Connect(addr string) *redis.Client {
+	return ConnectWithPassword(addr, os.Getenv("REDIS_PASSWORD"))
+}
+
+// ConnectWithPassword — `Connect` ning aniq parol beriladigan shakli
+// (testlar va bir nechta Redis ishlatilishi mumkin bo'lgan holatlar uchun).
+func ConnectWithPassword(addr, password string) *redis.Client {
 	if addr == "" {
 		return nil
 	}
-	rdb := redis.NewClient(&redis.Options{Addr: addr})
+	rdb := redis.NewClient(&redis.Options{Addr: addr, Password: password})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		slog.Warn("Redis'ga ulanib bo'lmadi — kesh o'chirilgan holda davom etiladi", "addr", addr, "err", err)
+		// NOAUTH/WRONGPASS ni alohida ajratamiz: "ulanib bo'lmadi" degan
+		// umumiy xabar bilan bu sozlama xatosini tarmoq muammosidan
+		// farqlash mumkin emas edi va uni topish soatlab vaqt olardi.
+		msg := "Redis'ga ulanib bo'lmadi — kesh o'chirilgan holda davom etiladi"
+		if s := err.Error(); strings.Contains(s, "NOAUTH") ||
+			strings.Contains(s, "WRONGPASS") || strings.Contains(s, "invalid password") {
+			msg = "Redis PAROLI noto'g'ri yoki berilmagan (REDIS_PASSWORD) — kesh va OTP o'chirilgan holda davom etiladi"
+		}
+		slog.Warn(msg, "addr", addr, "err", err)
 		return nil
 	}
 	slog.Info("rejim: Redis kesh yoqildi", "addr", addr)

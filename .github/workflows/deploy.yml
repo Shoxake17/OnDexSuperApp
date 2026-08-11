@@ -1,0 +1,492 @@
+# OnDex — CI/CD va xavfsizlik quvuri.
+#
+# Bosqichlar (har biri oldingisidan o'tishini kutadi):
+#   0. Gitleaks     — tarixda sir bormi
+#   1. Go sifati    — build, vet, test -race, govulncheck
+#   2. Semgrep      — SAST (statik tahlil)
+#   3. Build+Trivy  — image yig'ish va zaiflik skanerlash
+#   4. OWASP ZAP    — DAST (ishlab turgan serverga hujum simulyatsiyasi)
+#   5. Deploy       — VPS (sozlanmagan bo'lsa JIMGINA o'tkazib yuboriladi)
+
+name: CI/CD Pipeline - OnDex Backend
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  # Har kuni: yangi e'lon qilingan CVE'lar kod o'zgarmasa ham topilsin.
+  schedule:
+    - cron: '0 0 * * *'
+
+# ┌─ ENG KAM HUQUQ ────────────────────────────────────────────────────┐
+# Standart holatda GITHUB_TOKEN ko'p narsaga yozish huquqiga ega.
+# Bu yerda hamma narsa `read` ga tushiriladi va kerakli job o'ziga
+# kerakligini ALOHIDA so'raydi. Buzilgan bog'liqlik (action) repoga
+# yoza olmaydi.
+# └────────────────────────────────────────────────────────────────────┘
+permissions:
+  contents: read
+
+# Bir branchga ketma-ket push bo'lsa, eskisi bekor qilinadi.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ondex-api
+
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════
+  # 0. Sirlar — Gitleaks
+  # ══════════════════════════════════════════════════════════════════
+  gitleaks_scan:
+    name: Secrets - Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 — BUTUN tarix. Sir bir marta commit qilinib
+          # keyin o'chirilgan bo'lsa, u faqat tarixda qoladi va sayoz
+          # klonda KO'RINMAYDI.
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ══════════════════════════════════════════════════════════════════
+  # 1. Go sifati — build, vet, test, rasmiy zaiflik bazasi
+  # ══════════════════════════════════════════════════════════════════
+  go_quality:
+    name: Go - Test & Vulnerabilities
+    runs-on: ubuntu-latest
+    needs: gitleaks_scan
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          # Versiya go.mod dan olinadi — ikki joyda saqlanmaydi.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # ┌─ NEGA -race MUHIM ────────────────────────────────────────────┐
+      # Poyga detektori gcc talab qiladi va ishlab chiqish mashinasida
+      # (Windows) mavjud emas edi — ya'ni testlar u yerda poygani
+      # UMUMAN tekshirmaydi. Bu kod WebSocket hub'i, dispatch to'lqini
+      # va rate limiter kabi og'ir konkurrent qismlarga ega, ularda
+      # poyga faqat yuk ostida namoyon bo'ladi.
+      # Linux runner'da gcc bor — shuning uchun bu YAGONA joy.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Test (race detector)
+        run: go test -race -count=1 ./...
+
+      # Rasmiy Go zaiflik bazasi. Trivy'dan farqi: u faqat siz
+      # HAQIQATAN chaqiradigan funksiyalarni tekshiradi, ya'ni
+      # ishlatilmaydigan koddagi CVE bo'yicha bezovta qilmaydi.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  # ══════════════════════════════════════════════════════════════════
+  # 2. SAST — Semgrep
+  # ══════════════════════════════════════════════════════════════════
+  semgrep_sast:
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+    needs: gitleaks_scan
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: pip install --no-cache-dir semgrep
+
+      # `p/javascript` va `p/nodejs` o'rniga `p/golang` — backend Go'da.
+      # `p/dockerfile` va `p/github-actions` qo'shildi: image va shu
+      # quvurning o'zi ham hujum yuzasi.
+      - name: Run Semgrep Full Scan
+        run: |
+          semgrep scan \
+            --config=p/owasp-top-ten \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=p/golang \
+            --config=p/dockerfile \
+            --config=p/github-actions \
+            --sarif \
+            --output=semgrep.sarif \
+            --metrics=off \
+            . || true
+
+      - name: Check for Critical Issues
+        run: |
+          CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' semgrep.sarif)
+          echo "Kritik xavfsizlik muammolari: $CRITICAL"
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Kritik zaiflik topildi — quvur to'xtatildi"
+            jq -r '.runs[].results[] | select(.level == "error")
+                   | "  \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)  \(.message.text)"' \
+                   semgrep.sarif
+            exit 1
+          fi
+
+      - name: Upload Report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true
+
+  # ══════════════════════════════════════════════════════════════════
+  # 3. Docker image — yig'ish, skanerlash, GHCR ga yuborish
+  # ══════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [ go_quality, semgrep_sast ]
+    permissions:
+      contents: read
+      # GHCR ga yozish uchun. Shaxsiy PAT O'RNIGA — bu token faqat shu
+      # ishlash davomida amal qiladi va avtomatik bekor bo'ladi.
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # GHCR FAQAT kichik harfli nomlarni qabul qiladi, GitHub
+      # foydalanuvchi nomi esa katta harfli bo'lishi mumkin
+      # (Shoxake17). Buni oldindan kichik harfga o'tkazamiz — aks
+      # holda push "invalid reference format" bilan sinadi.
+      - name: Compute image name
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$OWNER/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image locally
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ┌─ Dockerfile'ning O'ZIDAGI xatolar ────────────────────────────┐
+      # root ostida ishlash, yozib bo'ladigan fayl tizimi, `latest`
+      # baza tegi — bularni image skaneri emas, konfiguratsiya skaneri
+      # topadi.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Trivy - Dockerfile misconfiguration
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      # ┌─ NEGA exit-code 1 ────────────────────────────────────────────┐
+      # `exit-code: 0` bilan skaner natijani chiroyli chop etadi-yu,
+      # quvurni HECH QACHON to'xtatmaydi — ya'ni bezak bo'lib qoladi.
+      # `ignore-unfixed` — tuzatilishi hali chiqmagan CVE uchun qurish
+      # to'xtatilmaydi (ular bo'yicha qiladigan ish yo'q).
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Trivy - Image vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+
+      # Image DAST bosqichiga uzatiladi (GHCR ga hali yuborilmaydi:
+      # avval ZAP tekshirsin).
+      - name: Save image for DAST
+        run: docker save "${{ steps.meta.outputs.image }}:${{ github.sha }}" -o /tmp/image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════════
+  # 4. DAST — OWASP ZAP
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # ┌─ NEGA PRODUCTION REJIMIDA ────────────────────────────────────────┐
+  # Server `APP_ENV=development` da zaif sozlamalarga ATAYLAB ruxsat
+  # beradi: OTP kodlar javobda qaytariladi, CORS ochiq, Telegram
+  # tasdiq kaliti talab qilinmaydi. DAST'ni shu rejimda ishlatish
+  # NOTO'G'RI natija berardi — biz haqiqiy production sozlamasini
+  # tekshirishimiz kerak.
+  # └───────────────────────────────────────────────────────────────────┘
+  dast_zap:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: chust
+          POSTGRES_PASSWORD: chust
+          POSTGRES_DB: chustapp
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd "pg_isready -U chust"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mongo:
+        image: mongo:7
+        ports: [ '27017:27017' ]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Compute image name
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$OWNER/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      # JWT_SECRET har ishlashda YANGI va tasodifiy. Workflow'ga qattiq
+      # yozilgan sir — hatto test uchun bo'lsa ham — keyin nusxa
+      # ko'chirilib production'ga tushib ketadi.
+      - name: Start API (production mode)
+        run: |
+          docker run -d --name ondex-api --network host \
+            -e APP_ENV=production \
+            -e JWT_SECRET="$(openssl rand -hex 32)" \
+            -e ALLOWED_ORIGINS="https://app.ondex.uz" \
+            -e TRUSTED_PROXIES="" \
+            -e DATABASE_URL="postgres://chust:chust@localhost:5432/chustapp?sslmode=disable" \
+            -e REDIS_ADDR="localhost:6379" \
+            -e MONGODB_URI="mongodb://localhost:27017" \
+            -e MONGODB_DB="chustapp" \
+            "${{ steps.meta.outputs.image }}:${{ github.sha }}"
+
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:8080/restaurants >/dev/null 2>&1; then
+              echo "API tayyor ($i soniya)"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API 45 soniyada ko'tarilmadi"
+          docker logs ondex-api
+          exit 1
+
+      # Baseline skaner: passiv qoidalar + o'rgimchak. Faol hujum
+      # (`zap-full-scan`) emas — u soatlab davom etadi va har push'da
+      # ishlatib bo'lmaydi. Uni tunги `schedule` uchun alohida
+      # yoqish mumkin.
+      #
+      # `-I` — ogohlantirishlar quvurni to'xtatmaydi, faqat FAIL
+      # darajasidagilar to'xtatadi. Nozik sozlash: .zap/rules.tsv
+      - name: Run OWASP ZAP Baseline Scan
+        run: |
+          mkdir -p zap-report && chmod 777 zap-report
+          docker run --rm --network host \
+            -v "$(pwd)/zap-report:/zap/wrk:rw" \
+            -v "$(pwd)/.zap:/zap/cfg:ro" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t http://localhost:8080 \
+              -c /zap/cfg/rules.tsv \
+              -r zap-report.html \
+              -J zap-report.json \
+              -I
+
+      - name: API logs (har doim)
+        if: always()
+        run: docker logs ondex-api || true
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report/
+          retention-days: 30
+
+  # ══════════════════════════════════════════════════════════════════
+  # 4b. Image'ni GHCR ga yuborish — FAQAT hamma tekshiruvdan keyin
+  # ══════════════════════════════════════════════════════════════════
+  push_image:
+    name: Push Image to GHCR
+    runs-on: ubuntu-latest
+    needs: dast_zap
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and Push
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/$OWNER/${IMAGE_NAME}"
+          docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+  # ══════════════════════════════════════════════════════════════════
+  # 5. Deploy — VPS
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # `secrets` konteksti job darajasidagi `if:` da ISHLAMAYDI, shuning
+  # uchun tekshiruv alohida job'da qadam darajasida bajariladi. Busiz
+  # VPS sozlanmagunicha har push qizil xoch bilan tugardi.
+  preflight:
+    name: Deploy Preflight
+    runs-on: ubuntu-latest
+    needs: push_image
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          if [ -n "$SSH_HOST" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SSH_HOST sozlanmagan — deploy o'tkazib yuborildi"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    # GitHub Environment: bu yerga "required reviewers" qo'yib,
+    # production'ga chiqishni QO'LDA tasdiqlash talab qilinishi mumkin.
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -euo pipefail
+            cd ~/ondex
+
+            # .env dagi tegni yangilaymiz (fayl bo'lmasa yaratiladi).
+            touch .env
+            sed -i '/^API_TAG=/d' .env
+            echo "API_TAG=${IMAGE_TAG}" >> .env
+
+            # ┌─ NEGA --password-stdin ───────────────────────────────┐
+            # `docker login -p $TOKEN` da token serverning JARAYONLAR
+            # RO'YXATIDA ko'rinadi (`ps aux`) va shell tarixiga
+            # tushadi. Serverga kirgan har qanday foydalanuvchi uni
+            # o'qib olardi.
+            # └───────────────────────────────────────────────────────┘
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+            docker compose pull api
+            docker compose up -d --no-deps --force-recreate api
+
+            docker logout ghcr.io
+            docker image prune -f
+
+      # Deploy'dan keyin server HAQIQATAN javob berayotganini
+      # tekshiramiz. Busiz "yashil" quvur o'lik serverni yashirardi.
+      - name: Smoke test
+        env:
+          URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::warning::HEALTHCHECK_URL sozlanmagan — tekshiruv o'tkazib yuborildi"
+            exit 0
+          fi
+          for i in $(seq 1 20); do
+            if curl -fsS "$URL" >/dev/null; then echo "Server javob berdi"; exit 0; fi
+            sleep 3
+          done
+          echo "::error::Deploy'dan keyin server javob bermayapti"
+          exit 1

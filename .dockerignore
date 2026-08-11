@@ -1,0 +1,65 @@
+# Docker build konteksti.
+#
+# ┌─ NEGA BU FAYL XAVFSIZLIK MASALASI ────────────────────────────────┐
+# `COPY . .` butun papkani image'ga ko'chiradi. `.dockerignore`
+# bo'lmasa `.env` va `secrets/*.json` build kontekstiga tushadi va
+# oraliq qatlamda QOLADI — keyin `RUN rm` qilinsa ham. Image'ni olgan
+# har kim `docker history` bilan ularni ochib olardi.
+#
+# `.gitignore` bu yerda ISHLAMAYDI: Docker uni umuman o'qimaydi.
+# └───────────────────────────────────────────────────────────────────┘
+
+# --- Sirlar ---
+.env
+.env.*
+!.env.example
+secrets/
+*service-account*.json
+*serviceaccount*.json
+firebase-adminsdk-*.json
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+key.properties
+**/google-services.json
+
+# --- Git ---
+# .git ko'chirilsa butun TARIX image ichiga tushadi (o'chirilgan
+# fayllar bilan birga).
+.git/
+.gitignore
+.github/
+
+# --- Go API'ga kerak bo'lmagan qismlar ---
+# Image faqat cmd/api va internal/ ni yig'adi. Flutter ilovalari va
+# Next.js build kontekstini shishiradi va yig'ishni sekinlashtiradi.
+apps/
+packages/
+image/
+uploads/
+
+# --- Build chiqishlari ---
+*.exe
+*.test
+*.out
+bin/
+dist/
+**/build/
+**/.dart_tool/
+node_modules/
+.next/
+
+# --- Hujjatlar va loglar ---
+*.md
+!README.md
+*.log
+logs/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db

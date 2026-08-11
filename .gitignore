@@ -209,3 +209,5 @@ $RECYCLE.BIN/
 *.md
 README.md
 ROADMAP.md
+
+deploy/
