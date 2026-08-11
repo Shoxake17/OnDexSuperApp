@@ -179,6 +179,20 @@ jobs:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     needs: [ go_quality, semgrep_sast ]
+    # ┌─ PR'LARDA ISHLAMAYDI — IKKI SABAB ────────────────────────────┐
+    #  1. Dependabot PR'larida `GITHUB_TOKEN` FAQAT O'QISH huquqiga
+    #     ega bo'ladi (GitHub'ning ataylab qo'ygan himoyasi: buzilgan
+    #     bog'liqlik PR ochib, registry'ga yozib yubormasin). Ya'ni
+    #     `packages: write` ishlamaydi va bu job HAR BIR Dependabot
+    #     PR'ida ANIQ yiqilardi — o'nlab yolg'on qizil xoch.
+    #  2. PR'dagi kod hali ko'rib chiqilmagan; undan image qurib
+    #     registry'ga yuborishning ma'nosi yo'q.
+    #
+    # PR'larda tekshiruvlar (gitleaks, testlar, Semgrep) ishlaydi —
+    # xavfsizlik nazorati yo'qolmaydi, faqat og'ir bosqichlar
+    # o'tkazib yuboriladi.
+    # └───────────────────────────────────────────────────────────────┘
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       # GHCR ga yozish uchun. Shaxsiy PAT O'RNIGA — bu token faqat shu
@@ -275,6 +289,11 @@ jobs:
     name: DAST - OWASP ZAP
     runs-on: ubuntu-latest
     needs: build-and-push
+    # PR'larda o'tkazib yuboriladi: `build-and-push` ham ishlamaydi,
+    # ustiga ZAP eng qimmat bosqich (bazalar ko'tariladi, skaner
+    # o'rgimchak yuradi) — har bir Dependabot PR'ida uni ishlatish
+    # runner daqiqalarini bekorga sarflardi.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
 
@@ -426,6 +445,10 @@ jobs:
     name: Deploy Preflight
     runs-on: ubuntu-latest
     needs: push_image
+    # `push_image` PR'da o'tkazib yuborilgani uchun bu ham avtomatik
+    # o'tkaziladi. Shart ATAYLAB aniq yozilgan: bog'liqlik zanjiriga
+    # tayanish o'rniga fayl o'zi qachon ishlashini ko'rsatib tursin.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
