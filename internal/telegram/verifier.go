@@ -132,40 +132,62 @@ func (s *pendingStore) put(p *Pending) {
 	s.byToken[p.Token] = p
 }
 
-func (s *pendingStore) getByToken(token string) *Pending {
+// ┌─ NEGA KO'RSATKICH EMAS, NUSXA ─────────────────────────────────────┐
+// Avval bu metodlar `*Pending` qaytarardi. Mutex esa faqat MAP'ni
+// himoya qilardi — ko'rsatkich chaqiruvchiga o'tgach, u struct
+// maydonlarini QULFSIZ o'qirdi:
+//
+//	HTTP goroutine        : LoginResult -> p.Done, p.VerifiedPhone (qulfsiz)
+//	Bot polling goroutine : markLoggedIn -> p.Done, p.VerifiedPhone (qulf bilan)
+//
+// Bu haqiqiy ma'lumot poygasi edi (`go test -race` CI'da aniqladi).
+// Oqibati faqat "detektor shikoyat qiladi" emas: Go xotira modeli
+// sinxronizatsiyasiz KO'RINISHNI kafolatlamaydi, ya'ni HTTP tomoni
+// `Done=true` ni ko'rib, `VerifiedPhone` ning ESKI (bo'sh) qiymatini
+// o'qishi mumkin. Bunda `ConsumeLogin` dagi `p.VerifiedPhone == ""`
+// sharti ishlab, kirish SABABSIZ rad etilardi — foydalanuvchi uchun
+// bu "cheksiz yuklanish" bo'lib ko'rinadi.
+//
+// Endi nusxa QULF USHLAB TURGANDA olinadi. `Pending` faqat qiymat
+// tiplaridan iborat (string, int64, time.Time), shuning uchun nusxa
+// to'liq va mustaqil — chaqiruvchi uni xohlagancha o'qiy oladi.
+//
+// `ok=false` — yozuv yo'q yoki muddati o'tgan.
+// └────────────────────────────────────────────────────────────────────┘
+func (s *pendingStore) getByToken(token string) (Pending, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.byToken[token]
 	if p == nil || time.Now().After(p.ExpiresAt) {
-		return nil
+		return Pending{}, false
 	}
-	return p
+	return *p, true
 }
 
-func (s *pendingStore) bindChat(token string, chatID int64) *Pending {
+func (s *pendingStore) bindChat(token string, chatID int64) (Pending, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.byToken[token]
 	if p == nil || time.Now().After(p.ExpiresAt) {
-		return nil
+		return Pending{}, false
 	}
 	p.ChatID = chatID
 	s.byChatID[chatID] = token
-	return p
+	return *p, true
 }
 
-func (s *pendingStore) getByChat(chatID int64) *Pending {
+func (s *pendingStore) getByChat(chatID int64) (Pending, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	token := s.byChatID[chatID]
 	if token == "" {
-		return nil
+		return Pending{}, false
 	}
 	p := s.byToken[token]
 	if p == nil || time.Now().After(p.ExpiresAt) {
-		return nil
+		return Pending{}, false
 	}
-	return p
+	return *p, true
 }
 
 // markLoggedIn — kirish rejimida Telegram tasdig'ini yozib qo'yadi.
@@ -348,8 +370,8 @@ func (v *Verifier) StartLogin(ctx context.Context) (deepLink, token string, err 
 // `Found=false` — token noma'lum yoki muddati o'tgan.
 // `Done=false`  — foydalanuvchi hali Telegramda tasdiqlamagan.
 func (v *Verifier) LoginResult(token string) (found, done bool, phone string) {
-	p := v.store.getByToken(token)
-	if p == nil {
+	p, ok := v.store.getByToken(token)
+	if !ok {
 		return false, false, ""
 	}
 	return true, p.Done, p.VerifiedPhone
@@ -365,8 +387,8 @@ func (v *Verifier) LoginResult(token string) (found, done bool, phone string) {
 // Bir martalik: token ilova va server o'rtasida ochiq yuradi, shuning
 // uchun u bilan ikkinchi marta token olib bo'lmasligi kerak.
 func (v *Verifier) ConsumeLogin(token, secret string) (phone string, ok bool) {
-	p := v.store.getByToken(token)
-	if p == nil || !p.Done || p.VerifiedPhone == "" {
+	p, ok := v.store.getByToken(token)
+	if !ok || !p.Done || p.VerifiedPhone == "" {
 		return "", false
 	}
 	if v.requireSecret {
@@ -447,8 +469,7 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 					"\"Telegram orqali kod olish\" tugmasidan foydalaning.")
 			return
 		}
-		p := v.store.bindChat(token, chatID)
-		if p == nil {
+		if _, ok := v.store.bindChat(token, chatID); !ok {
 			_ = v.client.SendMessage(ctx, chatID,
 				"Havola eskirgan. Ilovada qaytadan urinib ko'ring.")
 			return
@@ -462,8 +483,8 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 
 	// 2-qadam: ulashilgan kontakt.
 	if m.Contact != nil {
-		p := v.store.getByChat(chatID)
-		if p == nil {
+		p, ok := v.store.getByChat(chatID)
+		if !ok {
 			_ = v.client.SendMessage(ctx, chatID,
 				"Faol so'rov topilmadi. Ilovada qaytadan boshlang.")
 			return
