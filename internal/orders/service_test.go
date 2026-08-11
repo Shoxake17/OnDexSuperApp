@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -221,11 +222,27 @@ func TestChangeStatus_ManyConcurrentSameTransition(t *testing.T) {
 // boshqa testlardagi kabi bitta qattiq "o1" idgen bu yerda mos emas, aks
 // holda ikkinchi Create() chaqiruvi xuddi ShangeStatus kabi versiya
 // ziddiyatiga tushib qolardi, idempotentlik yo'lini umuman sinamas edi).
+//
+// ┌─ NEGA ATOMIC ──────────────────────────────────────────────────────┐
+// Avval bu yerda oddiy `n++` turardi. `TestCreate_ConcurrentSameIdempotencyKey`
+// esa `Create()` ni bir nechta goroutine'dan chaqiradi va ularning HAR
+// BIRI shu generatorga kiradi — ya'ni `n++` bir vaqtda bajarilardi.
+// Bu haqiqiy ma'lumot poygasi edi (`go test -race` CI'da aniqladi).
+//
+// MUHIM: bu FAQAT test muammosi. Production'dagi generator —
+// `httpapi.NewID` — `crypto/rand.Read` ga tayanadi va umuman HOLATSIZ,
+// shuning uchun u konkurrent chaqiruvda xavfsiz. Ya'ni bu poyga
+// ilovada mavjud emas edi, faqat testning o'z yordamchisida.
+//
+// Nega darhol ushlanmagan: poyga detektori goroutine'lar HAQIQATAN
+// kesishgandagina ishlaydi. Shu sabab bu test ba'zan o'tib ketardi —
+// klassik "flaky" xato. Aynan shuning uchun ham uni tuzatish kerak:
+// bunday test qachon yiqilishini oldindan aytib bo'lmaydi.
+// └────────────────────────────────────────────────────────────────────┘
 func newCountingIDGen() func() string {
-	n := 0
+	var n atomic.Int64
 	return func() string {
-		n++
-		return fmt.Sprintf("order-%d", n)
+		return fmt.Sprintf("order-%d", n.Add(1))
 	}
 }
 

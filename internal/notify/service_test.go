@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -71,11 +72,17 @@ func (f *fakeTokens) TokensFor(context.Context, string) ([]string, error) {
 	return f.tokens, nil
 }
 
+// ID generatori ATOMIC: `Service.Notify` yuborishni alohida goroutine'da
+// bajaradi va testlar uni bir nechta chaqiruv bilan sinaydi. Oddiy `n++`
+// bunday joyda kutilmaganda poygaga aylanadi — `internal/orders` dagi
+// xuddi shunday yordamchi CI'ni yiqitgan edi.
 func newSvc(store Store) *Service {
-	n := 0
+	var n atomic.Int64
 	// Hub `nil` — WebSocket testda kerak emas, `Service` uni
 	// tekshiradi (nil-xavfsiz).
-	return NewService(store, nil, func() string { n++; return "n" + string(rune('0'+n)) })
+	return NewService(store, nil, func() string {
+		return "n" + string(rune('0'+n.Add(1)))
+	})
 }
 
 // ★ ASOSIY TEST: xabar SAQLANADI.

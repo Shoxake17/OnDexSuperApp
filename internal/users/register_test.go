@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -304,13 +305,14 @@ func TestVerifyEmailDoesNotCreateAccount(t *testing.T) {
 // TestEmailFlowsBlockedWhenSmtpMissing — SMTP ulanmagan bo'lsa email
 // oqimlari JIMGINA muvaffaqiyat qaytarmasligi kerak.
 func TestEmailFlowsBlockedWhenSmtpMissing(t *testing.T) {
-	n := 0
+	// atomic — sabab `internal/orders/service_test.go` dagi izohda.
+	var n atomic.Int64
 	s := NewService(
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		noopSms{},
 		NewTokenIssuer("test-secret", time.Hour),
-		func() string { n++; return "id" + string(rune('0'+n)) },
+		func() string { return "id" + string(rune('0'+n.Add(1))) },
 	) // WithEmail CHAQIRILMADI
 	ctx := context.Background()
 

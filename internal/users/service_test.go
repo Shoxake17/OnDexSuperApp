@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -226,14 +227,15 @@ func newTestService() *Service {
 // newTestServiceWithEmail — email yuboruvchiga ham murojaat kerak
 // bo'lgan testlar uchun.
 func newTestServiceWithEmail() (*Service, *noopEmail) {
-	n := 0
+	// atomic — sabab `internal/orders/service_test.go` dagi izohda.
+	var n atomic.Int64
 	mail := &noopEmail{}
 	s := NewService(
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		noopSms{},
 		NewTokenIssuer("test-secret", time.Hour),
-		func() string { n++; return "id" + string(rune('0'+n)) },
+		func() string { return "id" + string(rune('0'+n.Add(1))) },
 	).WithEmail(mail, true)
 	return s, mail
 }
