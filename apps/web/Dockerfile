@@ -12,6 +12,29 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# ┌─ NEXT_PUBLIC_* BUILD VAQTIDA SINGDIRILADI ────────────────────────┐
+# Go API'da barcha sozlamalar ISHLASH vaqtida o'qiladi, shuning uchun
+# bitta image har qanday muhitda ishlaydi. Next.js'da bunday EMAS:
+# `NEXT_PUBLIC_*` qiymatlari kompilyatsiya paytida klient paketiga
+# MATN sifatida yoziladi.
+#
+# Ya'ni bu qiymatlarni `docker run -e ...` bilan berish MUMKIN EMAS —
+# ular allaqachon paket ichida. Shuning uchun `ARG` orqali build
+# vaqtida beriladi (CI: `build-args`).
+#
+# Berilmasa kodadagi zaxira qiymat ishlatiladi (`lib/images.ts`,
+# `app/robots.ts`) — u esa eski `chustapp.uz` domeniga ishora qiladi
+# va sayt hech qayerga ulanmasdi.
+#
+# Server tomondagi `GO_API_URL` bunga KIRMAYDI: u `NEXT_PUBLIC_`
+# prefiksisiz, ya'ni ishlash vaqtida o'qiladi va compose'da beriladi.
+# └───────────────────────────────────────────────────────────────────┘
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+
 RUN npm run build
 
 # ---------- Ishlash bosqichi ----------
