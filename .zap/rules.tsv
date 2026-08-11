@@ -1,0 +1,42 @@
+# OWASP ZAP baseline — qoidalar jadvali.
+#
+# Format (TAB bilan ajratilgan):  <qoida-ID>	<amal>	<izoh>
+# Amallar:  IGNORE (ko'rsatilmasin) | WARN (ogohlantirish) | FAIL (to'xtatadi)
+#
+# ┌─ NEGA BA'ZILARI FAIL ─────────────────────────────────────────────┐
+# Standart holatda baseline hamma narsani WARN qiladi va HECH QACHON
+# to'xtamaydi — ya'ni skaner bezakka aylanadi.
+#
+# Quyidagi sarlavhalarni `internal/httpapi/middleware.go` dagi
+# `writeSecurityHeaders` ALLAQACHON qo'yadi (jonli tekshirilgan).
+# Ular FAIL qilib belgilangan, ya'ni bu qatorlar REGRESSIYA TESTI
+# vazifasini bajaradi: kimdir o'sha funksiyani buzsa yoki o'chirsa,
+# DAST buni darhol ushlaydi.
+# └───────────────────────────────────────────────────────────────────┘
+
+10020	FAIL	Anti-clickjacking (X-Frame-Options: DENY) — writeSecurityHeaders qo'yadi
+10021	FAIL	X-Content-Type-Options: nosniff — writeSecurityHeaders qo'yadi
+10038	FAIL	Content-Security-Policy — writeSecurityHeaders qo'yadi
+
+# ┌─ HTTPS bilan bog'liqlar — CI da MA'NOSIZ ─────────────────────────┐
+# CI da server oddiy HTTP orqali sinaladi (localhost:8080). HSTS
+# production'da TESKARI PROKSI (Caddy) darajasida qo'yiladi
+# (`deploy/Caddyfile`). Bu yerda uni talab qilish har doim yolg'on
+# xato berardi.
+#
+# DIQQAT: production domenga qarshi skanerlashda buni FAIL ga
+# o'zgartiring — o'sha yerda u HAQIQATAN majburiy.
+# └───────────────────────────────────────────────────────────────────┘
+10035	IGNORE	HSTS — Caddy darajasida, CI da HTTP ishlatiladi
+10063	IGNORE	Permissions-Policy — brauzer ilovasi uchun, JSON API'ga tegishli emas
+
+# ┌─ JSON API uchun shovqin ──────────────────────────────────────────┐
+10015	WARN	Cache-control — API javoblari uchun kritik emas
+10096	WARN	Timestamp oshkor bo'lishi — odatda yolg'on xato (ID va summalar raqamga o'xshaydi)
+10109	IGNORE	Modern Web Application — ma'lumot xarakteridagi belgi, zaiflik emas
+10049	WARN	Saqlanadigan javob — katalog javoblari ataylab keshlanadi
+
+# ┌─ Yangi qoida qo'shish ────────────────────────────────────────────┐
+# Hisobotdagi (zap-report.html) har bir ogohlantirish yonida qoida ID
+# turadi. Yolg'on xato bo'lsa shu yerga IGNORE qatorini SABABI BILAN
+# qo'shing — izohsiz IGNORE keyinchalik haqiqiy zaiflikni yashiradi.

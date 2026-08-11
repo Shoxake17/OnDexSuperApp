@@ -372,19 +372,64 @@ jobs:
       #
       # `-I` — ogohlantirishlar quvurni to'xtatmaydi, faqat FAIL
       # darajasidagilar to'xtatadi. Nozik sozlash: .zap/rules.tsv
+      # ┌─ NEGA ALOHIDA TAYYORLASH QADAMI ──────────────────────────────┐
+      # Avval `.zap` papkasi to'g'ridan-to'g'ri mount qilinardi. Fayl
+      # repoda bo'lmaganda Docker XATO BERMAYDI — u manba yo'lda BO'SH
+      # PAPKA yaratib ulaydi. ZAP esa ichidan konfigni topolmay
+      # tushunarsiz Python traceback bilan yiqilardi:
+      #     FileNotFoundError: '/zap/cfg/rules.tsv'
+      #
+      # Endi fayl borligi OLDIN tekshiriladi va yo'q bo'lsa sabab
+      # ANIQ yoziladi. Bitta mount yetarli: konfig ish papkasiga
+      # nusxalanadi.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Prepare ZAP workspace
+        run: |
+          if [ ! -f .zap/rules.tsv ]; then
+            echo "::error::.zap/rules.tsv topilmadi — fayl repoga commit qilinganini tekshiring"
+            exit 1
+          fi
+          mkdir -p zap-report && chmod 777 zap-report
+          cp .zap/rules.tsv zap-report/rules.tsv
+
+      # Baseline skaner: passiv qoidalar + o'rgimchak. Faol hujum
+      # (`zap-full-scan`) emas — u soatlab davom etadi va har push'da
+      # ishlatib bo'lmaydi. Uni tungi `schedule` uchun alohida
+      # yoqish mumkin.
+      #
+      # `-I` — ogohlantirishlar quvurni to'xtatmaydi, faqat FAIL
+      # darajasidagilar to'xtatadi. Nozik sozlash: .zap/rules.tsv
       - name: Run OWASP ZAP Baseline Scan
         run: |
-          mkdir -p zap-report && chmod 777 zap-report
           docker run --rm --network host \
             -v "$(pwd)/zap-report:/zap/wrk:rw" \
-            -v "$(pwd)/.zap:/zap/cfg:ro" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t http://localhost:8080 \
-              -c /zap/cfg/rules.tsv \
+              -t http://localhost:8080/restaurants \
+              -c /zap/wrk/rules.tsv \
               -r zap-report.html \
               -J zap-report.json \
               -I
+
+      # ┌─ NEGA NISHON `/` EMAS, `/restaurants` ────────────────────────┐
+      # Ildiz manzil 404 qaytaradi — API'da bunday marshrut yo'q.
+      # O'rgimchak esa boshlang'ich sahifadan 200 kutadi va 404 olsa
+      # UMUMAN yurmaydi:
+      #     "Job spider error ... status code returned : 404 expected 200"
+      #
+      # Natijada skaner 66 ta "PASS" chiqarardi — lekin u faqat ikkita
+      # 404 javobni ko'rgan bo'lardi. Yashil natija, nol qiymat.
+      #
+      # ┌─ CHEKLOV: BU HALI TO'LIQ API DAST EMAS ───────────────────────┐
+      # JSON API'da havolalar yo'q, shuning uchun o'rgimchak bitta
+      # endpointdan boshqasiga o'tolmaydi. `zap-baseline.py` amalda
+      # faqat javob SARLAVHALARINI tekshiradi (bu ham foydali —
+      # `rules.tsv` dagi uchta FAIL qoidasi aynan shuni qo'riqlaydi).
+      #
+      # Haqiqiy API skanerlash uchun OpenAPI/Swagger tavsifi va
+      # `zap-api-scan.py` kerak. OnDex'da hozircha OpenAPI yo'q —
+      # bu ochiq vazifa.
+      # └───────────────────────────────────────────────────────────────┘
 
       - name: API logs (har doim)
         if: always()
