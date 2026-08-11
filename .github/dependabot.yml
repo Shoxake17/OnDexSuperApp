@@ -1,0 +1,207 @@
+# Dependabot — bog'liqliklarni avtomatik yangilash.
+#
+# ┌─ NEGA BU AYNAN HOZIR KERAK ───────────────────────────────────────┐
+# `deploy.yml` dagi barcha action'lar commit SHA'ga bog'landi
+# (ta'minot zanjiri himoyasi: tegni ko'chirish mumkin, SHA'ni yo'q).
+# Buning narxi bor — SHA HECH QACHON o'z-o'zidan yangilanmaydi.
+# Dependabot'siz ular yillar davomida eskirib, xavfsizlik tuzatishlari
+# olinmay qolardi. Ya'ni SHA'ga bog'lash va Dependabot — bitta
+# yechimning ikki yarmi, biri ikkinchisisiz to'liq emas.
+# └───────────────────────────────────────────────────────────────────┘
+#
+# ┌─ ENG MUHIM SOZLAMA: `groups` ─────────────────────────────────────┐
+# Guruhlashsiz Dependabot HAR BIR bog'liqlik uchun ALOHIDA PR ochadi.
+# Bu repoda 5 ta ekotizim va yuzlab bog'liqlik bor — haftasiga 20-30
+# PR degani.
+#
+# Natija har doim bir xil: ular o'qilmay to'planib qoladi va oradagi
+# HAQIQIY xavfsizlik yangilanishi shovqin ichida ko'zdan qochadi.
+# Ya'ni guruhlash qulaylik emas — vositani foydali va zararli
+# holatlar orasidagi farq.
+# └───────────────────────────────────────────────────────────────────┘
+
+version: 2
+
+updates:
+
+  # ══════════════════════════════════════════════════════════════════
+  # GitHub Actions — eng yuqori ustuvorlik
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # Action'lar CI'da SIRLAR bilan ishlaydi (GHCR tokeni, SSH kaliti).
+  # Buzilgan action to'g'ridan-to'g'ri serveringizga kirish demakdir,
+  # shuning uchun bu ekotizim HAFTALIK tekshiriladi.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      # Hammasi bitta PR'da: action yangilanishlari deyarli har doim
+      # xavfsiz va ularni alohida ko'rib chiqishning ma'nosi yo'q.
+      actions:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "ci" ]
+
+  # ══════════════════════════════════════════════════════════════════
+  # Go — backend
+  # ══════════════════════════════════════════════════════════════════
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Minor va patch — birga. Ular orqaga moslikni buzmaydi va
+      # odatda shunchaki birlashtiriladi.
+      go-minor-patch:
+        update-types: [ "minor", "patch" ]
+    # ┌─ MAJOR ATAYLAB GURUHDAN TASHQARIDA ────────────────────────────┐
+    # Major versiya API'ni buzishi mumkin (masalan pgx v5 -> v6).
+    # Guruhga qo'shilsa, bitta buzuvchi o'zgarish butun PR'ni
+    # bloklab, u bilan birga kelgan 10 ta bexavotir yangilanishni
+    # ham to'xtatib qo'yardi.
+    # └────────────────────────────────────────────────────────────────┘
+    labels: [ "dependencies", "go" ]
+
+  # ══════════════════════════════════════════════════════════════════
+  # Docker — asosiy image'lar
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # `golang:1.25-alpine` va `gcr.io/distroless/static-debian12`.
+  # Bazadagi tuzatilmagan CVE Trivy skanerini yiqitadi — ya'ni bu
+  # yangilanishlar quvurni ishlab turgan holatda saqlaydi.
+  #
+  # DIQQAT: Dependabot `docker-compose.yml` ni O'QIMAYDI, faqat
+  # Dockerfile'larni. `deploy/docker-compose.prod.yml` dagi
+  # postgis/redis/mongo/caddy versiyalarini QO'LDA kuzatish kerak.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "docker"
+    labels: [ "dependencies", "docker" ]
+
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "docker"
+    labels: [ "dependencies", "docker" ]
+
+  # ══════════════════════════════════════════════════════════════════
+  # npm — Next.js mini-app'lari
+  # ══════════════════════════════════════════════════════════════════
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(web)"
+    groups:
+      # npm daraxti eng katta va eng shovqinli — guruhlash shu yerda
+      # eng ko'p foyda beradi.
+      npm-minor-patch:
+        update-types: [ "minor", "patch" ]
+      # React va Next.js birga yangilanishi kerak: ular bir-biriga
+      # qattiq bog'langan va alohida ko'tarilsa versiya ziddiyati
+      # chiqadi.
+      react-next:
+        patterns: [ "next", "react", "react-dom", "@types/react*" ]
+    labels: [ "dependencies", "web" ]
+
+  # ══════════════════════════════════════════════════════════════════
+  # pub — Flutter ilovalari va umumiy yadro
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # OYLIK, haftalik emas: Flutter paketlari tez-tez yangilanadi,
+  # lekin ilovalar do'konga hali chiqmagan. Har hafta PR olishning
+  # foydasi yo'q, shovqin esa katta.
+  #
+  # `packages/ondex_core` ATAYLAB birinchi: u to'rtala ilovaga
+  # umumiy va undagi zaiflik hammasiga tegishli.
+  - package-ecosystem: pub
+    directory: /packages/ondex_core
+    schedule:
+      interval: monthly
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(core)"
+    groups:
+      pub-all:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "flutter" ]
+
+  - package-ecosystem: pub
+    directory: /apps/customer_app
+    schedule:
+      interval: monthly
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(mijoz)"
+    groups:
+      pub-all:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "flutter" ]
+
+  - package-ecosystem: pub
+    directory: /apps/courier_app
+    schedule:
+      interval: monthly
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(kuryer)"
+    groups:
+      pub-all:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "flutter" ]
+
+  - package-ecosystem: pub
+    directory: /apps/restaurant_panel
+    schedule:
+      interval: monthly
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(restoran)"
+    groups:
+      pub-all:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "flutter" ]
+
+  - package-ecosystem: pub
+    directory: /apps/admin_panel
+    schedule:
+      interval: monthly
+      timezone: Asia/Tashkent
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(admin)"
+    groups:
+      pub-all:
+        patterns: [ "*" ]
+    labels: [ "dependencies", "flutter" ]
