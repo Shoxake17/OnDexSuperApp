@@ -54,9 +54,26 @@ class RestaurantApi {
     return data;
   }
 
-  Future<String?> requestCode(String phone) async {
-    final d = await _send('POST', '/auth/request-code', {'phone': phone});
-    return d['dev_code'] as String?;
+  /// Telegram bot orqali tasdiqlash kodini so'raydi.
+  ///
+  /// ┌─ KOD BU JAVOBDA YO'Q — ATAYLAB ──────────────────────────────────┐
+  /// Server faqat bir martalik deep link qaytaradi. Kod foydalanuvchi
+  /// botda RAQAMINI ULASHGANDAN va u shu yerda kiritilgan raqam bilan
+  /// MOS KELGANDAN keyingina yaratiladi hamda FAQAT Telegram orqali
+  /// yetkaziladi (`internal/telegram/verifier.go` — mos kelmasa kod
+  /// umuman yuborilmaydi).
+  ///
+  /// Shu sabab havolani begonaga yuborish foyda bermaydi: kod raqam
+  /// egasining Telegramiga tushadi, havolani ochgan odamnikiga emas.
+  /// └──────────────────────────────────────────────────────────────────┘
+  ///
+  /// Avval bu yerda `/auth/request-code` chaqirilardi va kod dev rejimda
+  /// javobda (`dev_code`) qaytardi. Production'da SMS provayderi
+  /// ulanmagani uchun u kodni HECH QAYERGA yetkazmasdi — panelga kirish
+  /// amalda imkonsiz edi.
+  Future<String> telegramStart(String phone) async {
+    final d = await _send('POST', '/auth/telegram/start', {'phone': phone});
+    return d['deep_link'] as String;
   }
 
   Future<Map<String, dynamic>> verify(String phone, String code) async {

@@ -1,6 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- DIQQAT: bu ruxsat `src/debug/AndroidManifest.xml` da ham bor, lekin
+         u FAQAT debug build'ga qo'shiladi. Shu sababli release APK tarmoqqa
+         umuman chiqa olmasdi — ilova jimgina "server javob bermadi" holatida
+         qolardi. Flutter shabloni uni ataylab release'ga qo'ymaydi, har bir
+         ilova o'zi e'lon qilishi kerak (`customer_app` da allaqachon bor). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13 (API 33) dan boshlab bildirishnoma ko'rsatish uchun
+         foydalanuvchidan RUXSAT so'ralishi shart. Busiz taom tayyor
+         bo'lganda push kelmaydi — affitsiant zalda yurganda ilovaning
+         yagona xabar berish yo'li shu. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="ondex_waiter"
+        android:label="OnDex Affitsiant"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -15,6 +15,16 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // `flutter_local_notifications` (19.x) java.time API'laridan
+        // foydalanadi — ular Android 8 dan pastda yo'q. Desugaring
+        // ularni build vaqtida eski API'larga o'giradi. Yoqilmasa
+        // `:app:checkReleaseAarMetadata` build'ni YIQITADI:
+        //   "Dependency ':flutter_local_notifications' requires core
+        //    library desugaring to be enabled for :app"
+        //
+        // Bu OnDex ilovalari orasida faqat shu yerda kerak — boshqa
+        // hech qaysisida `flutter_local_notifications` yo'q.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -37,6 +47,13 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // `isCoreLibraryDesugaringEnabled = true` shu kutubxonasiz ishlamaydi —
+    // AGP aynan shu artefaktni talab qiladi. Versiya
+    // `flutter_local_notifications` 19.x talabiga mos (>= 2.1.4).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 kotlin {

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OnDex — joy tanlash</title>
+<!--
+  ┌─ BU SAHIFA NIMA UCHUN BACKENDDAN BERILADI ────────────────────────┐
+  Windows desktop ilovasida `google_maps_flutter` ISHLAMAYDI — paket
+  faqat android/ios/web platformalarini e'lon qiladi va desktopda
+  "TargetPlatform.windows is not yet supported by the maps plugin"
+  xatosini beradi. Shuning uchun desktopda xarita WebView2 ichida,
+  Google Maps JS orqali chiziladi.
+
+  Sahifa `file://` yoki `data:` sifatida emas, aynan API domenidan
+  yuklanadi. NEGA: Maps kaliti Google Console'da HTTP REFERRER bo'yicha
+  cheklangan. `file://` va `data:` da referrer bo'lmaydi va Google
+  `RefererNotAllowedMapError` bilan rad etadi. API domeni esa
+  ro'yxatga bir marta qo'shiladi va kalit cheklangan holicha qoladi.
+
+  ┌─ KALIT SAHIFAGA YOZILMAYDI ───────────────────────────────────────┐
+  Bu HTML ichida kalit YO'Q va sahifaning o'zi ochiq (auth talab
+  qilmaydi) — chunki unda hech qanday sir yo'q. Kalitni sahifa
+  keyinroq `/config/maps` dan OLADI, host bergan JWT bilan. Token
+  URL'ga qo'yilmaydi (u tarix/loglarga tushardi), `postWebMessage`
+  orqali keladi.
+  └───────────────────────────────────────────────────────────────────┘
+-->
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #eee; }
+  #map { width: 100%; height: 100%; }
+  #msg {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    font: 15px/1.5 system-ui, sans-serif; color: #555;
+    text-align: center; padding: 24px; box-sizing: border-box;
+  }
+  #msg.err { color: #b3261e; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="msg">Xarita yuklanmoqda…</div>
+
+<script>
+(function () {
+  var msg = document.getElementById('msg');
+  var marker = null;
+  var map = null;
+
+  function show(text, isErr) {
+    msg.textContent = text;
+    msg.className = isErr ? 'err' : '';
+    msg.style.display = 'flex';
+  }
+  function hide() { msg.style.display = 'none'; }
+
+  // Hostga (Flutter) xabar. `webview_windows` shu kanalni tinglaydi.
+  function toHost(obj) {
+    try { window.chrome.webview.postMessage(JSON.stringify(obj)); } catch (e) {}
+  }
+
+  function initMap(center) {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center: center,
+      zoom: 15,
+      tilt: 45,
+      mapTypeControl: true,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+    hide();
+    map.addListener('click', function (e) {
+      var lat = e.latLng.lat(), lng = e.latLng.lng();
+      if (marker) marker.setMap(null);
+      marker = new google.maps.Marker({ position: e.latLng, map: map });
+      // Teskari geokodlashni HOST qiladi (`/geocode/reverse`), chunki
+      // Google Geocoding API brauzerdan chaqirilganda CORS bilan
+      // bloklanadi va kalit ham frontendga chiqib ketardi.
+      toHost({ type: 'pick', lat: lat, lng: lng });
+    });
+    toHost({ type: 'ready' });
+  }
+
+  function loadMaps(key, center) {
+    var s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' +
+            encodeURIComponent(key) + '&language=uz&callback=__ondexInit';
+    s.async = true;
+    s.onerror = function () {
+      show('Google Maps skriptini yuklab bo\'lmadi (internet yoki kalit).', true);
+      toHost({ type: 'error', message: 'maps script yuklanmadi' });
+    };
+    window.__ondexInit = function () { initMap(center); };
+    document.head.appendChild(s);
+  }
+
+  // Host bergan ma'lumot: { token, lat, lng, apiBase }
+  function start(cfg) {
+    var center = { lat: cfg.lat, lng: cfg.lng };
+    fetch(cfg.apiBase + '/config/maps', {
+      headers: { 'Authorization': 'Bearer ' + cfg.token },
+    }).then(function (r) {
+      if (!r.ok) throw new Error('config/maps -> ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (!d.maps_api_key) throw new Error('kalit bo\'sh');
+      loadMaps(d.maps_api_key, center);
+    }).catch(function (e) {
+      show('Xarita kalitini olib bo\'lmadi: ' + e.message, true);
+      toHost({ type: 'error', message: String(e) });
+    });
+  }
+
+  // Hostdan keladigan yagona xabar — sozlama.
+  window.chrome.webview.addEventListener('message', function (e) {
+    var cfg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (cfg && cfg.token) start(cfg);
+  });
+
+  // Host tayyor ekanini bilsin (u shundan keyin sozlamani yuboradi).
+  toHost({ type: 'boot' });
+})();
+</script>
+</body>
+</html>

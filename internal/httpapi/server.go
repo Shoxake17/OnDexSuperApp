@@ -153,6 +153,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerPromotionRoutes(mux)
 	s.registerAdminRoutes(mux)
 	s.registerGeoRoutes(mux)
+	s.registerMapPickerRoutes(mux)
 	s.registerUploadRoutes(mux)
 
 	return withBodyLimit(withCORS(mux, allowedOrigins, s.DevMode))

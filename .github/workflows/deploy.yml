@@ -45,6 +45,27 @@ jobs:
   gitleaks_scan:
     name: Secrets - Gitleaks
     runs-on: ubuntu-latest
+    # ┌─ `pull-requests: read` NEGA KERAK ────────────────────────────┐
+    # Gitleaks PR kontekstida ishlaganda AVVAL shu PR'ning
+    # commitlari ro'yxatini so'raydi (`GET /pulls/{n}/commits`) —
+    # butun tarixni emas, faqat PR oralig'ini skanerlash uchun.
+    #
+    # Yuqoridagi global `permissions: contents: read` qolgan HAMMA
+    # huquqni `none` ga tushiradi, shuning uchun o'sha so'rov
+    # 403 "Resource not accessible by integration" bilan qaytardi va
+    # job YIQILARDI. Javob header'i sababni aniq aytgan edi:
+    # `x-accepted-github-permissions: pull_requests=read`.
+    #
+    # Natijada HAR BIR Dependabot PR'i qizil bo'lib turardi — sir
+    # topilgani uchun EMAS, skaner ishga tusha olmagani uchun.
+    # Bu eng yomon nosozlik turi: xavfsizlik darvozasi ishlayotgandek
+    # ko'rinadi, aslida esa umuman ishlamaydi.
+    #
+    # `read` — yozish emas: gitleaks PR'ga izoh qoldirmaydi.
+    # └───────────────────────────────────────────────────────────────┘
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -414,10 +435,30 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "image=ghcr.io/$OWNER/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
+      # ┌─ BU PRODUCTION EMAS ──────────────────────────────────────────┐
+      # Pastdagi konteyner FAQAT shu ZAP (DAST) ishi uchun ko'tariladi
+      # va ish tugashi bilan yo'qoladi. Bazalar — yuqoridagi
+      # `services:` bloki, ya'ni runner ichidagi vaqtinchalik nusxalar.
+      #
+      # `APP_ENV=production` bu yerda "haqiqiy server" degani EMAS —
+      # u shunchaki skanerni ishlab chiqarish rejimidagi qattiqroq
+      # sozlamalarga qarshi yurgizish uchun.
+      #
+      # HAQIQIY SERVER SOZLAMALARI bu faylda UMUMAN yo'q: ular VPS'dagi
+      # `~/ondex/.env` faylida turadi (`TELEGRAM_BOT_TOKEN`,
+      # `ALLOWED_ORIGINS`, `JWT_SECRET`, ...). "Deploy to VPS" ishi
+      # o'sha faylda faqat `API_TAG`/`WEB_TAG` ni almashtiradi va
+      # boshqa hech narsaga tegmaydi.
+      #
+      # Shu farq bir marta noto'g'ri xulosaga olib kelgan ("deploy
+      # ALLOWED_ORIGINS ni app.ondex.uz ga o'zgartirib qo'yadi") —
+      # pastdagi qiymatlarni server konfiguratsiyasi deb O'QIMANG.
+      # └───────────────────────────────────────────────────────────────┘
+      #
       # JWT_SECRET har ishlashda YANGI va tasodifiy. Workflow'ga qattiq
       # yozilgan sir — hatto test uchun bo'lsa ham — keyin nusxa
       # ko'chirilib production'ga tushib ketadi.
-      - name: Start API (production mode)
+      - name: Start API (ZAP skaneri uchun vaqtinchalik konteyner)
         run: |
           docker run -d --name ondex-api --network host \
             -e APP_ENV=production \

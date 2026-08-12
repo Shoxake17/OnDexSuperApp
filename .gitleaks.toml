@@ -1,0 +1,74 @@
+# Gitleaks — sir skaneri sozlamasi.
+#
+# ┌─ NEGA BU FAYL KERAK ──────────────────────────────────────────────┐
+# Standart qoidalar bilan skaner tarixda 11 ta "sir" topdi va CI
+# HAR KUNI qizil bo'lib turardi. Tekshirib chiqilganda ularning 10
+# tasi YOLG'ON SIGNAL bo'lib chiqdi: test fayllaridagi soxta parollar
+# va telefon raqamlari.
+#
+# Doimiy qizil xavfsizlik darvozasi — darvoza YO'QLIGIDAN YOMONROQ:
+# odam qizil rangga ko'nikadi va HAQIQIY sir tushganda ham e'tibor
+# bermaydi ("alert fatigue"). Shuning uchun yolg'on signallar aniq
+# asos bilan chiqarib tashlanadi, qolgan hammasi qat'iy tekshiriladi.
+#
+# MUHIM QOIDA: bu faylga yangi istisno qo'shilganda IZOH ham
+# yoziladi — nega bu sir emasligi. Izohsiz istisno vaqt o'tib
+# "shunchaki o'chirib qo'yilgan tekshiruv"ga aylanadi.
+# └───────────────────────────────────────────────────────────────────┘
+
+title = "OnDex gitleaks sozlamasi"
+
+[extend]
+# Gitleaks'ning standart qoidalar to'plami TO'LIQ saqlanadi — biz
+# faqat istisnolar qo'shamiz, qoidalarni zaiflashtirmaymiz.
+useDefault = true
+
+[allowlist]
+description = "Tekshirilgan va sir emasligi tasdiqlangan holatlar"
+
+paths = [
+  # ── Go test fayllari ──
+  #
+  # Ular ichida soxta parollar ("juda-kuchli-parol-7"), soxta telefon
+  # raqamlari ("+998901112233"), soxta bot tokeni
+  # ("123456:AAH-test-token-xyz") va soxta JWT sirlari ("test-secret")
+  # bor. Bularning HECH BIRI hech qayerda ishlamaydi — ular aynan
+  # test uchun o'ylab topilgan qiymatlar.
+  #
+  # Xavf: agar kimdir kelajakda HAQIQIY sirni test fayliga yozsa, u
+  # ushlanmay qoladi. Shuning uchun bu istisno faqat `_test.go` bilan
+  # tugaydigan fayllarga tegishli — ishlab chiqarish kodiga emas.
+  '''.*_test\.go$''',
+
+  # ── Namuna muhit fayli ──
+  #
+  # `.env.example` ATAYLAB namuna qiymatlar bilan to'ldirilgan
+  # (`JWT_SECRET=bu-yerga-oʻz-sirli-kalitingizni-yozing` kabi).
+  # Haqiqiy `.env` esa `.gitignore` da va hech qachon commit
+  # qilinmaydi — buni alohida tekshirdik.
+  '''^\.env\.example$''',
+]
+
+regexes = [
+  # ── Google Maps Android kaliti ──
+  #
+  # ┌─ NEGA BU ISTISNO O'RINLI ─────────────────────────────────────┐
+  # `AndroidManifest.xml` dagi Maps kaliti APK ichida FOYDALANUVCHI
+  # QO'LIGA boradi — uni istalgan odam istalgan ilovadan ajratib
+  # olishi mumkin. Ya'ni uni "yashirish" texnik jihatdan IMKONSIZ
+  # va Google buni shunday loyihalashtirgan.
+  #
+  # Himoya boshqa joyda: Cloud Console'da kalit (a) Android ilova
+  # turiga, (b) ANIQ paket nomi + SHA-1 sertifikat iziga va
+  # (c) faqat "Maps SDK for Android" API'siga cheklanadi. Cheklangan
+  # kalit bilan begona odam hech narsa qila olmaydi.
+  #
+  # Server tomonidagi PULLIK API'lar (Geocoding, Distance Matrix)
+  # BUTUNLAY BOSHQA kalitlar bilan ishlaydi va ular `.env` da —
+  # repoda yo'q (`GOOGLE_GEOCODING_API_KEY`, `GOOGLE_MAPS_API_KEY`).
+  #
+  # ⚠ SHART: bu istisno FAQAT kalit cheklangan bo'lsa o'rinli.
+  # Cheklov olib tashlansa, bu qator ham olib tashlanishi kerak.
+  # └───────────────────────────────────────────────────────────────┘
+  '''AIzaSyDG[\w-]+''',
+]

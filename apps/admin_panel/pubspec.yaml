@@ -13,6 +13,14 @@ dependencies:
     sdk: flutter
   http: ^1.2.0
   shared_preferences: ^2.2.0
+  # Telegram bot havolasini ochish uchun (kirish oqimi). Kod SMS emas,
+  # bot orqali keladi — `api.telegramStart` izohiga qarang.
+  url_launcher: ^6.3.2
+  # Windows desktopda xarita uchun. `google_maps_flutter` Windows'ni
+  # QO'LLAB-QUVVATLAMAYDI (paket faqat android/ios/web ni e'lon qiladi),
+  # shuning uchun desktopda Google Maps JS WebView2 ichida ko'rsatiladi —
+  # `lib/widgets/map_surface_webview.dart` izohiga qarang.
+  webview_windows: ^0.4.0
   google_maps_flutter: ^2.10.0
   geolocator: ^13.0.1
   web: ^1.1.0

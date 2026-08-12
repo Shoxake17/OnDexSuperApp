@@ -19,7 +19,14 @@
   debug build'da butunlay ALMASHTIRADI).
 
   Ya'ni Wi-Fi IP o'zgarganda BU FAYLGA TEGISH SHART EMAS — faqat
-  `--dart-define=ONDEX_API_URL/ONDEX_WEB_URL` yangilanadi.
+  `config/dev.json` dagi ONDEX_API_URL va ONDEX_WEB_URL yangilanadi
+  (ular build'ga dart-define orqali beriladi).
+
+  DIQQAT: bu izohda ikkita ketma-ket defis YOZMANG. XML izohi uni
+  ko'tarmaydi va `:app:parseReleaseLocalResources` "Failed to parse XML
+  file" bilan yiqiladi — xato xabari sababni ko'rsatmaydi, shuning uchun
+  topish qiyin. Aynan shu yerda dart-define bayrog'i o'zining ikki
+  defisi bilan yozilgan edi va release build shu sabab qurilmasdi.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">

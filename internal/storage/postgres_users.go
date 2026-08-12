@@ -367,6 +367,26 @@ func SeedDemoUsers(ctx context.Context, pool *pgxpool.Pool) error {
 	return err
 }
 
+// PromoteToAdmin — `BOOTSTRAP_ADMIN_PHONE` uchun: mavjud foydalanuvchiga
+// admin rolini beradi. Foydalanuvchi topilmasa `false` qaytaradi.
+//
+// YANGI AKKAUNT YARATMAYDI — ataylab. Raqam egasi avval odatdagi OTP
+// oqimi bilan ro'yxatdan o'tishi kerak; shunda raqamga egalik
+// tasdiqlangan bo'ladi. Aks holda server sozlamasiga yozilgan istalgan
+// raqam uchun tasdiqlanmagan superadmin akkaunt paydo bo'lardi.
+//
+// `entity_id` bo'shatiladi: admin butun tizimga tegishli, biror
+// restoran/kuryerga bog'lanmaydi. Avval restoran bo'lgan foydalanuvchi
+// ko'tarilsa, eski bog'lanish qolib ketmasligi kerak.
+func PromoteToAdmin(ctx context.Context, pool *pgxpool.Pool, phone string) (bool, error) {
+	tag, err := pool.Exec(ctx,
+		`UPDATE users SET role = 'admin', entity_id = '' WHERE phone = $1`, phone)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // DemoUsers — in-memory rejim uchun xuddi shu seed ro'yxati.
 func DemoUsers() []users.User {
 	return []users.User{

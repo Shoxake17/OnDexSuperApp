@@ -155,13 +155,69 @@ func main() {
 			slog.Error("migratsiya xatosi", "err", err)
 			os.Exit(1)
 		}
-		if err := storage.SeedDemoCouriers(ctx, pool); err != nil {
-			slog.Error("seed xatosi", "err", err)
-			os.Exit(1)
+		// ┌─ DEMO AKKAUNTLAR FAQAT DEV'DA ────────────────────────────┐
+		// Avval bu ikki seed `DATABASE_URL` bor bo'lsa HAR DOIM,
+		// ya'ni PRODUCTION'da ham ishlardi va jonli bazaga
+		// `+998900000099` raqamli ADMIN hamda demo restoran/kuryer
+		// akkauntlarini qo'yardi.
+		//
+		// NEGA XAVFLI: kirish uchun parol kerak emas — OTP yetarli.
+		// Kod esa Telegram orqali keladi. Ya'ni o'sha raqam operator
+		// tomonidan kimgadir berilsa yoki kimdir uni Telegramda
+		// ro'yxatdan o'tkazsa, o'sha odam SUPERADMIN huquqini qo'lga
+		// kiritardi. Demo ma'lumot production bazasida turishining
+		// o'zi ham noto'g'ri.
+		//
+		// ESLATMA: bu o'zgarish MAVJUD qatorlarni O'CHIRMAYDI — u
+		// faqat yangi qo'shilishini to'xtatadi. Allaqachon tushib
+		// qolgan demo akkauntlar qo'lda o'chirilishi kerak.
+		// └────────────────────────────────────────────────────────────┘
+		if devMode {
+			if err := storage.SeedDemoCouriers(ctx, pool); err != nil {
+				slog.Error("seed xatosi", "err", err)
+				os.Exit(1)
+			}
+			if err := storage.SeedDemoUsers(ctx, pool); err != nil {
+				slog.Error("users seed xatosi", "err", err)
+				os.Exit(1)
+			}
 		}
-		if err := storage.SeedDemoUsers(ctx, pool); err != nil {
-			slog.Error("users seed xatosi", "err", err)
-			os.Exit(1)
+
+		// ┌─ SUPERADMIN TAYINLASH ────────────────────────────────────┐
+		// Admin roli hech qanday endpoint orqali BERILMAYDI — bu
+		// ataylab: aks holda u huquqni ko'tarish (privilege
+		// escalation) yuzasi bo'lardi. Yagona yo'l — server
+		// sozlamasi, ya'ni serverga kira oladigan odam.
+		//
+		// FAQAT MAVJUD foydalanuvchini ko'taradi. Yangi akkaunt
+		// yaratmaydi: raqam egasi avval odatdagi OTP oqimi bilan
+		// ro'yxatdan o'tsin, shunda raqamga egalik allaqachon
+		// tasdiqlangan bo'ladi.
+		//
+		// Har ishga tushishda qayta qo'llanadi (idempotent), shuning
+		// uchun rol tasodifan o'zgarib qolsa ham tiklanadi.
+		// └────────────────────────────────────────────────────────────┘
+		if raw := strings.TrimSpace(os.Getenv("BOOTSTRAP_ADMIN_PHONE")); raw != "" {
+			phone, err := users.NormalizePhone(raw)
+			if err != nil {
+				slog.Error("BOOTSTRAP_ADMIN_PHONE noto'g'ri formatda", "err", err)
+				os.Exit(1)
+			}
+			promoted, err := storage.PromoteToAdmin(ctx, pool, phone)
+			switch {
+			case err != nil:
+				slog.Error("BOOTSTRAP_ADMIN_PHONE qo'llanmadi", "err", err)
+				os.Exit(1)
+			case promoted:
+				// WARN darajasi ataylab: huquq berish hodisasi
+				// oddiy loglar orasida ko'zdan qochmasligi kerak.
+				slog.Warn("BOOTSTRAP_ADMIN_PHONE: foydalanuvchi ADMIN roliga ko'tarildi",
+					"phone", phone)
+			default:
+				slog.Error("BOOTSTRAP_ADMIN_PHONE: bu raqamli foydalanuvchi topilmadi — "+
+					"avval shu raqam bilan ilovadan ro'yxatdan o'ting, keyin serverni qayta ishga tushiring",
+					"phone", phone)
+			}
 		}
 		pgPool = pool
 		orderRepo = storage.NewPgOrderRepo(pool)
@@ -213,9 +269,15 @@ func main() {
 			slog.Error("mongo indeks xatosi (aksiyalar)", "err", err)
 			os.Exit(1)
 		}
-		if err := storage.SeedDemoCatalogMongo(ctx, mdb); err != nil {
-			slog.Error("catalog seed xatosi (mongo)", "err", err)
-			os.Exit(1)
+		// Demo katalog (r1 "Chust Osh Markazi" + p1..p3) FAQAT dev'da —
+		// `SeedDemoUsers` bilan bir xil sabab: production bazasi
+		// namunaviy ma'lumot bilan to'lmasligi kerak. Mavjud
+		// hujjatlarni O'CHIRMAYDI (`scripts/cleanup_demo_data.sql`).
+		if devMode {
+			if err := storage.SeedDemoCatalogMongo(ctx, mdb); err != nil {
+				slog.Error("catalog seed xatosi (mongo)", "err", err)
+				os.Exit(1)
+			}
 		}
 		catalogRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
@@ -223,9 +285,12 @@ func main() {
 	} else if pgPool != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := storage.SeedDemoCatalog(ctx, pgPool); err != nil {
-			slog.Error("catalog seed xatosi", "err", err)
-			os.Exit(1)
+		// Mongo variantidagi kabi — demo katalog faqat dev'da.
+		if devMode {
+			if err := storage.SeedDemoCatalog(ctx, pgPool); err != nil {
+				slog.Error("catalog seed xatosi", "err", err)
+				os.Exit(1)
+			}
 		}
 		catalogRepo = storage.NewPgCatalogRepo(pgPool)
 		promotionsRepo = storage.NewPgPromotionsRepo(pgPool)
