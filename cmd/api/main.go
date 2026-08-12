@@ -26,9 +26,10 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/promotions"
-	"chustapp/internal/telegram"
 	"chustapp/internal/revoke"
 	"chustapp/internal/storage"
+	"chustapp/internal/tables"
+	"chustapp/internal/telegram"
 	"chustapp/internal/users"
 	"chustapp/internal/ws"
 )
@@ -340,7 +341,24 @@ func main() {
 		slog.Warn("FIREBASE_SERVICE_ACCOUNT_JSON yo'q — push yuborilmaydi (ilova yopiq bo'lsa xabar yetmaydi)")
 	}
 
-	notifier := notify.NewLive(notifSvc)
+	notifier := notify.NewLive(notifSvc).
+		// Stol buyurtmasi tayyor bo'lganda push kimga ketishini
+		// shu funksiya hal qiladi. `notify` paketi `users` ga
+		// bog'lanmasligi uchun bog'liqlik shu yerda, `main` da
+		// ulanadi (`Verifier.ContactHook` bilan bir xil naqsh).
+		WithWaiterLookup(func(ctx context.Context, restaurantID string) ([]string, error) {
+			all, err := userRepo.ListByRole(ctx, users.RoleWaiter)
+			if err != nil {
+				return nil, err
+			}
+			ids := make([]string, 0, 4)
+			for _, u := range all {
+				if u.EntityID == restaurantID {
+					ids = append(ids, u.ID)
+				}
+			}
+			return ids, nil
+		})
 	// Email yuborish — SMS bilan bir xil naqsh: `.env` da SMTP_HOST
 	// bo'lsa haqiqiy yuborish, bo'lmasa dev log. Sozlanmagan bo'lsa
 	// email oqimlari ANIQ xato bilan rad etiladi (`users` paketidagi
@@ -458,6 +476,21 @@ func main() {
 	orderSvc := orders.NewService(orderRepo, notifier, httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
 
+	// ── Stollar (QR kod orqali buyurtma) ──
+	//
+	// Katalog Mongo'da bo'lishi mumkin, lekin stollar ATAYLAB
+	// Postgres/xotirada: ular buyurtmalar bilan bir xil hayot
+	// siklida (`orders.table_id`) va bitta ombor ichida turgani
+	// ma'qul.
+	var tableRepo tables.Repository
+	if pgPool != nil {
+		tableRepo = storage.NewPgTableRepo(pgPool)
+	} else {
+		tableRepo = storage.NewMemoryTableRepo()
+		slog.Warn("rejim: in-memory (stollar) — QR kodlar server qayta ishga tushganda yo'qoladi")
+	}
+	tableSvc := tables.NewService(tableRepo)
+
 	// Dispatch matching engine — Google Distance Matrix orqali HAQIQIY ETA.
 	// MUHIM: bu ham xuddi geokodlash kabi SERVER-SERVER chaqiruv, shuning
 	// uchun veb (HTTP referrer bilan cheklangan) yoki Android (paket+SHA-1
@@ -493,6 +526,7 @@ func main() {
 		AuthSvc:        authSvc,
 		OrderSvc:       orderSvc,
 		CatalogSvc:     catalogSvc,
+		TableSvc:       tableSvc,
 		Dispatcher:     dispatcher,
 		DevMode:        devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI —

@@ -78,7 +78,16 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.delivery_dining, size: 64),
+              // Kuryer ilovasi logotipi (`image/kuryer.png` dan).
+              // Telefondagi ilova belgisi ham AYNAN shu fayldan
+              // generatsiya qilinadi (pubspec: flutter_launcher_icons).
+              Image.asset(
+                'assets/logo.png',
+                height: 96,
+                // Rasm topilmasa kirish ekrani YIQILMASLIGI kerak.
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.delivery_dining, size: 64),
+              ),
               const SizedBox(height: 8),
               Text('ChustApp Kuryer',
                   textAlign: TextAlign.center,

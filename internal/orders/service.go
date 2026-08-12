@@ -287,7 +287,7 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		if err != nil {
 			return nil, err
 		}
-		if err := ValidateTransition(o.Status, to, by); err != nil {
+		if err := ValidateTransition(o.Type, o.Status, to, by); err != nil {
 			return nil, err
 		}
 		if to == StatusPickedUp && o.CourierID == "" {

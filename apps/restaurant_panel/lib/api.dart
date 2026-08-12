@@ -37,6 +37,11 @@ class RestaurantApi {
       r = await http.get(uri, headers: _headers);
     } else if (method == 'DELETE') {
       r = await http.delete(uri, headers: _headers);
+    } else if (method == 'PATCH') {
+      // Stol nomini/holatini qisman yangilash uchun
+      // (`PATCH /tables/{id}`). Busiz stollarni tahrirlash POST bilan
+      // qilinishi kerak bo'lardi va bu "yaratish" bilan chalkashardi.
+      r = await http.patch(uri, headers: _headers, body: jsonEncode(body ?? {}));
     } else {
       r = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
     }
@@ -93,6 +98,54 @@ class RestaurantApi {
         if (preparationMinutes != null)
           'preparation_minutes': preparationMinutes,
       });
+
+  // ---------- Stollar (QR kod) ----------
+  //
+  // Javobdagi `qr_token` — SIR. U faqat shu endpointlarda beriladi
+  // (restoran egasiga) va QR kod chizish uchun kerak. Mijoz
+  // ilovasidagi proksi bu yo'llarni UMUMAN o'tkazmaydi
+  // (`apps/web/app/api/proxy` — ruxsat etilgan ro'yxat).
+
+  Future<List<dynamic>> tables() async =>
+      (await _send('GET', '/restaurants/$rid/tables')) as List<dynamic>? ?? [];
+
+  Future<Map<String, dynamic>> createTable(String label) async =>
+      Map<String, dynamic>.from(
+          await _send('POST', '/restaurants/$rid/tables', {'label': label}));
+
+  Future<Map<String, dynamic>> renameTable(String tableId, String label) async =>
+      Map<String, dynamic>.from(
+          await _send('PATCH', '/tables/$tableId', {'label': label}));
+
+  Future<Map<String, dynamic>> setTableActive(
+          String tableId, bool active) async =>
+      Map<String, dynamic>.from(
+          await _send('PATCH', '/tables/$tableId', {'active': active}));
+
+  // Eslatma: QR tokenni YANGILASH metodi ATAYLAB yo'q. QR kod menyu
+  // varaqasiga chop etilgan va stolda abadiy turadi — tokenni
+  // almashtirish butun zaldagi varaqalarni qayta chop etishni talab
+  // qilardi. Serverda ham bunday endpoint yo'q.
+
+  Future<void> deleteTable(String tableId) =>
+      _send('DELETE', '/tables/$tableId');
+
+  // ---------- Affitsiantlar ----------
+
+  Future<List<dynamic>> waiters() async =>
+      (await _send('GET', '/restaurants/$rid/waiters')) as List<dynamic>? ?? [];
+
+  /// Affitsiant akkauntini yaratadi. Parol o'rnatilmaydi — xodim o'z
+  /// ilovasida SMS kod bilan kiradi, ya'ni restoran uning parolini
+  /// hech qachon bilmaydi.
+  Future<Map<String, dynamic>> addWaiter(String phone, String name) async =>
+      Map<String, dynamic>.from(await _send(
+          'POST', '/restaurants/$rid/waiters', {'phone': phone, 'name': name}));
+
+  /// Ishdan bo'shatish: rol `customer` ga qaytariladi va sessiya
+  /// darhol bekor qilinadi (akkauntning o'zi o'chirilmaydi).
+  Future<void> removeWaiter(String waiterId) =>
+      _send('DELETE', '/restaurants/$rid/waiters/$waiterId');
 
   Future<List<dynamic>> menu() async =>
       (await _send('GET', '/restaurants/$rid/menu')) as List<dynamic>? ?? [];

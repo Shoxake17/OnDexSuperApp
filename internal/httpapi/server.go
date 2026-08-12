@@ -30,8 +30,9 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/promotions"
-	"chustapp/internal/telegram"
 	"chustapp/internal/revoke"
+	"chustapp/internal/tables"
+	"chustapp/internal/telegram"
 	"chustapp/internal/users"
 	"chustapp/internal/ws"
 
@@ -60,6 +61,11 @@ type Deps struct {
 	OrderSvc   *orders.Service
 	CatalogSvc *catalog.Service
 	Dispatcher *couriers.Dispatcher
+
+	// TableSvc — stol QR kodlari (dine_in buyurtmalar). `nil` bo'lsa
+	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
+	// — bu funksiyani bosqichma-bosqich yoqish uchun.
+	TableSvc *tables.Service
 
 	// DevMode — dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
@@ -141,6 +147,8 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerCatalogRoutes(mux)
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
+	s.registerTableRoutes(mux)
+	s.registerWaiterRoutes(mux)
 	s.registerCourierRoutes(mux)
 	s.registerPromotionRoutes(mux)
 	s.registerAdminRoutes(mux)

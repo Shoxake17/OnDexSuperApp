@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import {
+  applyTelegramTheme,
   authenticateWithTelegram,
   getTelegramWebApp,
   versionAtLeast,
@@ -44,13 +45,24 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
   // Shuning uchun `afterInteractive` + aniq `onLoad`.
   // └───────────────────────────────────────────────────────────────────┘
   function onSdkReady() {
-    if (signedIn || started.current) return;
     const wa = getTelegramWebApp();
     if (!wa) return; // Telegram emas — aralashmaymiz
-    started.current = true;
 
+    // ┌─ MAVZU HAR DOIM ──────────────────────────────────────────────┐
+    // Ranglar kirish holatiga BOG'LIQ EMAS. Ilgari bu yerda birinchi
+    // qator `if (signedIn) return` edi — mavzu shu sababli aynan eng
+    // ko'p uchraydigan holatda (foydalanuvchi allaqachon kirgan)
+    // qo'llanmasdan qolardi.
+    //
+    // `applyTelegramTheme` idempotent: bir xil qiymatlarni qayta
+    // yozadi, xolos.
+    // └───────────────────────────────────────────────────────────────┘
     wa.ready();
     wa.expand();
+    applyTelegramTheme(wa);
+
+    if (signedIn || started.current) return;
+    started.current = true;
 
     void (async () => {
       const r = await authenticateWithTelegram();
@@ -161,8 +173,9 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
           style={{
             maxWidth: 340,
             width: "100%",
-            background: "#1e1e1e",
-            color: "#fff",
+            // Zaxira qiymatlar — Telegram mavzu bermagan holat uchun.
+            background: "var(--ondex-tg-bg, #1e1e1e)",
+            color: "var(--ondex-tg-text, #fff)",
             borderRadius: 16,
             padding: 24,
             textAlign: "center",
@@ -173,7 +186,14 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
               <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
                 {current.firstName ? `Salom, ${current.firstName}!` : "Salom!"}
               </h2>
-              <p style={{ fontSize: 14, color: "#bdbdbd", marginBottom: 20, lineHeight: 1.5 }}>
+              <p
+                style={{
+                  fontSize: 14,
+                  color: "var(--ondex-tg-hint, #bdbdbd)",
+                  marginBottom: 20,
+                  lineHeight: 1.5,
+                }}
+              >
                 Buyurtma berish uchun raqamingizni tasdiqlang. Telegram uni
                 o&apos;zi yuboradi — qo&apos;lda yozish shart emas.
               </p>
@@ -185,9 +205,10 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
                   padding: "12px 16px",
                   borderRadius: 10,
                   border: "none",
-                  background: busy ? "#3a5a45" : "#1B873F",
-                  color: "#fff",
+                  background: busy ? "#3a5a45" : "var(--ondex-tg-button, #1B873F)",
+                  color: "var(--ondex-tg-button-text, #fff)",
                   fontSize: 15,
+                  opacity: busy ? 0.7 : 1,
                   fontWeight: 600,
                   cursor: busy ? "default" : "pointer",
                 }}
@@ -206,9 +227,9 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
                   width: "100%",
                   padding: "12px 16px",
                   borderRadius: 10,
-                  border: "1px solid #444",
+                  border: "1px solid var(--ondex-tg-hint, #444)",
                   background: "transparent",
-                  color: "#fff",
+                  color: "var(--ondex-tg-text, #fff)",
                   fontSize: 15,
                   cursor: "pointer",
                 }}

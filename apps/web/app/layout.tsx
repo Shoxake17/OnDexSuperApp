@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import TelegramAuth from "./telegram-auth";
+import TableInit from "./table-init";
 import { getSessionToken } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -41,6 +42,9 @@ export default async function RootLayout({
     <html lang="uz">
       <body>
         <TelegramAuth signedIn={signedIn} />
+        {/* Stol QR kodi bilan kelgan mijozni to'g'ri menyuga olib
+            boradi. Telegram tashqarisida hech narsa qilmaydi. */}
+        <TableInit signedIn={signedIn} />
         {children}
       </body>
     </html>

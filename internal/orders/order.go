@@ -9,12 +9,49 @@ const (
 	StatusCreated   Status = "created"   // mijoz yaratdi, restoran hali ko'rmadi
 	StatusAccepted  Status = "accepted"  // restoran qabul qildi
 	StatusPreparing Status = "preparing" // tayyorlanmoqda
-	StatusReady     Status = "ready"     // tayyor, kuryer olib ketishi mumkin
+	StatusReady     Status = "ready"     // tayyor (yetkazishda — kuryer olishi mumkin; stolda — affitsiant olib borishi kerak)
 	StatusPickedUp  Status = "picked_up" // kuryer oldi, yo'lda
 	StatusDelivered Status = "delivered" // yetkazildi (terminal)
+	StatusServed    Status = "served"    // affitsiant stolga olib bordi (terminal, faqat dine_in)
 	StatusRejected  Status = "rejected"  // restoran rad etdi (terminal)
 	StatusCancelled Status = "cancelled" // bekor qilindi (terminal)
 )
+
+// Type — buyurtma turi.
+//
+// ┌─ NEGA MODELDA, ALOHIDA JADVALDA EMAS ─────────────────────────────┐
+// Ikkala tur ham bir xil hayot siklining KATTA qismini bo'lishadi:
+// yaratildi → qabul qilindi → tayyorlanmoqda → tayyor. Faqat OXIRGI
+// qadam farq qiladi (kuryer olib ketadi / affitsiant stolga qo'yadi).
+//
+// Alohida jadval qilinsa, restoran paneli, narxlash, aksiyalar,
+// tarix, bildirishnomalar — hammasi IKKI MARTA yozilardi. Bitta
+// maydon esa farqni aynan kerakli uch joyda ushlaydi: dispatch,
+// manzil tekshiruvi va holat mashinasi.
+// └───────────────────────────────────────────────────────────────────┘
+type Type string
+
+const (
+	// TypeDelivery — kuryer yetkazadi. BO'SH QIYMAT ham shu deb
+	// hisoblanadi: bazadagi eski buyurtmalarda ustun yo'q edi va
+	// migratsiya ularni `delivery` bilan to'ldiradi, lekin xotira
+	// omborida va testlarda nol qiymat uchrashi mumkin.
+	TypeDelivery Type = "delivery"
+	// TypeDineIn — mijoz restoranda, stol QR kodi orqali buyurtma berdi.
+	TypeDineIn Type = "dine_in"
+)
+
+// Normalized — bo'sh turni `delivery` ga keltiradi.
+//
+// Bu funksiya SHART: nol qiymatni har bir chaqiruv joyida qo'lda
+// tekshirish unutiladi va o'shanda eski buyurtma "na delivery, na
+// dine_in" bo'lib qolib, holat mashinasidan o'ta olmasdi.
+func (t Type) Normalized() Type {
+	if t == "" {
+		return TypeDelivery
+	}
+	return t
+}
 
 // Actor — holatni kim o'zgartirmoqchi. Har bir o'tish faqat ruxsat etilgan aktorlarga ochiq.
 type Actor string
@@ -23,6 +60,7 @@ const (
 	ActorCustomer   Actor = "customer"
 	ActorRestaurant Actor = "restaurant"
 	ActorCourier    Actor = "courier"
+	ActorWaiter     Actor = "waiter"
 	ActorAdmin      Actor = "admin"
 	ActorSystem     Actor = "system"
 )
@@ -111,6 +149,26 @@ type Order struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 
+	// ── Stolda ovqatlanish (dine_in) ──
+	//
+	// Type bo'sh bo'lsa `delivery` demak (Type.Normalized()ga qarang) —
+	// eski buyurtmalar va eski klientlar shu sababli buzilmaydi.
+	Type Type `json:"type,omitempty"`
+	// TableID — `restaurant_tables.id`. QR token EMAS: token — sir
+	// (uni bilgan odam shu stolga buyurtma bera oladi), shuning uchun
+	// u buyurtmada saqlanmaydi va API javoblarida hech qachon
+	// ko'rinmaydi.
+	TableID string `json:"table_id,omitempty"`
+	// TableLabel — stolning ko'rinadigan nomi ("5", "VIP-2") buyurtma
+	// vaqtidagi NUSXASI. Items/DeliveryAddress bilan bir xil mantiq:
+	// stol keyin qayta nomlansa ham, eski buyurtma tarixida asl nom
+	// qoladi — affitsiant va restoran bir xil narsani ko'radi.
+	TableLabel string `json:"table_label,omitempty"`
+	// PartySize — nechta kishi (mijoz o'zi kiritadi). Faqat
+	// ma'lumot uchun: idish-tovoq, non, joy tayyorlash. Narxga
+	// TA'SIR QILMAYDI.
+	PartySize int `json:"party_size,omitempty"`
+
 	// PreparationMinutes/ReadyAt — restoran "Qabul qilindi" bosgan payt
 	// kiritadigan taxminiy tayyorlash vaqti. ReadyAt = qabul qilingan payt +
 	// PreparationMinutes — dispatch matching engine kuryerning restoranga
@@ -146,8 +204,11 @@ type Order struct {
 
 func (o *Order) IsTerminal() bool {
 	switch o.Status {
-	case StatusDelivered, StatusRejected, StatusCancelled:
+	case StatusDelivered, StatusServed, StatusRejected, StatusCancelled:
 		return true
 	}
 	return false
 }
+
+// IsDineIn — stolda ovqatlanish buyurtmasimi.
+func (o *Order) IsDineIn() bool { return o.Type.Normalized() == TypeDineIn }

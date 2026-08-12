@@ -90,7 +90,28 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, errors.New("bilet yaroqsiz yoki muddati tugagan"))
 			return
 		}
-		keys := append([]string{claims.Subject, claims.EntityID}, baseTopics...)
+		// ┌─ TUZATILGAN NOSOZLIK ─────────────────────────────────────┐
+		// Bu yerda AVVAL xom ID'lar turardi:
+		//
+		//	keys := append([]string{claims.Subject, claims.EntityID}, ...)
+		//
+		// Yuqoridagi Bearer shoxi esa `userTopic(...)`/
+		// `restaurantTopic(...)` ishlatadi va xabarlar ham AYNAN
+		// o'sha prefiksli kalitlarga yuboriladi (`notify/topic.go`:
+		// "u:<id>", "e:food:<id>").
+		//
+		// Natijada bilet orqali ulanadigan HAR QANDAY klient —
+		// brauzer, Telegram Mini App, Flutter web panellari —
+		// hech qanday jonli xabar OLMASDI: obuna kalitlari hech
+		// qachon mos kelmasdi. Xato jimgina edi, chunki ulanish
+		// muvaffaqiyatli o'rnatilardi.
+		//
+		// Endi ikkala shox ham bir xil funksiyalardan o'tadi.
+		// └───────────────────────────────────────────────────────────┘
+		keys := append([]string{
+			userTopic(claims.Subject),
+			restaurantTopic(claims.EntityID), // xodim/kuryer ish kanali
+		}, baseTopics...)
 		keys = append(keys, orderTopicIfOwned(claims.Subject)...)
 		s.Hub.Serve(w, r, keys...)
 	})

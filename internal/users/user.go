@@ -12,7 +12,16 @@ const (
 	RoleCustomer   Role = "customer"
 	RoleCourier    Role = "courier"
 	RoleRestaurant Role = "restaurant"
-	RoleAdmin      Role = "admin"
+	// RoleWaiter — affitsiant. `EntityID` = restoran ID'si, xuddi
+	// `RoleRestaurant` kabi.
+	//
+	// FARQI: restoran akkaunti menyu/narx/xodimlarni boshqaradi va
+	// buyurtmani qabul qiladi; affitsiant esa FAQAT tayyor bo'lgan
+	// stol buyurtmalarini ko'radi va "berildi" deb belgilaydi.
+	// Ikkalasiga bir xil huquq berish affitsiantga menyu narxlarini
+	// o'zgartirish imkonini bergan bo'lardi — shuning uchun alohida rol.
+	RoleWaiter Role = "waiter"
+	RoleAdmin  Role = "admin"
 )
 
 type User struct {

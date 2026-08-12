@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"chustapp/internal/couriers"
 	"chustapp/internal/orders"
@@ -22,9 +23,30 @@ import (
 // └───────────────────────────────────────────────────────────────────┘
 type Live struct {
 	svc *Service
+	// waiterLookup — restoran ID'sidan o'sha restoranda ishlaydigan
+	// affitsiantlarning foydalanuvchi ID'larini beradi.
+	//
+	// ┌─ NEGA FUNKSIYA, `users.Repository` EMAS ──────────────────────┐
+	// `notify` paketi `users` ga bog'lanmasligi kerak: u allaqachon
+	// `orders` va `couriers` ga bog'liq va uchinchi bog'liqlik
+	// aylanma import xavfini oshiradi (`users` kelajakda
+	// bildirishnoma yuborishi tabiiy).
+	//
+	// Funksiya esa bog'liqlikni TESKARI qiladi — `main` uni ulaydi.
+	// Bu `Verifier.ContactHook` bilan bir xil naqsh.
+	// └───────────────────────────────────────────────────────────────┘
+	waiterLookup func(ctx context.Context, restaurantID string) ([]string, error)
 }
 
 func NewLive(svc *Service) *Live { return &Live{svc: svc} }
+
+// WithWaiterLookup — affitsiantlarni topish funksiyasini ulaydi.
+// Ulanmasa, stol buyurtmalari uchun push shunchaki yuborilmaydi
+// (jonli WS kanali baribir ishlaydi).
+func (l *Live) WithWaiterLookup(fn func(ctx context.Context, restaurantID string) ([]string, error)) *Live {
+	l.waiterLookup = fn
+	return l
+}
 
 // ---------- orders.Notifier ----------
 
@@ -32,11 +54,20 @@ func (l *Live) OrderCreated(o *orders.Order) {
 	LogNotifier{}.OrderCreated(o)
 	// Restoran xodimlariga — ENTITY kanali (kim ishlab tursa, o'sha
 	// eshitadi), shaxsiy emas.
-	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), map[string]any{
+	event := map[string]any{
 		"type":        "new_order",
 		"order_id":    o.ID,
 		"total_tiyin": o.TotalTiyin,
-	})
+	}
+	// Stol buyurtmasi bo'lsa — panel qaysi stol ekanini DARHOL
+	// ko'rsatishi uchun. Busiz panel har bir yangi buyurtma uchun
+	// alohida so'rov yuborishga majbur bo'lardi.
+	if o.IsDineIn() {
+		event["order_type"] = string(orders.TypeDineIn)
+		event["table_label"] = o.TableLabel
+		event["party_size"] = o.PartySize
+	}
+	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
 }
 
 func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
@@ -49,9 +80,27 @@ func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
 		"status":     o.Status,
 		"courier_id": o.CourierID,
 	}
+	// Stol buyurtmasida affitsiant ilovasi ham shu kanalni eshitadi
+	// (u ham `Entity(food, restaurantID)` ga obuna) — shuning uchun
+	// stol ma'lumoti eventga qo'shiladi.
+	if o.IsDineIn() {
+		event["order_type"] = string(orders.TypeDineIn)
+		event["table_label"] = o.TableLabel
+		event["party_size"] = o.PartySize
+	}
 	// Restoran va kuryer — ish kanallari (jonli, tarixsiz).
 	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
 	l.svc.Broadcast(Entity(ModuleFood, o.CourierID), event)
+
+	// ── Affitsiantga PUSH: taom tayyor ──
+	//
+	// Jonli kanal (yuqorida) FAQAT ilova ochiq bo'lsa ishlaydi.
+	// Affitsiant esa zал bo'ylab yuradi va telefoni cho'ntagida,
+	// ekrani o'chiq bo'ladi — aynan shu holatda xabar YETIB
+	// BORISHI kerak, aks holda taom oshxonada sovib qoladi.
+	if o.IsDineIn() && o.Status == orders.StatusReady {
+		l.notifyWaiters(o)
+	}
 
 	// MIJOZGA — shaxsiy bildirishnoma: saqlanadi va ilova yopiq
 	// bo'lsa push ketadi. Buyurtma holati — foydalanuvchi
@@ -69,8 +118,65 @@ func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
 	})
 }
 
+// notifyWaiters — tayyor bo'lgan stol buyurtmasi haqida restoranning
+// BARCHA affitsiantlariga xabar beradi.
+//
+// ┌─ NEGA HAMMASIGA, BITTASIGA EMAS ──────────────────────────────────┐
+// Buyurtma hech qaysi affitsiantga BIRIKTIRILMAGAN: stolni kim bo'sh
+// bo'lsa o'sha xizmat qiladi. Kimga yuborishni tanlamoqchi bo'lsak,
+// "stol ↔ affitsiant" jadvali va navbatchilik grafigi kerak bo'lardi
+// — bu restoran uchun ortiqcha ma'muriyatchilik.
+//
+// Hammasiga yuborish esa oddiy va ISHONCHLI: taom sovib qolgandan
+// ko'ra ikki kishi bir vaqtda kelgani yaxshiroq. Kim birinchi
+// "berildi" bossa, buyurtma ro'yxatdan chiqadi.
+// └───────────────────────────────────────────────────────────────────┘
+func (l *Live) notifyWaiters(o *orders.Order) {
+	if l.waiterLookup == nil {
+		return
+	}
+	ctx := context.Background()
+	ids, err := l.waiterLookup(ctx, o.RestaurantID)
+	if err != nil {
+		slog.Error("affitsiantlarni topishda xato — push yuborilmadi",
+			"restaurant", o.RestaurantID, "order", o.ID, "err", err)
+		return
+	}
+	table := o.TableLabel
+	if table == "" {
+		table = "—"
+	}
+	for _, id := range ids {
+		l.svc.Notify(ctx, id, Event{
+			Module: ModuleFood,
+			Kind:   "table_order_ready",
+			Title:  fmt.Sprintf("%s-stol: buyurtma tayyor", table),
+			Body:   "Taomni stolga olib boring",
+			Data: map[string]string{
+				"order_id":    o.ID,
+				"table_label": o.TableLabel,
+				"status":      string(o.Status),
+			},
+		})
+	}
+}
+
 // orderStatusText — foydalanuvchi ko'radigan matn (push'da ham shu).
 func orderStatusText(o *orders.Order) string {
+	// Stolda ovqatlanishda "yetkazish" atamalari ma'nosiz — mijoz
+	// restoranning o'zida o'tiribdi.
+	if o.IsDineIn() {
+		switch o.Status {
+		case orders.StatusAccepted:
+			return "Restoran buyurtmangizni qabul qildi"
+		case orders.StatusPreparing:
+			return "Buyurtmangiz tayyorlanmoqda"
+		case orders.StatusReady:
+			return "Buyurtmangiz tayyor — hozir olib kelishadi"
+		case orders.StatusServed:
+			return "Yoqimli ishtaha!"
+		}
+	}
 	switch o.Status {
 	case orders.StatusAccepted:
 		return "Restoran buyurtmangizni qabul qildi"

@@ -21,6 +21,8 @@ func roleToActor(role users.Role) orders.Actor {
 		return orders.ActorRestaurant
 	case users.RoleCourier:
 		return orders.ActorCourier
+	case users.RoleWaiter:
+		return orders.ActorWaiter
 	case users.RoleAdmin:
 		return orders.ActorAdmin
 	}
@@ -37,6 +39,21 @@ func ownsOrderAction(c *users.Claims, o *orders.Order) bool {
 		return o.RestaurantID == c.EntityID
 	case users.RoleCourier:
 		return o.CourierID == c.EntityID
+	case users.RoleWaiter:
+		// ┌─ AFFITSIANT — IKKI SHART ─────────────────────────────────┐
+		// 1. O'Z restorani (EntityID — restoran ID'si, xuddi
+		//    RoleRestaurant kabi);
+		// 2. FAQAT stol buyurtmasi.
+		//
+		// Ikkinchi shart SHART: usiz affitsiant o'z restoranidagi
+		// YETKAZISH buyurtmalarini ham o'zgartira olardi. Holat
+		// mashinasi buni baribir to'xtatadi (`delivery` jadvalida
+		// `ActorWaiter` umuman yo'q), lekin himoya bitta qatlamga
+		// tayanmasligi kerak — bu yerdagi tekshiruv buyurtmani
+		// KO'RISHNI ham cheklaydi (canSeeOrder shu funksiyani
+		// chaqiradi), holat mashinasi esa faqat yozishni cheklaydi.
+		// └───────────────────────────────────────────────────────────┘
+		return o.RestaurantID == c.EntityID && o.IsDineIn()
 	case users.RoleAdmin:
 		return true
 	}

@@ -7,6 +7,7 @@ import {
   PartyPopper,
   Receipt,
   ShoppingBag,
+  Utensils,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export const STATUS_COLORS: Record<string, string> = {
   ready: "#FF9800",
   picked_up: "#FF9800",
   delivered: "#4FC3F7",
+  served: "#4FC3F7",
   rejected: "#E57373",
   cancelled: "#E57373",
 };
@@ -32,8 +34,22 @@ export const STATUS_LABELS: Record<string, string> = {
   ready: "Tayyor — kuryer kutilmoqda",
   picked_up: "Kuryerda, yo'lda",
   delivered: "Yetkazildi",
+  served: "Berildi",
   rejected: "Rad etildi",
   cancelled: "Bekor qilindi",
+};
+
+// Stolda ovqatlanishda "kuryer" va "yetkazish" atamalari ma'nosiz —
+// mijoz restoranning o'zida o'tiribdi. Faqat FARQ QILADIGAN holatlar
+// sanaladi, qolganlari umumiy jadvaldan olinadi.
+//
+// Server ham xuddi shu matnlarni push uchun beradi
+// (`internal/notify/live.go` — `orderStatusText`). Ikkalasi bir xil
+// bo'lishi kerak: mijoz push'da bir narsa, ekranda boshqa narsa
+// ko'rsa, bu xatoday tuyuladi.
+export const DINE_IN_STATUS_LABELS: Record<string, string> = {
+  ready: "Tayyor — hozir olib kelishadi",
+  served: "Yoqimli ishtaha!",
 };
 
 export const STATUS_ICONS: Record<string, LucideIcon> = {
@@ -43,13 +59,17 @@ export const STATUS_ICONS: Record<string, LucideIcon> = {
   ready: ShoppingBag,
   picked_up: Bike,
   delivered: PartyPopper,
+  served: PartyPopper,
   rejected: X,
   cancelled: X,
 };
 
-export function statusStyleOf(status: string) {
+export function statusStyleOf(status: string, dineIn = false) {
   return {
-    label: STATUS_LABELS[status] ?? status,
+    label:
+      (dineIn ? DINE_IN_STATUS_LABELS[status] : undefined) ??
+      STATUS_LABELS[status] ??
+      status,
     Icon: STATUS_ICONS[status] ?? HelpCircle,
     color: STATUS_COLORS[status] ?? "#9E9E9E",
   };
@@ -59,8 +79,14 @@ export const STAGE_LABELS = ["Qabul qilindi", "Tayyorlanmoqda", "Yo'lda", "Yetka
 export const STAGE_COLORS = ["#81C784", "#FF9800", "#FF9800", "#4FC3F7"];
 export const STAGE_ICONS: LucideIcon[] = [CheckCircle2, ChefHat, Bike, Package];
 
-// -1: chiziq ko'rsatilmaydi (yetkazilgan yoki bekor/rad qilingan).
-export function stageOf(status: string): number {
+// Stolda ovqatlanishda UCH bosqich: "Yo'lda" bosqichi umuman yo'q
+// (kuryer yo'q), tugash esa "Berildi".
+export const DINE_IN_STAGE_LABELS = ["Qabul qilindi", "Tayyorlanmoqda", "Tayyor"];
+export const DINE_IN_STAGE_COLORS = ["#81C784", "#FF9800", "#4FC3F7"];
+export const DINE_IN_STAGE_ICONS: LucideIcon[] = [CheckCircle2, ChefHat, Utensils];
+
+// -1: chiziq ko'rsatilmaydi (yakunlangan yoki bekor/rad qilingan).
+export function stageOf(status: string, dineIn = false): number {
   switch (status) {
     case "created":
     case "accepted":
@@ -68,8 +94,10 @@ export function stageOf(status: string): number {
     case "preparing":
       return 1;
     case "ready":
-    case "picked_up":
       return 2;
+    case "picked_up":
+      // Stol buyurtmasida bu holat umuman uchramaydi.
+      return dineIn ? -1 : 2;
     default:
       return -1;
   }
@@ -113,15 +141,27 @@ function fmtTime(d: Date): string {
 export function DetailedOrderProgress({
   stage,
   stageTimes,
+  dineIn = false,
 }: {
   stage: number;
   stageTimes: (Date | null)[];
+  /** Stolda ovqatlanish — uch bosqich, "Yo'lda" yo'q. */
+  dineIn?: boolean;
 }) {
-  const color = STAGE_COLORS[Math.min(Math.max(stage, 0), STAGE_COLORS.length - 1)];
+  // Bosqichlar soni QATTIQ yozilgan `[0,1,2,3]` emas, jadval
+  // uzunligidan olinadi — aks holda dine_in uchun to'rtinchi (bo'sh)
+  // doira chizilib qolardi.
+  const labels = dineIn ? DINE_IN_STAGE_LABELS : STAGE_LABELS;
+  const colors = dineIn ? DINE_IN_STAGE_COLORS : STAGE_COLORS;
+  const icons = dineIn ? DINE_IN_STAGE_ICONS : STAGE_ICONS;
+  const last = labels.length - 1;
+  const indexes = Array.from({ length: labels.length }, (_, i) => i);
+
+  const color = colors[Math.min(Math.max(stage, 0), colors.length - 1)];
   return (
     <div className="w-full">
       <div className="flex items-center">
-        {[0, 1, 2, 3].map((i) => (
+        {indexes.map((i) => (
           <div key={i} className="flex flex-1 items-center last:flex-none">
             <div
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border"
@@ -132,11 +172,11 @@ export function DetailedOrderProgress({
               }}
             >
               {(() => {
-                const StageIcon = STAGE_ICONS[i];
+                const StageIcon = icons[i];
                 return <StageIcon size={18} />;
               })()}
             </div>
-            {i < 3 && (
+            {i < last && (
               <div
                 className="h-[3px] flex-1"
                 style={{ backgroundColor: i < stage ? color : "#61616140" }}
@@ -146,13 +186,13 @@ export function DetailedOrderProgress({
         ))}
       </div>
       <div className="mt-1.5 flex">
-        {[0, 1, 2, 3].map((i) => (
+        {indexes.map((i) => (
           <div
             key={i}
-            className={`flex-1 text-[11px] ${i === 0 ? "text-left" : i === 3 ? "text-right" : "text-center"}`}
+            className={`flex-1 text-[11px] ${i === 0 ? "text-left" : i === last ? "text-right" : "text-center"}`}
             style={{ color: i <= stage ? color : "#757575", fontWeight: i === stage ? 700 : 400 }}
           >
-            <div>{STAGE_LABELS[i]}</div>
+            <div>{labels[i]}</div>
             {stageTimes[i] && <div className="text-neutral-500">{fmtTime(stageTimes[i]!)}</div>}
           </div>
         ))}

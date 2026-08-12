@@ -36,10 +36,29 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Ilova belgisini (launcher icon) `assets/logo.png` dan barcha
+  # Android/iOS o'lchamlariga generatsiya qiladi. Qo'lda 10+ PNG
+  # yasash o'rniga bitta buyruq — va o'lchamlardan biri unutilib
+  # qolmaydi.
+  flutter_launcher_icons: ^0.14.4
+
+# Ilova belgisi: `flutter pub run flutter_launcher_icons` bilan
+# qayta generatsiya qilinadi (logo o'zgarsa).
+flutter_launcher_icons:
+  android: true
+  # `ios: false` — bu loyihada `ios/` papkasi umuman yo'q (mijoz
+  # ilovasi hozircha Android + web). `true` qilinsa generator mavjud
+  # bo'lmagan `Assets.xcassets` yo'liga yozmoqchi bo'lib yiqiladi.
+  # iOS kerak bo'lganda avval `flutter create --platforms=ios .`
+  # bajariladi, keyin bu yerda `true` qilinadi.
+  ios: false
+  image_path: "assets/logo.png"
 
 flutter:
   uses-material-design: true
   assets:
+    # Mijoz super-app logotipi (image/superapp.png dan).
+    - assets/logo.png
     - assets/categories/
     - assets/eltago.png
     # Ro'yxatdan o'tish / kirish ekranlaridagi brend illyustratsiyasi

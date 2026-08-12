@@ -895,10 +895,48 @@ class _CardHeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final createdAt = _parseAt(order['created_at']);
+    // Stol buyurtmasi — oshxona uchun MUHIM farq: taom qayerga
+    // ketishi (kuryerga emas, zalga) va nechta kishiga tayyorlash
+    // kerakligi shu yerdan ko'rinadi.
+    final dineIn = order['type'] == 'dine_in';
+    final tableLabel = order['table_label'] as String? ?? '';
+    final partySize = order['party_size'] as int? ?? 0;
+
     return Row(
       children: [
         Text(_shortOrderNumber(order),
             style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
+        if (dineIn) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: OnDexColors.primaryTint,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.table_restaurant_rounded,
+                    size: 13, color: OnDexColors.primary),
+                const SizedBox(width: 4),
+                Text(
+                  tableLabel.isEmpty ? 'Stol' : '$tableLabel-stol',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: OnDexColors.primary),
+                ),
+                if (partySize > 0) ...[
+                  const SizedBox(width: 6),
+                  Text('· $partySize kishi',
+                      style: const TextStyle(
+                          fontSize: 11.5, color: OnDexColors.primary)),
+                ],
+              ],
+            ),
+          ),
+        ],
         const Spacer(),
         Text(_timeOfDay(createdAt),
             style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkFaint, fontWeight: FontWeight.w600)),

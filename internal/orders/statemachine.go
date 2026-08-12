@@ -2,23 +2,47 @@ package orders
 
 import "fmt"
 
-// transitions — ruxsat etilgan o'tishlar jadvali: from -> to -> kimlar qila oladi.
-// Bu jadvalda yo'q o'tish umuman mumkin emas. Yangi holat qo'shilsa, faqat shu yerga qo'shiladi.
-var transitions = map[Status]map[Status][]Actor{
-	StatusCreated: {
-		StatusAccepted:  {ActorRestaurant},
-		StatusRejected:  {ActorRestaurant},
-		StatusCancelled: {ActorCustomer, ActorAdmin},
-	},
-	StatusAccepted: {
-		StatusPreparing: {ActorRestaurant},
-		StatusCancelled: {ActorCustomer, ActorAdmin},
-	},
-	StatusPreparing: {
-		StatusReady:     {ActorRestaurant},
-		StatusCancelled: {ActorAdmin},
-	},
-	StatusReady: {
+// Buyurtma holatlari o'rtasidagi ruxsat etilgan o'tishlar.
+//
+// ┌─ NEGA TUR BO'YICHA IKKI JADVAL ───────────────────────────────────┐
+// Yetkazish va stolda ovqatlanish buyurtmalari hayot siklining KATTA
+// qismini bo'lishadi (created → accepted → preparing → ready) va faqat
+// oxirgi qadamda ajraladi:
+//
+//	delivery: ready → picked_up → delivered   (kuryer)
+//	dine_in:  ready → served                  (affitsiant)
+//
+// Bitta umumiy jadvalga ikkala tugashni ham qo'shish MUMKIN EDI, lekin
+// o'shanda affitsiant YETKAZISH buyurtmasini "served" deb belgilay
+// olardi (yoki kuryer stol buyurtmasini "picked_up"). Ikkalasi ham
+// buyurtmani noto'g'ri terminal holatga tiqib qo'yardi va uni
+// qaytarishning iloji yo'q edi — shuning uchun tur jadval TANLAYDI,
+// keyin aktor tekshiriladi.
+// └───────────────────────────────────────────────────────────────────┘
+
+// Umumiy boshlanish — ikkala turda ham bir xil.
+func commonTransitions() map[Status]map[Status][]Actor {
+	return map[Status]map[Status][]Actor{
+		StatusCreated: {
+			StatusAccepted:  {ActorRestaurant},
+			StatusRejected:  {ActorRestaurant},
+			StatusCancelled: {ActorCustomer, ActorAdmin},
+		},
+		StatusAccepted: {
+			StatusPreparing: {ActorRestaurant},
+			StatusCancelled: {ActorCustomer, ActorAdmin},
+		},
+		StatusPreparing: {
+			StatusReady:     {ActorRestaurant},
+			StatusCancelled: {ActorAdmin},
+		},
+	}
+}
+
+// deliveryTransitions — kuryer yetkazadigan buyurtma.
+var deliveryTransitions = func() map[Status]map[Status][]Actor {
+	t := commonTransitions()
+	t[StatusReady] = map[Status][]Actor{
 		// Yandex Eats uslubi (foydalanuvchi so'rovi bo'yicha, 2026-07-30):
 		// alohida tasdiqlash kodi YO'Q, restoran ham hech qanday tugma
 		// bosmaydi — kuryer restoranda buyurtma raqamining OXIRGI 4
@@ -29,13 +53,29 @@ var transitions = map[Status]map[Status][]Actor{
 		// murosaga kelish, xavfsizlikdan qulaylik foydasiga.
 		StatusPickedUp:  {ActorCourier},
 		StatusCancelled: {ActorAdmin},
-	},
-	StatusPickedUp: {
+	}
+	t[StatusPickedUp] = map[Status][]Actor{
 		StatusDelivered: {ActorCourier},
 		StatusCancelled: {ActorAdmin},
-	},
-	// delivered, rejected, cancelled — terminal, hech qayerga o'tmaydi
-}
+	}
+	return t
+}()
+
+// dineInTransitions — stol QR kodi orqali berilgan buyurtma.
+var dineInTransitions = func() map[Status]map[Status][]Actor {
+	t := commonTransitions()
+	t[StatusReady] = map[Status][]Actor{
+		// Affitsiant taomni stolga olib borgach bosadi. Restoran ham
+		// bosa oladi: kichik oshxonalarda affitsiant va oshpaz bir
+		// odam bo'lishi mumkin va o'shanda buyurtma "ready" holatida
+		// abadiy osilib qolardi.
+		StatusServed:    {ActorWaiter, ActorRestaurant},
+		StatusCancelled: {ActorAdmin},
+	}
+	return t
+}()
+
+// delivered/served/rejected/cancelled — terminal, hech qayerga o'tmaydi.
 
 type TransitionError struct {
 	From, To Status
@@ -48,8 +88,14 @@ func (e *TransitionError) Error() string {
 }
 
 // ValidateTransition — o'tish mumkinligini va aktor huquqini tekshiradi.
-func ValidateTransition(from, to Status, by Actor) error {
-	targets, ok := transitions[from]
+//
+// `orderType` bo'sh bo'lsa `delivery` deb qaraladi (Type.Normalized()).
+func ValidateTransition(orderType Type, from, to Status, by Actor) error {
+	table := deliveryTransitions
+	if orderType.Normalized() == TypeDineIn {
+		table = dineInTransitions
+	}
+	targets, ok := table[from]
 	if !ok {
 		return &TransitionError{from, to, by, "holat terminal"}
 	}

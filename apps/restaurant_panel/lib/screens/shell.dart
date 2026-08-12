@@ -9,6 +9,8 @@ import '../pages/dashboard_page.dart';
 import '../pages/menu_page.dart';
 import '../pages/orders_page.dart';
 import '../pages/promotions_page.dart';
+import '../pages/staff_page.dart';
+import '../pages/tables_page.dart';
 import '../sound.dart';
 import '../widgets/main_layout.dart';
 import 'login_screen.dart';
@@ -159,41 +161,43 @@ class _RestaurantShellState extends State<RestaurantShell> {
         return const MenuPage();
       case 3:
         return const PromotionsPage();
+      // DIQQAT: "Stollar (QR)" sidebar'da 4-o'ringa qo'shildi, shuning
+      // uchun undan keyingi HAMMA indeks bittaga surildi. Sidebar
+      // ro'yxati (`widgets/sidebar.dart`) va bu switch BIR XIL
+      // tartibda bo'lishi SHART — aks holda foydalanuvchi "Moliya"
+      // bosib "Statistika" ni ochib qo'yardi.
       case 4:
+        return const TablesPage();
+      case 5:
         return const ComingSoonPage(
           title: 'Statistika',
           icon: Icons.bar_chart_rounded,
           description:
               'Savdo dinamikasi, eng ko\'p sotilgan taomlar va band soatlar tahlili — tez orada. Asosiy ko\'rsatkichlar hozircha Bosh sahifada.',
         );
-      case 5:
+      case 6:
         return const ComingSoonPage(
           title: 'Moliya',
           icon: Icons.account_balance_wallet_rounded,
           description:
               'To\'lov tarixi, komissiya tafsiloti, bank rekvizitlari — to\'lov tizimi (Payme/Click) ulanganidan keyin qo\'shiladi.',
         );
-      case 6:
+      case 7:
         return const ComingSoonPage(
           title: 'Restoran sozlamalari',
           icon: Icons.settings_rounded,
           description:
               'Ish vaqti jadvali, yetkazish sozlamalari — tez orada. Hozircha restoran profilini superadmin tahrirlaydi.',
         );
-      case 7:
-        return const ComingSoonPage(
-          title: 'Xodimlar',
-          icon: Icons.groups_rounded,
-          description:
-              'Bir nechta xodim uchun alohida kirish (rol bilan) — tez orada. Hozircha bitta restoran uchun bitta umumiy login bor.',
-        );
       case 8:
+        return const StaffPage();
+      case 9:
         return const ComingSoonPage(
           title: 'Bildirishnomalar',
           icon: Icons.notifications_rounded,
           description: 'Barcha o\'tgan bildirishnomalar tarixi — tez orada.',
         );
-      case 9:
+      case 10:
         return const ComingSoonPage(
           title: 'Yordam markazi',
           icon: Icons.help_rounded,

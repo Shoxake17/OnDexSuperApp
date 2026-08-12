@@ -21,6 +21,9 @@ const List<_NavEntry> _sidebarNavEntries = [
   _NavEntry(Icons.shopping_bag_rounded, 'Buyurtmalar'),
   _NavEntry(Icons.restaurant_menu_rounded, 'Menyu'),
   _NavEntry(Icons.sell_rounded, 'Aksiyalar'),
+  // Stollar (QR kod) — buyurtmalar va menyudan keyin, chunki u ham
+  // KUNDALIK ish quroli, "tez orada" bo'limlari emas.
+  _NavEntry(Icons.table_restaurant_rounded, 'Stollar (QR)'),
   _NavEntry(Icons.bar_chart_rounded, 'Statistika'),
   _NavEntry(Icons.account_balance_wallet_rounded, 'Moliya'),
   _NavEntry(Icons.settings_rounded, 'Restoran sozlamalari'),

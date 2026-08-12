@@ -36,6 +36,10 @@ type Order = {
   delivery_lat?: number;
   delivery_lng?: number;
   created_at: string;
+  /** "dine_in" — stol buyurtmasi. Bo'sh/yo'q = yetkazib berish. */
+  type?: string;
+  table_label?: string;
+  party_size?: number;
 };
 
 // tracking_screen.dart bilan parity: avval GET bilan hozirgi holat, keyin
@@ -140,9 +144,10 @@ export default function OrderTrackingPage({
   }
 
   const cancelled = order.status === "cancelled" || order.status === "rejected";
-  const done = order.status === "delivered";
-  const stage = stageOf(order.status);
-  const { label, Icon, color } = statusStyleOf(order.status);
+  const dineIn = order.type === "dine_in";
+  const done = order.status === "delivered" || order.status === "served";
+  const stage = stageOf(order.status, dineIn);
+  const { label, Icon, color } = statusStyleOf(order.status, dineIn);
   const createdAt = new Date(order.created_at);
   const stageTimes = extractStageTimes(createdAt, order.history);
   const totalItems = order.items.reduce((a, i) => a + i.qty, 0);
@@ -182,17 +187,32 @@ export default function OrderTrackingPage({
               : "Buyurtma bekor qilindi"}
           </p>
         )}
-        {order.courier_id && (
+        {/* Kuryer ID — stol buyurtmasida ma'nosiz (kuryer yo'q). */}
+        {!dineIn && order.courier_id && (
           <p className="mt-1 text-sm text-neutral-500">Kuryer: {order.courier_id}</p>
+        )}
+        {dineIn && order.table_label && (
+          <p className="mt-1 text-sm text-neutral-500">
+            {order.table_label}-stol
+            {order.party_size ? ` · ${order.party_size} kishi` : ""}
+          </p>
         )}
         {stage >= 0 && (
           <div className="mt-5">
-            <DetailedOrderProgress stage={stage} stageTimes={stageTimes} />
+            <DetailedOrderProgress
+              stage={stage}
+              stageTimes={stageTimes}
+              dineIn={dineIn}
+            />
           </div>
         )}
       </div>
 
-      {order.status === "picked_up" && courierLatLng && (
+      {/* Kuryer xaritasi FAQAT yetkazib berishda. Stol buyurtmasida
+          `picked_up` holati umuman uchramaydi, lekin shart ANIQ
+          yozilgan — kelajakda holat qo'shilsa xarita tasodifan
+          chiqib qolmasin. */}
+      {!dineIn && order.status === "picked_up" && courierLatLng && (
         <div className="mt-5">
           <CourierMap courier={courierLatLng} destination={destination} />
         </div>

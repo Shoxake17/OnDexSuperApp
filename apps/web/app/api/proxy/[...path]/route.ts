@@ -37,6 +37,13 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   { method: "DELETE", pattern: "favorites/*" },
   { method: "GET", pattern: "geocode/reverse" },
   { method: "GET", pattern: "config/maps" },
+  // Stol QR kodi: token → qaysi restoran va qaysi stol.
+  //
+  // FAQAT `resolve` ochiladi. Stol yaratish/o'chirish/token yangilash
+  // (`POST /restaurants/*/tables`, `POST /tables/*/regenerate`)
+  // ATAYLAB yo'q: ular restoran paneliga tegishli va mijoz sahifasidagi
+  // skript ularga umuman yeta olmasligi kerak.
+  { method: "GET", pattern: "tables/resolve" },
 ];
 
 function isAllowed(method: string, segments: string[]): boolean {

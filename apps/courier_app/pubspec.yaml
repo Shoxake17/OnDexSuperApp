@@ -40,10 +40,25 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Ilova belgisini `assets/logo.png` dan barcha o'lchamlarga
+  # generatsiya qiladi (mijoz ilovasidagi bilan bir xil naqsh).
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  # `ios: false` — bu loyihada `ios/` papkasi umuman yo'q (kuryer
+  # ilovasi Android uchun qurilgan). `true` qilinsa generator mavjud
+  # bo'lmagan `Assets.xcassets` yo'liga yozmoqchi bo'lib yiqiladi.
+  # iOS kerak bo'lganda avval `flutter create --platforms=ios .`
+  # bajariladi, keyin bu yerda `true` qilinadi.
+  ios: false
+  image_path: "assets/logo.png"
 
 flutter:
   uses-material-design: true
   assets:
+    # Kuryer ilovasi logotipi (image/kuryer.png dan).
+    - assets/logo.png
     - assets/navi.png
     - assets/box.png
     - assets/ondex.png

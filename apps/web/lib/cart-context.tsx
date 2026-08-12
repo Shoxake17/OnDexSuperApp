@@ -19,6 +19,44 @@ import {
 // bu allaqachon "bepul" — endi ANIQ shu yerda takrorlanadi).
 const STORAGE_KEY = "chust_cart_v1";
 
+/**
+ * clearStoredCartIfOtherRestaurant — saqlangan savat BOSHQA restoranga
+ * tegishli bo'lsa uni o'chiradi.
+ *
+ * ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+ * Mijoz "B" restorani savatini yig'ib qo'ygan bo'lishi, keyin "A"
+ * restoranida stolga o'tirib QR skanerlashi mumkin. O'shanda savat
+ * hamon B'niki bo'lib qolardi va mijoz savatga kirsa BEGONA
+ * restoran taomlarini ko'rardi.
+ *
+ * `setQty` allaqachon boshqa restoran uchun savatni tozalaydi, lekin
+ * u FAQAT mijoz biror taom qo'shganda ishlaydi — menyuga kirib,
+ * to'g'ridan savatga o'tsa eski holat ko'rinardi.
+ *
+ * React holatiga emas, `localStorage` ga to'g'ridan-to'g'ri tegamiz:
+ * bu funksiya `CartProvider` dan TASHQARIDA (`app/table-init.tsx`,
+ * root layout'da) chaqiriladi va undan keyin sahifa TO'LIQ qayta
+ * yuklanadi, ya'ni provider yangi holatni o'qiydi.
+ * └───────────────────────────────────────────────────────────────────┘
+ */
+export function clearStoredCartIfOtherRestaurant(restaurantId: string): void {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Partial<CartState>;
+    if (parsed?.restaurantId && parsed.restaurantId !== restaurantId) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // Buzilgan yozuv — o'chirib yuborish eng xavfsizi.
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // e'tiborsiz
+    }
+  }
+}
+
 type CartState = {
   restaurantId: string | null;
   items: Record<string, number>;

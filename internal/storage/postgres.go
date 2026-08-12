@@ -30,38 +30,12 @@ type PgOrderRepo struct{ pool *pgxpool.Pool }
 func NewPgOrderRepo(pool *pgxpool.Pool) *PgOrderRepo { return &PgOrderRepo{pool: pool} }
 
 func (r *PgOrderRepo) GetByID(ctx context.Context, id string) (*orders.Order, error) {
-	var o orders.Order
-	var courierID *string
-	var itemsJSON, historyJSON, addressJSON []byte
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
-		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
-		       preparation_minutes, ready_at, version,
-		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address
-		FROM orders WHERE id = $1`, id,
-	).Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
-		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
-		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
-		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, orders.ErrNotFound
-	}
+	o, err := scanOrderRow(r.pool.QueryRow(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE id = $1`, id))
 	if err != nil {
 		return nil, err
 	}
-	if courierID != nil {
-		o.CourierID = *courierID
-	}
-	if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(historyJSON, &o.History); err != nil {
-		return nil, err
-	}
-	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
-		return nil, err
-	}
-	return &o, nil
+	return o, nil
 }
 
 // unmarshalAddress — `delivery_address` JSONB'ni o'qiydi. Eski (0025
@@ -81,39 +55,14 @@ func (r *PgOrderRepo) FindByIdempotencyKey(ctx context.Context, customerID, key 
 	if key == "" {
 		return nil, orders.ErrNotFound
 	}
-	var o orders.Order
-	var courierID *string
-	var itemsJSON, historyJSON, addressJSON []byte
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
-		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
-		       preparation_minutes, ready_at, version,
-		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address
-		FROM orders WHERE customer_id = $1 AND idempotency_key = $2`, customerID, key,
-	).Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
-		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
-		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
-		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, orders.ErrNotFound
-	}
+	o, err := scanOrderRow(r.pool.QueryRow(ctx,
+		`SELECT `+orderColumns+` FROM orders
+		 WHERE customer_id = $1 AND idempotency_key = $2`, customerID, key))
 	if err != nil {
 		return nil, err
 	}
 	o.IdempotencyKey = key
-	if courierID != nil {
-		o.CourierID = *courierID
-	}
-	if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(historyJSON, &o.History); err != nil {
-		return nil, err
-	}
-	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
-		return nil, err
-	}
-	return &o, nil
+	return o, nil
 }
 
 // Save — yangi buyurtma bo'lsa qo'shadi, mavjud bo'lsa yangilaydi.
@@ -143,6 +92,20 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 	if o.CourierID != "" {
 		courierID = &o.CourierID
 	}
+	// Stol maydonlari — yetkazish buyurtmasida NULL bo'lib qolsin
+	// (bo'sh satr emas): "stol yo'q" va "stol nomi bo'sh" farqli
+	// holatlar va indeks ham NULL'larni saqlamaydi.
+	var tableID, tableLabel *string
+	var partySize *int
+	if o.TableID != "" {
+		tableID = &o.TableID
+	}
+	if o.TableLabel != "" {
+		tableLabel = &o.TableLabel
+	}
+	if o.PartySize > 0 {
+		partySize = &o.PartySize
+	}
 	// order_number ustunga umuman yozilmaydi — DEFAULT ifoda orqali faqat
 	// INSERT'da avtomatik hisoblanadi ("DDMMYY-0000001" formatida, ichki
 	// ketma-ketlikka asoslanib — 0013-migratsiyaga qarang), keyingi
@@ -164,8 +127,10 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			                    delivery_lat, delivery_lng, items, history, created_at, updated_at,
 			                    preparation_minutes, ready_at, version, idempotency_key,
 			                    subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
-			                    delivery_address)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+			                    delivery_address,
+			                    order_type, table_id, table_label, party_size)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+			        $22,$23,$24,$25)
 			ON CONFLICT (id) DO UPDATE SET
 				courier_id           = EXCLUDED.courier_id,
 				status               = EXCLUDED.status,
@@ -181,6 +146,13 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			o.PreparationMinutes, o.ReadyAt, o.Version, o.IdempotencyKey,
 			o.SubtotalTiyin, o.DiscountTiyin, o.PromotionID, o.PromotionName,
 			addressJSON,
+			// Stol maydonlari FAQAT INSERT'da yoziladi (order_number va
+			// idempotency_key kabi): buyurtma qaysi stolga tegishli
+			// ekani keyin O'ZGARMAYDI. DO UPDATE ro'yxatiga qo'shilsa,
+			// har bir holat o'zgarishida ular qayta yozilardi va
+			// eskirgan nusxa bilan kelgan so'rov stolni almashtirib
+			// yuborishi mumkin bo'lardi.
+			o.Type.Normalized(), tableID, tableLabel, partySize,
 		).Scan(&o.OrderNumber, &o.Version)
 
 		if err == nil {
@@ -233,10 +205,76 @@ func (r *PgOrderRepo) GetActiveByCourier(ctx context.Context, courierID string) 
 	return r.GetByID(ctx, id)
 }
 
+// orderColumns — buyurtma ustunlarining YAGONA ro'yxati.
+//
+// Avval bu ro'yxat GetByID va FindByIdempotencyKey ichida ham
+// qo'lda takrorlangan edi (jami uch nusxa) va har biri o'zining
+// Scan chaqiruvi bilan yurardi. Yangi ustun qo'shilganda ularning
+// birortasi unutilsa, xato KOMPILYATSIYADA emas, ISHLASH paytida
+// "number of field descriptions must equal number of destinations"
+// bo'lib chiqardi. Endi ro'yxat ham, Scan ham bitta joyda.
 const orderColumns = `id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
 		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
 		       preparation_minutes, ready_at, version,
-		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address`
+		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address,
+		       order_type, table_id, table_label, party_size`
+
+// rowScanner — pgx.Row va pgx.Rows ning umumiy qismi. Ikkalasi ham
+// `Scan(...any) error` beradi, shuning uchun bitta scan funksiyasi
+// ikkalasiga ham yetadi.
+type rowScanner interface{ Scan(dest ...any) error }
+
+// scanOrder — bitta qatorni `orders.Order` ga o'qiydi.
+//
+// NULL bo'lishi mumkin bo'lgan ustunlar ko'rsatkich orqali o'qiladi:
+// `courier_id` (kuryer hali biriktirilmagan), `table_id`/`table_label`/
+// `party_size` (yetkazish buyurtmalarida har doim NULL).
+func scanOrder(row rowScanner) (*orders.Order, error) {
+	var o orders.Order
+	var courierID, tableID, tableLabel *string
+	var partySize *int
+	var itemsJSON, historyJSON, addressJSON []byte
+	err := row.Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID,
+		&o.Status, &o.TotalTiyin,
+		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
+		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
+		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON,
+		&o.Type, &tableID, &tableLabel, &partySize)
+	if err != nil {
+		return nil, err
+	}
+	if courierID != nil {
+		o.CourierID = *courierID
+	}
+	if tableID != nil {
+		o.TableID = *tableID
+	}
+	if tableLabel != nil {
+		o.TableLabel = *tableLabel
+	}
+	if partySize != nil {
+		o.PartySize = *partySize
+	}
+	if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(historyJSON, &o.History); err != nil {
+		return nil, err
+	}
+	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+// scanOrderRow — bitta qator kutilganda; topilmasa orders.ErrNotFound.
+func scanOrderRow(row pgx.Row) (*orders.Order, error) {
+	o, err := scanOrder(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, orders.ErrNotFound
+	}
+	return o, err
+}
 
 func (r *PgOrderRepo) ListRecent(ctx context.Context, limit int) ([]*orders.Order, error) {
 	rows, err := r.pool.Query(ctx,
@@ -285,28 +323,11 @@ func (r *PgOrderRepo) CountByCustomerAndRestaurant(ctx context.Context, customer
 func scanOrderRows(rows pgx.Rows) ([]*orders.Order, error) {
 	var list []*orders.Order
 	for rows.Next() {
-		var o orders.Order
-		var courierID *string
-		var itemsJSON, historyJSON, addressJSON []byte
-		if err := rows.Scan(&o.ID, &o.OrderNumber, &o.CustomerID, &o.RestaurantID, &courierID, &o.Status, &o.TotalTiyin,
-			&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
-			&o.PreparationMinutes, &o.ReadyAt, &o.Version,
-			&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON); err != nil {
+		o, err := scanOrder(rows)
+		if err != nil {
 			return nil, err
 		}
-		if courierID != nil {
-			o.CourierID = *courierID
-		}
-		if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(itemsJSON, &o.Items); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(historyJSON, &o.History); err != nil {
-			return nil, err
-		}
-		list = append(list, &o)
+		list = append(list, o)
 	}
 	return list, rows.Err()
 }

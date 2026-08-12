@@ -3,14 +3,104 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/delivery"
 	"chustapp/internal/orders"
+	"chustapp/internal/tables"
 	"chustapp/internal/users"
 )
+
+// maxPartySize — "nechta kishi" uchun yuqori chegara.
+//
+// Bu maydon narxga ta'sir qilmaydi, lekin restoran panelida va
+// affitsiant ilovasida ko'rsatiladi. Cheklovsiz bo'lsa, mijoz
+// 2000000000 yozib qo'yishi va o'sha ekranlarni buzishi mumkin edi.
+// 50 — eng katta banket stoli uchun ham yetarli.
+const maxPartySize = 50
+
+// createDineInOrder — stoldagi QR kod orqali berilgan buyurtma.
+//
+// ┌─ YETKAZISHDAN FARQI ──────────────────────────────────────────────┐
+//   - manzil so'ralmaydi va xizmat hududi tekshirilmaydi (mijoz
+//     restoranning O'ZIDA o'tiribdi);
+//   - kuryer dispatch'i ISHGA TUSHMAYDI;
+//   - to'lov ilovada emas — affitsiantga naqd/karta.
+//
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Server) createDineInOrder(
+	w http.ResponseWriter, r *http.Request,
+	items []catalog.ItemRequest, tableToken string, partySize int, idempotencyKey string,
+) {
+	if s.TableSvc == nil {
+		httpError(w, http.StatusServiceUnavailable,
+			errors.New("stol buyurtmalari sozlanmagan"))
+		return
+	}
+	table, err := s.TableSvc.Resolve(r.Context(), strings.TrimSpace(tableToken))
+	if err != nil {
+		switch {
+		case errors.Is(err, tables.ErrInactive):
+			httpError(w, http.StatusBadRequest,
+				errors.New("bu stol vaqtincha faol emas — xodimga murojaat qiling"))
+		default:
+			// Noto'g'ri token va mavjud bo'lmagan token — BIR XIL javob.
+			// Farqlansa, tokenlarni birma-bir sinab ko'rish (enumeration)
+			// osonlashardi.
+			httpError(w, http.StatusBadRequest,
+				errors.New("QR kod yaroqsiz — qaytadan skanerlang"))
+		}
+		return
+	}
+
+	if partySize < 0 || partySize > maxPartySize {
+		httpError(w, http.StatusBadRequest,
+			fmt.Errorf("odamlar soni 1 dan %d gacha bo'lishi kerak", maxPartySize))
+		return
+	}
+
+	restaurantID, priced, err := s.CatalogSvc.PriceOrder(r.Context(), items)
+	if err != nil {
+		httpError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// ┌─ ★ ASOSIY XAVFSIZLIK TEKSHIRUVI ──────────────────────────────┐
+	// Savat MIJOZDAN keladi, stol esa IMZOLANGAN tokendan. Ikkalasi
+	// bir xil restoranga tegishli ekani tekshirilmasa, "A" restorani
+	// stolida o'tirgan odam "B" restoranining taomlarini buyurtma
+	// qilardi: buyurtma B'ning oshxonasiga tushardi, lekin A'ning
+	// affitsianti uni "5-stol" deb ko'rardi.
+	// └───────────────────────────────────────────────────────────────┘
+	if restaurantID != table.RestaurantID {
+		httpError(w, http.StatusBadRequest,
+			errors.New("savatdagi taomlar bu restoranga tegishli emas"))
+		return
+	}
+
+	o := orders.Order{
+		CustomerID:     claimsFrom(r).Subject,
+		RestaurantID:   restaurantID,
+		Items:          priced,
+		Type:           orders.TypeDineIn,
+		TableID:        table.ID,
+		TableLabel:     table.Label,
+		PartySize:      partySize,
+		IdempotencyKey: idempotencyKey,
+		// DeliveryLat/Lng va DeliveryAddress ATAYLAB bo'sh: stol
+		// buyurtmasida yetkazish manzili degan tushuncha yo'q.
+	}
+	created, err := s.OrderSvc.Create(r.Context(), &o)
+	if err != nil {
+		httpError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, created)
+}
 
 func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /orders", s.auth(nil,
@@ -18,6 +108,16 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			var req struct {
 				Items          []catalog.ItemRequest `json:"items"`
 				IdempotencyKey string                `json:"idempotency_key"`
+				// TableToken — stoldagi QR kod ichidagi sir. Bo'lsa,
+				// bu STOL buyurtmasi (dine_in). Mijoz uni o'zi
+				// yozmaydi — u Telegram tomonidan IMZOLANGAN
+				// `initData` ichidagi `start_param` dan keladi
+				// (routes_auth.go, TMA oqimi).
+				TableToken string `json:"table_token"`
+				// PartySize — nechta kishi. Faqat restoran uchun
+				// ma'lumot (idish-tovoq, non, joy), narxga ta'sir
+				// qilmaydi.
+				PartySize int `json:"party_size"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -25,6 +125,11 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			}
 			if len(req.IdempotencyKey) > 128 {
 				httpError(w, http.StatusBadRequest, errors.New("idempotency_key juda uzun"))
+				return
+			}
+
+			if strings.TrimSpace(req.TableToken) != "" {
+				s.createDineInOrder(w, r, req.Items, req.TableToken, req.PartySize, req.IdempotencyKey)
 				return
 			}
 
@@ -78,6 +183,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				},
 				IdempotencyKey: req.IdempotencyKey,
 			}
+			o.Type = orders.TypeDelivery
 			created, err := s.OrderSvc.Create(r.Context(), &o)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -263,6 +369,9 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				return
 			}
 			if req.To == orders.StatusAccepted {
+				// Tayyorlash vaqti IKKALA turda ham saqlanadi — mijoz
+				// "taxminan 15 daqiqa" degan ma'lumotni stolda ham
+				// ko'radi.
 				if updated, perr := s.OrderSvc.SetPreparationTime(r.Context(), o.ID, req.PreparationMinutes); perr != nil {
 					// Tayyorlash vaqtini saqlab bo'lmadi (masalan
 					// optimistik qulf bir necha marta to'qnashdi).
@@ -282,8 +391,19 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				} else {
 					o = updated
 				}
-				oID, rID, prep := o.ID, o.RestaurantID, req.PreparationMinutes
-				safeGo("dispatch:"+oID, func() { s.dispatchOrder(oID, rID, prep) })
+				// ┌─ DISPATCH FAQAT YETKAZISHDA ──────────────────────┐
+				// Stol buyurtmasida kuryer umuman kerak emas. Bu
+				// shart bo'lmasa, restoran "qabul qildim" bosishi
+				// bilan dispatch ishga tushardi va u kuryer
+				// topilmaguncha QAYTA-QAYTA urinaverardi
+				// (couriers/dispatch.go) — mavjud bo'lmagan yetkazish
+				// uchun kuryerlarni bezovta qilib, ularni "band"
+				// holatiga o'tkazib qo'yardi.
+				// └───────────────────────────────────────────────────┘
+				if !o.IsDineIn() {
+					oID, rID, prep := o.ID, o.RestaurantID, req.PreparationMinutes
+					safeGo("dispatch:"+oID, func() { s.dispatchOrder(oID, rID, prep) })
+				}
 			}
 			// Buyurtma yakunlandi — kuryer yana bo'sh
 			if o.IsTerminal() && o.CourierID != "" {

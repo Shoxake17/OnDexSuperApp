@@ -99,6 +99,8 @@ ThemeData buildOnDexTheme() {
     'ready' => ('Tayyor', OnDexColors.warning, OnDexColors.warningBg),
     'picked_up' => ('Yo\'lda', OnDexColors.info, OnDexColors.infoBg),
     'delivered' => ('Yetkazildi', OnDexColors.success, OnDexColors.successBg),
+    // Stol buyurtmasining tugashi: affitsiant taomni stolga olib bordi.
+    'served' => ('Berildi', OnDexColors.success, OnDexColors.successBg),
     'rejected' => ('Rad etildi', OnDexColors.danger, OnDexColors.dangerBg),
     'cancelled' => (
         'Bekor qilindi',
