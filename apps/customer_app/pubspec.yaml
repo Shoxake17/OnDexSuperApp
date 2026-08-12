@@ -16,7 +16,7 @@ dependencies:
   http: ^1.2.0
   web_socket_channel: ^3.0.0
   shared_preferences: ^2.2.0
-  geolocator: ^13.0.1
+  geolocator: ^14.0.3
   google_maps_flutter: ^2.10.0
   web: ^1.1.0
   webview_flutter: ^4.9.0
@@ -35,7 +35,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
   # Ilova belgisini (launcher icon) `assets/logo.png` dan barcha
   # Android/iOS o'lchamlariga generatsiya qiladi. Qo'lda 10+ PNG
   # yasash o'rniga bitta buyruq — va o'lchamlardan biri unutilib
