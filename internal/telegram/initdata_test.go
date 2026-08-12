@@ -22,6 +22,94 @@ import (
 
 const testBotToken = "123456:AAH-test-token-xyz"
 
+// signInitDataRaw — Telegram HAQIQATAN qanday quradi, xuddi shunday.
+//
+// ┌─ NEGA `url.Values.Encode()` EMAS ─────────────────────────────────┐
+// `Encode()` probelni `+` bilan kodlaydi (form-urlencoded qoidasi).
+// Telegram esa `encodeURIComponent` ishlatadi: probel `%20`, `+` esa
+// O'ZGARISHSIZ qoladi.
+//
+// Bu farq JONLI QURILMADA nosozlik keltirib chiqardi: `query_id` —
+// base64 satr va uning ichida `+` bo'lishi mumkin. Server `ParseQuery`
+// bilan o'qiganda `+` probelga aylanardi, imzo mos kelmasdi va
+// foydalanuvchi "Telegram ma'lumoti tasdiqlanmadi" xabarini olardi.
+//
+// Eski test yordamchisi buni USHLAY OLMASDI, chunki u ham `Encode()`
+// ishlatardi — kodlash va dekodlash o'z-o'ziga mos edi.
+// └───────────────────────────────────────────────────────────────────┘
+func encodeURIComponent(s string) string {
+	// `url.PathEscape` probelni `%20` qiladi va `+` ga tegmaydi —
+	// aynan `encodeURIComponent` kabi.
+	return strings.ReplaceAll(url.PathEscape(s), "&", "%26")
+}
+
+func signInitDataRaw(t *testing.T, botToken string, fields map[string]string) string {
+	t.Helper()
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var check strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			check.WriteByte('\n')
+		}
+		check.WriteString(k + "=" + fields[k])
+	}
+	mac := hmac.New(sha256.New, []byte("WebAppData"))
+	mac.Write([]byte(botToken))
+	secret := mac.Sum(nil)
+	mac2 := hmac.New(sha256.New, secret)
+	mac2.Write([]byte(check.String()))
+	hash := hex.EncodeToString(mac2.Sum(nil))
+
+	parts := make([]string, 0, len(fields)+1)
+	for _, k := range keys {
+		parts = append(parts, encodeURIComponent(k)+"="+encodeURIComponent(fields[k]))
+	}
+	parts = append(parts, "hash="+hash)
+	return strings.Join(parts, "&")
+}
+
+// ★ JONLI NOSOZLIK: `query_id` ichida `+` bo'lsa.
+//
+// Haqiqiy qurilmada aynan shu holat "Telegram ma'lumoti tasdiqlanmadi"
+// xatosini bergan edi.
+func TestPlusSignInQueryIDAccepted(t *testing.T) {
+	now := time.Now()
+	f := map[string]string{
+		"auth_date": strconv.FormatInt(now.Unix(), 10),
+		// base64 da `+` va `/` uchraydi — Telegram ularni kodlamaydi.
+		"query_id": "AAH+dF6IQ/AAAAAN0Xoh+Drc",
+		"user":     `{"id":1109793017,"first_name":"Shoxrux"}`,
+	}
+	raw := signInitDataRaw(t, testBotToken, f)
+
+	if _, err := ValidateInitData(raw, testBotToken, now); err != nil {
+		t.Fatalf("`+` belgili query_id rad etildi: %v", err)
+	}
+}
+
+// Probel `%20` bilan kelganda ham to'g'ri ochilishi kerak.
+func TestSpaceEncodedAsPercent20(t *testing.T) {
+	now := time.Now()
+	f := map[string]string{
+		"auth_date": strconv.FormatInt(now.Unix(), 10),
+		"user":      `{"id":42,"first_name":"Ali Vali"}`,
+	}
+	raw := signInitDataRaw(t, testBotToken, f)
+
+	u, err := ValidateInitData(raw, testBotToken, now)
+	if err != nil {
+		t.Fatalf("probelli ism rad etildi: %v", err)
+	}
+	if u.FirstName != "Ali Vali" {
+		t.Fatalf("ism buzildi: %q", u.FirstName)
+	}
+}
+
 // signInitData — Telegram serveri qanday imzolasa, xuddi shunday.
 func signInitData(t *testing.T, botToken string, fields map[string]string) string {
 	t.Helper()

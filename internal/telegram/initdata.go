@@ -80,15 +80,43 @@ func ValidateInitData(initData, botToken string, now time.Time) (*WebAppUser, er
 		return nil, ErrInitDataInvalid
 	}
 
-	// `initData` — URL query shaklidagi satr. `url.ParseQuery` qiymatlarni
-	// AVTOMATIK dekodlaydi, imzo esa DEKODLANGAN qiymatlar ustidan
-	// hisoblanadi (Telegram spetsifikatsiyasi).
-	vals, err := url.ParseQuery(initData)
-	if err != nil {
-		return nil, ErrInitDataInvalid
+	// ┌─ NEGA `url.ParseQuery` EMAS ──────────────────────────────────┐
+	// `url.ParseQuery` — `application/x-www-form-urlencoded` parseri
+	// va u `+` belgisini PROBELGA aylantiradi.
+	//
+	// Telegram esa `initData` ni `encodeURIComponent` bilan quradi:
+	// u probelni `%20` qiladi va `+` ni O'ZGARISHSIZ qoldiradi.
+	//
+	// `query_id` — base64 satr va uning ichida `+` BO'LISHI MUMKIN.
+	// O'shanda `ParseQuery` uni probelga aylantirib qiymatni buzardi
+	// va imzo HECH QACHON mos kelmasdi — foydalanuvchi "Telegram
+	// ma'lumoti tasdiqlanmadi" xabarini olardi (jonli qurilmada
+	// aynan shu holat uchradi).
+	//
+	// Shuning uchun qo'lda ajratamiz va `url.PathUnescape` bilan
+	// ochamiz — u `%XX` ni dekodlaydi, `+` ga esa TEGMAYDI.
+	// └───────────────────────────────────────────────────────────────┘
+	vals := make(map[string]string, 8)
+	for _, pair := range strings.Split(initData, "&") {
+		if pair == "" {
+			continue
+		}
+		k, v, found := strings.Cut(pair, "=")
+		if !found {
+			continue
+		}
+		dk, err := url.PathUnescape(k)
+		if err != nil {
+			return nil, ErrInitDataInvalid
+		}
+		dv, err := url.PathUnescape(v)
+		if err != nil {
+			return nil, ErrInitDataInvalid
+		}
+		vals[dk] = dv
 	}
 
-	gotHash := vals.Get("hash")
+	gotHash := vals["hash"]
 	if gotHash == "" {
 		return nil, ErrInitDataInvalid
 	}
@@ -101,25 +129,6 @@ func ValidateInitData(initData, botToken string, now time.Time) (*WebAppUser, er
 	// `signature` — Telegram'ning yangi Ed25519 imzosi uchun maydon;
 	// u HMAC hisobiga KIRMAYDI.
 	// └───────────────────────────────────────────────────────────────┘
-	keys := make([]string, 0, len(vals))
-	for k := range vals {
-		if k == "hash" || k == "signature" {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var sb strings.Builder
-	for i, k := range keys {
-		if i > 0 {
-			sb.WriteByte('\n')
-		}
-		sb.WriteString(k)
-		sb.WriteByte('=')
-		sb.WriteString(vals.Get(k))
-	}
-
 	// secret_key = HMAC-SHA256(kalit: "WebAppData", ma'lumot: bot_token)
 	//
 	// Diqqat: kalit va ma'lumot ALMASHTIRILGAN ko'rinadi, lekin
@@ -129,19 +138,66 @@ func ValidateInitData(initData, botToken string, now time.Time) (*WebAppUser, er
 	mac.Write([]byte(botToken))
 	secret := mac.Sum(nil)
 
-	mac2 := hmac.New(sha256.New, secret)
-	mac2.Write([]byte(sb.String()))
-	want := hex.EncodeToString(mac2.Sum(nil))
+	// ┌─ IKKI VARIANT SINALADI ───────────────────────────────────────┐
+	// Telegram `signature` maydonini keyinroq qo'shdi (uchinchi
+	// tomon uchun Ed25519 imzosi) va uni HMAC hisobidan chiqarish
+	// bo'yicha hujjatlar versiyalari FARQ QILADI. Klient versiyasiga
+	// qarab ikkala shakl ham uchraydi.
+	//
+	// Ikkalasini ham sinash XAVFSIZ: har ikkalasi ham bot tokeni
+	// bilan HMAC, ya'ni hujumchi ularning BIRORTASINI ham sohta
+	// yasay olmaydi. `signature` esa bizda umuman ishlatilmaydi.
+	//
+	// Faqat bittasini sinash esa haqiqiy foydalanuvchilarni rad
+	// etishga olib kelardi — sabab ko'rinmaydigan holda.
+	// └───────────────────────────────────────────────────────────────┘
+	matched := false
+	for _, skipSignature := range []bool{true, false} {
+		keys := make([]string, 0, len(vals))
+		for k := range vals {
+			if k == "hash" {
+				continue
+			}
+			if skipSignature && k == "signature" {
+				continue
+			}
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 
-	// Doimiy vaqtli solishtirish: oddiy `==` birinchi farqli baytda
-	// to'xtaydi va javob vaqti orqali imzoni bayt-bayt tanlash
-	// imkonini berardi.
-	if subtle.ConstantTimeCompare([]byte(want), []byte(gotHash)) != 1 {
+		var sb strings.Builder
+		for i, k := range keys {
+			if i > 0 {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString(k)
+			sb.WriteByte('=')
+			sb.WriteString(vals[k])
+		}
+
+		mac2 := hmac.New(sha256.New, secret)
+		mac2.Write([]byte(sb.String()))
+		want := hex.EncodeToString(mac2.Sum(nil))
+
+		// Doimiy vaqtli solishtirish: oddiy `==` birinchi farqli baytda
+		// to'xtaydi va javob vaqti orqali imzoni bayt-bayt tanlash
+		// imkonini berardi.
+		if subtle.ConstantTimeCompare([]byte(want), []byte(gotHash)) == 1 {
+			matched = true
+			break
+		}
+		// `signature` umuman yo'q bo'lsa ikkinchi variant birinchisi
+		// bilan bir xil — bekorga hisoblamaymiz.
+		if _, has := vals["signature"]; !has {
+			break
+		}
+	}
+	if !matched {
 		return nil, ErrInitDataInvalid
 	}
 
 	// ── Muddat (takroriy hujumga qarshi) ──
-	authDateRaw := vals.Get("auth_date")
+	authDateRaw := vals["auth_date"]
 	if authDateRaw == "" {
 		return nil, ErrInitDataInvalid
 	}
@@ -159,7 +215,7 @@ func ValidateInitData(initData, botToken string, now time.Time) (*WebAppUser, er
 	}
 
 	// ── Foydalanuvchi ──
-	userRaw := vals.Get("user")
+	userRaw := vals["user"]
 	if userRaw == "" {
 		return nil, ErrInitDataNoUser
 	}
