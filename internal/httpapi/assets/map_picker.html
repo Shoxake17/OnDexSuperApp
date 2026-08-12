@@ -83,6 +83,28 @@
   }
 
   function loadMaps(key, center) {
+    show('Xarita chizilmoqda…');
+
+    // ┌─ ENG MUHIM DIAGNOSTIKA ─────────────────────────────────────┐
+    // Kalit rad etilganda (referrer mos emas, API yoqilmagan,
+    // billing yo'q) Google skriptni MUVAFFAQIYATLI beradi, lekin
+    // `callback` ni CHAQIRMAYDI va `onerror` ham ishlamaydi —
+    // tarmoq xatosi yo'q. Natijada sahifa jimgina kutish holatida
+    // qolardi va sabab faqat brauzer konsolida ko'rinardi (WebView
+    // ichida esa uni ko'rish deyarli imkonsiz).
+    //
+    // `gm_authFailure` — Google'ning aynan shu holat uchun beradigan
+    // rasmiy ilgagi. Endi sabab ekranda yoziladi.
+    // └─────────────────────────────────────────────────────────────┘
+    window.gm_authFailure = function () {
+      show('Google xarita kalitini RAD ETDI.\n\n' +
+           'Cloud Console\'da tekshiring:\n' +
+           '1. kalit referrer ro\'yxatida https://api-ondex.shoxpro.uz/*\n' +
+           '2. "Maps JavaScript API" yoqilgan\n' +
+           '3. loyihada billing yoqilgan', true);
+      toHost({ type: 'error', message: 'gm_authFailure' });
+    };
+
     var s = document.createElement('script');
     s.src = 'https://maps.googleapis.com/maps/api/js?key=' +
             encodeURIComponent(key) + '&language=uz&callback=__ondexInit';
@@ -93,6 +115,16 @@
     };
     window.__ondexInit = function () { initMap(center); };
     document.head.appendChild(s);
+
+    // Skript yuklandi, lekin `callback` ham, `gm_authFailure` ham
+    // ishlamasa — bu ham jimgina to'xtash bo'lardi.
+    setTimeout(function () {
+      if (!map) {
+        show('Google Maps javob bermadi (10s).\n' +
+             'Ehtimol kalit yoki tarmoq cheklovi.', true);
+        toHost({ type: 'error', message: 'maps init timeout' });
+      }
+    }, 10000);
   }
 
   // Sozlama: { token, lat, lng, apiBase }
@@ -113,16 +145,34 @@
   // └───────────────────────────────────────────────────────────────┘
   function start(cfg) {
     var center = { lat: cfg.lat, lng: cfg.lng };
+    show('Xarita kaliti olinmoqda…');
+
+    // MUDDAT: `fetch` ning O'ZI hech qachon uzilmaydi. Server javob
+    // bermay qolsa sahifa abadiy kutish holatida qolardi va bu ham
+    // "Xarita yuklanmoqda..." ko'rinishida namoyon bo'lardi.
+    var ctl = null, killer = null;
+    try {
+      ctl = new AbortController();
+      killer = setTimeout(function () { ctl.abort(); }, 10000);
+    } catch (e) {}
+
     fetch(cfg.apiBase + '/config/maps', {
       headers: { 'Authorization': 'Bearer ' + cfg.token },
+      signal: ctl ? ctl.signal : undefined,
     }).then(function (r) {
+      if (killer) clearTimeout(killer);
       if (!r.ok) throw new Error('config/maps -> ' + r.status);
       return r.json();
     }).then(function (d) {
       if (!d.maps_api_key) throw new Error('kalit bo\'sh');
       loadMaps(d.maps_api_key, center);
     }).catch(function (e) {
-      show('Xarita kalitini olib bo\'lmadi: ' + e.message, true);
+      if (killer) clearTimeout(killer);
+      var why = (e && e.name === 'AbortError')
+          ? 'server 10 soniyada javob bermadi'
+          : e.message;
+      show('Xarita kalitini olib bo\'lmadi: ' + why + '\n\n' +
+           'Sessiya eskirgan bo\'lsa ilovadan chiqib qaytadan kiring.', true);
       toHost({ type: 'error', message: String(e) });
     });
   }
