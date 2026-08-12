@@ -66,6 +66,30 @@ class _MapSurfaceState extends State<MapSurface> {
         setState(() => _error = 'Sessiya topilmadi — qaytadan kiring');
         return;
       }
+
+      // ┌─ SOZLAMA SAHIFADAN OLDIN JOYLASHTIRILADI ──────────────────┐
+      // Avval sozlama `postWebMessage` bilan, sahifa `boot` yuborgandan
+      // KEYIN yuborilardi. Bu ikki tomonlama qo'l berish edi va uning
+      // istalgan bo'g'ini uzilsa sahifa jimgina "Xarita yuklanmoqda..."
+      // holatida qotib qolardi — aynan shu nosozlik kuzatilgan.
+      //
+      // `addScriptToExecuteOnDocumentCreated` skriptni hujjat
+      // YARATILISHIDA, sahifaning o'z skriptlaridan OLDIN bajaradi.
+      // Ya'ni `window.__ondexConfig` sahifa uchun boshidanoq mavjud:
+      // kutish yo'q, tartib muammosi yo'q, xabar yo'qolishi yo'q.
+      //
+      // Token URL'ga QO'YILMAYDI (u WebView tarixi va server loglariga
+      // tushardi) — u faqat sahifa xotirasiga boradi.
+      // └────────────────────────────────────────────────────────────┘
+      await _controller.addScriptToExecuteOnDocumentCreated(
+        'window.__ondexConfig = ${jsonEncode({
+          'token': api.token,
+          'apiBase': baseUrl,
+          'lat': _chustLat,
+          'lng': _chustLng,
+        })};',
+      );
+
       await _controller.loadUrl('$baseUrl/map-picker');
       if (mounted) setState(() => _ready = true);
     } catch (e) {
@@ -90,7 +114,10 @@ class _MapSurfaceState extends State<MapSurface> {
     }
     switch (m['type']) {
       case 'boot':
-        // Sahifa tayyor — endi sozlamani (jumladan tokenni) beramiz.
+        // ZAXIRA YO'L. Asosiy yo'l — yuqoridagi
+        // `addScriptToExecuteOnDocumentCreated`. Sahifa tomonda
+        // `startOnce` qo'riqchisi bor, shuning uchun sozlama ikki
+        // marta kelsa ham xarita bir marta ishga tushadi.
         _controller.postWebMessage(jsonEncode({
           'token': api.token,
           'apiBase': baseUrl,

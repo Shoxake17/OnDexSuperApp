@@ -95,7 +95,22 @@
     document.head.appendChild(s);
   }
 
-  // Host bergan ma'lumot: { token, lat, lng, apiBase }
+  // Sozlama: { token, lat, lng, apiBase }
+  //
+  // ┌─ NEGA XABAR ORQALI EMAS ──────────────────────────────────────┐
+  // Avval host sozlamani `postWebMessage` bilan yuborardi, sahifa esa
+  // uni kutib turardi. Bu ikki tomonlama "qo'l berish" edi va uning
+  // istalgan bo'g'ini uzilsa sahifa JIMGINA "Xarita yuklanmoqda..."
+  // holatida qotib qolardi — aynan shu nosozlik kuzatilgan.
+  //
+  // Endi host `addScriptToExecuteOnDocumentCreated` orqali
+  // `window.__ondexConfig` ni sahifa skriptlaridan OLDIN joylashtiradi.
+  // Ya'ni sozlama shu skript ishga tushganda ALLAQACHON mavjud:
+  // kutish ham, tartib muammosi ham yo'q.
+  //
+  // Token baribir URL'ga tushmaydi (u tarix va server loglariga
+  // yozilardi) — u faqat sahifa xotirasida qoladi.
+  // └───────────────────────────────────────────────────────────────┘
   function start(cfg) {
     var center = { lat: cfg.lat, lng: cfg.lng };
     fetch(cfg.apiBase + '/config/maps', {
@@ -112,14 +127,41 @@
     });
   }
 
-  // Hostdan keladigan yagona xabar — sozlama.
-  window.chrome.webview.addEventListener('message', function (e) {
-    var cfg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-    if (cfg && cfg.token) start(cfg);
-  });
+  var started = false;
+  function startOnce(cfg) {
+    if (started || !cfg || !cfg.token) return;
+    started = true;
+    start(cfg);
+  }
 
-  // Host tayyor ekanini bilsin (u shundan keyin sozlamani yuboradi).
-  toHost({ type: 'boot' });
+  // ASOSIY YO'L: sozlama sahifa yuklanishidan oldin joylashtirilgan.
+  startOnce(window.__ondexConfig);
+
+  // ZAXIRA YO'L: eski host (yoki injektsiya ishlamagan holat) uchun
+  // xabar ham qabul qilinadi. `startOnce` ikki marta ishga tushishning
+  // oldini oladi.
+  try {
+    window.chrome.webview.addEventListener('message', function (e) {
+      var cfg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      startOnce(cfg);
+    });
+    toHost({ type: 'boot' });
+  } catch (e) {
+    // `chrome.webview` yo'q — sahifa oddiy brauzerda ochilgan.
+  }
+
+  // ┌─ JIMGINA QOTIB QOLMASLIK KAFOLATI ────────────────────────────┐
+  // Avval sozlama kelmasa ekranda abadiy "Xarita yuklanmoqda..."
+  // turardi va sabab umuman ko'rinmasdi. Endi 5 soniyadan keyin
+  // ANIQ sabab yoziladi.
+  // └───────────────────────────────────────────────────────────────┘
+  setTimeout(function () {
+    if (!started) {
+      show('Sozlama kelmadi: ilova xarita kalitini uzata olmadi.\n' +
+           'Ilovadan chiqib qaytadan kiring.', true);
+      toHost({ type: 'error', message: 'config yetib kelmadi' });
+    }
+  }, 5000);
 })();
 </script>
 </body>

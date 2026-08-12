@@ -53,6 +53,14 @@ func TestMapPickerPageServed(t *testing.T) {
 		"maps.googleapis.com", // Maps JS aynan shu yerdan yuklanadi
 		"/config/maps",        // kalit backenddan olinadi
 		"chrome.webview",      // host bilan aloqa kanali
+		// Sozlama sahifa skriptlaridan OLDIN injektsiya qilinadi.
+		// Avval u `postWebMessage` bilan kelardi va qo'l berish
+		// uzilganda sahifa jimgina "Xarita yuklanmoqda..." holatida
+		// qotib qolardi.
+		"__ondexConfig",
+		// Har qanday to'xtash 5 soniyadan keyin ANIQ sabab bilan
+		// ko'rsatiladi — jimgina qotib qolish qaytarilmasin.
+		"Sozlama kelmadi",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("sahifada %q topilmadi", want)
