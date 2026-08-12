@@ -5,7 +5,7 @@
 .env.example
 .env.*.example
 **/.env.example
-
+/image/
 # Firevase
 /secrets/
 secrets/
