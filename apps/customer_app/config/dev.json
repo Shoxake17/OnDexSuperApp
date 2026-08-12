@@ -1,0 +1,8 @@
+{
+  "_izoh": "MAHALLIY ishlab chiqish. Ishlatish: flutter run --dart-define-from-file=config/dev.json",
+  "_diqqat": "Wi-Fi IP o'zgarganda FAQAT shu ikki qatorni yangilang. Android tarmoq konfiguratsiyasiga tegish SHART EMAS — debug build barcha manzillarga cleartext ruxsat beradi (android/app/src/debug/res/xml/network_security_config.xml).",
+  "_ip_topish": "PowerShell: (Get-NetIPAddress -AddressFamily IPv4 | ? InterfaceAlias -eq 'Wi-Fi').IPAddress",
+
+  "ONDEX_API_URL": "http://192.168.232.231:8080",
+  "ONDEX_WEB_URL": "http://192.168.232.231:3000"
+}

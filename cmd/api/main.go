@@ -420,7 +420,25 @@ func main() {
 		// `telegram.Verifier.requireSecret` izohida batafsil.
 		tgVerifier = tgVerifier.
 			WithPublicURL(publicURL).
-			WithConfirmSecretRequired(!devMode)
+			WithConfirmSecretRequired(!devMode).
+			// ┌─ MINI APP BOG'LANISHI ────────────────────────────────┐
+			// Kontakt ulashilganda telegram_id ↔ telefon saqlanadi
+			// (migration 0031). Busiz Mini App foydalanuvchi kimligini
+			// aniqlay olmaydi: `initData` da telefon YO'Q.
+			//
+			// Hook orqali ulanadi, chunki `internal/telegram` paketi
+			// `internal/users` ni import qilmaydi (`WithContactHook`
+			// izohiga qarang).
+			// └───────────────────────────────────────────────────────┘
+			WithContactHook(func(ctx context.Context, tgID int64, phone string) error {
+				u, err := authSvc.LinkTelegramPhone(ctx, tgID, phone)
+				if err != nil {
+					return err
+				}
+				slog.Info("telegram: raqam bog'landi",
+					"telegram_id", tgID, "user_id", u.ID)
+				return nil
+			})
 		if devMode {
 			slog.Warn("Telegram bilan kirish: tasdiq kaliti TALAB QILINMAYDI " +
 				"(dev). Bu fishingga ochiq — havolani qurbonga yuborgan odam " +
@@ -485,8 +503,10 @@ func main() {
 		// chek/bildirishnoma uchun ishlashda davom etadi.
 		EmailLoginEnabled: strings.EqualFold(
 			strings.TrimSpace(os.Getenv("EMAIL_LOGIN_ENABLED")), "true"),
-		Firebase:      firebaseVerifier,
-		Telegram:      tgVerifier,
+		Firebase: firebaseVerifier,
+		Telegram: tgVerifier,
+		// Mini App `initData` imzosini tekshirish uchun (server.go izohi).
+		TelegramBotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 		Notifications: notifStore,
 		PushTokens:    tokenStore,
 	})

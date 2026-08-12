@@ -49,6 +49,22 @@ type User struct {
 	EntityID  string    `json:"entity_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 
+	// TelegramID — Telegram Mini App uchun bog'lanish (migration 0031).
+	//
+	// ┌─ NEGA KERAK ──────────────────────────────────────────────────┐
+	// Mini App `initData` da FAQAT Telegram ID bo'ladi — telefon
+	// raqami u yerda YO'Q va hech qachon bo'lmaydi. OnDex'da esa
+	// kimlik telefon raqami.
+	//
+	// Foydalanuvchi botda kontaktini ulashganda shu maydon
+	// to'ldiriladi. Keyin Mini App faqat ID bilan kelsa ham server
+	// uni to'g'ri akkauntga bog'lay oladi.
+	// └───────────────────────────────────────────────────────────────┘
+	//
+	// `json:"-"` — bu ichki bog'lanish, HTTP javobida chiqishi shart
+	// emas va boshqa foydalanuvchilarga ko'rinmasligi kerak.
+	TelegramID int64 `json:"-"`
+
 	// Mijozning saqlangan yetkazib berish manzili (xaritadan tanlangan).
 	// Hammasi ixtiyoriy — hali tanlanmagan bo'lsa bo'sh/0 qiymatlar.
 	Address AddressDetails `json:"address"`
@@ -190,6 +206,24 @@ type Repository interface {
 	// tozalash, eski hash'ni kuchaytirish) ularning nomini bo'sh
 	// satrga aylantirib yuborardi (bazada tekshirilgan).
 	SetPasswordHash(ctx context.Context, id, hash string) error
+
+	// GetByTelegramID — Telegram Mini App kirishi uchun (migration 0031).
+	// Topilmasa ErrUserNotFound.
+	GetByTelegramID(ctx context.Context, telegramID int64) (*User, error)
+
+	// LinkTelegram — telegram_id ni foydalanuvchiga bog'laydi.
+	//
+	// ┌─ EGALIKNI KO'CHIRISH ─────────────────────────────────────────┐
+	// Bir xil Telegram akkaunti oldin BOSHQA foydalanuvchiga
+	// bog'langan bo'lsa (masalan odam raqamini o'zgartirdi yoki
+	// telefon boshqa egaga o'tdi), bog'lanish YANGI egasiga o'tishi
+	// kerak. Aks holda `UNIQUE` indeks tufayli yozuv umuman
+	// saqlanmasdi va Mini App eski akkauntni ochishda davom etardi —
+	// ya'ni odam boshqa birovning hisobiga tushardi.
+	//
+	// Shu sabab implementatsiya eski bog'lanishni AVVAL uzadi.
+	// └───────────────────────────────────────────────────────────────┘
+	LinkTelegram(ctx context.Context, userID string, telegramID int64) error
 }
 
 // ProfileUpdate — UpdateProfile uchun maydonlar. Ko'rsatkich (pointer)

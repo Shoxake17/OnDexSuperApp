@@ -717,9 +717,29 @@ jobs:
             # ajralib ketardi va sababi topilmaydigan nomuvofiqlik
             # paydo bo'lardi.
             touch .env
+
+            # ┌─ YANGI QATOR KAFOLATI ────────────────────────────────┐
+            # `.env` oxirgi qatori yangi qator bilan tugamasa,
+            # `echo ... >> .env` uni OLDINGI QATORGA YOPISHTIRADI:
+            #     ARGON_MAX_CONCURRENCY=4API_TAG=abc123
+            # Natijada ikkala o'zgaruvchi ham yo'qoladi va compose
+            # "required variable API_TAG is missing" deb to'xtaydi.
+            # └───────────────────────────────────────────────────────┘
+            [ -s .env ] && [ "$(tail -c1 .env | wc -l)" -eq 0 ] && echo >> .env
+
             sed -i '/^API_TAG=/d;/^WEB_TAG=/d' .env
             echo "API_TAG=${IMAGE_TAG}" >> .env
             echo "WEB_TAG=${IMAGE_TAG}" >> .env
+
+            # Yozilganini TASDIQLAYMIZ. Busiz nosozlik keyingi
+            # qadamda ("required variable ... missing") chiqib,
+            # sababi ko'rinmasdi.
+            for v in API_TAG WEB_TAG; do
+              grep -q "^${v}=${IMAGE_TAG}$" .env || {
+                echo "::error::${v} .env ga yozilmadi"
+                exit 1
+              }
+            done
 
             # ┌─ NEGA --password-stdin ───────────────────────────────┐
             # `docker login -p $TOKEN` da token serverning JARAYONLAR

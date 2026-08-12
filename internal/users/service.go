@@ -141,6 +141,93 @@ func (s *Service) LoginWithFirebasePhone(ctx context.Context, verifiedPhone stri
 	return s.finishPhoneLogin(ctx, phone)
 }
 
+// ErrTelegramNotLinked — Telegram akkaunti hali biror raqamga
+// bog'lanmagan. Mini App buni ko'rib foydalanuvchini kontakt
+// ulashishga taklif qiladi.
+var ErrTelegramNotLinked = errors.New("telegram akkaunti raqamga bog'lanmagan")
+
+// LinkTelegramPhone — botda KONTAKT ULASHILGANDA chaqiriladi.
+//
+// ┌─ NEGA AYNAN SHU YERDA ────────────────────────────────────────────┐
+// Telegram Mini App `initData` da telefon raqami YO'Q — u faqat
+// Telegram ID beradi. Raqamni olishning YAGONA yo'li — botdagi
+// "kontaktni ulashish" tugmasi (`AskContact`).
+//
+// Shu sabab bog'lanish aynan kontakt kelgan paytda yoziladi. Undan
+// keyin Mini App faqat ID bilan kelsa ham server raqamni biladi.
+// └───────────────────────────────────────────────────────────────────┘
+//
+// XAVFSIZLIK: `verifiedPhone` FAQAT Telegram yuborgan kontaktdan
+// olinishi shart va kontakt EGASI tekshirilgan bo'lishi kerak
+// (`m.Contact.UserID == m.From.ID` — `internal/telegram/verifier.go`).
+// Busiz istalgan odam BEGONA raqamni ulashib, o'sha akkauntni o'ziga
+// bog'lab olardi.
+//
+// Akkaunt topilmasa YARATILADI — telefon oqimi bilan bir xil yo'l,
+// ya'ni keyin SMS bilan kirgan odam AYNAN SHU akkauntga tushadi.
+func (s *Service) LinkTelegramPhone(ctx context.Context, telegramID int64, verifiedPhone string) (*User, error) {
+	if telegramID == 0 {
+		return nil, errors.New("telegram ID bo'sh")
+	}
+	phone, err := NormalizePhone(verifiedPhone)
+	if err != nil {
+		return nil, err
+	}
+	u, err := s.users.GetByPhone(ctx, phone)
+	if errors.Is(err, ErrUserNotFound) {
+		u = &User{
+			ID:            s.idgen(),
+			Phone:         phone,
+			Role:          RoleCustomer,
+			PhoneVerified: true, // raqamni Telegram tasdiqladi
+			CreatedAt:     s.now(),
+		}
+		if err := s.users.Create(ctx, u); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+	if err := s.users.LinkTelegram(ctx, u.ID, telegramID); err != nil {
+		return nil, err
+	}
+	u.TelegramID = telegramID
+	return u, nil
+}
+
+// LoginWithTelegramID — Mini App kirishi.
+//
+// XAVFSIZLIK: `telegramID` FAQAT imzosi tekshirilgan `initData` dan
+// olinishi shart (`telegram.ValidateInitData`). Xom, klient yuborgan
+// ID bu yerga UZATILMASLIGI kerak — aks holda istalgan odam raqamni
+// almashtirib begona akkauntga kirardi.
+//
+// Bog'lanish topilmasa `ErrTelegramNotLinked` — chaqiruvchi
+// foydalanuvchini kontakt ulashishga yo'naltiradi.
+func (s *Service) LoginWithTelegramID(ctx context.Context, telegramID int64) (string, *User, error) {
+	if telegramID == 0 {
+		return "", nil, ErrTelegramNotLinked
+	}
+	u, err := s.users.GetByTelegramID(ctx, telegramID)
+	if errors.Is(err, ErrUserNotFound) {
+		return "", nil, ErrTelegramNotLinked
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	// ┌─ NEGA `PhoneProven` EMAS ─────────────────────────────────────┐
+	// Bu token bilan parol o'zgartirishga JORIY PAROL so'raladi.
+	// `initData` — Telegram seansining isboti, foydalanuvchi ayni
+	// damda raqamiga ega ekanining isboti EMAS (telefon o'g'irlangan
+	// yoki Telegram seansi ochiq qolgan bo'lishi mumkin).
+	// └───────────────────────────────────────────────────────────────┘
+	token, err := s.tokens.Issue(u)
+	if err != nil {
+		return "", nil, err
+	}
+	return token, u, nil
+}
+
 // finishPhoneLogin — raqam TASDIQLANGANDAN keyingi umumiy qism:
 // foydalanuvchini topish/yaratish va token berish.
 //

@@ -23,6 +23,44 @@ func (r *fakeUserRepo) GetByPhone(_ context.Context, phone string) (*User, error
 	}
 	return nil, ErrUserNotFound
 }
+// Telegram Mini App bog'lanishi (migration 0031). Xotira va Postgres
+// implementatsiyalari bilan BIR XIL semantika: eski bog'lanish avval
+// uziladi, aks holda odam Mini App'da begona hisobga tushardi.
+func (r *fakeUserRepo) GetByTelegramID(_ context.Context, tgID int64) (*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if tgID == 0 {
+		return nil, ErrUserNotFound
+	}
+	for _, u := range r.data {
+		if u.TelegramID == tgID {
+			return u, nil
+		}
+	}
+	return nil, ErrUserNotFound
+}
+
+func (r *fakeUserRepo) LinkTelegram(_ context.Context, userID string, tgID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var target *User
+	for _, u := range r.data {
+		if u.ID == userID {
+			target = u
+		}
+	}
+	if target == nil {
+		return ErrUserNotFound
+	}
+	for _, u := range r.data {
+		if u.TelegramID == tgID && u.ID != userID {
+			u.TelegramID = 0
+		}
+	}
+	target.TelegramID = tgID
+	return nil
+}
+
 func (r *fakeUserRepo) GetByID(_ context.Context, id string) (*User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"chustapp/internal/ratelimit"
+	"chustapp/internal/telegram"
 	"chustapp/internal/users"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // authStatus — auth xatosi uchun HTTP holati.
@@ -440,6 +442,78 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			"deep_link": link,
 			"token":     token,
 		})
+	})
+
+	// POST /auth/telegram/miniapp  {"init_data": "..."}
+	//
+	// ┌─ TELEGRAM MINI APP KIRISHI ───────────────────────────────────┐
+	// Mini App ochilganda Telegram sahifaga `initData` beradi. U
+	// KLIENT tomonida turadi, ya'ni o'zgartirilishi mumkin —
+	// shuning uchun imzo bot tokeni bilan HMAC-SHA256 orqali
+	// tekshiriladi (`telegram.ValidateInitData`).
+	//
+	// Tekshiruvsiz istalgan odam `user.id` ni almashtirib BEGONA
+	// AKKAUNTGA kirardi. Bu Mini App'lardagi eng ko'p uchraydigan
+	// zaiflik.
+	//
+	// ── TELEFON RAQAMI ──
+	// `initData` da telefon YO'Q va hech qachon bo'lmaydi. Shuning
+	// uchun kirish faqat botda kontakt ULASHILGAN bo'lsa ishlaydi
+	// (migration 0031, `users.LinkTelegramPhone`). Bog'lanmagan
+	// bo'lsa 409 va bot havolasi qaytariladi — klient foydalanuvchini
+	// o'sha yerga yo'naltiradi.
+	// └───────────────────────────────────────────────────────────────┘
+	mux.HandleFunc("POST /auth/telegram/miniapp", func(w http.ResponseWriter, r *http.Request) {
+		if !s.telegramReady(w) {
+			return
+		}
+		// Imzo tekshiruvi arzon, lekin cheksiz urinish imzo tanlashga
+		// (va CPU sarfiga) yo'l ochardi.
+		if rateLimitedBoth(w, loginIPLimiter, clientIP(r),
+			telegramPollLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			InitData string `json:"init_data"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		// Uzunlik chegarasi: haqiqiy `initData` ~500-1500 belgi.
+		if len(req.InitData) > 4096 {
+			httpError(w, http.StatusBadRequest, errors.New("init_data juda uzun"))
+			return
+		}
+		tgUser, err := telegram.ValidateInitData(req.InitData, s.TelegramBotToken, time.Now())
+		if err != nil {
+			// Sabab OSHKOR QILINMAYDI: "imzo noto'g'ri" va "muddati
+			// o'tgan" farqi hujumchiga imzo tanlashda ma'lumot berardi.
+			slog.Warn("miniapp: initData rad etildi", "err", err, "ip", clientIP(r))
+			httpError(w, http.StatusUnauthorized, errors.New("Telegram ma'lumoti tasdiqlanmadi"))
+			return
+		}
+
+		token, u, err := s.AuthSvc.LoginWithTelegramID(r.Context(), tgUser.ID)
+		if errors.Is(err, users.ErrTelegramNotLinked) {
+			// 409 — "kirish rad etildi" EMAS, "yana bir qadam kerak".
+			// Klient buni ko'rib botga yo'naltiradi.
+			link := ""
+			if name, e := s.Telegram.BotUsername(r.Context()); e == nil && name != "" {
+				link = "https://t.me/" + name
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":     "Raqamingiz hali bog'lanmagan",
+				"need":      "share_contact",
+				"bot_link":  link,
+				"first_name": tgUser.FirstName,
+			})
+			return
+		}
+		if err != nil {
+			respondAuthError(w, err, http.StatusUnauthorized)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
 	})
 
 	// GET /auth/telegram/login/status?token=... — ilova shu yerni

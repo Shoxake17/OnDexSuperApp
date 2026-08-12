@@ -25,17 +25,79 @@ func (r *PgUserRepo) GetByID(ctx context.Context, id string) (*users.User, error
 	return r.getBy(ctx, "id", id)
 }
 
+// `telegram_id` NULL bo'lishi mumkin (foydalanuvchilarning aksariyati
+// Telegram bog'lamaydi). `COALESCE(...,0)` bilan u oddiy `int64` ga
+// o'qiladi — 0 = bog'lanmagan. Busiz har bir o'qishda `sql.NullInt64`
+// ishlatib, uni har joyda ochish kerak bo'lardi.
 const userColumns = `id, phone, name, role, entity_id, created_at,
 	address_lat, address_lng, address_text, address_entrance, address_floor,
 	address_apartment, address_intercom, address_comment,
-	first_name, last_name, email, password_hash, phone_verified, email_verified`
+	first_name, last_name, email, password_hash, phone_verified, email_verified,
+	COALESCE(telegram_id, 0)`
 
 func scanUser(row pgx.Row, u *users.User) error {
 	return row.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt,
 		&u.Address.Lat, &u.Address.Lng, &u.Address.Text, &u.Address.Entrance,
 		&u.Address.Floor, &u.Address.Apartment, &u.Address.Intercom, &u.Address.Comment,
 		&u.FirstName, &u.LastName, &u.Email, &u.PasswordHash, &u.PhoneVerified,
-		&u.EmailVerified)
+		&u.EmailVerified, &u.TelegramID)
+}
+
+// GetByTelegramID — Telegram Mini App kirishi (migration 0031).
+func (r *PgUserRepo) GetByTelegramID(ctx context.Context, telegramID int64) (*users.User, error) {
+	if telegramID == 0 {
+		return nil, users.ErrUserNotFound
+	}
+	var u users.User
+	err := scanUser(r.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE telegram_id = $1`, telegramID), &u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, users.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// LinkTelegram — telegram_id ni foydalanuvchiga bog'laydi.
+//
+// ┌─ IKKI QADAM, BITTA TRANZAKSIYADA ─────────────────────────────────┐
+// 1. Shu telegram_id BOSHQA foydalanuvchida bo'lsa — uzib qo'yamiz;
+// 2. So'ng joriy foydalanuvchiga yozamiz.
+//
+// Birinchi qadamsiz `UNIQUE` indeks yozishni rad etardi va bog'lanish
+// ESKI egasida qolib ketardi — ya'ni odam Mini App'da BEGONA hisobga
+// tushardi. Bu telefon raqami boshqa egaga o'tganda (O'zbekistonda
+// tez-tez uchraydi) real holat.
+//
+// Tranzaksiya: ikkala amal orasida boshqa so'rov kirsa, yarim
+// bog'langan holat qolardi.
+// └───────────────────────────────────────────────────────────────────┘
+func (r *PgUserRepo) LinkTelegram(ctx context.Context, userID string, telegramID int64) error {
+	if telegramID == 0 {
+		return fmt.Errorf("LinkTelegram: telegram_id bo'sh")
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // Commit muvaffaqiyatli bo'lsa no-op
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET telegram_id = NULL WHERE telegram_id = $1 AND id <> $2`,
+		telegramID, userID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx,
+		`UPDATE users SET telegram_id = $2 WHERE id = $1`, userID, telegramID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return tx.Commit(ctx)
 }
 
 // getBy — foydalanuvchini telefon yoki ID bo'yicha o'qiydi.

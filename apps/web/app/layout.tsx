@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import TelegramAuth from "./telegram-auth";
+import { getSessionToken } from "@/lib/session";
 
 export const metadata: Metadata = {
   title: "ChustApp",
@@ -20,12 +22,27 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // ┌─ TELEGRAM MINI APP AVTOMATIK KIRISHI ─────────────────────────────┐
+  // Sessiya BOR-YO'QLIGI serverda aniqlanadi va klientga faqat `true/
+  // false` beriladi — tokenning o'zi brauzerga hech qachon chiqmaydi
+  // (u httpOnly cookie'da).
+  //
+  // `TelegramAuth` Telegram TASHQARISIDA hech narsa qilmaydi: oddiy
+  // brauzerda va Flutter WebView'da `initData` bo'lmaydi, shuning
+  // uchun u jimgina chetga chiqadi va mavjud kirish oqimlariga
+  // (bridge, SMS) umuman xalaqit bermaydi.
+  // └───────────────────────────────────────────────────────────────────┘
+  const signedIn = Boolean(await getSessionToken());
+
   return (
     <html lang="uz">
-      <body>{children}</body>
+      <body>
+        <TelegramAuth signedIn={signedIn} />
+        {children}
+      </body>
     </html>
   );
 }

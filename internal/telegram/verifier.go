@@ -262,6 +262,9 @@ type Verifier struct {
 	// publicURL — "OnDex'ga qaytish" tugmasi ishora qiladigan manzil
 	// (`returnPath` izohiga qarang). Bo'sh bo'lsa tugma yuborilmaydi.
 	publicURL string
+	// onContact — kontakt ulashilganda telegram_id ↔ telefon
+	// bog'lanishini saqlaydi (Mini App uchun). `WithContactHook`.
+	onContact ContactHook
 	// requireSecret — natijani olish uchun `ConfirmSecret` SHARTMI.
 	//
 	// ┌─ NEGA SOZLANADIGAN (va nega bu xavfsiz emas) ─────────────────┐
@@ -301,6 +304,25 @@ func (v *Verifier) WithConfirmSecretRequired(required bool) *Verifier {
 	return v
 }
 
+// ContactHook — foydalanuvchi botda KONTAKTINI ULASHGANDA chaqiriladi.
+//
+// `telegramID` — kontakt EGASI tekshirilgan (`m.Contact.UserID ==
+// m.From.ID`), `phone` — normallashtirilgan.
+type ContactHook func(ctx context.Context, telegramID int64, phone string) error
+
+// WithContactHook — Telegram Mini App uchun bog'lanishni saqlash.
+//
+// ┌─ NEGA HOOK, TO'G'RIDAN-TO'G'RI CHAQIRUV EMAS ──────────────────────┐
+// `internal/telegram` paketi `internal/users` ni IMPORT QILMAYDI va
+// qilmasligi ham kerak — aks holda ikki paket bir-biriga bog'lanib,
+// telegram testlari uchun butun foydalanuvchi qatlamini ko'tarish
+// kerak bo'lardi. Bog'lanish `cmd/api` da ulanadi.
+// └────────────────────────────────────────────────────────────────────┘
+func (v *Verifier) WithContactHook(h ContactHook) *Verifier {
+	v.onContact = h
+	return v
+}
+
 func NewVerifier(c botAPI, issue CodeIssuer, normalize PhoneNormalizer, codeTTLMinutes int) *Verifier {
 	return &Verifier{
 		client:     c,
@@ -312,6 +334,15 @@ func NewVerifier(c botAPI, issue CodeIssuer, normalize PhoneNormalizer, codeTTLM
 }
 
 func (v *Verifier) Configured() bool { return v.client.Configured() }
+
+// BotUsername — bot nomi (keshlanadi).
+//
+// Mini App kirishida raqam hali bog'lanmagan bo'lsa, klientga botning
+// havolasi qaytariladi — foydalanuvchi o'sha yerda kontaktini
+// ulashadi. `username` ning ochiq o'rami.
+func (v *Verifier) BotUsername(ctx context.Context) (string, error) {
+	return v.username(ctx)
+}
 
 // Start — yangi urinish boshlaydi va deep link qaytaradi.
 func (v *Verifier) Start(ctx context.Context, phone string) (deepLink string, err error) {
@@ -464,9 +495,20 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 	if strings.HasPrefix(m.Text, "/start") {
 		token := strings.TrimSpace(strings.TrimPrefix(m.Text, "/start"))
 		if token == "" {
-			_ = v.client.SendMessage(ctx, chatID,
-				"Salom! Tasdiqlashni boshlash uchun OnDex ilovasidagi "+
-					"\"Telegram orqali kod olish\" tugmasidan foydalaning.")
+			// ┌─ TOKENSIZ `/start` — MINI APP KIRISH NUQTASI ─────────┐
+			// Avval bu yerda faqat "ilovadagi tugmadan foydalaning"
+			// deb yozilardi va oqim tugardi.
+			//
+			// Endi bu Mini App uchun ASOSIY yo'l: foydalanuvchi botni
+			// ochadi, raqamini ulashadi va shundan keyin mini ilova
+			// uni tanib oladi. Raqamsiz Mini App kimligini
+			// aniqlay OLMAYDI — `initData` da telefon yo'q.
+			// └───────────────────────────────────────────────────────┘
+			_ = v.client.AskContact(ctx, chatID,
+				"Salom! OnDex mini ilovasidan foydalanish uchun "+
+					"raqamingizni tasdiqlang.\n\n"+
+					"Pastdagi tugma Telegram tomonidan tasdiqlangan raqamni "+
+					"yuboradi — shu sabab uni qo'lda yozib bo'lmaydi.")
 			return
 		}
 		if _, ok := v.store.bindChat(token, chatID); !ok {
@@ -483,12 +525,14 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 
 	// 2-qadam: ulashilgan kontakt.
 	if m.Contact != nil {
-		p, ok := v.store.getByChat(chatID)
-		if !ok {
-			_ = v.client.SendMessage(ctx, chatID,
-				"Faol so'rov topilmadi. Ilovada qaytadan boshlang.")
-			return
-		}
+		// ┌─ TARTIB O'ZGARTIRILDI ────────────────────────────────────┐
+		// Avval BIRINCHI navbatda faol kirish so'rovi qidirilardi va
+		// topilmasa xabar berib chiqib ketilardi. Endi egalik
+		// tekshiruvi va raqamni o'qish OLDINGA olindi, chunki kontakt
+		// FAOL SO'ROVSIZ ham keladi — Telegram Mini App uchun
+		// foydalanuvchi shunchaki raqamini bog'lamoqchi bo'lganda.
+		// └───────────────────────────────────────────────────────────┘
+
 		// BOSHQA ODAMNING kontaktini ulashish mumkin — Telegram bunga
 		// ruxsat beradi. Shuning uchun kontakt EGASI ham tekshiriladi.
 		if m.From == nil || m.Contact.UserID != m.From.ID {
@@ -499,6 +543,34 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 		shared, err := v.normalize(m.Contact.PhoneNumber)
 		if err != nil {
 			_ = v.client.SendMessage(ctx, chatID, "Raqam formati tanilmadi.")
+			return
+		}
+
+		// ┌─ MINI APP UCHUN BOG'LANISH ───────────────────────────────┐
+		// telegram_id ↔ telefon bog'lanishi HAR DOIM saqlanadi —
+		// kirish oqimi bo'lsa ham, bo'lmasa ham.
+		//
+		// NEGA: Mini App `initData` da telefon raqami YO'Q, faqat
+		// Telegram ID bor. Bog'lanish shu yerda yozilmasa, Mini App
+		// foydalanuvchi kimligini HECH QACHON bila olmasdi.
+		//
+		// Xato yutiladi (faqat log): baza vaqtincha ishlamasa ham
+		// kirish oqimi to'xtamasligi kerak — u mustaqil ishlaydi.
+		// └───────────────────────────────────────────────────────────┘
+		if v.onContact != nil {
+			if err := v.onContact(ctx, m.From.ID, shared); err != nil {
+				slog.Error("telegram: raqamni bog'lab bo'lmadi",
+					"telegram_id", m.From.ID, "err", err)
+			}
+		}
+
+		p, ok := v.store.getByChat(chatID)
+		if !ok {
+			// Faol kirish so'rovi yo'q — demak foydalanuvchi raqamini
+			// Mini App uchun bog'lash maqsadida yubordi.
+			_ = v.client.RemoveKeyboard(ctx, chatID,
+				"Raqamingiz saqlandi ✅\n\nEndi OnDex mini ilovasini "+
+					"ochsangiz avtomatik kirasiz.")
 			return
 		}
 

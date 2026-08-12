@@ -33,6 +33,42 @@ func (r *MemoryUserRepo) GetByPhone(_ context.Context, phone string) (*users.Use
 	return nil, users.ErrUserNotFound
 }
 
+// GetByTelegramID — Telegram Mini App kirishi (migration 0031).
+func (r *MemoryUserRepo) GetByTelegramID(_ context.Context, telegramID int64) (*users.User, error) {
+	if telegramID == 0 {
+		return nil, users.ErrUserNotFound
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.data {
+		if u.TelegramID == telegramID {
+			cp := u
+			return &cp, nil
+		}
+	}
+	return nil, users.ErrUserNotFound
+}
+
+// LinkTelegram — Postgres versiyasi bilan BIR XIL semantika: eski
+// bog'lanish avval uziladi (izoh `postgres_users.go` da).
+func (r *MemoryUserRepo) LinkTelegram(_ context.Context, userID string, telegramID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[userID]; !ok {
+		return users.ErrUserNotFound
+	}
+	for id, u := range r.data {
+		if u.TelegramID == telegramID && id != userID {
+			u.TelegramID = 0
+			r.data[id] = u
+		}
+	}
+	u := r.data[userID]
+	u.TelegramID = telegramID
+	r.data[userID] = u
+	return nil
+}
+
 func (r *MemoryUserRepo) GetByID(_ context.Context, id string) (*users.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

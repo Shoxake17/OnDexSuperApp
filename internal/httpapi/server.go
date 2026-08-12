@@ -93,6 +93,18 @@ type Deps struct {
 	// ilova keyingi pog'onaga (Firebase) o'tadi.
 	Telegram *telegram.Verifier
 
+	// TelegramBotToken — Mini App `initData` imzosini tekshirish uchun
+	// (`POST /auth/telegram/miniapp`).
+	//
+	// NEGA ALOHIDA: `Verifier` tokenni ichida saqlaydi, lekin uni
+	// TASHQARIGA BERMAYDI — bu ataylab shunday (sir bitta joyda
+	// qolsin). `initData` tekshiruvi esa xuddi shu tokenni talab
+	// qiladi, shuning uchun u bu yerga ALOHIDA beriladi.
+	//
+	// Bo'sh bo'lsa Mini App kirishi ishlamaydi va `ValidateInitData`
+	// aniq xato qaytaradi — jimgina "hammasi joyida" demaydi.
+	TelegramBotToken string
+
 	// Notifications — saqlangan bildirishnomalar ombori
 	// (`GET /notifications`). `nil` bo'lsa endpointlar 503 qaytaradi.
 	Notifications notify.Store
