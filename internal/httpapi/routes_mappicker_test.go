@@ -68,6 +68,66 @@ func TestMapPickerPageServed(t *testing.T) {
 	}
 }
 
+// ┌─ JONLI NOSOZLIK QAYTMASIN ─────────────────────────────────────────┐
+// Global `writeSecurityHeaders` barcha javoblarga `default-src 'none'`
+// qo'yadi. U `script-src` ni ham qamrab oladi, ya'ni bu sahifaning
+// inline skripti BLOKLANARDI: xarita "Xarita yuklanmoqda…" da abadiy
+// qotib qolardi va qo'yilgan diagnostikalarning HECH BIRI ko'rinmasdi
+// (ular ham o'sha bloklangan skript ichida edi).
+//
+// Shuning uchun bu yerda uchta narsa qulflanadi: sahifa nonce oladi,
+// nonce CSP bilan MOS keladi va u har so'rovda YANGI bo'ladi.
+// └────────────────────────────────────────────────────────────────────┘
+func TestMapPickerScriptAllowedByCSP(t *testing.T) {
+	h := mapPickerTestServer(t)
+
+	get := func() (csp, body string) {
+		req := httptest.NewRequest(http.MethodGet, "/map-picker", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Header().Get("Content-Security-Policy"), rec.Body.String()
+	}
+
+	csp, body := get()
+
+	if strings.Contains(body, cspNoncePlaceholder) {
+		t.Fatalf("%s almashtirilmagan — CSP skriptni bloklaydi", cspNoncePlaceholder)
+	}
+
+	// Sahifadagi nonce'ni ajratib olamiz va CSP bilan solishtiramiz.
+	const marker = `<script nonce="`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatal("sahifada nonce'li <script> yo'q")
+	}
+	rest := body[i+len(marker):]
+	j := strings.IndexByte(rest, '"')
+	if j <= 0 {
+		t.Fatal("nonce atributi yopilmagan")
+	}
+	nonce := rest[:j]
+
+	if !strings.Contains(csp, "'nonce-"+nonce+"'") {
+		t.Fatalf("CSP sahifadagi nonce'ga mos kelmadi.\nnonce: %q\nCSP: %s", nonce, csp)
+	}
+
+	// `'unsafe-inline'` skriptlar uchun ishlatilmasin — u nonce
+	// himoyasini butunlay ma'nosiz qilardi.
+	scriptSrc := csp[strings.Index(csp, "script-src"):]
+	if end := strings.IndexByte(scriptSrc, ';'); end > 0 {
+		scriptSrc = scriptSrc[:end]
+	}
+	if strings.Contains(scriptSrc, "'unsafe-inline'") {
+		t.Errorf("script-src da 'unsafe-inline' bor — nonce ma'nosiz bo'lib qoladi: %s", scriptSrc)
+	}
+
+	// Nonce har so'rovda yangi bo'lishi SHART.
+	_, body2 := get()
+	if strings.Contains(body2, `<script nonce="`+nonce+`"`) {
+		t.Error("nonce qayta ishlatildi — u har so'rovda tasodifiy bo'lishi kerak")
+	}
+}
+
 // ┌─ ENG MUHIM TEKSHIRUV ──────────────────────────────────────────────┐
 // Sahifa AUTH TALAB QILMAYDI (WebView navigatsiyasiga `Authorization`
 // sarlavhasini qo'shib bo'lmaydi). Bu faqat sahifada SIR BO'LMAGANDA

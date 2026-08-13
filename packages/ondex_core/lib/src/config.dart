@@ -10,6 +10,20 @@
 ///   flutter run --dart-define=ONDEX_API_URL=http://192.168.45.231:8080 \
 ///               --dart-define=ONDEX_WEB_URL=http://192.168.45.231:3000
 ///
+/// TAVSIYA ETILADIGAN LOKAL YO'L — Cloudflare tunnel
+/// (`scripts/dev_tunnel.ps1`), LAN IP o'rniga:
+///
+///   flutter run --dart-define=ONDEX_API_URL=https://dev-api-ondex.shoxpro.uz \
+///               --dart-define=ONDEX_WEB_URL=https://dev-web-ondex.shoxpro.uz
+///
+/// Nima uchun afzal:
+///   * Wi-Fi IP o'zgarishi (kuniga ikki marta bo'lardi) endi ta'sir
+///     qilmaydi — qiymat barqaror;
+///   * HTTPS bo'lgani uchun Android cleartext bloki umuman paydo
+///     bo'lmaydi (`network_security_config.xml` ga tegish shart emas);
+///   * telefon kompyuter bilan bir xil Wi-Fi'da bo'lishi shart emas —
+///     mobil internet ham ishlaydi.
+///
 /// Production'da CI shu qiymatlarni domen bilan beradi.
 library;
 

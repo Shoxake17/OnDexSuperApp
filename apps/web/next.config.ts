@@ -12,7 +12,12 @@ import type { NextConfig } from "next";
 // muhim (production build bunday cheklovga ega emas).
 const nextConfig: NextConfig = {
   output: "standalone",
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // `dev-web-ondex.shoxpro.uz` — lokal Cloudflare tunnel
+  // (scripts/dev_tunnel.ps1). Busiz tunnel orqali ochilgan sahifa
+  // yuqoridagi AYNAN o'sha nosozlikka uchraydi: HTML keladi, tugmalar
+  // o'lik. LAN IP endi ro'yxatda kerak emas — tunnel uning o'rnini
+  // bosadi va Wi-Fi IP o'zgarishi hech narsani buzmaydi.
+  allowedDevOrigins: ["127.0.0.1", "localhost", "dev-web-ondex.shoxpro.uz"],
 };
 
 export default nextConfig;

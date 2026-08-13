@@ -1,0 +1,75 @@
+# ChustApp/OnDex — lokal ishlab chiqish uchun Cloudflare tunnel.
+#
+# ┌─ NEGA KERAK ────────────────────────────────────────────────────────┐
+# Har bir kichik tuzatishni sinash uchun production'ga deploy qilish
+# sekin. Bu tunnel lokal serverlarni HTTPS ostida, BARQAROR domen bilan
+# ochadi — ya'ni deploy'siz sinash mumkin bo'ladi.
+#
+# HTTPS aynan nima uchun SHART (bularning hech biri `http://LAN-IP` da
+# ishlamaydi):
+#   * Google Maps kaliti referrer bo'yicha qulflangan — domen kerak;
+#   * Telegram Mini App va inline tugmalar faqat HTTPS qabul qiladi
+#     (`localhost` va maxsus sxemalar rad etiladi);
+#   * Android WebView cleartext bloki — HTTPS'da umuman paydo bo'lmaydi,
+#     ya'ni `network_security_config.xml` ni tahrirlash kerak emas;
+#   * Wi-Fi IP o'zgarishi endi hech narsani buzmaydi (bu ilgari kuniga
+#     ikki marta sodir bo'lardi).
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# ┌─ NEGA ALOHIDA TUNNEL ───────────────────────────────────────────────┐
+# Kompyuterda `shoxpro-local` (c5e01550…) nomli BOSHQA loyihaning
+# tunneli bor (dev-pay/dev-game/dev-api → 5173..5176, 4000).
+#
+# Bitta tunnelni ikki xil ingress bilan ikki marta ishga tushirish
+# MUMKIN EMAS: Cloudflare so'rovlarni o'sha tunnelning barcha faol
+# ulanishlari orasida tasodifiy taqsimlaydi, ya'ni so'rovlarning bir
+# qismi noto'g'ri ingress'ga tushib, IKKALA loyiha ham buzilardi.
+# Shu sabab ChustApp uchun `ondex-local` degan alohida tunnel.
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# ┌─ NEGA QUICK TUNNEL EMAS ────────────────────────────────────────────┐
+# `cloudflared tunnel --url …` har ishga tushishda TASODIFIY
+# `*.trycloudflare.com` manzilini beradi. Google Maps kaliti referrer
+# ro'yxatiga bog'langani uchun har restartdan keyin Cloud Console'ga
+# kirib yangi manzilni qo'shishga to'g'ri kelardi. Named tunnel —
+# bir marta sozlanadi va domen abadiy o'zgarmaydi.
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# ISHGA TUSHIRISH:  .\scripts\dev_tunnel.ps1
+# (yoki: cloudflared --config scripts/cloudflared/config.yml tunnel run)
+#
+# `--config` ni TUSHIRIB QOLDIRMANG. Busiz cloudflared standart
+# `~/.cloudflared/config.yml` ni o'qiydi — u BOSHQA loyihaniki va
+# undagi `tunnel:` kaliti buyruq argumentini ham bosib ketadi
+# (`tunnel route dns` shu sabab noto'g'ri tunnelga yozib qo'ygan edi).
+
+tunnel: ondex-local
+
+# DIQQAT: yo'l MASHINAGA BOG'LIQ. Har bir dasturchi o'zida
+# `cloudflared tunnel create ondex-local` ni ishga tushiradi va
+# quyidagi qatorni o'zining UUID fayliga qaratadi. Fayl SIR —
+# repoga hech qachon qo'shilmaydi.
+credentials-file: C:\Users\turax\.cloudflared\3e67a78d-0c14-46de-a8d9-827a0294731a.json
+
+# QUIC standart protokol, lekin ba'zi provayderlar UDP/7844 ni
+# bloklaydi va tunnel jimgina qayta ulanaverardi. http2 TCP/443 dan
+# yuradi — ishonchliroq.
+protocol: http2
+
+ingress:
+  # Go API (cmd/api) — `:8080`
+  - hostname: dev-api-ondex.shoxpro.uz
+    service: http://localhost:8080
+    originRequest:
+      # WebSocket (jonli buyurtma holati) uzoq turadi. Standart
+      # 30s dan keyin ulanish uzilardi va klient qayta ulanish
+      # siklida aylanardi.
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # Next.js super-app (apps/web) — `next dev` → `:3000`
+  - hostname: dev-web-ondex.shoxpro.uz
+    service: http://localhost:3000
+
+  # Majburiy yakuniy qoida — mos kelmagan hamma narsa.
+  - service: http_status:404

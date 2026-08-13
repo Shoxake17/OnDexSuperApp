@@ -42,7 +42,21 @@
 <div id="map"></div>
 <div id="msg">Xarita yuklanmoqda…</div>
 
-<script>
+<!--
+  `nonce` — server har so'rovda tasodifiy qiymat qo'yadi va aynan shu
+  qiymatni CSP sarlavhasida e'lon qiladi (`routes_mappicker.go`).
+
+  NEGA: global CSP `default-src 'none'` bo'lib, u `script-src` ni ham
+  qamrab olardi va BU SKRIPT brauzer tomonidan butunlay bloklanardi.
+  Natijada sahifa "Xarita yuklanmoqda…" da abadiy qotib qolardi —
+  qo'yilgan barcha diagnostikalar ham shu bloklangan skript ichida
+  bo'lgani uchun HECH QACHON ko'rinmasdi (2026-08-13 da aniqlandi).
+
+  `'unsafe-inline'` ATAYLAB ishlatilmadi: u sahifaga tushgan istalgan
+  inline skriptga ruxsat berardi. Nonce esa faqat SERVER YOZGAN
+  skriptga ruxsat beradi.
+-->
+<script nonce="__CSP_NONCE__">
 (function () {
   var msg = document.getElementById('msg');
   var marker = null;
@@ -59,6 +73,31 @@
   function toHost(obj) {
     try { window.chrome.webview.postMessage(JSON.stringify(obj)); } catch (e) {}
   }
+
+  // ┌─ GOOGLE'NING KONSOL XABARINI USHLAB QOLAMIZ ──────────────────┐
+  // `gm_authFailure` faqat "kalit rad etildi" deydi, SABABINI aytmaydi.
+  // Aniq sabab (`RefererNotAllowedMapError`, `ApiNotActivatedMapError`,
+  // `BillingNotEnabledMapError`) va ruxsat berilishi kerak bo'lgan
+  // ANIQ manzil faqat `console.error` ga yoziladi.
+  //
+  // WebView2 ichida konsolni ko'rish deyarli imkonsiz, ya'ni eng
+  // qimmatli ma'lumot ko'rinmay ketardi. Shuning uchun uni ushlab
+  // olamiz va ekranga chiqaramiz.
+  // └───────────────────────────────────────────────────────────────┘
+  var gmapsLog = [];
+  (function () {
+    var orig = window.console && window.console.error;
+    if (!orig) return;
+    window.console.error = function () {
+      try {
+        var text = Array.prototype.join.call(arguments, ' ');
+        if (/Google Maps|MapError|ApiNotActivated|Billing/i.test(text)) {
+          gmapsLog.push(text);
+        }
+      } catch (e) {}
+      return orig.apply(window.console, arguments);
+    };
+  })();
 
   function initMap(center) {
     map = new google.maps.Map(document.getElementById('map'), {
@@ -97,12 +136,29 @@
     // rasmiy ilgagi. Endi sabab ekranda yoziladi.
     // └─────────────────────────────────────────────────────────────┘
     window.gm_authFailure = function () {
-      show('Google xarita kalitini RAD ETDI.\n\n' +
-           'Cloud Console\'da tekshiring:\n' +
-           '1. kalit referrer ro\'yxatida https://api-ondex.shoxpro.uz/*\n' +
-           '2. "Maps JavaScript API" yoqilgan\n' +
-           '3. loyihada billing yoqilgan', true);
-      toHost({ type: 'error', message: 'gm_authFailure' });
+      // Google xabarni `gm_authFailure` dan biroz KEYIN yozishi
+      // mumkin — shu sabab kichik kechikish bilan o'qiymiz.
+      setTimeout(function () {
+        // Manzil QATTIQ YOZILMAYDI. Avval bu yerda production domeni
+        // turardi va sahifa tunnel/localhost'dan ochilganda odamni
+        // NOTO'G'RI domenni ro'yxatga qo'shishga yo'naltirardi.
+        var origin = location.origin;
+        var why = gmapsLog.length
+            ? '\n\nGoogle aytdi:\n' + gmapsLog.join('\n')
+            : '';
+        show('Google xarita kalitini RAD ETDI.\n\n' +
+             'Cloud Console → Credentials → shu kalit:\n' +
+             '1. "Website restrictions" ro\'yxatiga QO\'SHING:\n' +
+             '     ' + origin + '/*\n' +
+             '2. "Maps JavaScript API" yoqilgan bo\'lsin\n' +
+             '3. loyihada billing yoqilgan bo\'lsin' + why, true);
+        toHost({
+          type: 'error',
+          message: 'gm_authFailure',
+          origin: origin,
+          detail: gmapsLog.join(' | '),
+        });
+      }, 1200);
     };
 
     var s = document.createElement('script');

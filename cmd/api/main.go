@@ -499,11 +499,24 @@ func main() {
 		// Wi-Fi orqali ishlansa LAN IP yozilishi kerak, production'da esa
 		// haqiqiy domen.
 		publicURL := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL"))
-		// Kalit PRODUCTION'da majburiy, dev'da emas — sabab
-		// `telegram.Verifier.requireSecret` izohida batafsil.
+		// ┌─ KALIT QACHON MAJBURIY ────────────────────────────────┐
+		// Avval shart `!devMode` edi, ya'ni dev'da fishing teshigi
+		// HAR DOIM ochiq turardi. Aslida kalitni tushirib qoldirish
+		// uchun yagona uzrli sabab bor edi: uni YETKAZIB bo'lmasligi
+		// (kalit faqat "OnDex'ga qaytish" tugmasi orqali boradi,
+		// tugma esa ommaviy domensiz umuman yuborilmaydi).
+		//
+		// Lokal Cloudflare tunnel (scripts/dev_tunnel.ps1) dev'da ham
+		// haqiqiy HTTPS domen beradi. Shuning uchun shart endi
+		// muhitga emas, YETKAZISH IMKONIYATIGA bog'landi: domen
+		// bo'lsa — kalit majburiy, muhitidan qat'i nazar.
+		//
+		// Production o'zgarishsiz: u yerda `PUBLIC_BASE_URL` doim
+		// bor, bo'lmasa ham `!devMode` fail-closed ushlab qoladi.
+		// └────────────────────────────────────────────────────────┘
 		tgVerifier = tgVerifier.
 			WithPublicURL(publicURL).
-			WithConfirmSecretRequired(!devMode).
+			WithConfirmSecretRequired(!devMode || publicURL != "").
 			// ┌─ MINI APP BOG'LANISHI ────────────────────────────────┐
 			// Kontakt ulashilganda telegram_id ↔ telefon saqlanadi
 			// (migration 0031). Busiz Mini App foydalanuvchi kimligini
@@ -522,19 +535,25 @@ func main() {
 					"telegram_id", tgID, "user_id", u.ID)
 				return nil
 			})
-		if devMode {
+		// Log HISOBLANGAN qiymatni yozadi, muhitni emas. Avval ikkalasi
+		// ham `!devMode` ga qarardi va shart `publicURL` ni hisobga
+		// oladigan bo'lgach log YOLG'ON gapira boshlagan edi: dev'da
+		// kalit majburiy bo'lsa ham "talab qilinmaydi" deb yozardi.
+		secretRequired := !devMode || publicURL != ""
+		if !secretRequired {
 			slog.Warn("Telegram bilan kirish: tasdiq kaliti TALAB QILINMAYDI " +
-				"(dev). Bu fishingga ochiq — havolani qurbonga yuborgan odam " +
-				"uning akkauntiga kira oladi. Production'da kalit majburiy " +
-				"bo'ladi, lekin buning uchun PUBLIC_BASE_URL OMMAVIY domen " +
-				"bo'lishi SHART (Telegram localhost'ni rad etadi)")
+				"(dev, PUBLIC_BASE_URL yo'q). Bu fishingga ochiq — havolani " +
+				"qurbonga yuborgan odam uning akkauntiga kira oladi. Kalitni " +
+				"yoqish uchun PUBLIC_BASE_URL ga OMMAVIY domen bering " +
+				"(Telegram localhost'ni rad etadi) — masalan lokal tunnel: " +
+				"scripts/dev_tunnel.ps1")
 		} else if publicURL == "" {
 			slog.Error("PUBLIC_BASE_URL yo'q — \"Telegram bilan kirish\" " +
 				"YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
 		go tgVerifier.Run(context.Background())
 		slog.Info("rejim: Telegram bot (OTP yetkazish) yoqilgan",
-			"qaytish_manzili", publicURL, "kalit_majburiy", !devMode)
+			"qaytish_manzili", publicURL, "kalit_majburiy", secretRequired)
 	} else {
 		slog.Warn("TELEGRAM_BOT_TOKEN yo'q — /auth/telegram/start o'chirilgan")
 	}
