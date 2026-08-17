@@ -7,6 +7,15 @@
          Ruxsat "xavfli" toifada EMAS — foydalanuvchidan alohida
          so'ralmaydi, faqat e'lon qilinadi. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <!-- Stol QR kodini skanerlash (`qr_scan_screen.dart`). Ruxsat
+         foydalanuvchidan FAQAT skaner ochilganda so'raladi, ilova
+         ishga tushganda emas. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Kamerasi yo'q qurilmada ham ilova o'rnatilaversin: QR skaneri
+         yagona funksiya emas, uning yo'qligi butun ilovani Play
+         Store'da yashirib qo'ymasligi kerak. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <application
         android:label="OnDex"
         android:name="${applicationName}"

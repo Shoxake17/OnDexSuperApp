@@ -102,19 +102,58 @@ class CustomerApi extends ApiClient {
   /// generatsiya qilinib, muvaffaqiyatli javob kelguncha bo'lgan BARCHA
   /// qayta urinishlarda o'zgarmasdan qayta ishlatilishi kerak (tarmoq
   /// uzilib qayta bosilganda dublikat buyurtma yaratilmasligi uchun).
-  Future<Map<String, dynamic>> createOrder(List<Map<String, dynamic>> items,
-      double lat, double lng, String idempotencyKey) async {
-    final d = await send('POST', '/orders', {
+  /// ┌─ IKKI TUR — BITTA ENDPOINT ────────────────────────────────────┐
+  /// Server buyurtma turini `table_token` bor-yo'qligiga qarab
+  /// aniqlaydi (`internal/httpapi/routes_orders.go`):
+  ///   * token BOR   -> `dine_in`, manzil TALAB QILINMAYDI;
+  ///   * token YO'Q  -> yetkazib berish, manzil MAJBURIY.
+  ///
+  /// Shuning uchun bu yerda ham bitta metod: ikkita alohida metod
+  /// yozilsa, ular vaqt o'tib bir-biridan uzoqlashardi (masalan
+  /// idempotentlik faqat bittasiga qo'shilib qolardi).
+  /// └─────────────────────────────────────────────────────────────────┘
+  ///
+  /// NARX YUBORILMAYDI — server katalogdan o'zi hisoblaydi. Klient
+  /// yuborgan summaga ishonish to'g'ridan-to'g'ri firibgarlik yo'li
+  /// bo'lardi.
+  Future<Map<String, dynamic>> createOrder({
+    required List<Map<String, dynamic>> items,
+    required String idempotencyKey,
+    double? lat,
+    double? lng,
+    String? tableToken,
+    int? partySize,
+  }) async {
+    final body = <String, dynamic>{
       'items': items,
-      'delivery_lat': lat,
-      'delivery_lng': lng,
       'idempotency_key': idempotencyKey,
-    });
-    return Map<String, dynamic>.from(d);
+    };
+    if (tableToken != null && tableToken.isNotEmpty) {
+      body['table_token'] = tableToken;
+      if (partySize != null && partySize > 0) body['party_size'] = partySize;
+    } else {
+      // Yetkazib berishda manzil majburiy — server ham shuni talab
+      // qiladi, lekin bu yerda ham aniq bo'lsin.
+      body['delivery_lat'] = lat;
+      body['delivery_lng'] = lng;
+    }
+    return Map<String, dynamic>.from(await send('POST', '/orders', body));
   }
 
   Future<Map<String, dynamic>> getOrder(String id) async =>
       Map<String, dynamic>.from(await send('GET', '/orders/$id'));
+
+  /// Stol QR kodidagi tokendan qaysi restoran va qaysi stol ekanini
+  /// aniqlaydi (`qr_scan_screen.dart`).
+  ///
+  /// Javobda TOKEN QAYTMAYDI — chaqiruvchi uni allaqachon biladi,
+  /// qaytarish esa uni keraksiz joylarga (loglar, kesh) yoyardi.
+  ///
+  /// Endpoint autentifikatsiya talab qiladi: usiz istalgan odam
+  /// tokenlarni birma-bir sinab ko'ra olardi.
+  Future<Map<String, dynamic>> resolveTable(String token) async =>
+      Map<String, dynamic>.from(await send(
+          'GET', '/tables/resolve?token=${Uri.encodeQueryComponent(token)}'));
 
   // `me()`, `logout()`, `mapsApiKey()`, `wsTicket()`, `requestCode()`,
   // `verify()` — hammasi `ondex_core.ApiClient` da (meros orqali
@@ -207,16 +246,8 @@ class CustomerApi extends ApiClient {
     return Map<String, dynamic>.from(d);
   }
 
-  /// Telegram bot orqali kod olish — deep link qaytaradi.
-  ///
-  /// Kod SHU YERDA yaratilmaydi: bot avval foydalanuvchidan raqamni
-  /// ulashishni so'raydi va u ilovada kiritilgan raqam bilan mos
-  /// kelsagina kod yuboradi (backend `internal/telegram` izohiga
-  /// qarang). Kod keyin odatdagi `verify()` bilan tekshiriladi.
-  Future<String> telegramStart(String phone) async {
-    final d = await send('POST', '/auth/telegram/start', {'phone': phone});
-    return d['deep_link'] as String;
-  }
+  // `telegramStart()` endi `ondex_core.ApiClient` da — affitsiant
+  // ilovasi ham shu oqimga o'tgach nusxa ikkitaga chiqdi.
 
   /// Firebase Phone Auth bilan kirish.
   ///

@@ -7,7 +7,7 @@ import '../services/push.dart';
 import '../session.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
-import 'mini_app_webview.dart';
+import 'web_session.dart';
 import 'pin_reset_screen.dart';
 import 'pin_screen.dart';
 
@@ -97,17 +97,66 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
   int _attemptsLeft = AppPin.maxAttempts;
   DateTime? _hiddenAt;
 
+  /// Sessiya kanalidagi tinglovchi — akkaunt server tomonda
+  /// o'chirilganini DARHOL bilish uchun.
+  ///
+  /// ┌─ NEGA AYNAN SHU YERDA ────────────────────────────────────────┐
+  /// `LockGate` butun kirgan sessiyani o'raydi va foydalanuvchi qaysi
+  /// ekranda turishidan qat'i nazar mount holatida qoladi. Buyurtma
+  /// ekranidagi soket esa faqat o'sha ekran ochiq bo'lganda ishlaydi
+  /// — mijoz odatda WebView'dagi bosh sahifada turadi va u yerda
+  /// hech qanday soket yo'q edi.
+  ///
+  /// Bu ulanish ma'lumot ham so'ramaydi: yagona vazifasi — akkaunt
+  /// o'chirilsa ilovani kirish ekraniga qaytarish.
+  /// └───────────────────────────────────────────────────────────────┘
+  WsClient? _sessionWs;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Har qanday 401 ("sessiya bekor qilingan", akkaunt o'chirilgan,
+    // token eskirgan) — bir xil natija: kirish ekrani. Avval bu
+    // ulanmagan edi va mijoz ilovasi yaroqsiz token bilan ekranda
+    // qolib, har so'rovda xato ko'rsataverardi.
+    api.onUnauthorized = _handleSessionLost;
+    _connectSessionWs();
     _start();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sessionWs?.dispose();
     super.dispose();
+  }
+
+  void _connectSessionWs() {
+    if (api.token == null) return;
+    _sessionWs = WsClient(
+      ticketProvider: api.wsTicket,
+      urlBuilder: (t) => wsUrl(t),
+      onEvent: (event) {
+        if (event['type'] == 'account_deleted') _handleSessionLost();
+      },
+    )..connect();
+  }
+
+  /// Sessiya endi yaroqsiz (akkaunt o'chirilgan yoki bekor qilingan).
+  ///
+  /// `_signOut` dan farqi: serverga `logout` YUBORILMAYDI — token
+  /// allaqachon yaroqsiz va o'sha so'rov yana 401 qaytarib, chiqishni
+  /// bekorga kechiktirardi.
+  bool _sessionLostHandled = false;
+  Future<void> _handleSessionLost() async {
+    // Bir vaqtda kelgan bir necha 401 (bir nechta parallel so'rov)
+    // bu oqimni bir necha marta ishga tushirmasin — aks holda
+    // navigatsiya steki bir necha marta tozalanardi.
+    if (_sessionLostHandled) return;
+    _sessionLostHandled = true;
+    await _signOut('Akkaunt o\'chirildi — qaytadan kiring.',
+        notifyServer: false);
   }
 
   Future<void> _start() async {
@@ -258,14 +307,20 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
   ///
   /// Serverga ham xabar beriladi: qurilmadagi nusxani o'chirishning
   /// o'zi yetarli emas, o'g'irlangan token 30 kun ishlayverardi.
-  Future<void> _signOut(String reason) async {
+  ///
+  /// `notifyServer: false` — token allaqachon yaroqsiz bo'lgan holat
+  /// uchun (akkaunt o'chirilgan): u holda `POST /auth/logout` faqat
+  /// yana bitta 401 qaytaradi.
+  Future<void> _signOut(String reason, {bool notifyServer = true}) async {
     // Push tokeni logout'dan OLDIN — sabab profile_screen.dart'dagi
     // izohda (keyin so'rov 401 olardi va yozuv serverda qolardi).
     await PushService.instance.stop();
-    try {
-      await api.logout();
-    } catch (_) {
-      // Tarmoq bo'lmasa ham lokal tozalash BAJARILADI.
+    if (notifyServer) {
+      try {
+        await api.logout();
+      } catch (_) {
+        // Tarmoq bo'lmasa ham lokal tozalash BAJARILADI.
+      }
     }
     await tokenStore.clear();
     api.token = null;

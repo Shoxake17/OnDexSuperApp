@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../data/catalog_repository.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
 import '../services/firebase_phone.dart';
@@ -10,7 +11,7 @@ import '../session.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'address_screen.dart';
 import 'login_screen.dart';
-import 'mini_app_webview.dart';
+import 'web_session.dart';
 import 'pin_screen.dart';
 
 /// "Profil" bo'limi — foydalanuvchi ma'lumotlari, manzil boshqaruvi va
@@ -157,8 +158,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AppPin.clear();
     // WebView'dagi `chust_session` cookie'si ham tozalanadi — busiz
     // chiqqandan keyin ham web tomondagi sessiya 30 kun ochiq qolardi
-    // (mini_app_webview.dart'dagi izohga qarang).
+    // (web_session.dart'dagi izohga qarang).
     await clearMiniAppSession();
+    // Shaxsiy kesh (buyurtmalar, sevimlilar) SHIFRLANGAN holda
+    // diskda yotadi — u ham tozalanishi SHART. Busiz qurilmadan
+    // chiqqan odamning buyurtmalari va manzili keyingi
+    // foydalanuvchiga ko'rinardi.
+    //
+    // Katalog keshi ATAYLAB qoldiriladi: u shaxsiy emas va keyingi
+    // kirishda ilova bir zumda ochilishini ta'minlaydi
+    // (`data/catalog_repository.dart` izohiga qarang).
+    await Repos.clearOnLogout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

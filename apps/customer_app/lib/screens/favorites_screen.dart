@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../widgets/product_grid.dart' show FavoriteButton;
 import '../widgets/sheet_scaffold.dart';
-import 'mini_app_webview.dart';
+import 'menu_screen.dart';
 
 /// "Istaklarim" — mijoz yurak belgisi bilan saqlagan BARCHA mahsulotlar,
 /// restoranidan qat'i nazar (bosh sahifadagi turkum bo'yicha qidiruv bilan
@@ -67,9 +67,19 @@ class FavoritesScreenState extends State<FavoritesScreen> {
     setState(() => _items.removeWhere((p) => p['id'] == productId));
   }
 
+  /// Sevimli taom bosilganda — o'sha restoranning NATIVE menyusi.
+  ///
+  /// Avval bu yerda `miniAppRoute` (WebView) ochilardi. Endi menyu
+  /// native, va restoran ma'lumoti keshdan topiladi — o'sha mantiq
+  /// `MenuScreen.open` da, bitta joyda.
   void _openRestaurant(Map<String, dynamic> p) {
-    Navigator.of(context)
-        .push(miniAppRoute('/restaurants/${p['restaurant_id']}'));
+    final id = (p['restaurant_id'] as String?) ?? '';
+    if (id.isEmpty) return;
+    MenuScreen.open(
+      context,
+      id,
+      fallbackName: (p['restaurant_name'] as String?) ?? '',
+    );
   }
 
   @override

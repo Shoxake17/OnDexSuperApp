@@ -1,13 +1,10 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../widgets/order_status.dart';
 import '../widgets/sheet_scaffold.dart';
-import 'mini_app_webview.dart';
+import 'tracking_screen.dart';
 
 /// "Buyurtmalarim" bo'limi — mijozning barcha (faol va tugagan)
 /// buyurtmalari ro'yxati, eng yangisi tepada. Holat WebSocket orqali
@@ -26,21 +23,33 @@ class _OrdersScreenState extends State<OrdersScreen> {
   List<dynamic> _orders = [];
   bool _loading = true;
   String? _error;
-  WebSocketChannel? _channel;
-  Timer? _pollTimer;
+  // ┌─ JONLI KANAL UMUMIY YADRODAN ─────────────────────────────────┐
+  // Bu yerda avval xom `WebSocketChannel`, qo'lda yozilgan qayta
+  // ulanish (qat'iy 2 soniya) va alohida 20 soniyalik taymer turardi.
+  // Ayni mantiq `ondex_core` dagi `LiveBus`/`LiveRefresher` da bor va
+  // restoran paneli o'shani ishlatadi — ya'ni bitta stack ichida ikki
+  // nusxa edi va ular allaqachon ajralib ketgan (yadroda eksponensial
+  // backoff + jitter bor, bu yerda yo'q edi).
+  //
+  // Endi ikkalasi ham AYNI koddan oziqlanadi.
+  // └────────────────────────────────────────────────────────────────┘
+  late final LiveRefresher _live;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _connectWs();
-    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _load());
+    customerLive.start();
+    _live = LiveRefresher(
+      bus: customerLive,
+      onRefresh: _load,
+      types: const {'order_status', 'courier_assigned'},
+    )..start();
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
-    _channel?.sink.close();
+    _live.dispose();
     super.dispose();
   }
 
@@ -60,35 +69,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
         if (_orders.isEmpty) _error = '$e';
       });
     }
-  }
-
-  Future<void> _connectWs() async {
-    if (api.token == null) return;
-    final String ticket;
-    try {
-      ticket = await api.wsTicket();
-    } catch (_) {
-      _scheduleReconnect();
-      return;
-    }
-    if (!mounted) return;
-    _channel = WebSocketChannel.connect(Uri.parse(wsUrl(ticket)));
-    _channel!.stream.listen((msg) {
-      final e = jsonDecode(msg as String) as Map<String, dynamic>;
-      if (e['type'] == 'order_status' || e['type'] == 'courier_assigned') {
-        _load();
-      }
-    },
-        onError: (_) => _scheduleReconnect(),
-        onDone: _scheduleReconnect,
-        cancelOnError: true);
-  }
-
-  void _scheduleReconnect() {
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      _connectWs();
-    });
   }
 
   @override
@@ -161,7 +141,9 @@ class _OrderCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(miniAppRoute('/orders/$id')),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => TrackingScreen(orderId: id)),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(

@@ -1,8 +1,12 @@
 {
   "_izoh": "MAHALLIY ishlab chiqish. Ishlatish: flutter run --dart-define-from-file=config/dev.json",
-  "_diqqat": "Wi-Fi IP o'zgarganda FAQAT shu ikki qatorni yangilang. Android tarmoq konfiguratsiyasiga tegish SHART EMAS — debug build barcha manzillarga cleartext ruxsat beradi (android/app/src/debug/res/xml/network_security_config.xml).",
-  "_ip_topish": "PowerShell: (Get-NetIPAddress -AddressFamily IPv4 | ? InterfaceAlias -eq 'Wi-Fi').IPAddress",
 
-  "ONDEX_API_URL": "http://192.168.114.231:8080",
-  "ONDEX_WEB_URL": "http://192.168.114.231:3000"
+  "_nega_tunnel": "2026-08-17: LAN IP dan TUNNELGA o'tkazildi. Sabab: `apps/web/next.config.ts` dagi `allowedDevOrigins` ro'yxatida LAN IP YO'Q va ataylab yo'q. Next.js dev-server ro'yxatda bo'lmagan origin'ga _next/static chunk'larini BERMAYDI — sahifa vizual to'g'ri ko'rinadi (SSR HTML keladi), lekin hydration ishlamaydi va HECH BIR tugma bosilmaydi. Xato jimgina: konsolda ham, serverda ham ko'rinmaydi.",
+
+  "_nega_yaxshiroq": "Wi-Fi IP tez-tez o'zgaradi (2026-08-17 da .100 dan .198 ga o'zgargan va ilova backendga umuman yeta olmay qolgan). Tunnel manzili esa BARQAROR — IP o'zgarsa ham hech narsa buzilmaydi va bu faylni qayta tahrirlash kerak emas.",
+
+  "_shart": "Tunnel ishlab turishi kerak: `ondex run` (tunnel rejimi standart) yoki scripts/dev_tunnel.ps1. cloudflared buyruqlarida --config SHART.",
+
+  "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
+  "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"
 }

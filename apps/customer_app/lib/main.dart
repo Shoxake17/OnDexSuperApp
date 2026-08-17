@@ -24,10 +24,29 @@ void main() async {
   runApp(const ChustApp());
 }
 
-// Yandex Eats/Wolt uslubidagi qorong'i mavzu: qora fon, oq matn, yashil urg'u.
-final _darkScheme = ColorScheme.fromSeed(
-  seedColor: const Color(0xFF1B873F),
-  brightness: Brightness.dark,
+/// OnDex brend rangi — logotipdagi "Dex", faol menyu elementi va QR
+/// tugmasi. `apps/web/tailwind.config.ts` dagi `brand.DEFAULT` va
+/// `screens/home_shell.dart` dagi `_kBrand` bilan AYNAN bir xil.
+const kBrand = Color(0xFFF4511E);
+
+// ┌─ YORUG' MAVZU (2026-08-17) ────────────────────────────────────────┐
+// Avval ilova qorong'i edi (`#121212` fon, `#1B873F` yashil urg'u).
+// Endi maketdagidek (`image/restarant.png`) — OQ fon, brend to'q
+// sariq urg'u.
+//
+// NEGA URUG' RANG (seed) ham o'zgardi: yashil `#1B873F` Telegram'ning
+// standart rangi edi va OnDex brendiga aloqasi yo'q. Tugmalar,
+// belgilar va tanlangan elementlar shu rangdan kelib chiqadi —
+// natijada ilova ichida ikkita rang (yashil va to'q sariq) yonma-yon
+// turardi.
+//
+// Qorong'i rejim KEYINCHALIK qo'shiladi: o'shanda shu yerga
+// `darkTheme:` va `themeMode:` qo'shiladi. Veb tomonidagi mos
+// almashtirgich — `apps/web/tailwind.config.ts` dagi `darkMode` izohi.
+// └────────────────────────────────────────────────────────────────────┘
+final _lightScheme = ColorScheme.fromSeed(
+  seedColor: kBrand,
+  brightness: Brightness.light,
 );
 
 class ChustApp extends StatelessWidget {
@@ -39,17 +58,29 @@ class ChustApp extends StatelessWidget {
       title: 'ChustApp',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: _darkScheme,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: _lightScheme,
+        // OQ — WebView ichidagi sahifaning foni bilan AYNAN bir xil
+        // (`apps/web/app/globals.css` dagi `body`). Bu shart: WebView
+        // `SafeArea` ichida turadi va tepa/pastda Flutter'ning o'z foni
+        // ko'rinadi — ranglar farq qilsa chok (seam) sezilib qoladi.
+        scaffoldBackgroundColor: Colors.white,
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF171717),
           elevation: 0,
           scrolledUnderElevation: 0,
         ),
-        cardTheme: const CardThemeData(
-          color: Color(0xFF1E1E1E),
+        // Kartalar oq fonda ajralib turishi uchun yengil chegara —
+        // qorong'i mavzuda buni rang farqi (`#1E1E1E` va `#121212`)
+        // bajarardi, oq fonda esa u ishlamaydi.
+        cardTheme: CardThemeData(
+          color: Colors.white,
           elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFE5E5E5)),
+          ),
         ),
         // Pastki navigatsiya paneli ixchamlashtirildi: Material 3'ning
         // standart balandligi 80dp — bu kichik ekranlarda kontent uchun
@@ -58,9 +89,9 @@ class ChustApp extends StatelessWidget {
         // (Material'ning 48dp minimal teginish maydonidan katta).
         navigationBarTheme: NavigationBarThemeData(
           height: 58,
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          indicatorColor: _darkScheme.primary.withValues(alpha: 0.22),
+          indicatorColor: _lightScheme.primary.withValues(alpha: 0.14),
           labelTextStyle: const WidgetStatePropertyAll(
             TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
           ),

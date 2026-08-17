@@ -26,6 +26,10 @@ const statusStyles = {
   ),
   'picked_up': ('Kuryerda, yo\'lda', Icons.delivery_dining, kStatusCarrot),
   'delivered': ('Yetkazildi', Icons.done_all, kStatusDelivered),
+  // STOL buyurtmasining yakuniy holati (`internal/orders`: StatusServed).
+  // Ro'yxatda yo'q edi — natijada stolda ovqatlangan mijoz ekranda
+  // xom "served" so'zini ko'rardi.
+  'served': ('Stolga berildi', Icons.room_service, kStatusDelivered),
   'rejected': ('Rad etildi', Icons.cancel_outlined, kStatusCancelled),
   'cancelled': ('Bekor qilindi', Icons.close, kStatusCancelled),
 };
