@@ -160,6 +160,19 @@ lerna-debug.log*
 *.pid.lock
 crash-report*.txt
 
+# JVM avariya artefaktlari. `gradle.properties` da
+# `-XX:+HeapDumpOnOutOfMemoryError` yoqilgan — OOM sodir bo'lganda JVM
+# butun xotirasini shu faylga to'kadi. Bir marta 805 MB chiqqan va
+# `git add .` uni commitga qo'shib, GitHub push'ini rad ettirgan
+# (bitta fayl uchun chegara 100 MB).
+*.hprof
+hs_err_pid*.log
+replay_pid*.log
+
+# Kotlin kompilyator daemon sessiyalari — mashinaga bog'liq, build
+# davomida paydo bo'lib yo'qoladi.
+**/.kotlin/
+
 
 # ───────────────────────────────────────────────────────────────────
 #  10. MA'LUMOTLAR BAZASI (mahalliy)
