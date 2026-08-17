@@ -13,6 +13,35 @@ name: CI/CD Pipeline - OnDex Backend
 on:
   push:
     branches: [ main ]
+    # ┌─ FLUTTER ILOVALARI BU QUVURNI ISHGA TUSHIRMAYDI ────────────────┐
+    # Bu quvur backend (Go) va `apps/web` ni quradi hamda VPS'ga
+    # deploy qiladi (`docker compose pull api web`). Flutter ilovalari
+    # esa Play Store va Shorebird orqali tarqatiladi — ular bu
+    # deploy'ga UMUMAN kirmaydi.
+    #
+    # Filtrsiz holatda mobil ilovadagi bitta qator o'zgarishi ham
+    # butun quvurni (gitleaks -> Go testlari -> Semgrep -> image ->
+    # ZAP -> deploy) yugurtirardi va production'ni qayta deploy
+    # qilardi. Bu ~20 daqiqa runner vaqti va prod'ga keraksiz tegish.
+    #
+    # DIQQAT: `apps/web` ro'yxatda YO'Q va bo'lmasligi kerak — u shu
+    # quvur bilan deploy qilinadi. Uni bu yerga qo'shish veb
+    # o'zgarishlarining jonli serverga chiqmasligiga olib kelardi.
+    #
+    # `pull_request` da filtr ATAYLAB yo'q: PR'da deploy bo'lmaydi
+    # (`if: github.event_name != 'pull_request'`), lekin gitleaks
+    # har bir PR'ni tekshirishi kerak — sir qaysi papkada qolib
+    # ketishidan qat'i nazar.
+    # └─────────────────────────────────────────────────────────────────┘
+    paths-ignore:
+      - 'apps/customer_app/**'
+      - 'apps/courier_app/**'
+      - 'apps/admin_panel/**'
+      - 'apps/restaurant_panel/**'
+      - 'apps/waiter_app/**'
+      - 'packages/ondex_core/**'
+      - 'image/**'
+      - '**.md'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
