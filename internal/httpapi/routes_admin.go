@@ -137,6 +137,11 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				LogoURL  string  `json:"logo_url"`
 				CoverURL string  `json:"cover_url"`
 				Tags     string  `json:"tags"`
+				// 0 = ko'rsatkich yo'q (mijoz tomonida chip chizilmaydi).
+				Rating        float64 `json:"rating"`
+				RatingCount   int     `json:"rating_count"`
+				ETAMinMinutes int     `json:"eta_min_minutes"`
+				ETAMaxMinutes int     `json:"eta_max_minutes"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -146,6 +151,26 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("name majburiy"))
 				return
 			}
+			// ┌─ NEGA BU YERDA HAM TEKSHIRILADI ──────────────────────────┐
+			// Bazada CHECK cheklovlari bor, lekin ular buzilganda pgx
+			// xatosi 500 bo'lib chiqardi va admin sababni tushunmasdi.
+			// Bu yerda 400 + aniq matn beriladi; baza esa oxirgi
+			// himoya bo'lib qoladi (boshqa yo'l bilan yozishga qarshi).
+			// └───────────────────────────────────────────────────────────┘
+			if req.Rating < 0 || req.Rating > 5 {
+				httpError(w, http.StatusBadRequest,
+					errors.New("reyting 0 va 5 orasida bo'lishi kerak (0 = ko'rsatilmaydi)"))
+				return
+			}
+			if req.RatingCount < 0 || req.ETAMinMinutes < 0 || req.ETAMaxMinutes < 0 {
+				httpError(w, http.StatusBadRequest, errors.New("manfiy qiymat bo'lmaydi"))
+				return
+			}
+			if req.ETAMaxMinutes < req.ETAMinMinutes {
+				httpError(w, http.StatusBadRequest,
+					errors.New("yetkazishning eng ko'p vaqti eng kamidan kichik bo'lmasin"))
+				return
+			}
 			rest.Name = req.Name
 			rest.Address = req.Address
 			rest.Lat = req.Lat
@@ -153,6 +178,10 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			rest.LogoURL = req.LogoURL
 			rest.CoverURL = req.CoverURL
 			rest.Tags = req.Tags
+			rest.Rating = req.Rating
+			rest.RatingCount = req.RatingCount
+			rest.ETAMinMinutes = req.ETAMinMinutes
+			rest.ETAMaxMinutes = req.ETAMaxMinutes
 			if err := s.CatalogRepo.SaveRestaurant(r.Context(), rest); err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return
@@ -199,16 +228,27 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				return
 			}
 			phoneByEntity := make(map[string]string, len(courierUsers))
+			// userIDByEntity — kuryer yozuvidan uning AKKAUNTIGA o'tish.
+			// Panelda o'chirish tugmasi shu ID bilan ishlaydi
+			// (`DELETE /admin/users/{id}`): o'chirish akkauntga
+			// tegishli amal, kuryer yozuvi esa uning ergashuvchisi.
+			userIDByEntity := make(map[string]string, len(courierUsers))
 			for _, u := range courierUsers {
 				phoneByEntity[u.EntityID] = u.Phone
+				userIDByEntity[u.EntityID] = u.ID
 			}
 			type row struct {
 				couriers.Courier
-				Phone string `json:"phone"`
+				Phone  string `json:"phone"`
+				UserID string `json:"user_id,omitempty"`
 			}
 			out := make([]row, 0, len(list))
 			for _, c := range list {
-				out = append(out, row{Courier: *c, Phone: phoneByEntity[c.ID]})
+				out = append(out, row{
+					Courier: *c,
+					Phone:   phoneByEntity[c.ID],
+					UserID:  userIDByEntity[c.ID],
+				})
 			}
 			writeJSON(w, http.StatusOK, out)
 		}))

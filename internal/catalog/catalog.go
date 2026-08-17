@@ -13,10 +13,28 @@ type Restaurant struct {
 	Address  string  `json:"address"`
 	Lat      float64 `json:"lat"`
 	Lng      float64 `json:"lng"`
-	Open     bool    `json:"open"` 
-	LogoURL  string  `json:"logo_url"`  
-	CoverURL string  `json:"cover_url"` 
+	Open     bool    `json:"open"`
+	LogoURL  string  `json:"logo_url"`
+	CoverURL string  `json:"cover_url"`
 	Tags string `json:"tags"`
+
+	// ┌─ 0 = "MA'LUMOT YO'Q", "yomon" EMAS ────────────────────────────┐
+	// Mijoz tomonida 0 bo'lganda tegishli chip UMUMAN chizilmaydi —
+	// "0.0 ★" yoki "0 daqiqa" ko'rsatilmaydi. Shu sabab bu maydonlar
+	// ko'rsatkich BO'LMAGAN restoranni ham buzmaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	//
+	// Reyting HOZIRCHA qo'lda kiritiladi (admin panel). Haqiqiy
+	// baholash tizimi qurilganda (ROADMAP 3-band) shu maydonlar
+	// buyurtmalardan hisoblanadi va qo'lda kiritish olib tashlanadi.
+	Rating      float64 `json:"rating"`
+	RatingCount int     `json:"rating_count"`
+
+	// Yetkazish vaqti oralig'i, daqiqada. Mahsulotdagi PrepTimeText'dan
+	// FARQLI: u bitta taomni tayyorlash vaqti, bu esa mijozgacha
+	// yetkazishning umumiy taxminiy oralig'i.
+	ETAMinMinutes int `json:"eta_min_minutes"`
+	ETAMaxMinutes int `json:"eta_max_minutes"`
 }
 
 type Product struct {

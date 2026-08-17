@@ -53,6 +53,39 @@ type Client struct {
 	http  *http.Client
 }
 
+// ErrConflict — Telegram bitta botni FAQAT bitta jarayon polling
+// qilishiga ruxsat beradi.
+//
+// ┌─ NEGA ALOHIDA XATO ────────────────────────────────────────────────┐
+// Ikkita server (masalan lokal dev va production) bir xil
+// `TELEGRAM_BOT_TOKEN` bilan ishlasa, ikkalasi ham `getUpdates`
+// chaqiradi va Telegram navbat bilan ikkalasiga 409 qaytaradi.
+//
+// Oqibati foydalanuvchida ko'rinadi: "Telegram bilan kirish" bosgan
+// odam botga o'tadi, Start bosadi — lekin uning yangiligi qaysi
+// serverga tushishi TASODIFIY bo'ladi. Yarmi holatda kirish
+// yakunlanmaydi va u "havola eskirgan" xabarini oladi.
+//
+// Ilgari bu oddiy tarmoq xatosi bilan bir xil loglanardi
+// ("getUpdates xatosi") va sababini topish soatlab vaqt olgan edi.
+// Endi log xatoning O'ZIDA yechimni aytadi.
+// └────────────────────────────────────────────────────────────────────┘
+var ErrConflict = errors.New("telegram: botni boshqa jarayon ham polling qilyapti")
+
+// classifyError — Telegram'ning `description` matnini tipiga ajratadi.
+//
+// Alohida funksiya, chunki `call` tarmoqqa bog'liq va uni testdan
+// chaqirib bo'lmaydi — bu esa mantiqning O'ZI (aynan nima 409 deb
+// hisoblanadi) tekshirilishi mumkin bo'lgan yagona joy.
+func classifyError(description string) error {
+	// Telegram matni: "Conflict: terminated by other getUpdates request;
+	// make sure that only one bot instance is running".
+	if strings.Contains(description, "Conflict") {
+		return fmt.Errorf("%w: %s", ErrConflict, description)
+	}
+	return fmt.Errorf("telegram: %s", description)
+}
+
 func NewClient(token string) *Client {
 	return &Client{
 		token: strings.TrimSpace(token),
@@ -98,7 +131,11 @@ func (c *Client) call(ctx context.Context, method string, payload any, out any) 
 	if !envelope.OK {
 		// TOKEN LOG QILINMAYDI — xato matnida ham u bo'lmaydi, chunki
 		// u faqat URL'da edi.
-		return fmt.Errorf("telegram: %s", envelope.Description)
+		//
+		// 409 ALOHIDA ajratiladi: uning sababi mutlaqo boshqacha va
+		// yechimi ham boshqa (pastdagi ErrConflict izohiga qarang).
+		// Aks holda u boshqa tarmoq xatolari bilan bir xil ko'rinardi.
+		return classifyError(envelope.Description)
 	}
 	if out != nil {
 		return json.Unmarshal(envelope.Result, out)

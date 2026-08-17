@@ -183,6 +183,17 @@ func (r *fakeUserRepo) DeleteByRoleEntity(_ context.Context, role Role, entityID
 	}
 	return ids, nil
 }
+func (r *fakeUserRepo) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for phone, u := range r.data {
+		if u.ID == id {
+			delete(r.data, phone)
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
 func (r *fakeUserRepo) ListByRole(_ context.Context, role Role) ([]*User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

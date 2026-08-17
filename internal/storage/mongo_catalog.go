@@ -22,12 +22,20 @@ type mongoRestaurant struct {
 	LogoURL  string  `bson:"logo_url"`
 	CoverURL string  `bson:"cover_url"`
 	Tags     string  `bson:"tags"`
+	// Eski hujjatlarda bu maydonlar YO'Q — BSON ularni nol qiymat bilan
+	// qoldiradi, ya'ni "ma'lumot yo'q". Migratsiya kerak emas.
+	Rating        float64 `bson:"rating"`
+	RatingCount   int     `bson:"rating_count"`
+	ETAMinMinutes int     `bson:"eta_min_minutes"`
+	ETAMaxMinutes int     `bson:"eta_max_minutes"`
 }
 
 func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 	return &catalog.Restaurant{
 		ID: d.ID, Name: d.Name, Address: d.Address, Lat: d.Lat, Lng: d.Lng, Open: d.Open,
 		LogoURL: d.LogoURL, CoverURL: d.CoverURL, Tags: d.Tags,
+		Rating: d.Rating, RatingCount: d.RatingCount,
+		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
 	}
 }
 
@@ -35,6 +43,8 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 	return mongoRestaurant{
 		ID: x.ID, Name: x.Name, Address: x.Address, Lat: x.Lat, Lng: x.Lng, Open: x.Open,
 		LogoURL: x.LogoURL, CoverURL: x.CoverURL, Tags: x.Tags,
+		Rating: x.Rating, RatingCount: x.RatingCount,
+		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
 	}
 }
 

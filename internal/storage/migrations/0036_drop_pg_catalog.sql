@@ -1,0 +1,48 @@
+-- Katalogni PostgreSQL'dan butunlay olib tashlash.
+--
+-- ┌─ NEGA ─────────────────────────────────────────────────────────────┐
+-- Katalog (restoran + menyu + aksiya) MongoDB'da saqlanadi
+-- (`internal/storage/mongo_catalog.go`). Postgres'dagi bu uchta jadval
+-- katalog Mongo'ga ko'chirilgunga qadar ishlatilgan va o'shandan beri
+-- HECH KIM YOZMAYDI — lekin ular hali ham eski ma'lumot bilan turibdi.
+--
+-- Bu shunchaki axlat emas, XAVF edi:
+--
+--   1. Bitta ID ikki bazada IKKI XIL nom bilan turardi. Masalan `r1`
+--      Mongo'da "Avigo", Postgres'da "Chust Osh Markazi". Qaysi biri
+--      to'g'ri ekanini baza aytib berolmasdi.
+--
+--   2. `cmd/api/main.go` da katalog manbai `MONGODB_URI` bo'yicha
+--      tanlanardi va o'zgaruvchi BERILMASA jimgina Postgres'ga o'tardi.
+--      Ya'ni bitta unutilgan muhit o'zgaruvchisi ilovani xato bo'lmagan
+--      holda ESKI katalogga ulab qo'yardi (production'da esa bu jadval
+--      bo'sh — mijozlar nol restoran ko'rardi).
+--
+-- Yagona haqiqat manbai qoidasi: bitta ma'lumot turi — bitta baza.
+-- └────────────────────────────────────────────────────────────────────┘
+--
+-- ┌─ NEGA BOSHQA JADVALLAR SINMAYDI ───────────────────────────────────┐
+-- `orders.restaurant_id`, `orders.promotion_id`, `favorites.product_id`
+-- va `restaurant_tables.restaurant_id` — bularning HECH BIRIDA bu
+-- jadvallarga FOREIGN KEY yo'q (tekshirildi: `information_schema`).
+-- Ular oddiy TEXT, ya'ni MANTIQIY ishora: katalog boshqa bazada
+-- bo'lgani uchun baza darajasidagi cheklov texnik jihatdan imkonsiz.
+--
+-- Yagona tashqi kalitlar katalogning O'Z ICHIDA edi
+-- (products/promotions -> restaurants) va ular jadval bilan birga
+-- ketadi.
+--
+-- Buning evaziga yaxlitlikni SERVIS qatlami himoya qiladi: buyurtma
+-- yaratishda mahsulot katalogdan tekshiriladi va nomi/narxi
+-- `orders.items` ichiga NUSXALANADI (snapshot). Shuning uchun mahsulot
+-- keyin o'chirilsa ham eski buyurtma buzilmaydi.
+-- └────────────────────────────────────────────────────────────────────┘
+--
+-- QAYTARISH: bu migratsiya ma'lumotni o'chiradi. Qaytarish kerak bo'lsa
+-- 0003_catalog.sql va undan keyingi katalog migratsiyalarini qayta
+-- qo'llash + zaxiradan tiklash kerak.
+
+-- Tartib muhim: avval `restaurants` ga ishora qiluvchilar.
+DROP TABLE IF EXISTS promotions;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS restaurants;

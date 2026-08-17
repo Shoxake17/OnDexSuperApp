@@ -189,6 +189,23 @@ type Repository interface {
 	// tugagunicha (30 kun) ishlashda davom etardi: `auth()` faqat
 	// imzoni tekshiradi, bazaga qaramaydi.
 	DeleteByRoleEntity(ctx context.Context, role Role, entityID string) ([]string, error)
+	// Delete — BITTA akkauntni butunlay o'chiradi (superadmin paneli).
+	//
+	// Implementatsiya foydalanuvchining SHAXSIY ma'lumotlarini ham
+	// tozalashi SHART: sevimlilar, bildirishnomalar, push tokenlari,
+	// qurilma yozuvlari. Postgres'da ularning bir qismi
+	// `ON DELETE CASCADE` bilan ketadi, lekin `favorites` da
+	// FOREIGN KEY yo'q (u `customer_id` ni erkin matn sifatida
+	// saqlaydi) — ya'ni cascade'ga TAYANIB BO'LMAYDI.
+	//
+	// BUYURTMALAR ATAYLAB QOLDIRILADI: ular moliyaviy yozuv
+	// (restoran hisob-kitobi, kuryer to'lovi) va ularni o'chirish
+	// hisobotni buzadi. Buyurtmada shaxsiy ma'lumot saqlanmaydi —
+	// faqat `customer_id` qoladi, u esa endi hech qanday akkauntga
+	// ishora qilmaydi.
+	//
+	// Topilmasa `ErrUserNotFound`.
+	Delete(ctx context.Context, id string) error
 	// UpdateAddress — mijoz xaritadan yetkazib berish manzilini tanlab
 	// saqlaganda ("Tayyor" tugmasi) ishlatiladi.
 	UpdateAddress(ctx context.Context, id string, addr AddressDetails) error

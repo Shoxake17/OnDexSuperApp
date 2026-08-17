@@ -368,8 +368,11 @@ func (r *PgCourierRepo) Create(ctx context.Context, c *couriers.Courier) error {
 }
 
 func (r *PgCourierRepo) ListAll(ctx context.Context) ([]*couriers.Courier, error) {
+	// `deleted_at IS NULL` — o'chirilgan kuryer superadmin ro'yxatida
+	// ham ko'rinmaydi (yozuv faqat buyurtma tarixi uchun qoladi,
+	// qarang: `SoftDelete`).
 	rows, err := r.pool.Query(ctx,
-		`SELECT `+courierColumns+` FROM couriers ORDER BY name`)
+		`SELECT `+courierColumns+` FROM couriers WHERE deleted_at IS NULL ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +385,26 @@ func (r *PgCourierRepo) ListAll(ctx context.Context) ([]*couriers.Courier, error
 func (r *PgCourierRepo) IncrementCompletedOrders(ctx context.Context, id string) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE couriers SET completed_orders = completed_orders + 1, updated_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return couriers.ErrNoCourier
+	}
+	return nil
+}
+
+// SoftDelete — interfeys izohiga qarang (`couriers.Repository`).
+//
+// Ism ATAYLAB bo'sh satrga emas, aniq belgiga almashtiriladi: buyurtma
+// tarixida "kuryer: —" o'rniga "o'chirilgan akkaunt" ko'rinishi kerak,
+// aks holda ma'lumot yo'qolgandek tuyulardi.
+func (r *PgCourierRepo) SoftDelete(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE couriers
+		    SET deleted_at = now(), name = 'O''chirilgan kuryer',
+		        available = FALSE, approved = FALSE, updated_at = now()
+		  WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -411,7 +434,7 @@ func (r *PgCourierRepo) ListAvailable(ctx context.Context) ([]*couriers.Courier,
 	rows, err := r.pool.Query(ctx, `
 		SELECT `+courierColumns+`
 		FROM couriers
-		WHERE available AND approved`)
+		WHERE available AND approved AND deleted_at IS NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +486,7 @@ func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
 	rows, err := r.pool.Query(ctx, `
 		SELECT `+courierColumns+`
 		FROM couriers
-		WHERE available AND approved
+		WHERE available AND approved AND deleted_at IS NULL
 		  AND ($5::interval IS NULL
 		       OR location_updated_at IS NULL
 		       OR location_updated_at > now() - $5::interval)

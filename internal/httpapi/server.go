@@ -111,6 +111,12 @@ type Deps struct {
 	// aniq xato qaytaradi — jimgina "hammasi joyida" demaydi.
 	TelegramBotToken string
 
+	// Devices — foydalanuvchi qaysi mijoz dasturidan (TMA, mobil
+	// ilova, brauzer) kirgani qaydi — superadmin panelidagi "Qurilma"
+	// ustuni uchun. `nil` bo'lsa qayd YURITILMAYDI va qolgan hamma
+	// narsa o'zgarishsiz ishlaydi (`devices.go`).
+	Devices users.DeviceStore
+
 	// Notifications — saqlangan bildirishnomalar ombori
 	// (`GET /notifications`). `nil` bo'lsa endpointlar 503 qaytaradi.
 	Notifications notify.Store
@@ -152,6 +158,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerCourierRoutes(mux)
 	s.registerPromotionRoutes(mux)
 	s.registerAdminRoutes(mux)
+	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)
 	s.registerUploadRoutes(mux)

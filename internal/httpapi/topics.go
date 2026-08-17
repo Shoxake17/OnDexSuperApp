@@ -18,3 +18,7 @@ func orderTopic(id string) string { return notify.Order(id) }
 
 // userTopic — foydalanuvchining SHAXSIY kanali (bildirishnomalar).
 func userTopic(id string) string { return notify.User(id) }
+
+// adminTopic — superadmin panelining jonli kanali. Unga faqat `admin`
+// roli obuna bo'ladi (`routes_ws.go`), sabab `notify/topic.go` da.
+func adminTopic() string { return notify.Admin() }

@@ -68,6 +68,10 @@ func (l *Live) OrderCreated(o *orders.Order) {
 		event["party_size"] = o.PartySize
 	}
 	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
+	// Superadmin paneli — o'sha eventning nusxasi. Busiz panel yangi
+	// buyurtmani faqat keyingi so'rov siklida ko'rardi (`Admin()`
+	// izohiga qarang).
+	l.svc.Broadcast(Admin(), event)
 }
 
 func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
@@ -91,6 +95,9 @@ func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
 	// Restoran va kuryer — ish kanallari (jonli, tarixsiz).
 	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
 	l.svc.Broadcast(Entity(ModuleFood, o.CourierID), event)
+	// Superadmin paneli (buyurtmalar ro'yxati va boshqaruv
+	// ko'rsatkichlari shu eventdan yangilanadi).
+	l.svc.Broadcast(Admin(), event)
 
 	// ── Affitsiantga PUSH: taom tayyor ──
 	//

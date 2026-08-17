@@ -53,6 +53,25 @@ func Entity(module, entityID string) string {
 	return "e:" + module + ":" + entityID
 }
 
+// Admin — platforma ma'muriyati kanali (superadmin paneli).
+//
+// ┌─ NEGA ALOHIDA KANAL ──────────────────────────────────────────────┐
+// Superadmin paneli hech qaysi restoran yoki kuryerga TEGISHLI EMAS,
+// ya'ni `Entity(...)` kanallarining birortasiga ham qo'shila olmaydi
+// (uning `EntityID` si bo'sh). Shu sabab u jonli hech narsa
+// eshitmasdi va butun panel 5-10 soniyalik so'rov sikliga tayanardi:
+// yangi buyurtma paydo bo'lgani, holati o'zgargani, kuryer
+// ro'yxatdan o'tgani — hammasi kechikib ko'rinardi.
+//
+// Bu kanal aynan shu bo'shliqni yopadi. Unga FAQAT `admin` roli
+// obuna bo'ladi (`routes_ws.go`) — ya'ni bu yerdagi xabarlar
+// mijozlarga hech qachon ko'rinmaydi.
+// └───────────────────────────────────────────────────────────────────┘
+//
+// Kalitda ID yo'q: ma'muriyat bitta va uning barcha a'zolari bir xil
+// oqimni ko'radi.
+func Admin() string { return "a:" + ModulePlatform }
+
 // Order — bitta buyurtma/safar kanali (kuryerning jonli GPS'i shu
 // yerga boradi).
 func Order(orderID string) string {

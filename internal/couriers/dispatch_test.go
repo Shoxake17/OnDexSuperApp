@@ -54,6 +54,18 @@ func (r *fakeRepo) SetApproved(_ context.Context, id string, approved bool) erro
 	return ErrNoCourier
 }
 
+func (r *fakeRepo) SoftDelete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, c := range r.couriers {
+		if c.ID == id {
+			r.couriers = append(r.couriers[:i], r.couriers[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNoCourier
+}
+
 func (r *fakeRepo) GetByID(_ context.Context, id string) (*Courier, error) {
 	for _, c := range r.couriers {
 		if c.ID == id {

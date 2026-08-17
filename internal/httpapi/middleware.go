@@ -269,7 +269,11 @@ func withCORS(next http.Handler, allowedOrigins []string, devMode bool) http.Han
 			}
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		// `X-Ondex-Client` — mijoz dasturini bildiruvchi sarlavha
+		// (`devices.go`). Bu ro'yxatda BO'LMASA brauzerdagi panellar
+		// va mini-app umuman so'rov yubora olmaydi: preflight (OPTIONS)
+		// javobida ruxsat etilmagan sarlavha butun so'rovni bloklaydi.
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, "+clientHeader)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -350,6 +354,7 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 			httpError(w, http.StatusForbidden, errors.New("bu amal sizning rolingizga ochiq emas"))
 			return
 		}
+		s.recordDevice(r, claims.Subject)
 		next(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))
 	}
 }

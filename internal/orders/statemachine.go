@@ -77,6 +77,23 @@ var dineInTransitions = func() map[Status]map[Status][]Actor {
 
 // delivered/served/rejected/cancelled — terminal, hech qayerga o'tmaydi.
 
+// IsTerminal — buyurtma yakunlanganmi (boshqa holatga o'tmaydi).
+//
+// NEGA EKSPORT QILINGAN: "faol buyurtmasi bormi" savoli endi
+// buyurtmalar modulidan TASHQARIDA ham beriladi — masalan superadmin
+// akkauntni o'chirishdan oldin (`routes_admin_users.go`). Har bir
+// chaqiruvchi terminal holatlar ro'yxatini o'zi yozsa, yangi holat
+// qo'shilganda ro'yxatlarning biri yangilanmasdan qolardi va xato
+// JIM bo'lardi (yakunlangan buyurtma "faol" deb ko'rinardi).
+func IsTerminal(s Status) bool {
+	switch s {
+	case StatusDelivered, StatusServed, StatusRejected, StatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 type TransitionError struct {
 	From, To Status
 	By       Actor

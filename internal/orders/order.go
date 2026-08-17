@@ -212,3 +212,34 @@ func (o *Order) IsTerminal() bool {
 
 // IsDineIn — stolda ovqatlanish buyurtmasimi.
 func (o *Order) IsDineIn() bool { return o.Type.Normalized() == TypeDineIn }
+
+// NeedsDispatchRecovery — server qayta ishga tushganda bu buyurtmaga
+// kuryer qidiruvini QAYTA boshlash kerakmi.
+//
+// ┌─ NEGA ALOHIDA FUNKSIYA ────────────────────────────────────────────┐
+// Bu shart ilgari `cmd/api/main.go` ichida qo'lda yozilgan edi va
+// dispatch'ni ISHGA TUSHIRUVCHI shartdan (`routes_orders.go`) ajralib
+// ketgan edi. Ikkita nusxa ikki xil bo'lib qoldi — natijada ikkita
+// xato:
+//
+//  1. STOL BUYURTMASI kuryerlarga yuborilardi. Oddiy yo'lda
+//     `if !o.IsDineIn()` himoyasi bor, tiklashda esa YO'Q edi. Stol
+//     buyurtmasi ham `accepted` holatidan o'tadi (`commonTransitions`)
+//     va tayyorlash vaqti ham saqlanadi (ikkala tur uchun) — ya'ni
+//     eski shart unga TO'LIQ mos kelardi. Har server restartda
+//     kuryerlar mavjud bo'lmagan yetkazish uchun bezovta qilinib,
+//     "band" holatiga o'tkazilardi.
+//
+//  2. Tayyorlash vaqti saqlanmagan buyurtma TIKLANMASDI. Eski shartda
+//     `PreparationMinutes > 0` talabi bor edi, lekin dispatch uchun bu
+//     qiymat SHART EMAS — u faqat ETA'ni moslashtiradi
+//     (`ScoreCandidates`), nol bo'lsa moslashtirish qilinmaydi.
+//     Restoran qabul qilgan-u, vaqtni saqlash xato bergan buyurtma
+//     (bu holat `routes_orders.go` da ATAYLAB kechiriladi) restartdan
+//     keyin abadiy kuryersiz qolardi.
+//
+// Endi qaror bitta joyda va u uchun buzishga urinadigan testlar bor.
+// └────────────────────────────────────────────────────────────────────┘
+func (o *Order) NeedsDispatchRecovery() bool {
+	return o.Status == StatusAccepted && o.CourierID == "" && !o.IsDineIn()
+}

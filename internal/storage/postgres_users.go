@@ -267,6 +267,36 @@ func (r *PgUserRepo) DeleteByRoleEntity(ctx context.Context, role users.Role, en
 	return ids, rows.Err()
 }
 
+// Delete — akkauntni va unga bog'langan SHAXSIY ma'lumotlarni
+// o'chiradi (interfeys izohiga qarang).
+//
+// TRANZAKSIYA SHART: `favorites` alohida o'chiriladi va u
+// foydalanuvchi qatoridan KEYIN o'chirilsa, oradagi nosozlik
+// "yetim" sevimlilarni qoldirardi — ular hech qachon ko'rinmaydi,
+// lekin bazada abadiy qoladi.
+func (r *PgUserRepo) Delete(ctx context.Context, id string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// `favorites.customer_id` da FOREIGN KEY yo'q — cascade ishlamaydi.
+	if _, err := tx.Exec(ctx, `DELETE FROM favorites WHERE customer_id = $1`, id); err != nil {
+		return err
+	}
+	// Qolganlari (notifications, device_tokens, user_devices) —
+	// `ON DELETE CASCADE`.
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return tx.Commit(ctx)
+}
+
 func (r *PgUserRepo) UpdateAddress(ctx context.Context, id string, a users.AddressDetails) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE users SET address_lat = $2, address_lng = $3, address_text = $4,

@@ -228,6 +228,22 @@ func (r *MemoryUserRepo) DeleteByRoleEntity(_ context.Context, role users.Role, 
 	return ids, nil
 }
 
+// Delete — bitta akkauntni o'chiradi.
+//
+// XOTIRA REJIMIDA sevimlilar/bildirishnomalar ALOHIDA do'konlarda va
+// ular bu yerdan ko'rinmaydi. Bu farq ataylab: xotira rejimi faqat
+// testlar va bazasiz dev uchun, ma'lumot esa jarayon tugashi bilan
+// baribir yo'qoladi. Production yo'li — `PgUserRepo.Delete`.
+func (r *MemoryUserRepo) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[id]; !ok {
+		return users.ErrUserNotFound
+	}
+	delete(r.data, id)
+	return nil
+}
+
 func (r *MemoryUserRepo) ListByRole(_ context.Context, role users.Role) ([]*users.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

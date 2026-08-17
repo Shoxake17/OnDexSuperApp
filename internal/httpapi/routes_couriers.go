@@ -56,6 +56,15 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
+			// Superadmin paneliga jonli xabar: ariza TASDIQ KUTMOQDA.
+			//
+			// Bu yerda kutish narxi yuqori — kuryer tasdiqlanmaguncha
+			// umuman ishlay olmaydi va u ekranga qarab o'tiradi. Avval
+			// panel buni faqat 10 soniyalik so'rov siklida ko'rardi.
+			s.Hub.Send(adminTopic(), map[string]any{
+				"type":       "courier_registered",
+				"courier_id": c.ID,
+			})
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"courier": c,
 				"token":   newToken,
@@ -196,6 +205,16 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusNotFound, err)
 				return
 			}
+			// Superadmin panelidagi "Online" ustuni shu eventdan
+			// yangilanadi. Hodisa SIYRAK (kuryer smenaga chiqadi/
+			// tugatadi), ya'ni kanalni to'ldirmaydi — joylashuv
+			// yangilanishlari esa bu yerga ATAYLAB yuborilmaydi
+			// (ular sekundiga bir necha marta keladi).
+			s.Hub.Send(adminTopic(), map[string]any{
+				"type":       "courier_status",
+				"courier_id": courierID,
+				"available":  req.Available,
+			})
 			writeJSON(w, http.StatusOK, map[string]bool{"available": req.Available})
 		}))
 }

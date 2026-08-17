@@ -5,12 +5,16 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // pendingTTL — deep-link tokenining amal qilish muddati.
@@ -105,17 +109,38 @@ type Pending struct {
 	VerifiedPhone string
 }
 
-// pendingStore — xotiradagi do'kon.
+// Redis kalitlari. Ikkita indeks kerak: token bo'yicha (ilova
+// so'raydi) va chat bo'yicha (bot yangiligi keladi).
+const (
+	pendingTokenKey = "tgpending:"
+	pendingChatKey  = "tgchat:"
+)
+
+// pendingStore — xotira keshi + (ixtiyoriy) Redis'da saqlash.
 //
-// NEGA XOTIRADA: yozuv 10 daqiqa yashaydi va server qayta ishga
-// tushsa foydalanuvchi shunchaki qaytadan boshlaydi. Bir nechta
-// server nusxasi paydo bo'lganda buni Redis'ga ko'chirish kerak —
-// xuddi `internal/ratelimit` dagi kabi (u ham hozir bitta nusxa
-// uchun mo'ljallangan).
+// ┌─ NEGA REDIS QO'SHILDI ─────────────────────────────────────────────┐
+// Avval bu do'kon FAQAT xotirada edi. Izohda "server qayta ishga
+// tushsa foydalanuvchi shunchaki qaytadan boshlaydi" deb yozilgandi —
+// nazariy jihatdan to'g'ri, lekin amalda qimmatga tushardi:
+//
+// CI/CD har `main` ga push'da deploy qiladi va konteyner qayta
+// yaratiladi. O'sha daqiqada "Telegram bilan kirish" oqimida turgan
+// HAR BIR foydalanuvchining sessiyasi yo'qolardi — ular botda Start
+// bosgach ilovaga qaytganda "havola eskirgan" xabarini olardi va
+// sababini tushunmasdi.
+//
+// Endi yozuv Redis'da ham turadi (TTL bilan) va server ko'tarilganda
+// `load()` uni qaytaradi. Naqsh `internal/revoke` dagi bilan bir xil:
+// xotira — tez yo'l, Redis — chidamlilik. Redis YO'Q bo'lsa hammasi
+// avvalgidek ishlaydi (faqat xotirada) — loyihaning umumiy qoidasi:
+// Redis hech qachon ilovani to'xtatmaydi.
+// └────────────────────────────────────────────────────────────────────┘
 type pendingStore struct {
 	mu       sync.Mutex
 	byToken  map[string]*Pending
 	byChatID map[int64]string // chat -> token
+
+	rdb *redis.Client // nil bo'lishi mumkin
 }
 
 func newPendingStore() *pendingStore {
@@ -125,11 +150,113 @@ func newPendingStore() *pendingStore {
 	}
 }
 
+// persistLocked — yozuvni Redis'ga ko'chiradi (chaqiruvchi qulf ushlaydi).
+//
+// Xato JIM log qilinadi va oqim davom etadi: Redis ishlamay qolgani
+// uchun foydalanuvchini kirishdan to'xtatish noto'g'ri bo'lardi —
+// xotiradagi nusxa baribir shu jarayon davomida ishlaydi.
+func (s *pendingStore) persistLocked(p *Pending) {
+	if s.rdb == nil {
+		return
+	}
+	ttl := time.Until(p.ExpiresAt)
+	if ttl <= 0 {
+		return
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		slog.Warn("telegram: kutilayotgan sessiyani saqlab bo'lmadi", "err", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.rdb.Set(ctx, pendingTokenKey+p.Token, raw, ttl).Err(); err != nil {
+		slog.Warn("telegram: Redis'ga yozib bo'lmadi", "err", err)
+		return
+	}
+	if p.ChatID != 0 {
+		// Chat -> token indeksi. Alohida kalit, chunki bot yangiligi
+		// faqat chat ID bilan keladi.
+		if err := s.rdb.Set(ctx, fmt.Sprintf("%s%d", pendingChatKey, p.ChatID), p.Token, ttl).Err(); err != nil {
+			slog.Warn("telegram: chat indeksini yozib bo'lmadi", "err", err)
+		}
+	}
+}
+
+func (s *pendingStore) forgetLocked(p *Pending) {
+	if s.rdb == nil || p == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	keys := []string{pendingTokenKey + p.Token}
+	if p.ChatID != 0 {
+		keys = append(keys, fmt.Sprintf("%s%d", pendingChatKey, p.ChatID))
+	}
+	if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+		slog.Warn("telegram: Redis'dan o'chirib bo'lmadi", "err", err)
+	}
+}
+
+// load — server ishga tushganda Redis'dagi sessiyalarni qaytaradi.
+func (s *pendingStore) load() {
+	if s.rdb == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Avval TARMOQDAN o'qiladi, keyin qulf ostida qo'llanadi. Qulfni
+	// Redis so'rovlari davomida ushlab turish butun Telegram oqimini
+	// (bot polling + HTTP) shu vaqtga bloklardi.
+	var found []*Pending
+	var cursor uint64
+	for {
+		keys, next, err := s.rdb.Scan(ctx, cursor, pendingTokenKey+"*", 200).Result()
+		if err != nil {
+			slog.Warn("telegram: kutilayotgan sessiyalarni o'qib bo'lmadi", "err", err)
+			return
+		}
+		for _, k := range keys {
+			raw, err := s.rdb.Get(ctx, k).Bytes()
+			if err != nil {
+				continue
+			}
+			var p Pending
+			if err := json.Unmarshal(raw, &p); err != nil {
+				continue
+			}
+			if p.Token == "" || time.Now().After(p.ExpiresAt) {
+				continue
+			}
+			found = append(found, &p)
+		}
+		if next == 0 {
+			break
+		}
+		cursor = next
+	}
+
+	s.mu.Lock()
+	for _, p := range found {
+		s.byToken[p.Token] = p
+		if p.ChatID != 0 {
+			s.byChatID[p.ChatID] = p.Token
+		}
+	}
+	s.mu.Unlock()
+
+	if len(found) > 0 {
+		slog.Info("telegram: kutilayotgan kirish sessiyalari tiklandi", "count", len(found))
+	}
+}
+
 func (s *pendingStore) put(p *Pending) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sweepLocked()
 	s.byToken[p.Token] = p
+	s.persistLocked(p)
 }
 
 // ┌─ NEGA KO'RSATKICH EMAS, NUSXA ─────────────────────────────────────┐
@@ -173,6 +300,7 @@ func (s *pendingStore) bindChat(token string, chatID int64) (Pending, bool) {
 	}
 	p.ChatID = chatID
 	s.byChatID[chatID] = token
+	s.persistLocked(p)
 	return *p, true
 }
 
@@ -197,6 +325,11 @@ func (s *pendingStore) markLoggedIn(token, phone string) {
 	if p := s.byToken[token]; p != nil {
 		p.Done = true
 		p.VerifiedPhone = phone
+		// MUHIM: aynan shu holat (tasdiqlandi, lekin ilova hali
+		// natijani so'ramadi) restart paytida eng ko'p yo'qolardi —
+		// foydalanuvchi botda hammasini qilib bo'lib, ilovaga
+		// qaytganda "havola eskirgan" ko'rardi.
+		s.persistLocked(p)
 	}
 }
 
@@ -206,11 +339,16 @@ func (s *pendingStore) drop(token string) {
 	defer s.mu.Unlock()
 	if p := s.byToken[token]; p != nil {
 		delete(s.byChatID, p.ChatID)
+		s.forgetLocked(p)
 	}
 	delete(s.byToken, token)
 }
 
 // sweepLocked — eskirgan yozuvlarni tozalaydi (chaqiruvchi qulf ushlaydi).
+//
+// Redis'dagi nusxa TTL bilan o'zi yo'qoladi, shuning uchun bu yerda
+// alohida o'chirish shart emas — xotira va Redis mustaqil ravishda,
+// bir xil muddat bo'yicha tozalanadi.
 func (s *pendingStore) sweepLocked() {
 	now := time.Now()
 	for token, p := range s.byToken {
@@ -331,6 +469,26 @@ func NewVerifier(c botAPI, issue CodeIssuer, normalize PhoneNormalizer, codeTTLM
 		normalize:  normalize,
 		codeTTLMin: codeTTLMinutes,
 	}
+}
+
+// WithRedis — kutilayotgan kirish sessiyalarini Redis'da ham saqlaydi
+// va mavjudlarini darhol tiklaydi.
+//
+// Konstruktor imzosi ATAYLAB o'zgartirilmadi: `NewVerifier` to'rtta
+// testda chaqiriladi va Redis ular uchun keraksiz. `WithPush`/
+// `WithContactHook` bilan bir xil naqsh — ixtiyoriy imkoniyat alohida
+// metod orqali ulanadi.
+//
+// `rdb` nil bo'lsa hech narsa o'zgarmaydi (faqat xotirada ishlaydi).
+func (v *Verifier) WithRedis(rdb *redis.Client) *Verifier {
+	if rdb == nil {
+		return v
+	}
+	v.store.mu.Lock()
+	v.store.rdb = rdb
+	v.store.mu.Unlock()
+	v.store.load()
+	return v
 }
 
 func (v *Verifier) Configured() bool { return v.client.Configured() }
@@ -465,13 +623,28 @@ func (v *Verifier) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			// Tarmoq uzilishi yoki Telegram tomondagi vaqtinchalik
-			// muammo butun botni o'ldirmasligi kerak.
-			slog.Warn("telegram: getUpdates xatosi", "err", err)
+			wait := 5 * time.Second
+			if errors.Is(err, ErrConflict) {
+				// Bu tarmoq nosozligi EMAS — sozlama xatosi. Qayta
+				// urinish uni hech qachon tuzatmaydi, shuning uchun
+				// xabar ERROR darajasida va yechim bilan beriladi.
+				slog.Error("telegram: BOSHQA SERVER ham shu botni polling qilyapti — "+
+					"foydalanuvchilarning yarmi kirishni yakunlay olmaydi ('havola eskirgan'). "+
+					"YECHIM: dev uchun @BotFather'da ALOHIDA bot yarating va lokal .env dagi "+
+					"TELEGRAM_BOT_TOKEN ni o'shanikiga almashtiring (production tokeni faqat serverda qolsin)",
+					"err", err)
+				// Konflikt holatida tez-tez urinish log'ni to'ldiradi
+				// va ikkinchi serverni ham uzib turadi.
+				wait = 30 * time.Second
+			} else {
+				// Tarmoq uzilishi yoki Telegram tomondagi vaqtinchalik
+				// muammo butun botni o'ldirmasligi kerak.
+				slog.Warn("telegram: getUpdates xatosi", "err", err)
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(5 * time.Second):
+			case <-time.After(wait):
 			}
 			continue
 		}

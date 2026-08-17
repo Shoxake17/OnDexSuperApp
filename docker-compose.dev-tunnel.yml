@@ -1,0 +1,40 @@
+# Cloudflare tunnel orqali LOKAL sinov uchun qo'shimcha qatlam.
+#
+#   .\scripts\dev_tunnel.ps1                      (alohida oynada)
+#   go run ./cmd/api                              (alohida oynada, :8080)
+#   docker compose -f docker-compose.yml -f docker-compose.dev-tunnel.yml up -d --build web
+#
+# NEGA KERAK: asosiy docker-compose.yml dagi `localhost` qiymatlari
+# KOMPYUTERDA brauzer orqali sinash uchun to'g'ri. Lekin telefondagi
+# ilova (customer_app WebView'i, Telegram Mini App) uchun `localhost`
+# - telefonning O'ZI, ya'ni sahifa hech qayerga ulanmaydi.
+#
+# NEXT_PUBLIC_* ni `environment:` da berish YETARLI EMAS: Next.js
+# ularni build vaqtida klient paketiga MATN sifatida yozadi (batafsil
+# sabab apps/web/Dockerfile ichida). Shuning uchun `build.args` ham,
+# `environment:` ham beriladi - birinchisi klient uchun, ikkinchisi
+# server tomondagi kod uchun.
+#
+# `--build` ni TUSHIRIB QOLDIRMANG: usiz eski image (ichida localhost
+# bilan) ishlatiladi va hech narsa o'zgarmaydi.
+
+services:
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: https://dev-api-ondex.shoxpro.uz
+        NEXT_PUBLIC_SITE_URL: https://dev-web-ondex.shoxpro.uz
+        NEXT_PUBLIC_WS_URL: wss://dev-api-ondex.shoxpro.uz
+    environment:
+      # Server tomoni (BFF) Go API'ga host orqali chiqadi - tunnelga
+      # chiqib qaytish shart emas va sekinroq bo'lardi.
+      GO_API_URL: http://host.docker.internal:8080
+      # Superadmin panelidagi "Qurilma" ustunida ko'rinadigan versiya
+      # (`X-Ondex-Client: tma/<versiya>`). ISHLASH vaqtida o'qiladi,
+      # ya'ni NEXT_PUBLIC_* dan farqli - buni o'zgartirish uchun
+      # image'ni qayta qurish SHART EMAS.
+      APP_VERSION: 1.0.0-dev
+      NEXT_PUBLIC_API_URL: https://dev-api-ondex.shoxpro.uz
+      NEXT_PUBLIC_SITE_URL: https://dev-web-ondex.shoxpro.uz
+      NEXT_PUBLIC_WS_URL: wss://dev-api-ondex.shoxpro.uz

@@ -242,8 +242,19 @@ func main() {
 	// ---------- Katalog (restoranlar+menyu): MongoDB ----------
 	// Polyglot persistence: tranzaksion, munosabatli ma'lumotlar (buyurtma,
 	// to'lov, foydalanuvchi) PostgreSQL'da; hujjat-shaklidagi, tez o'zgaruvchi
-	// katalog MongoDB'da. MONGODB_URI berilmasa PostgreSQL'ga (bor bo'lsa)
-	// yoki xotiraga tushib qoladi — production'da MongoDB tavsiya etiladi.
+	// katalog MongoDB'da.
+	//
+	// ┌─ YAGONA HAQIQAT MANBAI ────────────────────────────────────────┐
+	// Katalog uchun FAQAT MongoDB. Ilgari bu yerda PostgreSQL zaxira
+	// tarmog'i bor edi va `MONGODB_URI` berilmasa unga JIMGINA o'tardi.
+	// Bu eng yomon turdagi nosozlikni tug'dirardi: server sog'lom
+	// ko'tarilardi, hech qanday xato chiqmasdi, lekin ilova BUTUNLAY
+	// BOSHQA (va production'da BO'SH) katalogni ko'rsatardi.
+	//
+	// Endi: Mongo bor -> Mongo. Yo'q va dev -> xotira (ogohlantirish
+	// bilan). Yo'q va production -> DARHOL TO'XTASH. Postgres'dagi
+	// katalog jadvallari 0036 migratsiyasida o'chirilgan.
+	// └────────────────────────────────────────────────────────────────┘
 	if mongoURI := os.Getenv("MONGODB_URI"); mongoURI != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -282,23 +293,18 @@ func main() {
 		catalogRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
 		slog.Info("rejim: MongoDB (katalog)")
-	} else if pgPool != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		// Mongo variantidagi kabi — demo katalog faqat dev'da.
-		if devMode {
-			if err := storage.SeedDemoCatalog(ctx, pgPool); err != nil {
-				slog.Error("catalog seed xatosi", "err", err)
-				os.Exit(1)
-			}
-		}
-		catalogRepo = storage.NewPgCatalogRepo(pgPool)
-		promotionsRepo = storage.NewPgPromotionsRepo(pgPool)
-		slog.Warn("rejim: PostgreSQL (katalog) — MONGODB_URI berilmagan, production uchun tavsiya etilmaydi")
-	} else {
+	} else if devMode {
 		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
 		promotionsRepo = storage.NewMemoryPromotionsRepo()
-		slog.Warn("rejim: in-memory (katalog)")
+		slog.Warn("rejim: in-memory (katalog) — MONGODB_URI berilmagan; " +
+			"ma'lumot server o'chsa YO'QOLADI, faqat tez sinov uchun")
+	} else {
+		// Fail-closed: production'da katalogsiz ishga tushish — bu
+		// "ishlayotgan, lekin bo'sh do'kon" degani. Jimgina davom
+		// etgandan ko'ra to'xtagan ma'qul.
+		slog.Error("MONGODB_URI berilmagan — katalog manbai yo'q. " +
+			"Production'da bu MAJBURIY (katalog faqat MongoDB'da saqlanadi).")
+		os.Exit(1)
 	}
 
 	// ---------- Mahsulot rasmlari: Cloudflare R2 yoki lokal disk ----------
@@ -395,6 +401,17 @@ func main() {
 	}
 	notifSvc := notify.NewService(notifStore, hub, httpapi.NewID)
 
+	// ---------- Qaysi ilovadan kirgani (superadmin paneli) ----------
+	//
+	// Har bir autentifikatsiyalangan so'rovdagi `X-Ondex-Client`
+	// sarlavhasidan to'ldiriladi (`internal/httpapi/devices.go`).
+	var deviceStore users.DeviceStore
+	if pgPool != nil {
+		deviceStore = storage.NewPgDeviceStore(pgPool)
+	} else {
+		deviceStore = storage.NewMemoryDeviceStore()
+	}
+
 	// FCM push — `FIREBASE_SERVICE_ACCOUNT_JSON` bo'lmasa o'chirilgan
 	// holda davom etadi (SMTP/Eskiz bilan bir xil naqsh).
 	if fcm, err := notify.NewFCM(firebaseServiceAccount()); err != nil {
@@ -490,7 +507,11 @@ func main() {
 			},
 			users.NormalizePhone,
 			5, // kod amal qilish muddati (daqiqa) — users.codeTTL bilan bir xil
-		)
+		// Kutilayotgan kirish sessiyalari Redis'da ham saqlanadi:
+		// busiz HAR DEPLOY o'sha daqiqada Telegram orqali kirayotgan
+		// foydalanuvchilarni "havola eskirgan" holatiga tushirardi.
+		// Redis yo'q bo'lsa avvalgidek faqat xotirada ishlaydi.
+		).WithRedis(redisClient)
 		// PUBLIC_BASE_URL — "OnDex'ga qaytish" tugmasi ishora qiladigan
 		// manzil. TELEFON BRAUZERI unga chiqa olishi SHART.
 		//
@@ -591,6 +612,26 @@ func main() {
 	geoClient := geo.NewClient(distanceMatrixKey)
 	dispatcher := couriers.NewDispatcher(courierRepo, notifier, geoClient, 20*time.Second)
 
+	// ┌─ NEGA BU YERDA TEKSHIRILADI ──────────────────────────────────┐
+	// Yuqoridagi kalitdan FARQLI o'laroq (u brauzer kaliti, referrer
+	// bilan cheklangan) bu faqat `/config/maps` da o'qiladi. Ya'ni
+	// yo'qligi server ishga tushganda umuman bilinmasdi — nosozlik
+	// kimdir admin panelda xaritani ochganda, "config/maps -> 503"
+	// degan tushunarsiz xabar bo'lib chiqardi.
+	//
+	// Aynan shu holat jonli uchradi: kalit VPS `.env` da bor edi-yu,
+	// `docker-compose.prod.yml` uni konteynerga UZATMASDI. Startup
+	// logida bitta qator bo'lganida sabab bir daqiqada topilardi.
+	//
+	// Fatal EMAS: xaritasiz ham platformaning qolgan hammasi ishlaydi,
+	// server ko'tarilmay qolishi bundan ancha yomon bo'lardi.
+	// └───────────────────────────────────────────────────────────────┘
+	if os.Getenv("GOOGLE_MAPS_API_KEY") == "" {
+		slog.Warn("GOOGLE_MAPS_API_KEY berilmagan — /config/maps 503 qaytaradi, " +
+			"admin/restoran panelida xarita ochilmaydi " +
+			"(tekshiring: .env da bormi VA docker-compose.prod.yml environment ro'yxatida bormi)")
+	}
+
 	// ---------- HTTP qatlami ----------
 	// Barcha endpointlar `internal/httpapi` da (routes_*.go). Bu yerda
 	// faqat bog'liqliklar yig'iladi — Express'dagi `app.js` kabi.
@@ -627,6 +668,7 @@ func main() {
 		TelegramBotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 		Notifications: notifStore,
 		PushTokens:    tokenStore,
+		Devices:       deviceStore,
 	})
 
 	// Dispatch tiklash (crash-recovery) — dispatch holati FAQAT xotirada
@@ -638,12 +680,26 @@ func main() {
 	// so'nggi buyurtmalar orasidan aynan shunday holatdagilarni topib,
 	// ularga dispatch qayta boshlanadi.
 	{
-		recent, err := orderRepo.ListRecent(context.Background(), 500)
+		const recoveryWindow = 500
+		recent, err := orderRepo.ListRecent(context.Background(), recoveryWindow)
 		if err != nil {
 			slog.Error("dispatch tiklashda buyurtmalarni o'qib bo'lmadi", "err", err)
 		}
+		// Oyna to'lgan bo'lsa, undan ESKIROQ osilib qolgan buyurtma
+		// ko'rinmay qolgan bo'lishi mumkin. Hozirgi hajmda bu uzoq —
+		// lekin jimgina o'tib ketmasligi uchun ogohlantiramiz, aks
+		// holda "bitta buyurtma kuryersiz qoldi" muammosining sababi
+		// hech qachon topilmasdi.
+		if len(recent) >= recoveryWindow {
+			slog.Warn("dispatch tiklash oynasi to'ldi — undan eski osilib qolgan buyurtmalar tekshirilmadi",
+				"oyna", recoveryWindow)
+		}
 		for _, o := range recent {
-			if o.Status == orders.StatusAccepted && o.CourierID == "" && o.PreparationMinutes > 0 {
+			// Shart ATAYLAB shu yerda yozilmaydi: u `routes_orders.go`
+			// dagi dispatch shartidan ajralib ketib, stol buyurtmalarini
+			// kuryerlarga yuborardi. Yagona manba —
+			// `orders.Order.NeedsDispatchRecovery` (izohi o'sha yerda).
+			if o.NeedsDispatchRecovery() {
 				slog.Warn("dispatch tiklanmoqda (server qayta ishga tushgandan keyin topilgan kuryersiz buyurtma)",
 					"order", o.ID, "order_number", o.OrderNumber)
 				oID, rID, prep := o.ID, o.RestaurantID, o.PreparationMinutes

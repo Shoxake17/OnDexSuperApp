@@ -98,6 +98,9 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 	}
 	s.Hub.Send(restaurantTopic(assigned.RestaurantID), event)
 	s.Hub.Send(userTopic(assigned.CustomerID), event)
+	// Superadmin paneli — buyurtmalar jadvalidagi "Kuryer" ustuni va
+	// boshqaruv ko'rsatkichlari shu eventdan yangilanadi.
+	s.Hub.Send(adminTopic(), event)
 }
 
 // safeGo — fon goroutine'ini panikadan himoyalab ishga tushiradi.

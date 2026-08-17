@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -375,7 +376,12 @@ func (s *Server) waitersOf(r *http.Request, restaurantID string) ([]*users.User,
 //
 // ┌─ QR ICHIDA NIMA BO'LADI ──────────────────────────────────────────┐
 //
-//	https://t.me/<bot>/app?startapp=<token>
+//	https://t.me/<bot>/<short_name>?startapp=<token>
+//
+// `<short_name>` — BotFather'dagi Mini App qisqa nomi
+// (`miniAppShortName`, hozir `ondex`). U BotFather'dagi nom bilan
+// AYNAN mos bo'lishi shart, aks holda havola bot profilini ochadi
+// va stol oqimi umuman boshlanmaydi.
 //
 // Kamera shu havolani ochadi → Telegram → Mini App. Telegram
 // `startapp` qiymatini `initData` ning IMZOLANGAN qismiga
@@ -397,8 +403,36 @@ func (s *Server) tableWithQR(r *http.Request, t *tables.Table) map[string]any {
 	}
 	if s.Telegram != nil {
 		if bot, err := s.Telegram.BotUsername(r.Context()); err == nil && bot != "" {
-			out["qr_link"] = fmt.Sprintf("https://t.me/%s/app?startapp=%s", bot, t.QRToken)
+			out["qr_link"] = fmt.Sprintf("https://t.me/%s/%s?startapp=%s",
+				bot, miniAppShortName(), t.QRToken)
 		}
 	}
 	return out
+}
+
+// miniAppShortName — Mini App'ning BotFather'dagi qisqa nomi
+// (`t.me/<bot>/<short_name>`).
+//
+// ┌─ NEGA SOZLAMA, QATTIQ YOZILGAN QIYMAT EMAS ───────────────────────┐
+// Bu yerda avval `app` QATTIQ yozilgan edi, BotFather'da esa ilova
+// `ondex` nomi bilan yaratilgan. Natijada har bir stol QR kodi
+// MAVJUD BO'LMAGAN manzilga ishora qilardi: havola ochilardi-yu,
+// Mini App o'rniga oddiy bot profili chiqardi va stol oqimi
+// boshlanmasdi. Xato hech qayerda ko'rinmasdi — server ham,
+// Telegram ham xato bermaydi, chunki havola sintaktik jihatdan
+// to'g'ri.
+//
+// Qisqa nomni BotFather'da o'zgartirib bo'lmaydi (faqat o'chirib
+// qayta yaratish), shuning uchun moslashish SHU tomonda.
+//
+// Standart qiymat ATAYLAB haqiqiy production nomi: agar o'zgaruvchi
+// compose'ning `environment:` ro'yxatiga qo'shilmay qolsa
+// (`GOOGLE_MAPS_API_KEY` bilan aynan shunday bo'lgan), tizim baribir
+// to'g'ri ishlaydi.
+// └───────────────────────────────────────────────────────────────────┘
+func miniAppShortName() string {
+	if v := strings.TrimSpace(os.Getenv("TELEGRAM_MINIAPP_SHORT_NAME")); v != "" {
+		return v
+	}
+	return "ondex"
 }

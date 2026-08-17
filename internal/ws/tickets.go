@@ -12,6 +12,18 @@ import (
 type TicketClaims struct {
 	Subject  string
 	EntityID string
+	// Role — bilet EGASINING roli, tokendan olinadi (`POST /ws/ticket`).
+	//
+	// XAVFSIZLIK: bu qiymatni MIJOZ BERMAYDI — u bilet yaratilayotganda
+	// tekshirilgan JWT'dan ko'chiriladi va serverda saqlanadi. Aks
+	// holda istalgan odam "men adminman" deb ulanib, ma'muriyat
+	// kanalidagi (barcha buyurtmalar) xabarlarni o'qiy olardi.
+	//
+	// KERAKLIGI: superadmin paneli brauzer/desktop klienti, ya'ni
+	// WebSocket handshake'da `Authorization` header qo'ya olmaydi va
+	// FAQAT shu bilet orqali ulanadi — rolsiz esa u ma'muriyat
+	// kanaliga umuman qo'shila olmasdi.
+	Role string
 }
 
 // ticketTTL — bilet yaratilgandan keyin qancha vaqt amal qiladi. Juda

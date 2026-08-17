@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"chustapp/internal/users"
 	"chustapp/internal/ws"
 	"errors"
 	"net/http"
@@ -18,7 +19,13 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /ws/ticket", s.auth(nil,
 		func(w http.ResponseWriter, r *http.Request) {
 			claims := claimsFrom(r)
-			ticket := s.WsTickets.Issue(ws.TicketClaims{Subject: claims.Subject, EntityID: claims.EntityID})
+			ticket := s.WsTickets.Issue(ws.TicketClaims{
+				Subject:  claims.Subject,
+				EntityID: claims.EntityID,
+				// Rol AYNAN shu yerda, tekshirilgan tokendan olinadi
+				// (izoh: `ws.TicketClaims.Role`).
+				Role: string(claims.Role),
+			})
 			writeJSON(w, http.StatusCreated, map[string]string{"ticket": ticket})
 		}))
 
@@ -37,6 +44,21 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 	// turgan mijozga yetkazish uchun (pastdagi ?order_id= parametriga va
 	// POST /couriers/{id}/location handler'idagi s.Hub.Send chaqiruviga
 	// qarang).
+
+	// adminTopicIfAdmin — ma'muriyat kanaliga obuna FAQAT `admin`
+	// roliga ochiladi.
+	//
+	// Rol ikkala shoxda ham SERVER manbasidan keladi: Bearer shoxida
+	// tekshirilgan JWT'dan, bilet shoxida esa bilet yaratilganda
+	// saqlangan qiymatdan (`ws.TicketClaims.Role`). Mijoz uni hech
+	// qayerda ayta olmaydi — aks holda bu kanal orqali PLATFORMADAGI
+	// BARCHA buyurtmalar oqimi begonaga ochilardi.
+	adminTopicIfAdmin := func(role string) []string {
+		if role != string(users.RoleAdmin) {
+			return nil
+		}
+		return []string{adminTopic()}
+	}
 
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		// restaurantID bo'lsa, foydalanuvchi kalitlariga QO'SHIMCHA shu
@@ -76,6 +98,7 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 				restaurantTopic(claims.EntityID), // kuryer/restoran ish kanali
 			}, baseTopics...)
 			keys = append(keys, orderTopicIfOwned(claims.Subject)...)
+			keys = append(keys, adminTopicIfAdmin(string(claims.Role))...)
 			s.Hub.Serve(w, r, keys...)
 			return
 		}
@@ -113,6 +136,7 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 			restaurantTopic(claims.EntityID), // xodim/kuryer ish kanali
 		}, baseTopics...)
 		keys = append(keys, orderTopicIfOwned(claims.Subject)...)
+		keys = append(keys, adminTopicIfAdmin(claims.Role)...)
 		s.Hub.Serve(w, r, keys...)
 	})
 

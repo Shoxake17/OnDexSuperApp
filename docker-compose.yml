@@ -1,3 +1,18 @@
+# ┌─ NEGA HAMMA PORT `127.0.0.1:` BILAN ────────────────────────────────┐
+# Ilgari bu yerda `- "5432:5432"` yozilgan edi. Docker bunday yozuvni
+# `0.0.0.0` deb tushunadi — ya'ni baza BUTUN Wi-Fi TARMOG'IGA ochiladi.
+# Kafeda yoki mehmonxonada ishlaganda o'sha tarmoqdagi istalgan odam
+# ulanib, ma'lumotni o'qishi va o'zgartirishi mumkin edi.
+#
+# Ustiga Docker port publishing Windows firewall'ini CHETLAB O'TADI —
+# firewall yoqiq bo'lsa ham himoya qilmasdi.
+#
+# `127.0.0.1:` prefiksi portni faqat shu kompyuterga qoldiradi. Bu
+# `superapp.md` dagi INVARIANT 6.18 talabi.
+#
+# Mobil ilovalar (LAN IP orqali ulanadigan) BAZAGA emas, faqat API'ga
+# (:8080) va web'ga (:3000) ulanadi — ular bu o'zgarishdan ta'sirlanmaydi.
+# └─────────────────────────────────────────────────────────────────────┘
 services:
   db:
     image: postgis/postgis:16-3.4
@@ -6,7 +21,7 @@ services:
       POSTGRES_PASSWORD: chust_dev_parol
       POSTGRES_DB: chustapp
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,14 +38,49 @@ services:
       # o'sha portni band qilib turibdi (Get-Service "Redis"). Konflikt
       # aniqlangan (jonli sinovda "wrong number of arguments" xatosi orqali
       # topildi) — Docker konteyneri host tomonda 6380'ga chiqariladi.
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
+    # ┌─ NEGA `noeviction`, `allkeys-lru` EMAS ─────────────────────────┐
+    # Bu Redis'da IKKI XIL narsa yashaydi: oddiy kesh (restoranlar
+    # ro'yxati, 30s) va XAVFSIZLIK belgilari — `revoked:*` (bekor
+    # qilingan JWT tokenlar, `internal/revoke`).
+    #
+    # `allkeys-lru` xotira to'lganda ISTALGAN kalitni chiqarib yuboradi.
+    # Agar u `revoked:*` ni chiqarsa, server keyingi restartda uni
+    # `load()` bilan topa olmaydi va BEKOR QILINGAN TOKEN YANA AMAL
+    # QILA BOSHLAYDI. Ya'ni chiqarib yuborilgan "kesh" aslida jimgina
+    # ochilgan sessiya bo'lardi.
+    #
+    # `noeviction` bilan xotira to'lsa yozuv XATO beradi — bu ko'rinadi
+    # va tuzatiladi. Jimgina xavfsizlik teshigidan ko'ra yaxshi.
+    #
+    # `maxmemory` esa host RAM'ini yeb qo'yishga qarshi oxirgi to'siq
+    # (hozirgi haqiqiy sarf ~1 MB, hamma kalitda TTL bor).
+    # └─────────────────────────────────────────────────────────────────┘
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
 
   mongo:
     image: mongo:7
     ports:
-      - "27017:27017"
+      # 27017 emas — Redis'dagi (6380) bilan AYNAN bir xil sabab:
+      # kompyuterda mustaqil Windows MongoDB xizmati bor
+      # (E:\MongoDBApp, `Get-Service MongoDB`) va u 27017'ni band qilib
+      # turadi. U boshqa loyihalarniki (ShoxPosProLocal, biohacker_ai,
+      # safora) — to'xtatib bo'lmaydi.
+      #
+      # Bu ILGARI JIMGINA MA'LUMOT YO'QOLISHIGA olib kelgan: konteyner
+      # portni ololmay qolganda `MONGODB_URI=localhost:27017` Windows
+      # xizmatiga ulanardi. U yerda faqat demo seed bor, shuning uchun
+      # katalogdagi 4 ta restoran (Avigo, Chust Burger, Feel Food,
+      # Shox Resto) va 20 ta mahsulot panelda YO'Q bo'lib ko'rinardi —
+      # aslida ular `chustapp_mongodata` volume'ida butun turgan edi.
+      - "127.0.0.1:27018:27017"
     volumes:
       - mongodata:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   # apps/web (Next.js) — mijoz mini-app'lari (WebView/sayt/Telegram) uchun
   # BFF. Go API hozircha konteynerlanmagan (to'g'ridan-to'g'ri hostda
@@ -44,6 +94,9 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8080
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
     ports:
+      # Bu ATAYLAB `0.0.0.0` da qoladi: mobil ilovalar (Android
+      # qurilmasi) web'ga LAN IP orqali ulanadi. Baza portlaridan
+      # farqi shu — bu xizmat mijozga mo'ljallangan.
       - "3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"

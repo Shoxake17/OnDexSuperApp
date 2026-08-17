@@ -93,6 +93,23 @@ type Repository interface {
 	// kuryerga IKKI faol yetkazma biriktirilardi.
 	ClaimIfAvailable(ctx context.Context, id string) (bool, error)
 	SetApproved(ctx context.Context, id string, approved bool) error
+	// SoftDelete — kuryer yozuvini ro'yxatlardan olib tashlaydi va
+	// undagi SHAXSIY ma'lumotni (ism) o'chiradi.
+	//
+	// ┌─ NEGA HAQIQIY `DELETE` EMAS ──────────────────────────────────┐
+	// `orders.courier_id` shu jadvalga FOREIGN KEY. Bir marta ham
+	// yetkazgan kuryerni haqiqatan o'chirish ikki yomon variantdan
+	// birini tanlashga majbur qilardi: yo baza cheklovi buzilib
+	// o'chirish umuman ishlamaydi, yo o'nlab tarixiy buyurtma
+	// birgalikda o'chib ketadi (moliyaviy hisobot yo'qoladi).
+	//
+	// Shu sabab yozuv qoladi, LEKIN: ismi tozalanadi, `approved` va
+	// `available` o'chiriladi va `deleted_at` qo'yiladi — ya'ni u
+	// superadmin ro'yxatida ham, dispatch nomzodlari orasida ham
+	// BOSHQA KO'RINMAYDI. Foydalanuvchi akkaunti (`users`) esa
+	// haqiqatan o'chiriladi — shaxsiy ma'lumot aynan o'sha yerda.
+	// └───────────────────────────────────────────────────────────────┘
+	SoftDelete(ctx context.Context, id string) error
 	// UpdateLocation — kuryer ilovasi davriy yuboradigan joriy koordinata
 	// (dispatch endi ETA hisoblash uchun AYNAN shu koordinatadan foydalanadi).
 	UpdateLocation(ctx context.Context, id string, lat, lng float64) error

@@ -256,6 +256,23 @@ func (r *MemoryCourierRepo) SetApproved(_ context.Context, id string, approved b
 	return nil
 }
 
+// SoftDelete — xotira rejimida yozuv shunchaki O'CHIRILADI.
+//
+// Postgres variantidan farqi ataylab: u yerda yozuv qoladi, chunki
+// `orders.courier_id` FOREIGN KEY buni talab qiladi. Xotirada esa
+// bunday cheklov yo'q va "o'chirilgan" bayrog'ini qo'shish faqat
+// har bir ro'yxatga qo'shimcha filtr keltirib chiqarardi. Tashqi
+// xatti-harakat bir xil: kuryer ro'yxatlarda ko'rinmaydi.
+func (r *MemoryCourierRepo) SoftDelete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[id]; !ok {
+		return couriers.ErrNoCourier
+	}
+	delete(r.data, id)
+	return nil
+}
+
 // ListAvailable — barcha tasdiqlangan va onlayn kuryerlar, masofasiz.
 //
 // DIQQAT: dispatch bu metodni ENDI ISHLATMAYDI — u `ListAvailableNear`

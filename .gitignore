@@ -212,3 +212,16 @@ README.md
 ROADMAP.md
 
 deploy/
+# Lokal tunnel loglari (scripts/dev_tunnel.ps1 yoki fon jarayoni)
+.tunnel.out
+.tunnel.log
+
+# `ondex run` ish holati: ochilgan oynalarning PID'lari (state.json) va
+# ular uchun generatsiya qilingan vaqtinchalik .ps1 fayllar (panes/).
+# Mashinaga bog'liq, hech qachon commit qilinmaydi.
+.ondex/
+
+# Playwright E2E natijalari (apps/web) - mashinaga bog'liq, commit qilinmaydi
+apps/web/playwright-report/
+apps/web/test-results/
+
