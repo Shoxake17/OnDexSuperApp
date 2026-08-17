@@ -129,13 +129,21 @@ jobs:
           flutter test
 
       # ── RELEASE ────────────────────────────────────────────────────
+      #
+      # `--flutter-version` KANAL nomini qabul qilmaydi — faqat aniq
+      # raqam. Avval bu yerda `stable` turgan edi va Shorebird
+      # `Version stable not found` bilan yiqilgan (exit 70).
+      #
+      # Qadash ataylab: reliz va unga chiqariladigan yamoqlar BIR XIL
+      # Flutter versiyasida qurilishi kerak.
+      # Mavjud versiyalar: `shorebird flutter versions list`.
       - name: Shorebird release
         if: inputs.action == 'release'
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: |
           shorebird release android \
-            --flutter-version=stable \
+            --flutter-version=3.44.9 \
             -- --dart-define-from-file=config/prod.json
 
       - name: Reliz artefaktini saqlash
