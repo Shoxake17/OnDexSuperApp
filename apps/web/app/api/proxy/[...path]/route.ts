@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionToken } from "@/lib/session";
+import { clearSessionToken, getClientKind, getSessionToken } from "@/lib/session";
 import { goFetch } from "@/lib/api";
 
 // Generic BFF proksi: /api/proxy/restaurants -> Go GET /restaurants,
@@ -44,6 +44,16 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   // ATAYLAB yo'q: ular restoran paneliga tegishli va mijoz sahifasidagi
   // skript ularga umuman yeta olmasligi kerak.
   { method: "GET", pattern: "tables/resolve" },
+  // Bildirishnomalar (sarlavhadagi qo'ng'iroq va `/notifications`
+  // sahifasi). Uchalasi ham Go tomonda foydalanuvchining O'Z
+  // yozuvlari bilan cheklangan (`claimsFrom(r).Subject`).
+  //
+  // `POST notifications/*/read` ATAYLAB qo'shilmagan: sahifa faqat
+  // "hammasini o'qilgan" amalini ishlatadi. Ishlatilmaydigan yo'l
+  // ochiq qolmasin — ro'yxatning butun maqsadi shu.
+  { method: "GET", pattern: "notifications" },
+  { method: "GET", pattern: "notifications/unread-count" },
+  { method: "POST", pattern: "notifications/read-all" },
 ];
 
 function isAllowed(method: string, segments: string[]): boolean {
@@ -74,7 +84,25 @@ async function handle(req: NextRequest, path: string[]): Promise<NextResponse> {
     if (body) init.body = body;
   }
 
-  const res = await goFetch(targetPath, init, token);
+  // Sessiya qanday ochilgani (`tma`/`web`) Go tomonga uzatiladi —
+  // superadmin panelidagi "Qurilma" ustuni shundan to'ladi.
+  const res = await goFetch(targetPath, init, token, await getClientKind());
+
+  // ┌─ 401 => SESSIYANI TOZALASH ───────────────────────────────────┐
+  // Go tokenni muddatidan oldin bekor qilishi mumkin: superadmin
+  // akkauntni o'chirdi, foydalanuvchi parolni almashtirdi, "barcha
+  // qurilmalardan chiqish". Bunda cookie'dagi token boshqa hech
+  // qachon ishlamaydi.
+  //
+  // Avval u cookie'da QOLIB KETARDI va sahifa har safar "kirgan"
+  // holatda ochilib, har bir so'rovda 401 olardi — foydalanuvchi
+  // uchun bu "ilova buzuq" ko'rinishida edi, chiqib qayta kirish
+  // yo'li esa ko'rinmasdi.
+  // └───────────────────────────────────────────────────────────────┘
+  if (res.status === 401 && token) {
+    await clearSessionToken();
+  }
+
   const text = await res.text();
   return new NextResponse(text, {
     status: res.status,

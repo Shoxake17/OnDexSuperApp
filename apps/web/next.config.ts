@@ -18,6 +18,99 @@ const nextConfig: NextConfig = {
   // o'lik. LAN IP endi ro'yxatda kerak emas — tunnel uning o'rnini
   // bosadi va Wi-Fi IP o'zgarishi hech narsani buzmaydi.
   allowedDevOrigins: ["127.0.0.1", "localhost", "dev-web-ondex.shoxpro.uz"],
+
+  headers: securityHeaders,
 };
+
+// ┌─ XAVFSIZLIK SARLAVHALARI (2026-08-17) ─────────────────────────────┐
+// Bungacha bu ilovada CSP ham, HSTS ham, `nosniff` ham YO'Q edi —
+// `middleware.ts` ham, `headers()` ham yozilmagan. Bu qiziq
+// nomutanosiblik edi: Go backend o'z HTML sahifalari uchun nonce bilan
+// CSP qo'yadi, lekin mijoz HAQIQATAN ishlatadigan sirt himoyasiz turardi.
+//
+// Ro'yxatdagi har bir tashqi manba kodda ISHLATILGANI uchun turibdi —
+// "har ehtimolga qarshi" qo'shilgani yo'q:
+//   maps.googleapis.com / maps.gstatic.com  -> lib/gmaps.ts (xarita)
+//   telegram.org                            -> app/telegram-auth.tsx (SDK)
+// └────────────────────────────────────────────────────────────────────┘
+const isProd = process.env.NODE_ENV === "production";
+
+function contentSecurityPolicy(): string {
+  return [
+    "default-src 'self'",
+
+    // `'unsafe-inline'` — Next.js App Router o'z ishga tushirish
+    // skriptlarini inline qo'yadi. Uni nonce bilan almashtirish
+    // `middleware.ts` talab qiladi; u alohida qadam sifatida keyin
+    // qo'shiladi va SHU QATOR o'shanda toraytiriladi.
+    //
+    // `'unsafe-eval'` FAQAT dev'da: Next.js HMR busiz ishlamaydi.
+    // Production'da u YO'Q.
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://telegram.org https://maps.googleapis.com`,
+
+    // Tailwind va Google Maps inline uslub qo'yadi.
+    "style-src 'self' 'unsafe-inline'",
+
+    // Rasm manbai muhitga qarab o'zgaradi (R2 obyekt ombori yoki lokal
+    // disk — `lib/images.ts`), shuning uchun aniq domen ro'yxati
+    // build vaqtida ma'lum emas. `https:` — ataylab: rasm eng kam
+    // xavfli resurs turi va u skript bajarmaydi. R2 domeni qat'iy
+    // belgilangach shu qator o'sha domenga toraytiriladi.
+    "img-src 'self' data: blob: https:",
+
+    // Xarita tile'lari va API so'rovlari.
+    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${isProd ? "" : " ws: wss:"}`,
+
+    "font-src 'self' data:",
+
+    // ┌─ TELEGRAM UCHUN MAJBURIY ──────────────────────────────────┐
+    // Telegram Web mijozi Mini App'ni IFRAME ichida ochadi. Bu yerda
+    // `'none'` yoki `'self'` yozilsa TMA umuman ochilmaydi va xato
+    // jimgina bo'ladi — foydalanuvchi bo'sh oyna ko'radi.
+    // Mobil Telegram native WebView ishlatadi, unga bu ta'sir qilmaydi.
+    // └────────────────────────────────────────────────────────────┘
+    "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+
+    // Sahifaning o'zi begona freym ochmaydi.
+    "frame-src 'self'",
+
+    // Plagin/obyekt umuman kerak emas.
+    "object-src 'none'",
+
+    // Nisbiy havolalarning bazasini o'zgartirib bo'lmasin va forma
+    // begona manzilga yuborilmasin.
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
+async function securityHeaders() {
+  const headers = [
+    { key: "Content-Security-Policy", value: contentSecurityPolicy() },
+    // MIME turini taxmin qilish o'chiriladi — yuklangan fayl skript
+    // sifatida bajarilib ketmasin.
+    { key: "X-Content-Type-Options", value: "nosniff" },
+    // Tashqi manzilga o'tilganda joriy yo'l (masalan buyurtma ID'si)
+    // `Referer` da chiqib ketmasin.
+    { key: "Referrer-Policy", value: "no-referrer" },
+    // Ishlatilmaydigan qurilma imkoniyatlari o'chiriladi.
+    {
+      key: "Permissions-Policy",
+      value: "camera=(), microphone=(), payment=(), usb=(), geolocation=(self)",
+    },
+  ];
+
+  // HSTS FAQAT production'da: dev `http://` orqali ishlaydi va
+  // brauzerga "bu domenni doim HTTPS deb bil" deyish lokal ishni
+  // buzib qo'yishi mumkin.
+  if (isProd) {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains",
+    });
+  }
+
+  return [{ source: "/:path*", headers }];
+}
 
 export default nextConfig;

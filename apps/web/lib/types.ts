@@ -10,6 +10,14 @@ export type Restaurant = {
   logo_url: string;
   cover_url: string;
   tags: string;
+
+  // 0 = "ma'lumot yo'q", "yomon" EMAS. Kartada 0 bo'lgan ko'rsatkich
+  // UMUMAN chizilmaydi — "0.0 ★" yoki "0 daqiqa" ko'rsatilmaydi.
+  // Qiymatlar hozircha admin panelda qo'lda kiritiladi.
+  rating: number;
+  rating_count: number;
+  eta_min_minutes: number;
+  eta_max_minutes: number;
 };
 
 export type Product = {

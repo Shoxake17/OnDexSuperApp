@@ -4,13 +4,26 @@
 // uchun bu chaqiruvlar CORS'ga umuman bog'liq emas.
 export const GO_API_URL = process.env.GO_API_URL ?? "http://localhost:8080";
 
+// Mini-app versiyasi — superadmin panelidagi "Qurilma" ustunida
+// ko'rinadi. Deploy paytida `APP_VERSION` berilmasa bo'sh ketadi va
+// server faqat platformani saqlaydi (versiyasiz).
+const APP_VERSION = process.env.APP_VERSION ?? "";
+
 export async function goFetch(
   path: string,
   init: RequestInit = {},
   token?: string | null,
+  // clientKind — so'rov qaysi mijoz dasturidan boshlangani ("tma" yoki
+  // "web"). Brauzer bu yerda Go'ga TO'G'RIDAN-TO'G'RI chiqmaydi, ya'ni
+  // sarlavhani BFF qo'yishi kerak; qiymat esa `httpOnly` cookie'dan
+  // keladi (`lib/session.ts` dagi izoh).
+  clientKind?: string,
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (clientKind) {
+    headers.set("X-Ondex-Client", `${clientKind}/${APP_VERSION}`);
+  }
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

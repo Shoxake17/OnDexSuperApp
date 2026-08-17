@@ -1,9 +1,10 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import Image from "next/image";
+import Link from "next/link";
 import CategoryTile from "./category-tile";
+import HeaderActions from "./header-actions";
 import RestaurantCard from "./restaurant-card";
 import { categoryIconFor } from "@/lib/categoryIcons";
 import type { Restaurant } from "@/lib/types";
@@ -26,32 +27,68 @@ export default function HomeContent({
   }, [restaurants, query]);
 
   return (
-    <MobileSheet className="px-4 pb-8">
-      <div className="flex items-center pt-1.5">
-        <div className="w-8" />
-        <div className="flex flex-1 justify-center">
-          <Image src="/eltago.png" alt="ChustApp" width={104} height={30} priority />
+    // `pb-28` — pastki menyu (`bottom-nav.tsx`) kontentning oxirini
+    // bosib qolmasin.
+    <MobileSheet className="px-4 pb-28">
+      {/* ┌─ SARLAVHA ──────────────────────────────────────────────────┐
+          Tartib: logotip -> "Super App" -> manzil. Manzil ATAYLAB eng
+          pastda — u eng kam o'zgaradigan va eng kam bosiladigan element
+          (platforma faqat Chust uchun), shuning uchun brend yuqorida
+          turadi va sahifa nomi bilan boshlanadi.
+
+          Qidiruv chapdagi ustunning YONIDA, o'ngda: u bitta ikon, ya'ni
+          butun qatorni egallamaydi va sarlavha balandligini oshirmaydi.
+          └─────────────────────────────────────────────────────────────┘ */}
+      <div className="flex items-start justify-between gap-3 pt-2">
+        <div className="min-w-0">
+          {/* Logotip matn bilan chizilgan — public/ ichida OnDex wordmark
+              fayli yo'q. SVG/PNG berilsa shu blok bitta <Image> ga
+              almashtiriladi. */}
+          <p className="text-[34px] font-extrabold leading-none tracking-tight">
+            On<span className="text-brand">Dex</span>
+          </p>
+
+          {/* "Super App" matni OLIB TASHLANDI — u hech qanday ma'lumot
+              bermasdi va logotip ostidagi eng ko'zga tashlanadigan
+              joyni egallab turardi. O'sha joyni manzil oldi: u
+              bosiladigan va haqiqatan foydali element.
+
+              Maketda "Toshkent, Chilonzor" turibdi — u shunchaki namuna.
+              Platforma Chust uchun, shuning uchun shahar nomi qat'iy. */}
+          <Link
+            href="/address"
+            className="mt-1.5 flex items-center gap-1.5 py-0.5 active:opacity-60"
+          >
+            <MapPin size={16} className="shrink-0" />
+            <span className="truncate text-[14px] font-semibold">Chust</span>
+            <ChevronDown size={16} className="shrink-0 text-neutral-500" />
+          </Link>
         </div>
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          aria-label="Qidirish"
-        >
-          <Search size={20} />
-        </button>
+
+        {/* Qidiruv / hamyon / bildirishnoma — `header-actions.tsx`.
+            Qidiruv IKONI (soxta "input" emas): bosilganda pastdagi
+            to'liq ekranli oyna ochiladi, u yerda haqiqiy `input` va
+            klaviatura darhol tayyor bo'ladi. Bosh sahifada bosib
+            bo'lmaydigan input ko'rinishi joy egallardi va ikkita
+            alohida qidiruv holati taassurotini berardi. */}
+        <HeaderActions onOpenSearch={() => setSearchOpen(true)} />
       </div>
 
       {categories.length > 0 && (
-        <div className="mt-2 flex gap-1.5 overflow-x-auto">
+        // `-mx-4 px-4` — gorizontal skroll ekran chetigacha borsin,
+        // lekin birinchi element chekinishni saqlasin.
+        <div className="no-scrollbar -mx-4 mt-4 flex gap-2.5 overflow-x-auto px-4 pb-1">
           {categories.map((c) => (
             <CategoryTile key={c} label={c} iconSrc={categoryIconFor(c)} />
           ))}
         </div>
       )}
 
-      <div className="mt-3 flex flex-col gap-4">
+      <div className="mt-5 flex flex-col gap-4">
         {restaurants.length === 0 ? (
-          <p className="py-10 text-center text-neutral-500">Hozircha restoran yo&apos;q</p>
+          <p className="py-10 text-center text-neutral-500">
+            Hozircha restoran yo&apos;q
+          </p>
         ) : (
           restaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)
         )}
@@ -84,7 +121,7 @@ export default function HomeContent({
                 <X size={22} />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-5">
               {filtered.length === 0 ? (
                 <p className="py-10 text-center text-neutral-500">
                   {query ? "Mos restoran topilmadi" : "Restoran nomini yozing"}

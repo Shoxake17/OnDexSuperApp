@@ -12,6 +12,8 @@
 // keyingi ochilishda odatiy yetkazish rejimi qaytadi.
 // └───────────────────────────────────────────────────────────────────┘
 
+import { useCallback, useEffect, useState } from "react";
+
 const KEY = "ondex_table_v1";
 
 export type TableSession = {
@@ -51,4 +53,48 @@ export function clearTableSession(): void {
   } catch {
     // e'tiborsiz
   }
+}
+
+/**
+ * "Bu savat stol rejimidami?" — YAGONA javob beruvchi joy.
+ *
+ * ┌─ NEGA HOOK ───────────────────────────────────────────────────────┐
+ * Bu qoida kamida ikki sahifada kerak: savat (tugma qayerga olib
+ * boradi) va rasmiylashtirish (manzil so'ralsinmi). Avval u faqat
+ * rasmiylashtirish sahifasida bor edi, savat esa SHARTSIZ
+ * `/address?next=/checkout` ga yuborardi — ya'ni stolda o'tirgan mijoz
+ * ham xarita ekranidan o'tishga majbur bo'lardi. Manzil unga umuman
+ * kerak emas (taom stolga keladi), lekin ekranni o'tkazib yuborishning
+ * yo'li ham yo'q edi.
+ *
+ * Endi qoida bitta joyda: keyingi sahifa ham xuddi shu javobni oladi.
+ * └───────────────────────────────────────────────────────────────────┘
+ *
+ * MOSLIK: seans BOSHQA restoranniki bo'lsa `null` qaytadi — mijoz
+ * stolda o'tirib, boshqa restoran menyusidan savat yig'ishi mumkin.
+ * Server ham bu holatni rad etadi; bu yerda esa oddiygina yetkazib
+ * berish rejimi qoladi.
+ *
+ * SSR: birinchi renderda har doim `null` (server `sessionStorage` ni
+ * ko'rmaydi) — shuning uchun UI "hali noma'lum" holatini ham
+ * ko'tara olishi kerak.
+ */
+export function useTableSession(restaurantId: string | null | undefined): {
+  table: TableSession | null;
+  /** Stol rejimidan chiqish (mijoz "Bekor qilish" bosganda). */
+  clear: () => void;
+} {
+  const [table, setTable] = useState<TableSession | null>(null);
+
+  useEffect(() => {
+    const t = readTableSession();
+    setTable(t && restaurantId && t.restaurantId === restaurantId ? t : null);
+  }, [restaurantId]);
+
+  const clear = useCallback(() => {
+    clearTableSession();
+    setTable(null);
+  }, []);
+
+  return { table, clear };
 }

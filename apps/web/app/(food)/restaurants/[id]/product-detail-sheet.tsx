@@ -109,7 +109,7 @@ export default function ProductDetailSheet({
               </div>
             )}
             {discount && (
-              <div className="absolute right-3 top-3 rounded-lg bg-[#FFD100] px-2 py-1 text-[11px] font-bold text-black">
+              <div className="absolute right-3 top-3 rounded-lg bg-brand px-2 py-1 text-[11px] font-bold text-white">
                 {discount.label}
               </div>
             )}

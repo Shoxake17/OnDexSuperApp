@@ -32,8 +32,16 @@ COPY . .
 # └───────────────────────────────────────────────────────────────────┘
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_SITE_URL
+# WS manzili ham AYNAN shunday singdiriladi (`app/(food)/orders/[id]`
+# jonli holat uchun WebSocket ochadi). Avval bu yerda YO'Q edi va
+# compose'dagi `environment:` qiymati e'tiborga olinmasdi - paketda
+# zaxira `ws://localhost:8080` qolib ketardi. Telefonda bu ikki
+# sababdan buziladi: `localhost` telefonning O'ZI, va HTTPS sahifada
+# cleartext `ws://` aralash kontent sifatida bloklanadi.
+ARG NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 
 RUN npm run build
 

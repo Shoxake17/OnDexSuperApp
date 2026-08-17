@@ -11,6 +11,7 @@ import { fullImageUrl } from "@/lib/images";
 import { categoryOf, computeProductDiscount } from "@/lib/promotions";
 import { useFavorites } from "@/lib/use-favorites";
 import { useQuote } from "@/lib/use-quote";
+import { useTableSession } from "@/lib/table-session";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
 import ProductCard from "../restaurants/[id]/product-card";
 import DiscountedTotal from "../discounted-total";
@@ -33,6 +34,10 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
 
   const restaurantId = cart.restaurantId;
+  // Stol rejimi (QR kod) — pastdagi tugma qayerga olib borishini
+  // belgilaydi. Qoida `lib/table-session.ts` da, rasmiylashtirish
+  // sahifasi bilan BIR XIL manbadan.
+  const { table } = useTableSession(restaurantId);
 
   useEffect(() => {
     if (!restaurantId) {
@@ -231,10 +236,18 @@ export default function CartPage() {
         )}
 
         <div className="safe-bottom fixed bottom-0 left-0 right-0 border-t border-neutral-200 bg-white px-4 pb-2 pt-1.5 dark:border-neutral-800 dark:bg-[#1A1A1A] md:dark:bg-[#121212]">
-          {/* Avval manzil (xarita) — Yandex Go naqshi: buyurtmani
-              rasmiylashtirishdan oldin yetkazish nuqtasi aniq belgilanadi. */}
+          {/* ┌─ QAYERGA OLIB BORADI ─────────────────────────────────┐
+              Yetkazishda — avval manzil (xarita), Yandex Go naqshi:
+              yetkazish nuqtasi rasmiylashtirishdan OLDIN aniqlanadi.
+
+              Stolda (QR kod) — TO'G'RIDAN-TO'G'RI rasmiylashtirishga.
+              Taom stolga keladi, ya'ni manzilning ma'nosi yo'q; avval
+              bu shart emasligi FAQAT rasmiylashtirish sahifasida
+              hisobga olinardi va mijoz baribir xarita ekranidan
+              o'tishga majbur bo'lardi.
+              └───────────────────────────────────────────────────────┘ */}
           <AppButtonLink
-            href="/address?next=/checkout"
+            href={table ? "/checkout" : "/address?next=/checkout"}
             spread
             className="mx-auto max-w-2xl"
           >

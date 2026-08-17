@@ -14,17 +14,24 @@ body {
   background: #ffffff;
 }
 
+/* ┌─ QORONG'I REJIM O'CHIRILGAN (2026-08-17) ───────────────────────────┐
+   Ilova faqat yorug' mavzuda. Sabab va qaytarish yo'li —
+   `tailwind.config.ts` dagi `darkMode` izohida.
+
+   Quyidagi blok ATAYLAB izohda qoldirildi (o'chirilmadi): qorong'i
+   rejim qaytarilganda `#121212` qiymati Flutter'ning
+   `scaffoldBackgroundColor` i bilan AYNAN mos bo'lishi kerak, aks
+   holda WebView `SafeArea` ichida turgani uchun tepa/pastda chok
+   (seam) sezilib qoladi. Bu allaqachon bir marta tuzatilgan bug —
+   qiymat yo'qolib ketmasin.
+
 @media (prefers-color-scheme: dark) {
   body {
     color: #ededed;
-    /* #121212 — AYNAN Flutter'dagi `scaffoldBackgroundColor` (main.dart)
-       bilan bir xil. Sabab: WebView SafeArea ichida bo'lgani uchun tepada/
-       pastda Flutter'ning o'z foni ko'rinadi — agar ranglar farq qilsa,
-       chok (seam) sezilib qoladi. Avvalgi #000011 ko'kimtir edi (B=17)
-       va native bar bilan mos kelmasdi. */
     background: #121212;
   }
 }
+   └─────────────────────────────────────────────────────────────────────┘ */
 
 /* MobileSheet'ning eng tashqi qatlami — status-bar tagidagi bo'shliq.
    MUHIM (haqiqiy qurilmada o'lchab topilgan bug): bu yerda AVVAL
@@ -55,6 +62,25 @@ body {
   padding-bottom: 6px;
 }
 
+/* Gorizontal skroll qatorlari (turkumlar) — skroll o'zi ishlaydi, lekin
+   POLOSA ko'rinmaydi.
+
+   Nega kerak: Android WebView va Telegram Mini App'da gorizontal skroll
+   ostida doimiy kulrang chiziq chizilardi. U mahsulot elementiga
+   o'xshab ko'rinadi, lekin aslida brauzerning skroll polosasi — mobil
+   interfeysda u yerda umuman turmasligi kerak.
+
+   Uchala mexanizm ham kerak: `-webkit-` (Chrome/WebView/Safari),
+   `scrollbar-width` (Firefox), `-ms-` (eski Edge). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ┌─ TELEGRAM MINI APP MAVZUSI ─────────────────────────────────────┐
    Bu blok FAQAT `<html data-tg="1">` bo'lganda ishlaydi. Bu belgini
    `lib/telegram.ts` dagi `applyTelegramTheme` qo'yadi va u FAQAT
@@ -71,9 +97,13 @@ body {
    qoidalardan KEYINGISI yutadi, lekin bu yerda selektor `html[...]`
    + `body` — aniqligi yuqoriroq, shuning uchun Telegram'ning yorug'
    mavzusida ham tizim qorong'i rejimi ustidan to'g'ri yoziladi. */
+/* Zaxira qiymatlar YORUG' (2026-08-17). `lib/telegram.ts` endi
+   `--ondex-tg-*` o'zgaruvchilarini UMUMAN yozmaydi, ya'ni amalda har
+   doim shu qiymatlar ishlaydi — foydalanuvchining Telegram mavzusi
+   qorong'i bo'lsa ham ilova oq qoladi. */
 html[data-tg="1"] body {
-  background: var(--ondex-tg-bg, #121212);
-  color: var(--ondex-tg-text, #ededed);
+  background: var(--ondex-tg-bg, #ffffff);
+  color: var(--ondex-tg-text, #171717);
 }
 
 /* Telegram o'z yuqori panelini chizadi va u SafeArea ishlatmaydi —
@@ -87,15 +117,19 @@ html[data-tg="1"] .sheet-top {
    mavzusida ular ajralib qolardi. `!important` ATAYLAB: Tailwind
    utility sinflari ham bir xil aniqlikda va ular keyin keladi. */
 html[data-tg="1"] .tg-surface {
-  background: var(--ondex-tg-section-bg, #1e1e1e) !important;
-  color: var(--ondex-tg-text, #ededed) !important;
+  background: var(--ondex-tg-section-bg, #ffffff) !important;
+  color: var(--ondex-tg-text, #171717) !important;
 }
 
 html[data-tg="1"] .tg-muted {
-  color: var(--ondex-tg-hint, #9e9e9e) !important;
+  color: var(--ondex-tg-hint, #737373) !important;
 }
 
+/* Urg'u rangi endi Telegram'ning tugma rangi emas, BREND rangi
+   (#F4511E — `tailwind.config.ts` dagi `brand`). Avvalgi zaxira
+   `#1b873f` yashil edi va u Telegram'ning standart rangi bo'lib,
+   OnDex brendiga umuman aloqasi yo'q. */
 html[data-tg="1"] .tg-accent {
-  background: var(--ondex-tg-button, #1b873f) !important;
+  background: var(--ondex-tg-button, #f4511e) !important;
   color: var(--ondex-tg-button-text, #ffffff) !important;
 }

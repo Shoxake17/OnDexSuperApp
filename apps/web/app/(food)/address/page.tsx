@@ -136,10 +136,13 @@ function AddressPicker() {
         map,
         center: { lat: c.lat, lng: c.lng },
         radius: c.radiusKm * 1000,
-        strokeColor: "#FFD100",
+        // Brend rangi (`tailwind.config.ts` dagi `brand`). CSS o'zgaruvchi
+        // emas, qattiq qiymat: Google Maps API ranglarni JS orqali oladi
+        // va Tailwind sinflari bu yerda ishlamaydi.
+        strokeColor: "#F4511E",
         strokeOpacity: 0.95,
         strokeWeight: 3,
-        fillColor: "#FFD100",
+        fillColor: "#F4511E",
         // Juda past shaffoflik: yaqin zoomda (17) butun ekran doira
         // ichida bo'ladi va kuchli to'ldirish xaritani sarg'aytirib,
         // ko'chalarni o'qishni qiyinlashtirardi. Chegara chizig'i esa
@@ -221,7 +224,8 @@ function AddressPicker() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[#121212]">
+    // Fon oq (2026-08-17, yorug' rejim) — avval qattiq `#121212` edi.
+    <div className="flex h-dvh flex-col bg-white">
       <div className="relative min-h-0 flex-1">
         {mapFailed ? (
           <div className="flex h-full items-center justify-center px-8 text-center text-sm text-neutral-400">
@@ -236,7 +240,7 @@ function AddressPicker() {
         {!mapFailed && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="-translate-y-5 flex flex-col items-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFD100] shadow-lg">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand shadow-lg">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path
                     d="M14 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z M9.2 8.3 6 10.2v3.3h2v-2.1l2-1.2-.7 3.6 3.4 3v4.7h2v-6.2l-2.6-2.4.9-4.1c1 1.2 2.6 2 4.3 2v-2c-1.5 0-2.8-.8-3.5-2l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.2L5.5 6.4v4.1h2V7.8l1.7-.7"
@@ -361,7 +365,7 @@ export default function AddressPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-dvh items-center justify-center bg-[#121212] text-neutral-500">
+        <div className="flex h-dvh items-center justify-center bg-white text-neutral-500">
           Yuklanmoqda...
         </div>
       }

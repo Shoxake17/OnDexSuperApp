@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import TelegramAuth from "./telegram-auth";
 import TableInit from "./table-init";
-import { getSessionToken } from "@/lib/session";
+import AppTableBridge from "./app-table-bridge";
+import { getSessionToken, isAppShell } from "@/lib/session";
 
 export const metadata: Metadata = {
   title: "ChustApp",
@@ -37,6 +38,9 @@ export default async function RootLayout({
   // (bridge, SMS) umuman xalaqit bermaydi.
   // └───────────────────────────────────────────────────────────────────┘
   const signedIn = Boolean(await getSessionToken());
+  // Sahifa mijoz ilovasining WebView'i ichidami — QR ko'prigi faqat
+  // o'sha yerda ro'yxatdan o'tadi (`app-table-bridge.tsx`).
+  const inApp = await isAppShell();
 
   return (
     <html lang="uz">
@@ -45,6 +49,9 @@ export default async function RootLayout({
         {/* Stol QR kodi bilan kelgan mijozni to'g'ri menyuga olib
             boradi. Telegram tashqarisida hech narsa qilmaydi. */}
         <TableInit signedIn={signedIn} />
+        {/* Mijoz ilovasidagi QR skaneri natijasini qabul qiladi.
+            Telegram'da va brauzerda hech narsa qilmaydi. */}
+        <AppTableBridge enabled={inApp} />
         {children}
       </body>
     </html>

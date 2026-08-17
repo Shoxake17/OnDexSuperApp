@@ -16,11 +16,7 @@ import { useCart } from "@/lib/cart-context";
 import { formatSum } from "@/lib/format";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { goBack } from "@/lib/nav";
-import {
-  clearTableSession,
-  readTableSession,
-  type TableSession,
-} from "@/lib/table-session";
+import { useTableSession } from "@/lib/table-session";
 import MobileSheet from "../mobile-sheet";
 import { AppButton, BackButton } from "../ui";
 
@@ -67,33 +63,20 @@ export default function CheckoutPage() {
   const [placeError, setPlaceError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
 
+  const restaurantId = cart.restaurantId;
+  const cartItems = cart.items;
+
   // ── Stol rejimi (QR kod) ──
   //
   // `null` = odatiy yetkazib berish. Seans `sessionStorage` da, ya'ni
   // Mini App yopilishi bilan yo'qoladi (`lib/table-session.ts`).
-  const [table, setTable] = useState<TableSession | null>(null);
+  //
+  // Savat sahifasi AYNAN shu hook'dan foydalanadi — "bu savat stol
+  // rejimidami" degan savolga ikkala sahifa bir xil javob berishi
+  // shart, aks holda mijoz savatda manzil so'ralib, keyin bu yerda
+  // "stolda buyurtma" ko'rgan bo'lardi (avval xuddi shunday edi).
+  const { table, clear: clearTable } = useTableSession(restaurantId);
   const [partySize, setPartySize] = useState(2);
-
-  const restaurantId = cart.restaurantId;
-  const cartItems = cart.items;
-
-  useEffect(() => {
-    const t = readTableSession();
-    // ┌─ MOSLIK TEKSHIRUVI ──────────────────────────────────────────┐
-    // Savat BOSHQA restoranga tegishli bo'lsa, stol seansi
-    // e'tiborga OLINMAYDI. Bunday holat haqiqatan uchraydi: mijoz
-    // stolda o'tirib QR skanerlaydi, keyin bosh sahifadan boshqa
-    // restoran menyusiga o'tib savat yig'adi.
-    //
-    // Server ham bu holatni rad etadi (`createDineInOrder` dagi
-    // restoran mosligi tekshiruvi), lekin u yerda mijoz tushunarsiz
-    // xato olardi. Bu yerda esa oddiygina yetkazib berish rejimiga
-    // o'tamiz.
-    // └───────────────────────────────────────────────────────────────┘
-    if (t && restaurantId && t.restaurantId === restaurantId) {
-      setTable(t);
-    }
-  }, [restaurantId]);
 
   useEffect(() => {
     // Stol rejimida manzil UMUMAN kerak emas — so'ramaymiz ham.
@@ -243,10 +226,7 @@ export default function CheckoutPage() {
                 u Mini App'ni butunlay yopishga majbur bo'lardi. */}
             <button
               type="button"
-              onClick={() => {
-                clearTableSession();
-                setTable(null);
-              }}
+              onClick={clearTable}
               className="shrink-0 text-sm text-neutral-500 underline"
             >
               Bekor qilish
@@ -355,7 +335,7 @@ export default function CheckoutPage() {
       {/* ── To'lov ───────────────────────────────────────────────────── */}
       <section className="tg-surface mt-3 rounded-2xl bg-neutral-100 p-4 dark:bg-[#242424]">
         <h2 className="text-xl font-extrabold">To&apos;lov</h2>
-        <div className="mt-3 flex items-center gap-3 rounded-xl border-2 border-[#FFD100] bg-white p-3 dark:bg-[#1A1A1A]">
+        <div className="mt-3 flex items-center gap-3 rounded-xl border-2 border-brand bg-white p-3 dark:bg-[#1A1A1A]">
           <Banknote size={22} className="shrink-0 text-green-600" />
           <span className="flex-1">
             <span className="block font-semibold">Naqd pul</span>
@@ -421,7 +401,16 @@ export default function CheckoutPage() {
             onClick={placeOrder}
             // `!quote` — narx serverdan olinmagan bo'lsa buyurtma
             // berishga YO'L QO'YILMAYDI (yuqoridagi izohga qarang).
-            disabled={placing || loadingAddress || loadingQuote || !quote}
+            //
+            // Manzil YUKLANISHI faqat YETKAZIB BERISHDA to'siq bo'ladi:
+            // stolda o'tirgan mijoz uchun manzil umuman so'ralmaydi va
+            // uni kutish tugmani bekordan-bekor o'chirib turardi.
+            disabled={
+              placing ||
+              (!table && loadingAddress) ||
+              loadingQuote ||
+              !quote
+            }
           >
             {placing ? "Yuborilmoqda..." : "Buyurtma berish"}
           </AppButton>

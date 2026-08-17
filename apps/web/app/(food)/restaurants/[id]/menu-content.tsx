@@ -220,7 +220,10 @@ export default function MenuContent({
           </button>
         </div>
         {categories.length > 1 && (
-          <div ref={chipsRef} className="mt-2.5 flex gap-2 overflow-x-auto pb-0.5">
+          <div
+            ref={chipsRef}
+            className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto pb-0.5"
+          >
             {categories.map((c) => {
               const active = c === activeCategory;
               return (
@@ -231,7 +234,7 @@ export default function MenuContent({
                   onClick={() => setActiveCategory(c)}
                   className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     active
-                      ? "border-[#FFD100] bg-[#FFD100] font-semibold text-black"
+                      ? "border-brand bg-brand font-semibold text-white"
                       : "border-neutral-200 dark:border-neutral-700"
                   }`}
                 >
@@ -262,7 +265,7 @@ export default function MenuContent({
           // Balandligi umumiy tugmalar bilan bir xil (52px), lekin shakli
           // ATAYLAB dumaloq/suzuvchi — bu to'liq kenglikdagi asosiy
           // tugma emas, shuning uchun AppButton ishlatilmaydi.
-          className="fixed bottom-5 right-5 flex h-[52px] items-center gap-3 rounded-full bg-[#FFD100] px-6 font-bold text-black shadow-lg"
+          className="fixed bottom-5 right-5 flex h-[52px] items-center gap-3 rounded-full bg-brand px-6 font-bold text-white shadow-lg"
         >
           <DiscountedTotal
             totalTiyin={displayTotal}

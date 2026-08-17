@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionToken } from "@/lib/session";
+import { getClientKind, getSessionToken } from "@/lib/session";
 import { goFetch } from "@/lib/api";
 
 // POST /api/ws-ticket — cookie'dagi sessiyani Go'ning qisqa muddatli
@@ -12,7 +12,16 @@ export async function POST() {
   if (!token) {
     return NextResponse.json({ error: "tizimga kirilmagan" }, { status: 401 });
   }
-  const res = await goFetch("/ws/ticket", { method: "POST" }, token);
+  // Bilet so'rovi ham `X-Ondex-Client` bilan ketadi: mini-app'ning
+  // ko'p sahifasi serverda render qilinadi va proksiga umuman
+  // tegmasligi mumkin — u holda "qaysi dasturdan kirgani" hech qachon
+  // yozilmasdi. Jonli holat kanali esa deyarli har sessiyada ochiladi.
+  const res = await goFetch(
+    "/ws/ticket",
+    { method: "POST" },
+    token,
+    await getClientKind(),
+  );
   const data = await res.json().catch(() => ({}));
   return NextResponse.json(data, { status: res.status });
 }

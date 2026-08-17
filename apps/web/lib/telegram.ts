@@ -62,6 +62,28 @@ export type TelegramWebApp = {
    * chaqirishdan oldin mavjudligi tekshiriladi.
    */
   requestContact?: (cb: (ok: boolean) => void) => void;
+
+  /**
+   * showScanQrPopup — Bot API 6.4+. Telegram'ning O'Z native kamera
+   * skanerini ochadi.
+   *
+   * ┌─ NEGA SKANER PAKETI KERAK EMAS ───────────────────────────────┐
+   * Mijoz ilovasida (Flutter) skaner paketi yo'q va shu sabab QR
+   * tugmasi u yerda faqat tushuntirish oynasini ochadi. Mini App'da
+   * esa kamera Telegram tomonidan beriladi — hech qanday qo'shimcha
+   * bog'liqlik, ruxsat so'rash yoki `?table=` marshruti kerak emas.
+   * └───────────────────────────────────────────────────────────────┘
+   *
+   * `callback` `true` qaytarsa skaner YOPILADI, `false` qaytarsa ochiq
+   * qoladi va skanerlash davom etadi. Notanish QR uchun ataylab `false`
+   * qaytariladi: mijoz kadrni qayta tutishi kerak, oyna esa yopilib
+   * ketmasin.
+   */
+  showScanQrPopup?: (
+    params: { text?: string },
+    callback?: (text: string) => boolean | void,
+  ) => void;
+  closeScanQrPopup?: () => void;
 };
 
 declare global {
@@ -127,46 +149,89 @@ export function versionAtLeast(version: string, min: string): boolean {
  * o'zgaruvchilar UMUMAN mavjud emas va zaxira qiymat kafolatlangan.
  * └───────────────────────────────────────────────────────────────────┘
  */
+/**
+ * `themeChanged` obrabotchigi ulanganmi. Modul darajasida — pastdagi
+ * izohga qarang (`applyTelegramTheme` o'zini o'zi qayta chaqiradi).
+ */
+let themeListenerBound = false;
+
 export function applyTelegramTheme(wa: TelegramWebApp): void {
   const root = document.documentElement;
   root.setAttribute("data-tg", "1");
   if (wa.colorScheme) root.setAttribute("data-tg-scheme", wa.colorScheme);
 
-  const t = wa.themeParams ?? {};
-  const set = (name: string, value?: string) => {
-    if (value) root.style.setProperty(name, value);
-  };
-  set("--ondex-tg-bg", t.bg_color);
-  set("--ondex-tg-text", t.text_color);
-  set("--ondex-tg-hint", t.hint_color);
-  set("--ondex-tg-link", t.link_color);
-  set("--ondex-tg-button", t.button_color);
-  set("--ondex-tg-button-text", t.button_text_color);
-  set("--ondex-tg-secondary-bg", t.secondary_bg_color);
-  set("--ondex-tg-section-bg", t.section_bg_color ?? t.secondary_bg_color);
+  // ┌─ TELEGRAM RANGLARI QO'LLANMAYDI (2026-08-17) ─────────────────────┐
+  // Avval bu yerda `wa.themeParams` dagi ranglar `--ondex-tg-*`
+  // o'zgaruvchilariga yozilardi. Ya'ni Mini App foydalanuvchining
+  // TELEGRAM mavzusiga ergashardi: Telegram'i qorong'i bo'lgan mijozda
+  // ilova ham qorong'i ochilardi.
+  //
+  // Endi ilova FAQAT yorug' mavzuda (kirish/ro'yxatdan o'tish ekranlari
+  // bilan bir xil). Ranglar o'rnatilmaydi — `globals.css` dagi
+  // `html[data-tg="1"]` qoidalari o'zining YORUG' zaxira qiymatlaridan
+  // foydalanadi.
+  //
+  // Bu funksiya baribir kerak: u `data-tg` belgisini qo'yadi (Telegram
+  // uchun maxsus bo'shliq qoidalari shunga bog'liq) va `themeChanged`
+  // tinglovchisini ulaydi.
+  //
+  // KELAJAKDA qorong'i rejim qaytarilsa, yuqoridagi `set(...)`
+  // chaqiruvlarini tiklash yetarli — `tailwind.config.ts` dagi
+  // `darkMode` izohiga qarang.
+  // └───────────────────────────────────────────────────────────────────┘
+  //
+  // Telegram'ning O'Z yuqori paneli va foni ham OQ qilinadi — aks holda
+  // qorong'i Telegram'da ilova oq, panel qora bo'lib, chok (seam)
+  // ko'rinib qolardi.
+  wa.setHeaderColor?.("#ffffff");
+  wa.setBackgroundColor?.("#ffffff");
 
-  // Yuqori panelni FON BILAN QO'SHIB YUBORAMIZ — u alohida ajralib
-  // turmasin. Panelni butunlay olib tashlab bo'lmaydi (u Telegram'ning
-  // o'z UI'si), lekin rangi mos kelsa ko'zga tashlanmaydi.
-  const bg = t.bg_color;
-  if (bg) {
-    wa.setHeaderColor?.(bg);
-    wa.setBackgroundColor?.(bg);
+  // ┌─ TO'LIQ EKRAN SO'RALMAYDI ────────────────────────────────────────┐
+  // Bu yerda AVVAL `wa.requestFullscreen()` (Bot API 8.0+) chaqirilardi
+  // va u ILOVANI BUTUNLAY QOTIRIB QO'YARDI — "hech nima bosilmaydi"
+  // belgisining ildizi aynan shu edi.
+  //
+  // Mexanizm (Telegram Desktop'da ekran surati bilan tasdiqlangan):
+  //   1. Mini App ~480x740 oynada ochiladi va sahifa SHU o'lchamda
+  //      joylashadi hamda chiziladi;
+  //   2. bu chaqiruv oynani butun ekranga yoyadi;
+  //   3. WebView qayta joylashmaydi va qayta chizilmaydi — eski
+  //      480x740 kadr chap yuqori burchakda qotib qoladi;
+  //   4. sichqoncha/barmoq bosishi esa BUTUN OYNA koordinatalarida
+  //      yetkaziladi. Sahifa o'zini 1920px keng deb hisoblaydi va
+  //      bosish hech qanday elementga tushmaydi.
+  // Natijada ko'rinish to'g'ri, lekin BIRORTA tugma ham, `<a>` havola
+  // ham ishlamaydi. Xato JIMGINA: konsolda ham, serverda ham iz yo'q.
+  //
+  // Bu `layout.tsx` dagi viewport meta bug'i bilan AYNAN BIR SINF:
+  // chizish koordinatalari bilan bosish koordinatalari mos kelmasligi.
+  //
+  // To'liq ekran FAQAT kosmetik qulaylik edi (Telegram'ning yuqori
+  // panelini yashiradi), narxi esa — ilovaning ishlamay qolishi.
+  // Shuning uchun umuman so'ralmaydi.
+  //
+  // Qaytadan qo'shmoqchi bo'lsangiz: `wa.platform` ni tekshirib FAQAT
+  // "android"/"android_x"/"ios" uchun chaqiring (Telegram uni aynan
+  // mobil uchun mo'ljallagan) va HAQIQIY qurilmada sinab ko'ring —
+  // desktop'da u yuqoridagi holatga olib keladi.
+  // └───────────────────────────────────────────────────────────────────┘
+
+  // ┌─ FAQAT BIR MARTA ULANADI ─────────────────────────────────────────┐
+  // Telegram SDK'sining `onEvent` funksiyasi takrorni FUNKSIYA
+  // IDENTIFIKATORI bo'yicha filtrlaydi (`eventHandlers[type].indexOf`).
+  // Bu yerda esa har chaqiriqda YANGI arrow-funksiya beriladi, ya'ni
+  // filtr hech qachon ishlamasdi va obrabotchiklar to'planib borardi:
+  // har `themeChanged` hodisasi ularning sonini IKKI BAROBAR oshirardi
+  // (2^n). Bir necha mavzu o'zgarishidan keyin sahifa qotib qolardi.
+  //
+  // `applyTelegramTheme` o'zini o'zi qayta chaqirgani uchun bayroq
+  // modul darajasida — funksiya ichidagi o'zgaruvchi yordam bermasdi.
+  // └───────────────────────────────────────────────────────────────────┘
+  if (!themeListenerBound) {
+    themeListenerBound = true;
+    // Foydalanuvchi Telegram mavzusini almashtirsa sahifa ham o'zgarsin.
+    wa.onEvent?.("themeChanged", () => applyTelegramTheme(wa));
   }
-
-  // Bot API 8.0+ — haqiqiy to'liq ekran. Eski klientlarda metod yo'q,
-  // shuning uchun mavjudligi tekshiriladi (chaqirilsa ham xato
-  // bermaydi, lekin versiya tekshiruvi niyatni aniq qiladi).
-  if (wa.requestFullscreen && versionAtLeast(wa.version, "8.0")) {
-    try {
-      wa.requestFullscreen();
-    } catch {
-      // To'liq ekran ixtiyoriy qulaylik — ishlamasa ilova baribir ochiladi.
-    }
-  }
-
-  // Foydalanuvchi Telegram mavzusini almashtirsa sahifa ham o'zgarsin.
-  wa.onEvent?.("themeChanged", () => applyTelegramTheme(wa));
 }
 
 export type MiniAppAuthResult =

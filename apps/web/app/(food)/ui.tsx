@@ -19,7 +19,11 @@ const BUTTON_HEIGHT = "h-[52px]";
 type Variant = "primary" | "outline" | "danger" | "ghost";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-[#FFD100] text-black",
+  // OnDex brend to'q sariq rangi (`tailwind.config.ts` dagi `brand`).
+  // Avval bu sariq (#FFD100) edi — logotip bilan hech qanday aloqasi
+  // yo'q tasodifiy rang. Matn OQ: brend rangi to'q, qora matn unda
+  // yetarli kontrast bermaydi.
+  primary: "bg-brand text-white",
   outline:
     "border border-neutral-300 text-current dark:border-neutral-700",
   danger: "bg-red-600 text-white",

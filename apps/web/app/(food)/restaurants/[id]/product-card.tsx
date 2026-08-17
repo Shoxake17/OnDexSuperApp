@@ -85,7 +85,7 @@ export default function ProductCard({
         </div>
 
         {promoted && available && (
-          <div className="absolute right-2 top-2 rounded-lg bg-[#FFD100] px-2 py-1 text-[11px] font-bold text-black">
+          <div className="absolute right-2 top-2 rounded-lg bg-brand px-2 py-1 text-[11px] font-bold text-white">
             {discount?.label ?? "Aksiya"}
           </div>
         )}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { goFetch } from "@/lib/api";
-import { setSessionToken } from "@/lib/session";
+import { setClientKind, setSessionToken } from "@/lib/session";
 
 // POST /api/auth/telegram-miniapp  {"initData": "..."}
 //
@@ -67,5 +67,8 @@ export async function POST(req: NextRequest) {
   }
 
   await setSessionToken(data.token);
+  // Bu yo'lga FAQAT Telegram Mini App keladi (initData imzosi Go
+  // tomonda tekshirilgan) — sessiya aynan shunday belgilanadi.
+  await setClientKind("tma");
   return NextResponse.json({ ok: true, user: data.user });
 }

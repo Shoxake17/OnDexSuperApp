@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { goFetch } from "@/lib/api";
-import { setSessionToken } from "@/lib/session";
+import { setAppShell, setSessionToken } from "@/lib/session";
 
 // POST /api/bridge  (tana: token=...&redirect=/...)
 //
@@ -68,6 +68,11 @@ export async function POST(req: NextRequest) {
   }
 
   await setSessionToken(token);
+  // Bu manzilga FAQAT mijoz ilovasining WebView'i murojaat qiladi —
+  // ya'ni sahifa ilova ichida ochilgani ANIQ ma'lum. Belgi qo'yiladi
+  // va sahifa o'zining pastki menyusini chizmaydi (ilovada Flutter'ning
+  // O'Z menyusi bor; `lib/session.ts` dagi izoh).
+  await setAppShell();
   // 303 — POST'dan keyin brauzer/WebView redirect'ni GET sifatida
   // kuzatadi (POST tanasi qayta yuborilmaydi).
   return NextResponse.redirect(new URL(redirectTo, origin), 303);
