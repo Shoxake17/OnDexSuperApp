@@ -1,0 +1,163 @@
+# OnDex — E2E testlar (deploy quvuridan ALOHIDA).
+#
+# ┌─ NEGA `deploy.yml` GA QO'SHILMADI ──────────────────────────────────┐
+# `deploy.yml` — DEPLOY quvuri: undagi har bir job production'ga
+# chiqishni bloklaydi. Brauzer testlari esa tabiatan beqarorroq
+# (tarmoq, render vaqti, brauzer versiyasi) va bitta o'tkinchi
+# nosozlik tuzatishni jonli serverga chiqarishni to'xtatib qo'yardi.
+#
+# Bu yerda ular ALOHIDA turadi: yiqilsa ko'rinadi va tuzatiladi, lekin
+# deploy'ni ushlab turmaydi.
+#
+# GO TESTLARI ATAYLAB BU YERDA EMAS. Ular `deploy.yml` dagi
+# `go_quality` job'ida qoladi: tez, deterministik va deploy uchun
+# HAQIQIY darvoza bo'lishga loyiq. Ikki joyda takrorlash faqat
+# runner daqiqalarini sarflardi.
+# └─────────────────────────────────────────────────────────────────────┘
+
+name: Tests - E2E
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright (apps/web)
+    runs-on: ubuntu-latest
+
+    # Katalog MongoDB'da, qolgan hammasi PostgreSQL'da. Ikkalasi ham
+    # kerak: bosh sahifa katalogni ko'rsatadi, API esa ishga tushishda
+    # migratsiyalarni qo'llaydi.
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: chust
+          POSTGRES_PASSWORD: chust
+          POSTGRES_DB: chustapp
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd "pg_isready -U chust"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mongo:
+        image: mongo:7
+        ports: [ '27017:27017' ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.25.x'
+          check-latest: true
+          cache: true
+
+      - name: Build API
+        run: go build -o /tmp/ondex-api ./cmd/api
+
+      # ┌─ NEGA `APP_ENV=development` ──────────────────────────────────┐
+      # Dev rejimda server demo katalogni seed qiladi
+      # (`SeedDemoCatalogMongo`) — bo'sh bazada bosh sahifa bo'sh
+      # bo'lardi va test ko'rsatadigan narsa topmasdi.
+      #
+      # Bu PRODUCTION sozlamasi EMAS: konteyner shu job uchun
+      # ko'tariladi va ish tugashi bilan yo'qoladi.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Start API
+        env:
+          APP_ENV: development
+          DATABASE_URL: postgres://chust:chust@localhost:5432/chustapp?sslmode=disable
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: chustapp
+          JWT_SECRET: e2e-test-secret-not-used-in-production
+        run: |
+          /tmp/ondex-api > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/restaurants >/dev/null 2>&1; then
+              echo "API tayyor ($i s)"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API 60 soniyada ko'tarilmadi"
+          cat /tmp/api.log
+          exit 1
+
+      # `actions/setup-node` ATAYLAB ishlatilmadi: `ubuntu-latest` da
+      # Node oldindan o'rnatilgan, ya'ni yana bitta action bog'liqligi
+      # (va uni SHA bilan qadab turish yuki) kerak emas.
+      - name: Node versiyasi
+        run: node --version && npm --version
+
+      - name: Install deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      # ┌─ NEGA `next build` + `start`, `next dev` EMAS ────────────────┐
+      # `next dev` marshrutlarni TALAB BO'YICHA kompilyatsiya qiladi:
+      # har bir sahifaga birinchi murojaat sekundlar oladi va CI'da bu
+      # yolg'on timeout'larga olib keladi (lokalda aynan shu bo'ldi).
+      # `build` hammasini oldindan tayyorlaydi — testlar tez va
+      # barqaror ishlaydi, ustiga production'ga yaqinroq muhit sinaladi.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Build web
+        working-directory: apps/web
+        env:
+          GO_API_URL: http://localhost:8080
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_WS_URL: ws://localhost:8080
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        run: npm run build
+
+      - name: Start web
+        working-directory: apps/web
+        env:
+          GO_API_URL: http://localhost:8080
+        run: |
+          npm run start > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+              echo "web tayyor ($i s)"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Next.js 60 soniyada ko'tarilmadi"
+          cat /tmp/web.log
+          exit 1
+
+      - name: Playwright
+        working-directory: apps/web
+        run: npx playwright test
+
+      # Yiqilganda sabab ko'rinsin: hisobot, skrinshot va server loglari.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
+
+      - name: Server loglari
+        if: failure()
+        run: |
+          echo "===== API ====="; tail -50 /tmp/api.log || true
+          echo "===== WEB ====="; tail -50 /tmp/web.log || true

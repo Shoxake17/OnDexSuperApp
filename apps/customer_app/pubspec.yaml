@@ -31,6 +31,14 @@ dependencies:
   local_auth_android: ^2.0.9
   crypto: ^3.0.7
   firebase_messaging: ^16.5.0
+  # Stol QR kodini ILOVA ICHIDA skanerlash uchun (`qr_scan_screen.dart`).
+  #
+  # NEGA KERAK: Telegram Mini App'da kamerani Telegram beradi
+  # (`showScanQrPopup`), mijoz ilovasida esa bunday imkon YO'Q — u
+  # yerda QR tugmasi faqat "telefon kamerasi bilan skanerlang" degan
+  # tushuntirishni ko'rsatardi, ya'ni stol oqimi ilovada amalda
+  # ishlamasdi.
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:
@@ -57,14 +65,10 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   assets:
-    # Mijoz super-app logotipi (image/superapp.png dan).
     - assets/logo.png
     - assets/categories/
     - assets/eltago.png
-    # Ro'yxatdan o'tish / kirish ekranlaridagi brend illyustratsiyasi
-    # (image/ondeximage.png dan olingan).
     - assets/ondex_hero.png
-    # Google rasmiy logotipi (image/google.png dan).
     - assets/google_logo.png
-    # O'zbekiston bayrog'i (image/uzb.png dan).
     - assets/uz_flag.png
+    - shorebird.yaml
