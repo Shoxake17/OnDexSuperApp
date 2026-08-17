@@ -13,8 +13,14 @@
 library ondex_core;
 
 export 'src/api_client.dart';
+// Kesh qatlami — "avval keshdan chiz, keyin tarmoqdan yangila".
+// Ekranlar yuklanish mantig'ini O'ZI yozmaydi, faqat shu ikkitasini
+// ishlatadi (`src/cache/repository.dart` izohiga qarang).
+export 'src/cache/cache_store.dart';
+export 'src/cache/repository.dart';
 export 'src/config.dart';
 export 'src/format.dart';
+export 'src/live_bus.dart';
 export 'src/order_status.dart';
 export 'src/token_store.dart';
 export 'src/ws_client.dart';

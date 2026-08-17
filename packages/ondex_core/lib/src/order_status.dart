@@ -21,6 +21,10 @@ const List<String> orderStatusKeys = [
   'ready',
   'picked_up',
   'delivered',
+  // `served` — STOLDA (dine_in) buyurtma: affitsiant taomni stolga
+  // olib bordi. Yetkazish buyurtmasida bu holat umuman bo'lmaydi
+  // (`internal/orders/statemachine.go`).
+  'served',
   'rejected',
   'cancelled',
 ];
@@ -32,6 +36,9 @@ const Map<String, String> _labels = {
   'ready': 'Tayyor — kuryer kutilmoqda',
   'picked_up': 'Kuryerda, yo\'lda',
   'delivered': 'Yetkazildi',
+  // Matn restoran paneli va web bilan AYNAN bir xil ('Berildi') —
+  // bir holat uch joyda uch xil atalmasin.
+  'served': 'Berildi',
   'rejected': 'Rad etildi',
   'cancelled': 'Bekor qilindi',
 };
@@ -44,8 +51,17 @@ const Map<String, String> _labels = {
 String orderStatusLabel(String status) => _labels[status] ?? status;
 
 /// Terminal (yakuniy) holatmi — bundan keyin o'zgarish bo'lmaydi.
+///
+/// Ro'yxat backend bilan bir xil bo'lishi SHART
+/// (`internal/orders/statemachine.go`: delivered/served/rejected/
+/// cancelled). `served` bu yerda yo'q edi va shu sababli stolda
+/// berilgan buyurtma klientlarda hali "davom etmoqda" deb
+/// hisoblanardi.
 bool isTerminalStatus(String status) =>
-    status == 'delivered' || status == 'rejected' || status == 'cancelled';
+    status == 'delivered' ||
+    status == 'served' ||
+    status == 'rejected' ||
+    status == 'cancelled';
 
 /// 4 bosqichli vizual chiziq uchun bosqich indeksi.
 ///

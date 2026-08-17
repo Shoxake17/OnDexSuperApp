@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'config.dart';
+
 /// Serverdan kelgan xato — barcha ilovalar shu bitta turdan foydalanadi.
 class ApiException implements Exception {
   final String message;
@@ -58,6 +60,10 @@ class ApiClient {
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
+        // Qaysi ilova va qaysi versiya — superadmin panelidagi
+        // "Qurilma" ustuni uchun (`config.dart`). Faqat ma'lumot:
+        // server hech qanday huquqni bu qiymatga bog'lamaydi.
+        'X-Ondex-Client': clientHeaderValue,
       };
 
   Future<dynamic> send(String method, String path,
@@ -109,9 +115,32 @@ class ApiClient {
   // ---------- Barcha ilovalarga umumiy endpointlar ----------
 
   /// SMS kod so'raydi. Dev rejimda server kodni javobda qaytaradi.
+  ///
+  /// DIQQAT: production'da bu kodni yetkazishi SMS provayderiga bog'liq.
+  /// Eskiz sozlanmagan bo'lsa server `LogSms` ga tushadi — kod faqat
+  /// server logiga yoziladi, javob esa baribir muvaffaqiyatli bo'ladi.
+  /// Ya'ni ilova "kod yuborildi" deb ko'rsatadi-yu, hech kim kod
+  /// olmaydi. Shu sabab `telegramStart` birinchi tanlov bo'lishi kerak.
   Future<String?> requestCode(String phone) async {
     final d = await send('POST', '/auth/request-code', {'phone': phone});
     return (d is Map) ? d['dev_code'] as String? : null;
+  }
+
+  /// Telegram bot orqali kod so'raydi — javob bir martalik deep link.
+  ///
+  /// ┌─ KOD BU JAVOBDA YO'Q — ATAYLAB ─────────────────────────────────┐
+  /// Kod foydalanuvchi botda RAQAMINI ULASHGANDAN va u shu yerda
+  /// berilgan raqam bilan MOS KELGANDAN keyingina yaratiladi
+  /// (`internal/telegram/verifier.go`). Shuning uchun havolani
+  /// begonaga yuborish foyda bermaydi: kod raqam EGASINING
+  /// Telegramiga tushadi, havolani ochgan odamnikiga emas.
+  /// └─────────────────────────────────────────────────────────────────┘
+  ///
+  /// Kod oxirida odatdagi `CodeStore` ga tushadi, ya'ni tekshirish
+  /// baribir `verify()` bilan — alohida mantiq kerak emas.
+  Future<String> telegramStart(String phone) async {
+    final d = await send('POST', '/auth/telegram/start', {'phone': phone});
+    return d['deep_link'] as String;
   }
 
   /// Kodni tekshiradi va tokenni o'rnatadi. Javob: {token, user}.
