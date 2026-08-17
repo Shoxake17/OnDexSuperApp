@@ -11,8 +11,9 @@ export 'package:ondex_core/ondex_core.dart';
 
 
 
-/// Admin panel — faqat brauzerda (desktop) ishlatiladi, server localhost'da.
-/// Production'da bu https://api.chustapp.uz kabi domen bo'ladi.
+/// Backend manzili — BUILD vaqtida `--dart-define-from-file` orqali keladi,
+/// bu yerga qattiq yozilmaydi (`config/dev.json`, `config/dev-tunnel.json`,
+/// `config/prod.json`). Sozlama berilmasa `http://localhost:8080`.
 const baseUrl = apiBaseUrl;
 
 class AdminApi {
@@ -21,6 +22,8 @@ class AdminApi {
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
+        // `ondex_core` dagi bir xil qiymat (`<platforma>/<versiya>`).
+        'X-Ondex-Client': clientHeaderValue,
       };
 
   Future<dynamic> _send(String method, String path,
@@ -89,6 +92,17 @@ class AdminApi {
     return (addr == null || addr.isEmpty) ? null : addr;
   }
 
+  /// WebSocket bileti — jonli kanal uchun (`lib/live.dart`).
+  ///
+  /// Uzoq muddatli token URL'ga HECH QACHON qo'yilmaydi: avval shu
+  /// yerda 30 soniyalik, bir martalik bilet olinadi (sabab
+  /// `internal/ws/tickets.go` da). Superadmin roli ham AYNAN shu
+  /// biletga yoziladi — ma'muriyat kanaliga obuna shundan keladi.
+  Future<String> wsTicket() async {
+    final d = await _send('POST', '/ws/ticket');
+    return d['ticket'] as String;
+  }
+
   Future<Map<String, dynamic>> stats() async =>
       Map<String, dynamic>.from(await _send('GET', '/admin/stats'));
 
@@ -100,6 +114,28 @@ class AdminApi {
 
   Future<void> approveCourier(String id, bool approved) =>
       _send('POST', '/admin/couriers/$id/approve', {'approved': approved});
+
+  /// Mijozlar ro'yxati: `{'count': int, 'items': [...]}`.
+  ///
+  /// Har bir yozuvda `devices` — foydalanuvchi qaysi ilovadan
+  /// kirgani (`tma`, `android`, `ios`, `web`, ...) va ilova versiyasi.
+  /// Server buni har so'rovdagi `X-Ondex-Client` sarlavhasidan yig'adi.
+  Future<Map<String, dynamic>> customers() async =>
+      Map<String, dynamic>.from(await _send('GET', '/admin/customers'));
+
+  /// Affitsiantlar ro'yxati — mijozlar bilan bir xil shaklda, ustiga
+  /// `restaurant_id`/`restaurant_name` qo'shiladi.
+  Future<Map<String, dynamic>> waiters() async =>
+      Map<String, dynamic>.from(await _send('GET', '/admin/waiters'));
+
+  /// Akkauntni o'chiradi.
+  ///
+  /// Server tomonda bu bitta amalda uch ishni bajaradi: sessiyani bekor
+  /// qiladi (qo'lidagi token darhol yaroqsiz bo'ladi), ochiq ilovaga
+  /// WebSocket orqali `account_deleted` yuboradi va shaxsiy
+  /// ma'lumotlarni o'chiradi. Yakunlanmagan buyurtmasi bor akkaunt
+  /// uchun 409 qaytadi — bu XATO EMAS, ataylab qo'yilgan to'siq.
+  Future<void> deleteUser(String id) => _send('DELETE', '/admin/users/$id');
 
   Future<List<dynamic>> restaurants() async =>
       (await _send('GET', '/restaurants')) as List<dynamic>? ?? [];
@@ -127,15 +163,27 @@ class AdminApi {
   Future<void> deleteRestaurant(String id) =>
       _send('DELETE', '/admin/restaurants/$id');
 
-  /// Restoran ma'lumotlarini (nomi, manzili, joylashuvi, logo, cover)
-  /// tahrirlaydi. Har doim TO'LIQ holatni yuboradi (edit oynasi mavjud
-  /// qiymatlar bilan oldindan to'ldirilgan).
+  /// Restoran ma'lumotlarini tahrirlaydi. Har doim TO'LIQ holatni
+  /// yuboradi (edit oynasi mavjud qiymatlar bilan oldindan to'ldirilgan).
+  ///
+  /// ┌─ REYTING/ETA PARAMETRLARI NEGA `required` ────────────────────────┐
+  /// Server bu maydonlarni SHARTSIZ o'zlashtiradi. Ya'ni ular JSON'da
+  /// bo'lmasa Go nol qiymat oladi va mavjud reyting/vaqt JIMGINA
+  /// NOLLANADI — tahrir oynasida faqat nomni o'zgartirgan admin
+  /// buni sezmasdi. `required` shu xatoni kompilyatsiya vaqtida
+  /// to'xtatadi (standart qiymat qo'yilsa, kelajakdagi chaqiruvchi
+  /// uni jimgina o'tkazib yuborardi).
+  /// └───────────────────────────────────────────────────────────────────┘
   Future<Map<String, dynamic>> editRestaurant({
     required String id,
     required String name,
     required String address,
     required double lat,
     required double lng,
+    required double rating,
+    required int ratingCount,
+    required int etaMinMinutes,
+    required int etaMaxMinutes,
     String logoUrl = '',
     String coverUrl = '',
     String tags = '',
@@ -148,6 +196,10 @@ class AdminApi {
         'logo_url': logoUrl,
         'cover_url': coverUrl,
         'tags': tags,
+        'rating': rating,
+        'rating_count': ratingCount,
+        'eta_min_minutes': etaMinMinutes,
+        'eta_max_minutes': etaMaxMinutes,
       }));
 
   /// Rasm yuklaydi. `type`: 'cover' — restoran banneri (keng, to'ldirib

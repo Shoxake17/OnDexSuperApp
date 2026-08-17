@@ -2,6 +2,7 @@
   "_izoh": "PRODUCTION sozlamalari. Ishlatish: flutter build windows --release --dart-define-from-file=config/prod.json",
   "_domen": "VAQTINCHALIK shoxpro.uz subdomenlari. ondex.uz olingach shu yerni yangilang.",
   "_cors": "DESKTOP build'da CORS YO'Q — u brauzer cheklovi. WEB build uchun esa serverdagi ALLOWED_ORIGINS ro'yxatida shu panel origin'i bo'lishi SHART, aks holda brauzer javobni bloklaydi.",
+  "_dev": "Mahalliy ishlash uchun: config/dev.json (localhost) yoki config/dev-tunnel.json (HTTPS domen).",
 
   "ONDEX_API_URL": "https://api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://web-ondex.shoxpro.uz"

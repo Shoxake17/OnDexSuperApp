@@ -1,0 +1,9 @@
+{
+  "_izoh": "MAHALLIY ishlab chiqish. Ishlatish: flutter run -d windows --dart-define-from-file=config/dev.json",
+  "_nega_localhost": "Panel API bilan BIR XIL kompyuterda ishlaydi, shuning uchun LAN IP ham, tunnel ham kerak emas (mobil ilovalardan farqi shu). Desktop build'da CORS umuman yo'q - u brauzer cheklovi.",
+  "_xarita": "Xarita WebView2 ichida ${ONDEX_API_URL}/map-picker ni ochadi, ya'ni Google'ga ketadigan referrer 'http://localhost:8080/*' bo'ladi. Bu qator Google Cloud Console'dagi kalit cheklovi ro'yxatida BO'LISHI SHART, aks holda xarita RefererNotAllowedMapError beradi. Telegram/HTTPS talab qiladigan oqimlar uchun: config/dev-tunnel.json",
+  "_server": ".env da APP_ENV=development bo'lsin, aks holda server ishga tushmay ALLOWED_ORIGINS/JWT_SECRET talab qilib chiqib ketadi.",
+
+  "ONDEX_API_URL": "http://localhost:8080",
+  "ONDEX_WEB_URL": "http://localhost:3000"
+}

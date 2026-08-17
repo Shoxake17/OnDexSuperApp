@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../sound.dart';
+import '../widgets/order_card_header.dart';
 import '../theme.dart';
 
 const _preparingStatuses = {'accepted', 'preparing'};
@@ -29,10 +29,9 @@ class OrdersPage extends StatefulWidget {
 class _OrdersPageState extends State<OrdersPage> {
   List<Map<String, dynamic>> _orders = [];
   bool _loading = true;
-  WebSocketChannel? _channel;
-  Timer? _pollTimer;
+  late final LiveRefresher _live;
+  StreamSubscription<Map<String, dynamic>>? _uiSub;
   Timer? _tickTimer;
-  bool _ringing = false;
 
   final _searchCtrl = TextEditingController();
   String _search = '';
@@ -45,9 +44,24 @@ class _OrdersPageState extends State<OrdersPage> {
   void initState() {
     super.initState();
     _load();
-    _connectWs();
-    // WebSocket uzilib qolsa ham panel eskirib qolmasligi uchun zaxira polling.
-    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    // Jonli kanal — butun panelga UMUMIY (`lib/live.dart`). Avval bu
+    // sahifa o'z soketini ochardi va yon paneldagi hisoblagich alohida
+    // so'rov sikliga tayanardi; endi ikkalasi bitta ulanishdan.
+    //
+    // So'rov sikli o'chirilmadi, ZAXIRA bo'lib qoldi: soket ulangan
+    // bo'lsa siyrak (60s), uzilgan bo'lsa tez-tez (15s).
+    _live = LiveRefresher(
+      bus: restaurantLive,
+      onRefresh: _load,
+      types: const {
+        'new_order',
+        'order_status',
+        'courier_assigned',
+        'dispatch_failed',
+      },
+      offlineInterval: const Duration(seconds: 15),
+    )..start();
+    _uiSub = restaurantLive.events.listen(_showEventNotice);
     // Faqat VIZUAL yangilanish (tayyorlash/yetkazish hisoblagichlari) —
     // tarmoq so'rovi yubormaydi, shunchaki matnni qayta chizadi. Courier
     // ilovasidagi countdown bilan bir xil naqsh (1s emas, 10s — bu yerda
@@ -63,9 +77,9 @@ class _OrdersPageState extends State<OrdersPage> {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _live.dispose();
+    _uiSub?.cancel();
     _tickTimer?.cancel();
-    _channel?.sink.close();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -73,73 +87,42 @@ class _OrdersPageState extends State<OrdersPage> {
   /// Yandex Eats uslubida: yangi (hali qabul/rad qilinmagan) buyurtma bo'lsa
   /// ovoz TO'XTOVSIZ jiringlayveradi, restoran qabul yoki rad qilishi bilan
   /// darhol o'chadi.
-  Future<void> _updateRinging() async {
-    final hasNew = _orders.any((o) => o['status'] == 'created');
-    if (hasNew && !_ringing) {
-      _ringing = true;
-      await RingSound.start();
-    } else if (!hasNew && _ringing) {
-      _ringing = false;
-      await RingSound.stop();
-    }
-  }
+  ///
+  /// Holat bu yerda SAQLANMAYDI — u `RingSound` ichida
+  /// (`sound.dart` dagi `setPending` izohiga qarang). Bu chaqiruv
+  /// shunchaki TEZLIK uchun: restoran tugmani bosishi bilan ovoz
+  /// o'chadi, soket xabari qaytishi kutilmaydi. Sahifa yopiq bo'lganda
+  /// ayni ishni qobiq (`screens/shell.dart`) bajaradi.
+  Future<void> _updateRinging() =>
+      RingSound.setPending(_orders.any((o) => o['status'] == 'created'));
 
-  Future<void> _connectWs() async {
-    if (api.token == null) return;
-    final String ticket;
-    try {
-      ticket = await api.wsTicket();
-    } catch (_) {
-      _scheduleReconnect();
-      return;
-    }
+  /// Hodisa bo'yicha XABAR ko'rsatish (ro'yxatni yangilash bilan
+  /// `LiveRefresher` shug'ullanadi).
+  ///
+  /// Qayta ulanish mantiqi bu yerda YO'Q — u `LiveBus` ichida, bitta
+  /// joyda (eksponensial backoff + jitter bilan). Avval har bir ekran
+  /// o'z qayta ulanishini yozardi va ular bir xil emasdi.
+  void _showEventNotice(Map<String, dynamic> e) {
     if (!mounted) return;
-    _channel = WebSocketChannel.connect(Uri.parse(wsUrl(ticket)));
-    _channel!.stream.listen((msg) {
-      final e = jsonDecode(msg as String) as Map<String, dynamic>;
-      if (e['type'] == 'new_order') {
-        _load();
-        if (!mounted) return;
+    switch (e['type']) {
+      case 'new_order':
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
               'YANGI BUYURTMA! ${formatSum((e['total_tiyin'] ?? 0) as int)}'),
           backgroundColor: Colors.green,
         ));
-      } else if (e['type'] == 'order_status' ||
-          e['type'] == 'courier_assigned') {
-        _load();
-      } else if (e['type'] == 'dispatch_failed') {
+      case 'dispatch_failed':
         // Tizim o'zi ONLAYN kuryer topilguncha CHEKSIZ qayta uradi — bu
         // xabar faqat haqiqiy infratuzilma xatosida keladi (masalan
         // server ichki xatosi), oddiy "hozircha kuryer yo'q" holatida
         // EMAS. Qo'lda qayta urinish tugmasi yo'q — kerak ham emas.
-        _load();
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Kuryer qidirishda kutilmagan xato yuz berdi — server jurnalini tekshiring.'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 6),
         ));
-      }
-    },
-        // MUHIM: avval xato/uzilish JIM yutilardi va qayta ulanish YO'Q edi —
-        // ulanish bir marta uzilib qolsa (server qayta ishga tushishi,
-        // tarmoq uzilishi, brauzer tab fonga o'tib WS'ni yopishi kabi
-        // holatlarda), panel butun umr faqat 15 soniyalik zaxira polling
-        // orqali yangilanaverar edi — aynan shu "real-time emas, bir necha
-        // soniya kechikadi" muammosining haqiqiy ildizi. Endi ulanish
-        // uzilishi bilanoq 2 soniyadan keyin avtomatik qayta ulanadi.
-        onError: (_) => _scheduleReconnect(),
-        onDone: _scheduleReconnect,
-        cancelOnError: true);
-  }
-
-  void _scheduleReconnect() {
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      _connectWs();
-    });
+    }
   }
 
   Future<void> _load() async {
@@ -359,8 +342,13 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 }
 
-DateTime? _parseAt(dynamic iso) =>
-    iso is String ? DateTime.tryParse(iso)?.toLocal() : null;
+// Quyidagi uchta yordamchi `widgets/order_card_header.dart` da
+// (ochiq ko'rinishda) yashaydi — kartochka sarlavhasi shu yerdan
+// chiqarilganda ular ham ko'chgan. Bu yerda faqat qisqa nomlar
+// qoladi: sahifada o'nlab chaqiruv bor va ularning hammasini
+// o'zgartirish diffni kattalashtirardi, ikki NUSXA qilish esa
+// vaqt formati ikki joyda ajralib ketishiga olib kelardi.
+DateTime? _parseAt(dynamic iso) => parseOrderAt(iso);
 
 DateTime? _statusChangedAt(Map<String, dynamic> order, String status) {
   final history = (order['history'] as List?) ?? [];
@@ -375,12 +363,9 @@ String _itemsSummary(Map<String, dynamic> o) {
   return items.map((i) => '${i['qty']}x ${i['name']}').join(', ');
 }
 
-String _shortOrderNumber(Map<String, dynamic> o) =>
-    '#${(o['order_number'] ?? '').toString().split('-').last}';
+String _shortOrderNumber(Map<String, dynamic> o) => shortOrderNumber(o);
 
-String _timeOfDay(DateTime? d) => d == null
-    ? '—'
-    : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+String _timeOfDay(DateTime? d) => orderTimeOfDay(d);
 
 /// "X daqiqa oldin"/"X soat Y daqiqa oldin" — ANIQ createdAt/statusAt
 /// vaqtidan hisoblanadi, soxta emas.
@@ -888,62 +873,6 @@ class _CardShell extends StatelessWidget {
   }
 }
 
-class _CardHeaderRow extends StatelessWidget {
-  final Map<String, dynamic> order;
-  const _CardHeaderRow({required this.order});
-
-  @override
-  Widget build(BuildContext context) {
-    final createdAt = _parseAt(order['created_at']);
-    // Stol buyurtmasi — oshxona uchun MUHIM farq: taom qayerga
-    // ketishi (kuryerga emas, zalga) va nechta kishiga tayyorlash
-    // kerakligi shu yerdan ko'rinadi.
-    final dineIn = order['type'] == 'dine_in';
-    final tableLabel = order['table_label'] as String? ?? '';
-    final partySize = order['party_size'] as int? ?? 0;
-
-    return Row(
-      children: [
-        Text(_shortOrderNumber(order),
-            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
-        if (dineIn) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: OnDexColors.primaryTint,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.table_restaurant_rounded,
-                    size: 13, color: OnDexColors.primary),
-                const SizedBox(width: 4),
-                Text(
-                  tableLabel.isEmpty ? 'Stol' : '$tableLabel-stol',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: OnDexColors.primary),
-                ),
-                if (partySize > 0) ...[
-                  const SizedBox(width: 6),
-                  Text('· $partySize kishi',
-                      style: const TextStyle(
-                          fontSize: 11.5, color: OnDexColors.primary)),
-                ],
-              ],
-            ),
-          ),
-        ],
-        const Spacer(),
-        Text(_timeOfDay(createdAt),
-            style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkFaint, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
 
 class _ItemsList extends StatelessWidget {
   final Map<String, dynamic> order;
@@ -980,7 +909,15 @@ class _PhoneRow extends StatelessWidget {
         children: [
           const Icon(Icons.call_rounded, size: 14, color: OnDexColors.inkFaint),
           const SizedBox(width: 7),
-          Text(p, style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkDim)),
+          // `Flexible` — tor ustunda raqam kartochkadan chiqib
+          // ketmasin (Flutter'ning sariq-qora "overflow" chizig'i).
+          Flexible(
+            child: Text(p,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 12.5, color: OnDexColors.inkDim)),
+          ),
         ],
       ),
     );
@@ -997,7 +934,15 @@ class _TotalRow extends StatelessWidget {
       padding: const EdgeInsets.only(top: 10),
       child: Row(
         children: [
-          const Text('Jami summa', style: TextStyle(fontSize: 12, color: OnDexColors.inkDim)),
+          // Yorliq qisqaradi, SUMMA esa hech qachon qisqarmaydi —
+          // restoran uchun eng muhim raqam shu.
+          const Flexible(
+            child: Text('Jami summa',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: OnDexColors.inkDim)),
+          ),
+          const SizedBox(width: 8),
           const Spacer(),
           Text(formatSum(totalTiyin),
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
@@ -1019,7 +964,7 @@ class _YangiCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _CardHeaderRow(order: order),
+          OrderCardHeader(order: order),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           _PhoneRow(phone: order['customer_phone'] as String?),
@@ -1036,7 +981,9 @@ class _YangiCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 11),
                   ),
                   icon: const Icon(Icons.close_rounded, size: 16),
-                  label: const Text('Rad etish'),
+                  // Juda tor ustunda ham chiziq chiqmasligi uchun.
+                  label: const Text('Rad etish',
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1044,7 +991,8 @@ class _YangiCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onAccept,
                   icon: const Icon(Icons.check_rounded, size: 16),
-                  label: const Text('Qabul qilish'),
+                  label: const Text('Qabul qilish',
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                   style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 11)),
                 ),
               ),
@@ -1071,7 +1019,7 @@ class _PreparingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _CardHeaderRow(order: order),
+          OrderCardHeader(order: order),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           _PhoneRow(phone: order['customer_phone'] as String?),
@@ -1122,7 +1070,7 @@ class _ReadyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _CardHeaderRow(order: order),
+          OrderCardHeader(order: order),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           _PhoneRow(phone: order['customer_phone'] as String?),
@@ -1188,7 +1136,7 @@ class _KuryerdaCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _CardHeaderRow(order: order),
+          OrderCardHeader(order: order),
           const SizedBox(height: 8),
           Row(
             children: [

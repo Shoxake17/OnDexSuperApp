@@ -490,6 +490,15 @@ class _CourierShellState extends State<CourierShell>
       (msg) {
         final e = jsonDecode(msg as String) as Map<String, dynamic>;
         switch (e['type']) {
+          // Akkaunt superadmin tomonidan o'chirildi.
+          //
+          // Kuryer ilovasi soatlab ochiq turadi va fon so'rovlari
+          // siyrak — usiz o'chirilgan kuryer ekranda "ishlayotgan"
+          // bo'lib qolaverardi (xarita, buyurtma taklifi kutish).
+          // Server tokenni allaqachon bekor qilgan, bu esa shu
+          // holatni DARHOL ko'rsatadi.
+          case 'account_deleted':
+            _forceLogout();
           case 'offer':
             _handleOfferReceived(e);
           case 'offer_cancelled':
@@ -1030,6 +1039,24 @@ class _CourierShellState extends State<CourierShell>
     } finally {
       if (mounted) setState(() => _transitioning = false);
     }
+  }
+
+  /// Akkaunt server tomonda o'chirilgan/bekor qilingan — chiqamiz.
+  ///
+  /// `_logout` dan farqi: bu yerda `api.logout()` CHAQIRILMAYDI. Token
+  /// allaqachon yaroqsiz, ya'ni o'sha so'rov 401 bilan qaytardi va
+  /// foydalanuvchi kirish ekraniga o'tishdan oldin bekorga kutardi.
+  Future<void> _forceLogout() async {
+    await tokenStore.clear();
+    api.token = null;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Akkaunt o\'chirildi'),
+      backgroundColor: Colors.red,
+    ));
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
   Future<void> _logout() async {

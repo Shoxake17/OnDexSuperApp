@@ -102,6 +102,16 @@ class _WaiterShellState extends State<WaiterShell> {
         // ichidagi ma'lumotga TAYANMAYMIZ — server javobi yagona
         // haqiqat manbai bo'lib qoladi (aks holda ikki manba
         // ajralib ketardi).
+        // Akkaunt superadmin tomonidan o'chirildi — DARHOL chiqamiz.
+        //
+        // Server tokenni allaqachon bekor qilgan, ya'ni keyingi so'rov
+        // baribir 401 bo'lardi. Lekin affitsiant ilovasi so'rovni
+        // 20 soniyada bir yuboradi — usiz odam o'chirilgan akkaunt
+        // bilan ekranga qarab turaverardi.
+        if (type == 'account_deleted') {
+          _forceLogout();
+          return;
+        }
         if (type == 'new_order' || type == 'order_status') {
           _load();
           if (event['status'] == 'ready') playReadySound();
@@ -274,17 +284,29 @@ class _OrderCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isReady ? kReadyColor : Colors.white10,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '$table-stol',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                // `Flexible` — stol belgisi qolgan joyga sig'adi
+                // (uzun nom bo'lsa ichidagi matn qisqaradi).
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isReady ? kReadyColor : Colors.white10,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    // Uzun stol nomi ("Terastadagi katta stol") telefon
+                    // ekranida qatordan chiqib ketmasin — Flutter'ning
+                    // sariq-qora "overflow" chizig'i restoran panelida
+                    // aynan shunday sababdan chiqqan edi.
+                    child: Text(
+                      '$table-stol',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ),

@@ -1,0 +1,9 @@
+{
+  "_izoh": "MAHALLIY ishlab chiqish. Ishlatish: flutter run -d windows --dart-define-from-file=config/dev.json",
+  "_nega_localhost": "Panel API bilan BIR XIL kompyuterda ishlaydi, shuning uchun LAN IP ham, tunnel ham kerak emas (mobil ilovalardan farqi shu). Desktop build'da CORS umuman yo'q - u brauzer cheklovi.",
+  "_rasmlar": "Menyu rasmlari nisbiy yo'l bilan kelsa ular shu manzilga nisbatan ochiladi (R2 sozlangan bo'lsa to'liq URL keladi) - ya'ni bu qiymat noto'g'ri bo'lsa rasmlar ko'rinmay qoladi.",
+  "_server": ".env da APP_ENV=development bo'lsin, aks holda server ishga tushmay ALLOWED_ORIGINS/JWT_SECRET talab qilib chiqib ketadi.",
+
+  "ONDEX_API_URL": "http://localhost:8080",
+  "ONDEX_WEB_URL": "http://localhost:3000"
+}

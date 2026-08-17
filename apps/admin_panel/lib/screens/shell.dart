@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../pages/couriers_page.dart';
 import '../pages/dashboard_page.dart';
+import '../pages/ondexmap_page.dart';
 import '../pages/orders_page.dart';
+import '../pages/people_page.dart';
 import '../pages/restaurants_page.dart';
 import 'login_screen.dart';
 
@@ -19,14 +22,40 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Jonli kanal BUTUN panel uchun bitta marta ochiladi (sahifalar
+    // unga obuna bo'ladi — `lib/live.dart`). Ekran darajasida ochilsa
+    // har bo'limga o'tganda yangi soket va yangi bilet kerak bo'lardi.
+    adminLive.start();
+  }
+
+  @override
+  void dispose() {
+    // Panel yopilganda soket ham yopiladi.
+    adminLive.stop();
+    super.dispose();
+  }
+
+  // Tartib navigatsiya ro'yxatidagi tartib bilan AYNAN bir xil
+  // bo'lishi shart (`_index` ikkalasi uchun bitta).
   static const _pages = [
     DashboardPage(),
     OrdersPage(),
     RestaurantsPage(),
     CouriersPage(),
+    CustomersPage(),
+    WaitersPage(),
+    // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
+    // ChustApp bazasiga ham, API'siga ham tegmaydi.
+    OndexMapPage(),
   ];
 
   Future<void> _logout() async {
+    // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
+    // sessiya uchun qayta ulanishga urinib, har safar 401 olardi.
+    await adminLive.stop();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('admin_token');
     api.token = null;
@@ -79,6 +108,20 @@ class _AdminShellState extends State<AdminShell> {
                   icon: Icon(Icons.delivery_dining_outlined),
                   selectedIcon: Icon(Icons.delivery_dining),
                   label: Text('Kuryerlar')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.people_outline),
+                  selectedIcon: Icon(Icons.people),
+                  label: Text('Mijozlar')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.room_service_outlined),
+                  selectedIcon: Icon(Icons.room_service),
+                  label: Text('Affitsiantlar')),
+              // Tartib `_pages` bilan AYNAN bir xil bo'lishi shart —
+              // ikkalasi uchun bitta `_index` ishlatiladi.
+              NavigationRailDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map),
+                  label: Text('OnDexMap')),
             ],
           ),
           const VerticalDivider(width: 1),

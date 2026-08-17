@@ -3,6 +3,8 @@
   "_diqqat": "Wi-Fi IP o'zgarganda FAQAT shu ikki qatorni yangilang.",
   "_ip_topish": "PowerShell: (Get-NetIPAddress -AddressFamily IPv4 | ? InterfaceAlias -eq 'Wi-Fi').IPAddress",
 
-  "ONDEX_API_URL": "http://192.168.114.231:8080",
-  "ONDEX_WEB_URL": "http://192.168.114.231:3000"
+  "_nega_tunnel": "2026-08-17: LAN IP dan TUNNELGA o'tkazildi — sabab `apps/customer_app/config/dev.json` da batafsil (Next.js `allowedDevOrigins` + Wi-Fi IP o'zgarishi).",
+
+  "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
+  "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"
 }

@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -14,18 +13,30 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   Map<String, dynamic>? _stats;
   String? _error;
-  Timer? _timer;
+  late final LiveRefresher _live;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _load());
+    // Ko'rsatkichlar JONLI kanaldan yangilanadi; so'rov sikli esa
+    // faqat zaxira (`live.dart` dagi izoh).
+    _live = LiveRefresher(
+      bus: adminLive,
+      onRefresh: _load,
+      types: const {
+        'new_order',
+        'order_status',
+        'courier_assigned',
+        'courier_registered',
+        'courier_status',
+      },
+    )..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _live.dispose();
     super.dispose();
   }
 

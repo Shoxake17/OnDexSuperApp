@@ -7,7 +7,9 @@ import '../theme.dart';
 /// Stollar va ularning QR kodlari.
 ///
 /// ┌─ QR KOD NIMA QILADI ──────────────────────────────────────────────┐
-/// QR ichida `https://t.me/<bot>/app?startapp=<token>` havolasi bor.
+/// QR ichida `https://t.me/<bot>/<short_name>?startapp=<token>` havolasi
+/// bor (hozir short_name = `ondex`, BotFather'dagi nom bilan aynan mos
+/// bo'lishi SHART — serverda `miniAppShortName`).
 /// Mijoz uni kamera bilan skanerlaydi → Telegram ochiladi → Mini App
 /// avtomatik kirib, AYNAN shu stolning menyusini ko'rsatadi.
 ///

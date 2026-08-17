@@ -26,6 +26,9 @@ dependencies:
   flutter_local_notifications: ^19.4.2
   # "Tayyor" signali — telefon cho'ntakda bo'lsa ovoz muhim.
   audioplayers: ^6.0.0
+  # Telegram bot havolasini ochish uchun (kirish oqimi). Kod SMS emas,
+  # bot orqali keladi — `api.telegramStart` izohiga qarang.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

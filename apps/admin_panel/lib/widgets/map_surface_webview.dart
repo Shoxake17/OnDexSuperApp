@@ -131,8 +131,32 @@ class _MapSurfaceState extends State<MapSurface> {
         if (lat != null && lng != null) widget.onPick(lat, lng);
         break;
       case 'error':
+        // ┌─ NEGA XABAR TO'LIQ YIG'ILADI ──────────────────────────────┐
+        // Avval bu yerda faqat `m['message']` ko'rsatilardi. Sahifa esa
+        // xatoning ENG QIMMATLI qismini — qaysi origin ro'yxatga
+        // qo'shilishi kerakligini va Google'ning aynan qanday xato
+        // kodini (`RefererNotAllowedMapError`, `ApiNotActivatedMapError`,
+        // `BillingNotEnabledMapError`) aytganini — `origin`/`detail`
+        // maydonlarida yuboradi.
+        //
+        // Bu holat WebView'ni butunlay almashtiradi, ya'ni sahifadagi
+        // batafsil matn ham yo'qolardi. Natijada ekranda mazmunsiz
+        // "Xarita xatosi: gm_authFailure" qolardi va sabab HECH QAYERDA
+        // ko'rinmasdi (WebView2 konsoli ham ochilmaydi).
+        // └────────────────────────────────────────────────────────────┘
         if (mounted) {
-          setState(() => _error = 'Xarita xatosi: ${m['message']}');
+          final text = StringBuffer('Xarita xatosi: ${m['message']}');
+          final origin = m['origin'] as String?;
+          if (origin != null && origin.isNotEmpty) {
+            text.write('\n\nGoogle Cloud Console → Credentials → shu kalit →\n'
+                '"Website restrictions" ro\'yxatiga QO\'SHING:\n'
+                '    $origin/*');
+          }
+          final detail = m['detail'] as String?;
+          if (detail != null && detail.isNotEmpty) {
+            text.write('\n\nGoogle aytdi:\n$detail');
+          }
+          setState(() => _error = text.toString());
         }
         break;
     }
@@ -147,10 +171,13 @@ class _MapSurfaceState extends State<MapSurface> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
+      // Matn NUSXALANADIGAN va SURILADIGAN: xato izohi endi bir necha
+      // qatorli (origin + Google'ning xato kodi) va uni Console'ga
+      // qo'lda ko'chirish kerak bo'ladi.
       return Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
-          child: Text(_error!, textAlign: TextAlign.center),
+          child: SelectableText(_error!, textAlign: TextAlign.center),
         ),
       );
     }

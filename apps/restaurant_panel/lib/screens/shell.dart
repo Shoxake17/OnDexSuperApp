@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../pages/coming_soon_page.dart';
 import '../pages/dashboard_page.dart';
 import '../pages/menu_page.dart';
@@ -36,24 +35,31 @@ class _RestaurantShellState extends State<RestaurantShell> {
   String _staffRole = '';
   DateTime _selectedDate = DateTime.now();
   int _newOrdersCount = 0;
-  Timer? _pollTimer;
+  late final LiveRefresher _live;
 
   @override
   void initState() {
     super.initState();
     _loadInfo();
     _pollOrders();
-    // Buyurtmalar sahifasining o'zi WebSocket orqali jonli yangilanadi;
-    // sidebar rozetkasi/qo'ng'iroq belgisi uchun esa shunchaki 20s'da
-    // yangilanib tursa yetarli — bu yerda alohida WS ulanish ochish
-    // ortiqcha bo'lardi (MainLayout/Sidebar/TopBar barchasi shu BITTA
-    // qiymatdan foydalanadi, ilgari har biri o'zi alohida so'rov yuborardi).
-    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _pollOrders());
+    // Jonli kanal BUTUN panel uchun shu yerda ochiladi — buyurtmalar
+    // sahifasi ham xuddi shunga obuna bo'ladi (`lib/live.dart`).
+    //
+    // Avval yon paneldagi hisoblagich 20 soniyalik so'rov sikliga
+    // tayanardi: oshxona buyurtmani ko'rgan bo'lsa ham, rozetkadagi
+    // raqam eski qiymatda turardi. Endi ikkalasi bir manbadan.
+    restaurantLive.start();
+    _live = LiveRefresher(
+      bus: restaurantLive,
+      onRefresh: _pollOrders,
+      types: const {'new_order', 'order_status'},
+    )..start();
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _live.dispose();
+    restaurantLive.stop();
     super.dispose();
   }
 
@@ -83,6 +89,11 @@ class _RestaurantShellState extends State<RestaurantShell> {
           .where((o) => o['status'] == 'created')
           .length;
       setState(() => _newOrdersCount = newCount);
+      // Qo'ng'iroq AYNAN shu yerdan boshqariladi — qobiq panel ochiq
+      // turgan BUTUN vaqt davomida tirik, ya'ni foydalanuvchi qaysi
+      // sahifada bo'lishidan qat'i nazar ovoz eshitiladi
+      // (`sound.dart` dagi `setPending` izohiga qarang).
+      await RingSound.setPending(newCount > 0);
     } catch (_) {
       // Ko'makchi hisoblagich — tarmoq xatosi butun panelni to'xtatmasin,
       // keyingi davriy urinishda o'zi tuzaladi.
@@ -106,6 +117,9 @@ class _RestaurantShellState extends State<RestaurantShell> {
   }
 
   Future<void> _logout() async {
+    // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
+    // sessiya uchun qayta ulanishga urinardi (har safar 401).
+    await restaurantLive.stop();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('rest_token');
     await prefs.remove('rest_rid');

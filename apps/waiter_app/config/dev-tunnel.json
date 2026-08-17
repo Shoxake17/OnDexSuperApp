@@ -1,0 +1,12 @@
+﻿{
+  "_izoh": "MAHALLIY ishlab chiqish, LEKIN haqiqiy HTTPS domen orqali (Cloudflare tunnel). Avval .\\scripts\\dev_tunnel.ps1, keyin: flutter run --dart-define-from-file=config/dev-tunnel.json",
+  "_nega": "Ofitsiant kirishi Telegram bot havolasi orqali ishlaydi (login_screen.dart -> api.telegramStart, url_launcher). Telegram inline tugmasida localhost ham, LAN IP ham RAD ETILADI â€” shu oqimni sinash uchun haqiqiy HTTPS domen shart. LAN IP rejimi (config/dev.json) faqat Telegram TEGMAYDIGAN ekranlar uchun yaraydi.",
+  "_android": "Cleartext (http) bloki ham shu bilan chetlab o'tiladi â€” tunnel HTTPS, ya'ni network_security_config.xml ga tegish shart emas.",
+  "_xavf": "Tunnel ishlab turganda dev API OMMAVIY internetda bo'ladi (hostname Certificate Transparency loglariga tushadi) va .env dagi HAQIQIY Telegram/Resend/R2 kalitlari ishlatiladi. Sinov tugagach cloudflared'ni Ctrl+C bilan to'xtating.",
+
+  "ONDEX_APP_VERSION": "1.0.0-dev",
+
+  "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
+  "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"
+}
+

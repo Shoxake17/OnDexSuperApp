@@ -1,8 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
+import '../widgets/delete_account_action.dart';
 
 class CouriersPage extends StatefulWidget {
   const CouriersPage({super.key});
@@ -14,18 +14,26 @@ class CouriersPage extends StatefulWidget {
 class _CouriersPageState extends State<CouriersPage> {
   List<dynamic> _list = [];
   bool _loading = true;
-  Timer? _timer;
+  late final LiveRefresher _live;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _load());
+    // Yangi ariza (`courier_registered`) va onlayn holati
+    // (`courier_status`) JONLI keladi — tasdiq kutayotgan kuryer
+    // ro'yxatda darhol paydo bo'ladi. So'rov sikli zaxira sifatida
+    // qoladi (`live.dart`).
+    _live = LiveRefresher(
+      bus: adminLive,
+      onRefresh: _load,
+      types: const {'courier_registered', 'courier_status', 'courier_assigned'},
+    )..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _live.dispose();
     super.dispose();
   }
 
@@ -57,6 +65,26 @@ class _CouriersPageState extends State<CouriersPage> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Xato: $e')));
     }
+  }
+
+  /// Kuryer akkauntini o'chiradi.
+  ///
+  /// So'rov AKKAUNT ID'siga (`user_id`) yuboriladi, kuryer yozuvining
+  /// ID'siga emas: o'chirish akkauntga tegishli amal va server o'zi
+  /// kuryer yozuvini ham ro'yxatlardan olib tashlaydi.
+  Future<void> _delete(Map<String, dynamic> c) async {
+    final deleted = await confirmDeleteAccount(
+      context,
+      id: c['user_id'] as String,
+      name: (c['name'] as String?)?.isNotEmpty == true
+          ? c['name'] as String
+          : '(ismsiz kuryer)',
+      phone: (c['phone'] as String?) ?? '',
+      extraNote: 'Kuryer ro\'yxatidan ham chiqariladi va boshqa '
+          'buyurtma taklifi olmaydi.',
+    );
+    if (!mounted) return;
+    if (deleted) _load();
   }
 
   @override
@@ -126,17 +154,42 @@ class _CouriersPageState extends State<CouriersPage> {
                                         ? Colors.green
                                         : Colors.grey,
                                   )),
-                                  DataCell(c['approved'] == true
-                                      ? TextButton(
-                                          onPressed: () =>
-                                              _setApproved(c['id'], false),
-                                          child: const Text('Bloklash',
-                                              style: TextStyle(
-                                                  color: Colors.red)))
-                                      : FilledButton(
-                                          onPressed: () =>
-                                              _setApproved(c['id'], true),
-                                          child: const Text('Tasdiqlash'))),
+                                  DataCell(Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      c['approved'] == true
+                                          ? TextButton(
+                                              onPressed: () =>
+                                                  _setApproved(c['id'], false),
+                                              child: const Text('Bloklash',
+                                                  style: TextStyle(
+                                                      color: Colors.red)))
+                                          : FilledButton(
+                                              onPressed: () =>
+                                                  _setApproved(c['id'], true),
+                                              child: const Text('Tasdiqlash')),
+                                      const SizedBox(width: 4),
+                                      // `user_id` bo'lmasligi mumkin: kuryer
+                                      // yozuvi bor, unga bog'langan akkaunt
+                                      // esa yo'q (eski demo ma'lumot).
+                                      // Bunday holatda tugma o'chirilgan
+                                      // holatda qoladi — bosilganda
+                                      // tushunarsiz xato berishdan ko'ra
+                                      // sababni tooltip'da aytgan ma'qul.
+                                      IconButton(
+                                        tooltip: c['user_id'] == null
+                                            ? 'Bu kuryerga bog\'langan akkaunt yo\'q'
+                                            : 'Akkauntni o\'chirish',
+                                        icon: Icon(Icons.delete_outline,
+                                            color: c['user_id'] == null
+                                                ? Colors.grey
+                                                : Colors.red),
+                                        onPressed: c['user_id'] == null
+                                            ? null
+                                            : () => _delete(c),
+                                      ),
+                                    ],
+                                  )),
                                 ]),
                             ],
                           ),

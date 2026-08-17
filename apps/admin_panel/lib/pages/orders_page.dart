@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -14,7 +13,7 @@ class OrdersPage extends StatefulWidget {
 class _OrdersPageState extends State<OrdersPage> {
   List<dynamic> _list = [];
   bool _loading = true;
-  Timer? _timer;
+  late final LiveRefresher _live;
 
   static const _statusColors = {
     'created': Colors.blue,
@@ -31,12 +30,19 @@ class _OrdersPageState extends State<OrdersPage> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
+    // Avval har 5 soniyada so'rov ketardi — endi buyurtma hodisasi
+    // kelishi bilan DARHOL yangilanadi, so'rov esa zaxira
+    // (`live.dart` dagi izoh).
+    _live = LiveRefresher(
+      bus: adminLive,
+      onRefresh: _load,
+      types: const {'new_order', 'order_status', 'courier_assigned'},
+    )..start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _live.dispose();
     super.dispose();
   }
 

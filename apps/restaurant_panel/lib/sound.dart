@@ -66,4 +66,39 @@ class RingSound {
   }
 
   static Future<void> stop() => player.stop();
+
+  /// Jiringlash holati — [setPending] shu yerda kuzatiladi.
+  ///
+  /// Holat pleyerning O'ZIDA turadi, biror ekranning `State` ida emas:
+  /// aynan shu edi eski xatoning sababi (pastdagi izohga qarang).
+  static bool _ringing = false;
+
+  /// "Qabul qilinmagan buyurtma bormi?" — jiringlashni shunga moslaydi.
+  ///
+  /// ┌─ NEGA BU YERDA, SAHIFADA EMAS ──────────────────────────────────┐
+  /// Avval bu mantiq `pages/orders_page.dart` ning `State` ida edi
+  /// (`_updateRinging`). WebSocket butun panel uchun umumiy bo'lsa-da
+  /// (`lib/live.dart`), jiringlash TETIGI o'sha sahifaga bog'langan
+  /// edi — ya'ni foydalanuvchi Menyu yoki Statistika sahifasiga o'tsa,
+  /// widget yo'q qilinar va yangi buyurtma kelganda ovoz UMUMAN
+  /// chiqmasdi. Oshxona buyurtmani ko'rmay qolardi.
+  ///
+  /// Endi tetik pleyerning o'zida: uni ham qobiq (`screens/shell.dart` —
+  /// har doim tirik), ham buyurtmalar sahifasi chaqiradi. Ikki
+  /// chaqiruvchi bir-biriga xalaqit bermaydi, chunki metod IDEMPOTENT:
+  /// bir xil qiymat bilan qayta chaqirilsa hech narsa qilmaydi.
+  ///
+  /// Sahifa ham chaqirishda davom etadi — u DARHOL javob beradi
+  /// (restoran "Qabul qilaman" bosishi bilan ovoz o'chadi), qobiq esa
+  /// soket xabarini kutadi. Ikkalasi birga: tez va ishonchli.
+  /// └─────────────────────────────────────────────────────────────────┘
+  static Future<void> setPending(bool hasNew) async {
+    if (hasNew == _ringing) return;
+    _ringing = hasNew;
+    if (hasNew) {
+      await start();
+    } else {
+      await stop();
+    }
+  }
 }
