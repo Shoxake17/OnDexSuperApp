@@ -154,11 +154,7 @@ class _Header extends StatelessWidget {
                     const Icon(Icons.place_outlined, size: 16),
                     const SizedBox(width: 4),
                     Text(
-                      // VAQTINCHALIK — Shorebird OTA sinovi uchun.
-                      // Yamoq qo'llanganini ko'z bilan tasdiqlash uchun
-                      // matn ataylab o'zgartirildi. Sinov tugagach
-                      // 'Chust' ga qaytariladi.
-                      'Chust · OTA ✓',
+                      'Chust',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
