@@ -93,7 +93,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           children: const [
                             SizedBox(height: 120),
                             Center(
-                              child: Text('Hali buyurtmalar yo\'q',
+                              child: Text('Hozircha buyurtma yo\'q',
                                   style: TextStyle(color: Colors.grey)),
                             ),
                           ],
@@ -128,16 +128,20 @@ class _OrderCard extends StatelessWidget {
     final itemCount =
         items.fold<int>(0, (a, i) => a + ((i['qty'] ?? 1) as int));
     final createdAt = DateTime.tryParse(order['created_at'] as String? ?? '');
-    final surface = Theme.of(context).colorScheme.surfaceContainerHighest;
+    // Kartochka ranglari vebdagi bilan bir xil: OQ fon + neytral
+    // chegara (`bg-white border-neutral-200`). Avval bu yerda
+    // `surfaceContainerHighest` ishlatilardi — u mavzuga bog'liq
+    // kulrang berib, veb kartochkasidan sezilarli farq qilardi.
+    const surface = Color(0xFFF5F5F5);
     final stage = stageOf(status);
 
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
-      color: surface.withValues(alpha: 0.4),
+      color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFE5E5E5)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -153,22 +157,24 @@ class _OrderCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                     child: SizedBox(
-                      width: 64,
-                      height: 64,
+                      // Vebdagi `h-12 w-12` bilan bir xil — 64px logo
+                      // kartochkani kerakdan baland qilardi.
+                      width: 48,
+                      height: 48,
                       child: logoUrl.isEmpty
                           ? Container(
                               color: surface,
                               child: const Icon(Icons.storefront,
-                                  color: Colors.grey, size: 28))
+                                  color: Colors.grey, size: 20))
                           : Image.network(
                               fullImageUrl(logoUrl),
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
                                   color: surface,
                                   child: const Icon(Icons.storefront,
-                                      color: Colors.grey, size: 28)),
+                                      color: Colors.grey, size: 20)),
                             ),
                     ),
                   ),
@@ -214,7 +220,9 @@ class _OrderCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text('$itemCount ta mahsulot',
+                        // Vebdagi bilan bir xil ibora ("ta taom") —
+                        // ikkala ilovada bir narsa ikki xil atalmasin.
+                        Text('$itemCount ta taom',
                             style: TextStyle(
                                 fontSize: 13, color: Colors.grey.shade500)),
                         const SizedBox(height: 8),

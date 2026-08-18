@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../data/catalog_repository.dart';
+import 'address_screen.dart';
 import 'menu_screen.dart';
+import 'notifications_screen.dart';
+import 'wallet_screen.dart';
 
 /// Bosh sahifa — restoranlar katalogi. NATIVE (maket: image/restarant.png).
 ///
@@ -69,7 +72,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
               // yangilash ishlashi kerak.
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                const SliverToBoxAdapter(child: _Header()),
+                SliverToBoxAdapter(
+                  child: _Header(restaurants: list),
+                ),
                 SliverToBoxAdapter(
                   child: _CategoryRow(repo: _categories, tick: _reloadTick),
                 ),
@@ -116,8 +121,50 @@ const kBrand = Color(0xFFF4511E);
 // SARLAVHA
 // ═══════════════════════════════════════════════════════════════════
 
-class _Header extends StatelessWidget {
-  const _Header();
+class _Header extends StatefulWidget {
+  /// Qidiruv oynasiga uzatiladi — u alohida so'rov yubormaydi,
+  /// allaqachon keshdan kelgan ro'yxatni filtrlaydi (veb bilan bir xil).
+  final List<Map<String, dynamic>> restaurants;
+
+  const _Header({required this.restaurants});
+
+  @override
+  State<_Header> createState() => _HeaderState();
+}
+
+class _HeaderState extends State<_Header> {
+  int _unread = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnread();
+  }
+
+  /// O'qilmagan bildirishnomalar soni.
+  ///
+  /// Kirmagan foydalanuvchida endpoint 401 qaytaradi — bu NORMAL
+  /// holat, xato emas. Bosh sahifa anonim ham ochiladi va unda
+  /// shunchaki belgi chizilmaydi.
+  ///
+  /// Interval ATAYLAB yo'q: bosh sahifa uzoq ochiq turadi va har necha
+  /// soniyada so'rov yuborish batareyani bekorga yeydi. Son ekranga
+  /// qaytilganda yangilanadi.
+  Future<void> _loadUnread() async {
+    try {
+      final n = await api.unreadNotificationCount();
+      if (mounted) setState(() => _unread = n);
+    } catch (_) {}
+  }
+
+  Future<void> _push(Widget screen) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => screen),
+    );
+    // Bildirishnomalar ochilgan bo'lsa ular o'qilgan deb
+    // belgilangan — belgi yangilanishi kerak.
+    if (mounted) _loadUnread();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,30 +196,61 @@ class _Header extends StatelessWidget {
                 const SizedBox(height: 6),
                 // Shahar qat'iy: platforma Chust uchun. Maketdagi
                 // "Toshkent, Chilonzor" — shunchaki namuna edi.
-                Row(
-                  children: [
-                    const Icon(Icons.place_outlined, size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Chust',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                //
+                // Qator BOSILADI va manzil ekranini ochadi (vebda ham
+                // `<Link href="/address">`) — shu sabab yonida pastga
+                // ko'rsatkich turadi.
+                InkWell(
+                  onTap: () => _push(const AddressScreen()),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.place_outlined, size: 16),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Chust',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.keyboard_arrow_down,
+                            size: 18, color: Color(0xFF757575)),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
           // Uchta amal — veb tomonidagi `header-actions.tsx` bilan
           // bir xil tartibda: qidiruv, hamyon, bildirishnoma.
-          const _IconButton(icon: Icons.search, label: 'Qidirish'),
+          _IconButton(
+            icon: Icons.search,
+            label: 'Qidirish',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    _RestaurantSearchScreen(restaurants: widget.restaurants),
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          const _IconButton(
-              icon: Icons.account_balance_wallet_outlined, label: 'Hamyon'),
+          _IconButton(
+            icon: Icons.account_balance_wallet_outlined,
+            label: 'Hamyon',
+            onTap: () => _push(const WalletScreen()),
+          ),
           const SizedBox(width: 8),
-          const _IconButton(
-              icon: Icons.notifications_none, label: 'Bildirishnomalar'),
+          _IconButton(
+            icon: Icons.notifications_none,
+            label: 'Bildirishnomalar',
+            badge: _unread,
+            onTap: () => _push(const NotificationsScreen()),
+          ),
         ],
       ),
     );
@@ -180,16 +258,23 @@ class _Header extends StatelessWidget {
 }
 
 /// Dumaloq ikon tugmasi.
-///
-/// Hozircha amali YO'Q — qidiruv, hamyon va bildirishnoma ekranlari
-/// keyingi bosqichda native qilinadi. Tugma ko'rinadi, lekin bosilganda
-/// hech narsa qilmasligi noto'g'ri bo'lardi, shuning uchun qisqa
-/// tushuntirish chiqadi.
 class _IconButton extends StatelessWidget {
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
 
-  const _IconButton({required this.icon, required this.label});
+  /// O'qilmaganlar soni. 0 — belgi chizilmaydi.
+  final int badge;
+
+  const _IconButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  /// Belgida ko'rsatiladigan eng katta son — undan yuqorisi "9+".
+  static const _maxBadge = 9;
 
   @override
   Widget build(BuildContext context) {
@@ -198,20 +283,150 @@ class _IconButton extends StatelessWidget {
       label: label,
       child: InkResponse(
         radius: 24,
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$label — tez orada')),
-        ),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFE5E5E5)),
-            color: Colors.white,
-          ),
-          child: Icon(icon, size: 20, color: const Color(0xFF666666)),
+        onTap: onTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFE5E5E5)),
+                color: Colors.white,
+              ),
+              child: Icon(icon, size: 20, color: const Color(0xFF666666)),
+            ),
+            if (badge > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  height: 18,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  // Maketdagi qizil nuqta — lekin raqam bilan:
+                  // "nechta?" degan savol nuqtadan javob olmaydi.
+                  child: Text(
+                    badge > _maxBadge ? '$_maxBadge+' : '$badge',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RESTORAN QIDIRUVI
+// ═══════════════════════════════════════════════════════════════════
+
+/// Bosh sahifadagi qidiruv — keshdagi ro'yxatni filtrlaydi, tarmoqqa
+/// so'rov yubormaydi (veb `home-content.tsx` bilan bir xil qaror:
+/// asosiy sahifa har doim to'liq ro'yxatni ko'rsatadi, filtr faqat shu
+/// oynada ishlaydi).
+class _RestaurantSearchScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> restaurants;
+  const _RestaurantSearchScreen({required this.restaurants});
+
+  @override
+  State<_RestaurantSearchScreen> createState() =>
+      _RestaurantSearchScreenState();
+}
+
+class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
+  final _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final results = q.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : widget.restaurants
+            .where((r) =>
+                ((r['name'] as String?) ?? '').toLowerCase().contains(q))
+            .toList();
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        titleSpacing: 0,
+        title: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F7F7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE0E0E0)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.search, size: 20, color: Color(0xFF9E9E9E)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Restoran qidirish...',
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            tooltip: 'Yopish',
+          ),
+        ],
+      ),
+      body: results.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  q.isEmpty ? 'Restoran nomini yozing' : 'Mos restoran topilmadi',
+                  style: const TextStyle(color: Color(0xFF757575)),
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              itemCount: results.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              itemBuilder: (_, i) => _RestaurantCard(r: results[i]),
+            ),
     );
   }
 }
@@ -335,6 +550,15 @@ class _CategoryTile extends StatelessWidget {
 // RESTORAN KARTASI
 // ═══════════════════════════════════════════════════════════════════
 
+/// Cover rasmi ustidagi oq matn uchun soya.
+///
+/// Gradient o'rniga ATAYLAB shu ishlatiladi (veb `restaurant-card.tsx`
+/// bilan bir xil qaror): soya faqat harflar atrofida bo'ladi, brend
+/// suratini bosmaydi.
+const _textShadow = [
+  Shadow(color: Color(0xBF000000), blurRadius: 4, offset: Offset(0, 1)),
+];
+
 class _RestaurantCard extends StatelessWidget {
   final Map<String, dynamic> r;
   const _RestaurantCard({required this.r});
@@ -359,7 +583,9 @@ class _RestaurantCard extends StatelessWidget {
     final card = Container(
       height: 200,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        // Cover yo'q bo'lsa fon TO'Q bo'lishi shart: oq matn och
+        // kulrang ustida o'qilmasdi.
         color: const Color(0xFF3A3A3A),
       ),
       clipBehavior: Clip.antiAlias,
@@ -373,19 +599,24 @@ class _RestaurantCard extends StatelessWidget {
               // Rasm kelmasa karta baribir o'qiladi — matn ostidagi
               // to'q fon qoladi.
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            )
+          else
+            const Center(
+              child: Icon(Icons.storefront_outlined,
+                  size: 64, color: Color(0x40FFFFFF)),
             ),
 
-          // Matn o'qilishi uchun pastdan yuqoriga qorayish. Cover
-          // rasmining yuqori qismi ochiq qoladi.
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.center,
-                colors: [Color(0xCC000000), Color(0x00000000)],
-              ),
-            ),
-          ),
+          // ┌─ COVER RASMI O'ZGARTIRILMAYDI ──────────────────────────┐
+          // Avval bu yerda pastdan yuqoriga qorayadigan gradient
+          // turardi va u brend suratini bosib, kartani xira
+          // ko'rsatardi. Vebda u ATAYLAB olib tashlangan
+          // (`restaurant-card.tsx`), lekin native tomonda qolib
+          // ketgan — ikkalasi shu sababdan farq qilardi.
+          //
+          // Matn o'qilishi endi gradient bilan emas, HARF SOYASI
+          // bilan ta'minlanadi: soya faqat harflar atrofida bo'ladi,
+          // rasmning o'ziga tegmaydi.
+          // └─────────────────────────────────────────────────────────┘
 
           Positioned(
             right: 12,
@@ -409,7 +640,9 @@ class _RestaurantCard extends StatelessWidget {
 
           Positioned(
             left: 16,
-            right: 16,
+            // O'ngda "Ochiq/Yopiq" belgisi turadi — matn uning ostiga
+            // kirib ketmasligi uchun keng chekinish (vebdagi `pr-24`).
+            right: 96,
             bottom: 14,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,6 +656,7 @@ class _RestaurantCard extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
+                    shadows: _textShadow,
                   ),
                 ),
                 if (tags.isNotEmpty)
@@ -430,7 +664,10 @@ class _RestaurantCard extends StatelessWidget {
                     tags,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        shadows: _textShadow),
                   ),
                 if (address.isNotEmpty)
                   Padding(
@@ -438,7 +675,7 @@ class _RestaurantCard extends StatelessWidget {
                     child: Row(
                       children: [
                         const Icon(Icons.place_outlined,
-                            size: 12, color: Colors.white70),
+                            size: 12, color: Colors.white, shadows: _textShadow),
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
@@ -446,7 +683,9 @@ class _RestaurantCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
+                                color: Colors.white,
+                                fontSize: 12,
+                                shadows: _textShadow),
                           ),
                         ),
                       ],

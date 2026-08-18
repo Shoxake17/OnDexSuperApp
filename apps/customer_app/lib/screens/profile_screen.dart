@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import 'catalog_screen.dart' show kBrand;
 import '../data/catalog_repository.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
@@ -13,6 +14,68 @@ import 'address_screen.dart';
 import 'login_screen.dart';
 import 'web_session.dart';
 import 'pin_screen.dart';
+
+/// Profil kartochkalarining umumiy bezagi — vebdagi
+/// `rounded-2xl border border-neutral-200 bg-white` bilan bir xil.
+final _cardDecoration = BoxDecoration(
+  color: Colors.white,
+  borderRadius: BorderRadius.circular(16),
+  border: Border.all(color: const Color(0xFFE5E5E5)),
+);
+
+/// Ikon + kichik yorliq + qiymat qatori. `onTap` berilsa o'ngda
+/// ko'rsatkich chiziladi va qator bosiladi.
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final row = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration,
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: const Color(0xFF9E9E9E)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFF757575))),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15)),
+              ],
+            ),
+          ),
+          if (onTap != null)
+            const Icon(Icons.chevron_right,
+                size: 18, color: Color(0xFF9E9E9E)),
+        ],
+      ),
+    );
+
+    if (onTap == null) return row;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: row,
+    );
+  }
+}
 
 /// "Profil" bo'limi — foydalanuvchi ma'lumotlari, manzil boshqaruvi va
 /// chiqish (logout). Logout endi shu yerda — avval RestaurantsScreen'ning
@@ -185,87 +248,173 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: FutureBuilder<Map<String, dynamic>>(
           future: _future,
           builder: (context, snap) {
-            final phone = snap.data?['phone'] as String? ?? '';
-            final name = snap.data?['name'] as String? ?? '';
+            final me = snap.data;
+            final loading = snap.connectionState == ConnectionState.waiting;
+
+            // Ism vebdagi `displayName()` bilan bir xil tartibda
+            // tanlanadi: `name` -> `first_name last_name` -> "Mijoz".
+            final full = [
+              (me?['first_name'] as String?) ?? '',
+              (me?['last_name'] as String?) ?? '',
+            ].where((s) => s.trim().isNotEmpty).join(' ').trim();
+            final name = ((me?['name'] as String?) ?? '').trim().isNotEmpty
+                ? (me!['name'] as String).trim()
+                : (full.isNotEmpty ? full : 'Mijoz');
+            final phone = (me?['phone'] as String?) ?? '';
+            final email = ((me?['email'] as String?) ?? '').trim();
+            final address =
+                (((me?['address'] as Map?)?['text'] as String?) ?? '').trim();
+
             return ListView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                // ── Foydalanuvchi kartasi ──────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: _cardDecoration,
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        child: const Icon(Icons.person, size: 32),
+                      Container(
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: kBrand,
+                        ),
+                        // Vebdagi kabi ism harfi — umumiy "odam"
+                        // ikonkasidan ko'ra shaxsiyroq ko'rinadi.
+                        child: Text(
+                          name.characters.first.toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(name.isEmpty ? 'Mijoz' : name,
+                            Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontSize: 18, fontWeight: FontWeight.bold)),
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold)),
                             const SizedBox(height: 2),
                             Text(
-                                phone.isEmpty
-                                    ? (snap.connectionState ==
-                                            ConnectionState.waiting
-                                        ? 'Yuklanmoqda...'
-                                        : '')
-                                    : phone,
-                                style: const TextStyle(color: Colors.grey)),
+                              phone.isEmpty
+                                  ? (loading ? 'Yuklanmoqda…' : '')
+                                  : phone,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13.5, color: Color(0xFF757575)),
+                            ),
                           ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.location_on_outlined),
-                  title: const Text('Yetkazib berish manzili'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AddressScreen()),
-                  ),
+                const SizedBox(height: 16),
+
+                // Telefon bloki ATAYLAB yo'q: raqam yuqoridagi kartada,
+                // ism ostida allaqachon turibdi.
+                if (email.isNotEmpty) ...[
+                  _InfoRow(
+                      icon: Icons.mail_outline, label: 'Email', value: email),
+                  const SizedBox(height: 8),
+                ],
+                _InfoRow(
+                  icon: Icons.place_outlined,
+                  label: 'Yetkazish manzili',
+                  // Manzil MATNI ko'rsatiladi — avval faqat "Yetkazib
+                  // berish manzili" yozuvi turardi va mijoz qaysi
+                  // manzil saqlanganini ochmasdan bilolmasdi.
+                  value: address.isEmpty ? 'Tanlanmagan' : address,
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const AddressScreen()),
+                    );
+                    // Manzil o'zgargan bo'lishi mumkin — qayta o'qiymiz.
+                    if (mounted) setState(() => _future = api.me());
+                  },
                 ),
-                const Divider(height: 1),
+
+                // ── Faqat native sozlamalar ────────────────────────
+                //
+                // PIN va ilova qulfi vebda YO'Q va bo'lishi ham mumkin
+                // emas: brauzerda qurilma kaliti/barmoq izi bilan
+                // ilovani qulflash tushunchasi yo'q.
+                const SizedBox(height: 8),
+                _InfoRow(
+                  icon: Icons.pin_outlined,
+                  label: 'Xavfsizlik',
+                  value: 'PIN kodni o\'zgartirish',
+                  onTap: _changePin,
+                ),
                 // Qulf sozlamasi FAQAT qurilmada himoya bo'lsa
                 // ko'rsatiladi — PIN/barmoq izi umuman qo'yilmagan
                 // telefonda bu tugma hech nima qila olmasdi va
                 // foydalanuvchini chalg'itardi.
-                ListTile(
-                  leading: const Icon(Icons.pin_outlined),
-                  title: const Text('PIN kodni o\'zgartirish'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _changePin,
-                ),
-                const Divider(height: 1),
-                if (_lockAvailable)
-                  SwitchListTile(
-                    secondary: const Icon(Icons.fingerprint),
-                    title: const Text('Ilova qulfi'),
-                    subtitle: const Text(
-                        'Ochilganda barmoq izi, yuz yoki qurilma kaliti '
-                        'so\'raladi'),
-                    value: _lockEnabled,
-                    onChanged: (v) async {
-                      await AppLock.setEnabled(v);
-                      if (!mounted) return;
-                      setState(() => _lockEnabled = v);
-                    },
+                if (_lockAvailable) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
+                    decoration: _cardDecoration,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.fingerprint,
+                            size: 19, color: Color(0xFF9E9E9E)),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Ilova qulfi',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Color(0xFF757575))),
+                              Text(
+                                  'Ochilganda barmoq izi yoki qurilma kaliti',
+                                  style: TextStyle(fontSize: 14)),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _lockEnabled,
+                          activeThumbColor: kBrand,
+                          onChanged: (v) async {
+                            await AppLock.setEnabled(v);
+                            if (!mounted) return;
+                            setState(() => _lockEnabled = v);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                if (_lockAvailable) const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text('Chiqish',
-                      style: TextStyle(color: Colors.red)),
-                  onTap: _logout,
+                ],
+
+                // ── Chiqish ────────────────────────────────────────
+                const SizedBox(height: 28),
+                SizedBox(
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: _logout,
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Chiqish',
+                        style: TextStyle(
+                            fontSize: 15.5, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                      side: const BorderSide(color: Color(0xFFE5E5E5)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
                 ),
               ],
             );

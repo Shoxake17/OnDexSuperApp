@@ -1,15 +1,25 @@
 import 'package:flutter/material.dart';
 
 /// Native tab ekranlari (Istaklarim / Buyurtmalarim / Profil) uchun
-/// UMUMIY qobiq — WebView ichidagi Next.js sahifalari bilan BIR XIL
+/// UMUMIY qobiq — `apps/web/app/(food)/mobile-sheet.tsx` bilan BIR XIL
 /// ko'rinish beradi: tepada juda kichik bo'shliq, keyin yuqori
 /// burchaklari 20px dumaloqlangan "karta".
 ///
-/// Ranglar `apps/web/app/(food)/mobile-sheet.tsx` bilan atayin bir xil:
-///   orqa fon  #121212  (= main.dart'dagi scaffoldBackgroundColor)
-///   karta     #1A1A1A
-/// Ikkalasi mos bo'lmasa, native tab'dan WebView tab'iga o'tganda
-/// ko'zga tashlanadigan sakrash/chok sezilardi.
+/// ┌─ RANGLAR NEGA O'ZGARDI ───────────────────────────────────────────┐
+/// Avval bu yerda QORONG'I ranglar qat'iy yozilgan edi (#121212 fon,
+/// #1A1A1A karta). Ular ilova qorong'i mavzuda va sahifalar WebView
+/// ichida bo'lgan davrdan qolgan.
+///
+/// Ilova YORUG' mavzuga o'tgach (`main.dart`: `Brightness.light`,
+/// `scaffoldBackgroundColor: Colors.white`) bu uchta ekran oq
+/// ilovaning ichida QORA karta bo'lib chizila boshladi — Istaklarim,
+/// Buyurtmalarim va Profil. Kod o'zgarmagani uchun bu jimgina sodir
+/// bo'ldi.
+///
+/// Endi ranglar vebdagi YORUG' rejim bilan bir xil:
+///   orqa fon  #E5E5E5  (`bg-neutral-200`)
+///   karta     oq       (`bg-white`)
+/// └───────────────────────────────────────────────────────────────────┘
 ///
 /// Material `AppBar` ATAYLAB ishlatilmaydi — u o'z foni/elevatsiyasi
 /// bilan kartaning dumaloq burchagini buzadi. Sarlavha oddiy matn
@@ -28,8 +38,8 @@ class SheetScaffold extends StatelessWidget {
     this.actions = const [],
   });
 
-  static const _backdrop = Color(0xFF121212);
-  static const _card = Color(0xFF1A1A1A);
+  static const _backdrop = Color(0xFFE5E5E5);
+  static const _card = Colors.white;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +63,10 @@ class SheetScaffold extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
+                          // Rang ATAYLAB aniq: qorong'i mavzudan
+                          // qolgan oq matn yorug' kartada ko'rinmay
+                          // qolgan edi.
+                          color: Color(0xFF171717),
                         ),
                       ),
                     ),

@@ -97,6 +97,30 @@ class CustomerApi extends ApiClient {
   Future<void> removeFavorite(String productId) =>
       send('DELETE', '/favorites/$productId');
 
+  // ── Bildirishnomalar ────────────────────────────────────────────────
+  //
+  // ┌─ NEGA JONLI XABARDAN TASHQARI TARIX KERAK ──────────────────────┐
+  // WebSocket xabari FAQAT ilova ochiq bo'lganda yetadi. Ilova yopiq,
+  // tarmoq uzilgan yoki soket o'lik bo'lsa xabar yo'qolardi. Server
+  // ularni bazaga yozadi (`internal/httpapi/routes_notifications.go`)
+  // va shu endpointlar o'sha tarixni beradi.
+  // └──────────────────────────────────────────────────────────────────┘
+
+  /// Eng yangilaridan. Kirmagan foydalanuvchida 401 — bu NORMAL holat.
+  Future<List<dynamic>> notifications({int limit = 50}) async =>
+      (await send('GET', '/notifications?limit=$limit')) as List<dynamic>? ??
+      [];
+
+  /// Qo'ng'iroq belgisidagi raqam.
+  Future<int> unreadNotificationCount() async {
+    final res = await send('GET', '/notifications/unread-count');
+    if (res is Map) return (res['count'] as num?)?.toInt() ?? 0;
+    return 0;
+  }
+
+  Future<void> markAllNotificationsRead() =>
+      send('POST', '/notifications/read-all');
+
   /// items: [{product_id, qty}] — narx yuborilmaydi, server katalogdan
   /// hisoblaydi. idempotencyKey — newIdempotencyKey() bilan BIR MARTA
   /// generatsiya qilinib, muvaffaqiyatli javob kelguncha bo'lgan BARCHA
