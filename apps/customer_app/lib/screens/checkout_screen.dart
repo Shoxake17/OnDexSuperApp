@@ -5,9 +5,39 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../widgets/qty_stepper.dart';
 import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'tracking_screen.dart';
+
+// ═══════════════════════════════════════════════════════════════════
+// MOCK MA'LUMOT — BITTA JOYDA
+// ═══════════════════════════════════════════════════════════════════
+//
+// ┌─ NIMA UCHUN SHU YERDA VA SHUNDAY NOMLANGAN ───────────────────────┐
+// Quyidagilar backendda HALI YO'Q. Ular ataylab BITTA blokda va
+// `mock` prefiksi bilan turibdi — haqiqiy ma'lumot ulanganda nimani
+// almashtirish kerakligi bir qarashda ko'rinsin, kod bo'ylab tarqalib
+// ketmasin.
+//
+// ENG MUHIM QOIDA: mock qiymatlar PULGA TEGMAYDI. Yetkazish va xizmat
+// haqi 0 — chunki server ularni hisoblamaydi va mijozdan olmaydi.
+// Agar bu yerga 15 000 yozilsa, ekranda ko'ringan "Jami" serverda
+// yoziladigan summadan FARQ QILARDI: mijoz bir raqamga rozi bo'lib,
+// boshqasini to'lardi. Shuning uchun ular 0 va "Bepul" deb chiziladi.
+// └───────────────────────────────────────────────────────────────────┘
+
+/// Yetkazish haqi. MOCK: backend `QuoteResult` da bunday maydon yo'q.
+/// 0 — hozir yetkazish uchun haq OLINMAYDI, ya'ni bu qiymat ayni
+/// paytda HAQIQATGA MOS.
+const int _mockDeliveryFeeTiyin = 0;
+
+/// Xizmat yig'imi. MOCK: backendda yo'q, olinmaydi.
+const int _mockServiceFeeTiyin = 0;
+
+/// Restoran yetkazish vaqtini ko'rsatmagan bo'lsa ishlatiladigan
+/// oraliq. MOCK: taxminiy qiymat, hech qayerdan hisoblanmaydi.
+const String _mockEtaFallback = '25–40 daqiqa';
 
 /// Buyurtmani rasmiylashtirish — NATIVE (maket: `image/rasmiy.png`).
 ///
@@ -98,6 +128,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   late String? _promotionName = widget.promotionName;
   bool _quoting = false;
   int _quoteSeq = 0;
+
+  /// Tanlangan to'lov usuli. MOCK: `POST /orders` bu maydonni QABUL
+  /// QILMAYDI, ya'ni tanlov serverga UMUMAN yuborilmaydi va buyurtma
+  /// qaysi usul tanlansa ham bir xil yaratiladi.
+  ///
+  /// Standart qiymat ATAYLAB naqd: ayni paytda haqiqatda shunday —
+  /// hisob kuryerga yetkazib berishda to'lanadi.
+  _PayMethod _payMethod = _PayMethod.cash;
+
+  /// Kiritilgan kupon kodi. MOCK: kod bo'yicha chegirma tizimi
+  /// backendda YO'Q (aksiyalar avtomatik qo'llanadi). Kod saqlanadi,
+  /// lekin SUMMAGA TA'SIR QILMAYDI va serverga yuborilmaydi.
+  String? _coupon;
 
   bool get _isDineIn => _cart.isDineIn;
 
@@ -313,6 +356,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const SizedBox(height: 12),
                 _orderDetailsCard(),
                 const SizedBox(height: 12),
+                _payMethodCard(),
+                const SizedBox(height: 12),
+                _couponCard(),
+                const SizedBox(height: 12),
                 _totalsCard(),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
@@ -343,28 +390,32 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             note: a == null ? null : (extras.isEmpty ? null : extras),
             onTap: _pickAddress,
           ),
-          if (_etaText != null) ...[
-            const Divider(height: 1, indent: 44),
-            _CardRow(
-              icon: Icons.schedule,
-              title: 'Yetkazish vaqti',
-              trailing: Text(_etaText!,
-                  style: const TextStyle(
-                      fontSize: 14.5, color: Color(0xFF757575))),
-            ),
-          ],
+          const Divider(height: 1, indent: 44),
+          _CardRow(
+            icon: Icons.schedule,
+            title: 'Yetkazish vaqti',
+            trailing: Text(_eta.text,
+                style: const TextStyle(
+                    fontSize: 14.5, color: Color(0xFF757575))),
+          ),
         ],
       ),
     );
   }
 
-  /// Restoran ko'rsatgan yetkazish oralig'i. Ma'lumot bo'lmasa qator
-  /// UMUMAN chizilmaydi — "soxta raqam yo'q" qoidasi.
-  String? get _etaText {
+  /// Yetkazish oralig'i.
+  ///
+  /// HAQIQIY manba — restoran yozib qo'ygan `eta_min/max_minutes`.
+  /// Restoran uni kiritmagan bo'lsa MOCK oraliq ko'rsatiladi
+  /// ([_mockEtaFallback]): bu maydon vaqtga emas, faqat kutishga
+  /// ta'sir qiladi, ya'ni noto'g'ri bo'lsa ham pulga tegmaydi.
+  ({String text, bool isMock}) get _eta {
     final min = (_restaurant?['eta_min_minutes'] as num?)?.toInt() ?? 0;
     final max = (_restaurant?['eta_max_minutes'] as num?)?.toInt() ?? 0;
-    if (min <= 0 || max <= 0) return null;
-    return '$min–$max daqiqa';
+    if (min > 0 && max > 0) {
+      return (text: '$min–$max daqiqa', isMock: false);
+    }
+    return (text: _mockEtaFallback, isMock: true);
   }
 
   Widget _dineInCard() {
@@ -460,6 +511,144 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  // ── To'lov usuli (MOCK) ───────────────────────────────────────────
+
+  Widget _payMethodCard() {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.credit_card, size: 22, color: kBrand),
+                SizedBox(width: 12),
+                Text('To\'lov usuli',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          for (var i = 0; i < _PayMethod.values.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 60, endIndent: 16),
+            _PayMethodRow(
+              method: _PayMethod.values[i],
+              selected: _payMethod == _PayMethod.values[i],
+              onTap: () =>
+                  setState(() => _payMethod = _PayMethod.values[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Kupon (MOCK) ──────────────────────────────────────────────────
+
+  Widget _couponCard() {
+    final code = _coupon;
+    return _Card(
+      child: _CardRow(
+        icon: Icons.confirmation_number_outlined,
+        title: 'Kupon yoki promokod',
+        subtitle: code == null || code.isEmpty
+            ? 'Chegirma uchun kod kiriting'
+            : code,
+        onTap: _enterCoupon,
+      ),
+    );
+  }
+
+  Future<void> _enterCoupon() async {
+    final controller = TextEditingController(text: _coupon ?? '');
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E0E0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text('Kupon yoki promokod',
+                  style:
+                      TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  hintText: 'Masalan: ONDEX10',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Bu matn ATAYLAB bor: kupon tizimi hali ulanmagan va
+              // kod kiritgan mijoz chegirmani KUTIB qolmasligi kerak.
+              const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 15, color: Color(0xFF9E9E9E)),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Kupon tizimi hali ulanmagan — kod summani '
+                      'o\'zgartirmaydi. Aksiyalar avtomatik qo\'llanadi.',
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kBrand,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () =>
+                      Navigator.of(ctx).pop(controller.text.trim()),
+                  child: const Text('Saqlash',
+                      style: TextStyle(
+                          fontSize: 15.5, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result != null && mounted) {
+      setState(() => _coupon = result.isEmpty ? null : result);
+    }
+  }
+
   // ── Yakuniy hisob ─────────────────────────────────────────────────
 
   Widget _totalsCard() {
@@ -472,7 +661,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: Column(
           children: [
             if (sub != null)
-              _TotalLine(label: 'Savatchadagi tovarlar', value: formatSum(sub)),
+              _TotalLine(label: 'Savatdagi tovarlar', value: formatSum(sub)),
             if (disc > 0)
               _TotalLine(
                 label: (_promotionName ?? '').trim().isEmpty
@@ -480,6 +669,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     : 'Aksiya: ${_promotionName!.trim()}',
                 value: '− ${formatSum(disc)}',
                 color: const Color(0xFF16A34A),
+              ),
+            // Yetkazish: qiymat 0 bo'lsa "Bepul" — bu HAQIQAT, chunki
+            // server yetkazish haqini umuman hisoblamaydi.
+            _TotalLine(
+              label: 'Yetkazish',
+              value: _mockDeliveryFeeTiyin == 0
+                  ? 'Bepul'
+                  : formatSum(_mockDeliveryFeeTiyin),
+              color: _mockDeliveryFeeTiyin == 0
+                  ? const Color(0xFF16A34A)
+                  : null,
+            ),
+            if (_mockServiceFeeTiyin > 0)
+              _TotalLine(
+                label: 'Xizmat yig\'imi',
+                value: formatSum(_mockServiceFeeTiyin),
               ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -492,6 +697,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 Text(
+                  // Jami — SERVER qiymati. Yuqoridagi mock qatorlar
+                  // unga QO'SHILMAYDI: ular 0 va serverda ham yo'q.
                   formatSum(_total),
                   style: const TextStyle(
                       fontSize: 18,
@@ -531,22 +738,147 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white),
                   )
-                : const Row(
+                : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Maketda "To'lov" yozilgan, lekin ilovada to'lov
-                      // tizimi YO'Q — hisob kuryerga naqd yoki karta
-                      // bilan to'lanadi (`wallet_screen.dart`). "To'lov"
-                      // tugmasi mijozni shu yerda pul yechiladi deb
-                      // o'ylatardi.
-                      Text('Buyurtma berish',
-                          style: TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.bold)),
-                      SizedBox(width: 8),
-                      Icon(Icons.chevron_right, size: 22),
+                      const Icon(Icons.lock_outline, size: 18),
+                      const SizedBox(width: 8),
+                      // ┌─ MATN TANLANGAN USULGA QARAB O'ZGARADI ────┐
+                      // Maketda har doim "... so'm to'lash". Lekin
+                      // naqd tanlanganda ilova hech qanday pul
+                      // yechmaydi — hisob kuryerga beriladi. O'shanda
+                      // "to'lash" deyish mijozni shu yerda pul
+                      // yechiladi deb o'ylatardi.
+                      //
+                      // Karta/Payme/Click uchun ham to'lov integratsiyasi
+                      // hali YO'Q, lekin ular tanlanganda mijoz to'lov
+                      // qadamini kutadi — matn maketdagidek qoladi.
+                      // └────────────────────────────────────────────┘
+                      Text(
+                        _payMethod == _PayMethod.cash
+                            ? 'Buyurtma berish · ${formatSum(_total)}'
+                            : '${formatSum(_total)} to\'lash',
+                        style: const TextStyle(
+                            fontSize: 16.5, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.chevron_right, size: 22),
                     ],
                   ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TO'LOV USULLARI — HAMMASI MOCK
+// ═══════════════════════════════════════════════════════════════════
+//
+// ┌─ NIMA ISHLAYDI, NIMA YO'Q ────────────────────────────────────────┐
+// Backendda to'lov tizimi UMUMAN yo'q: na jadval, na endpoint, na
+// Payme/Click integratsiyasi. `POST /orders` to'lov usulini qabul
+// qilmaydi.
+//
+// Ya'ni bu ro'yxat — KO'RINISH. Qaysi usul tanlansa ham buyurtma bir
+// xil yaratiladi va hisob amalda kuryerga to'lanadi.
+//
+// Haqiqiy to'lov ulanganda: bu enum saqlanadi, `createOrder` ga
+// `payment_method` qo'shiladi va karta/Payme/Click tanlanganda
+// buyurtmadan KEYIN to'lov ekrani ochiladi.
+// └───────────────────────────────────────────────────────────────────┘
+enum _PayMethod {
+  card('Bank kartasi', 'Visa, Mastercard, UzCard', Icons.credit_card,
+      Color(0xFFFDE8E2), kBrand),
+  cash('Naqd pul', 'Yetkazib berishda', Icons.payments_outlined,
+      Color(0xFFE8F5E9), Color(0xFF2E7D32)),
+  payme('Payme', 'Ilova orqali to\'lov', Icons.account_balance_wallet_outlined,
+      Color(0xFFE0F7FA), Color(0xFF00838F)),
+  click('Click', 'Ilova orqali to\'lov', Icons.bolt, Color(0xFFFFEBEE),
+      Color(0xFFC62828));
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color tile;
+  final Color iconColor;
+
+  const _PayMethod(
+      this.title, this.subtitle, this.icon, this.tile, this.iconColor);
+}
+
+class _PayMethodRow extends StatelessWidget {
+  final _PayMethod method;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PayMethodRow({
+    required this.method,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            // Radio o'rniga qo'lda chizilgan doira — Material radiosi
+            // o'z chekinishini olib kelib, qatorlarni notekis qilardi.
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? kBrand : const Color(0xFFBDBDBD),
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? Center(
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: kBrand,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Container(
+              width: 40,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: method.tile,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(method.icon, size: 19, color: method.iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(method.title,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 1),
+                  Text(method.subtitle,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFF9E9E9E))),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -723,7 +1055,9 @@ class _OrderItemRow extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _QtyStepper(
+              // Savat ekranidagi bilan AYNAN bir xil vidjet — alohida
+              // nusxa emas (`widgets/qty_stepper.dart`).
+              QtyStepper(
                 qty: qty,
                 onAdd: () => cart.increment(
                     restaurantId: restaurantId, productId: productId),
@@ -741,69 +1075,6 @@ class _OrderItemRow extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Maketdagi ramkali "− n +" boshqaruvi.
-class _QtyStepper extends StatelessWidget {
-  final int qty;
-  final VoidCallback onAdd;
-  final VoidCallback onRemove;
-
-  const _QtyStepper({
-    required this.qty,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 36,
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0E0E0)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _StepIcon(icon: Icons.remove, onTap: onRemove),
-          Container(
-            width: 34,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              border: Border.symmetric(
-                vertical: BorderSide(color: Color(0xFFE0E0E0)),
-              ),
-            ),
-            child: Text('$qty',
-                style: const TextStyle(
-                    fontSize: 14.5, fontWeight: FontWeight.bold)),
-          ),
-          _StepIcon(icon: Icons.add, onTap: onAdd),
-        ],
-      ),
-    );
-  }
-}
-
-class _StepIcon extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _StepIcon({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: onTap,
-      radius: 22,
-      child: SizedBox(
-        width: 34,
-        height: 36,
-        child: Icon(icon, size: 18, color: kBrand),
       ),
     );
   }

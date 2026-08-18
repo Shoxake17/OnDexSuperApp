@@ -6,6 +6,7 @@ import '../api.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../widgets/product_grid.dart';
+import '../widgets/qty_stepper.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'checkout_screen.dart';
 
@@ -491,7 +492,7 @@ class _CartRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _QtyBox(
+          QtyStepper(
             qty: qty,
             onAdd: () => cart.increment(
                 restaurantId: restaurantId, productId: productId),
@@ -499,59 +500,6 @@ class _CartRow extends StatelessWidget {
                 restaurantId: restaurantId, productId: productId),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _QtyBox extends StatelessWidget {
-  final int qty;
-  final VoidCallback onAdd;
-  final VoidCallback onRemove;
-
-  const _QtyBox({
-    required this.qty,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _RoundButton(icon: Icons.remove, onTap: onRemove),
-        SizedBox(
-          width: 28,
-          child: Text('$qty',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        _RoundButton(icon: Icons.add, onTap: onAdd),
-      ],
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _RoundButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 32,
-          height: 32,
-          child: Icon(icon, size: 18, color: Colors.black),
-        ),
       ),
     );
   }
