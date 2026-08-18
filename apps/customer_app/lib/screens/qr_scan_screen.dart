@@ -149,7 +149,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
             errorBuilder: (context, error) => _CameraError(error: error),
           ),
           const _ScanFrame(),
-          _TopBar(controller: _controller),
+          const _CloseButton(),
+          _TorchButton(controller: _controller),
           if (_error != null) _ErrorBanner(text: _error!),
         ],
       ),
@@ -157,40 +158,89 @@ class _QrScanScreenState extends State<QrScanScreen> {
   }
 }
 
-/// Ekran tepasidagi yopish va chiroq tugmalari.
-class _TopBar extends StatelessWidget {
-  final MobileScannerController controller;
-  const _TopBar({required this.controller});
+/// Chap YUQORI burchakdagi yopish tugmasi.
+///
+/// Doira ichida — kamera tasviri och bo'lsa oq ikonka yo'qolib
+/// ketmasligi uchun (ochiq stol, quyoshli xona).
+class _CloseButton extends StatelessWidget {
+  const _CloseButton();
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            IconButton(
-              tooltip: 'Yopish',
-              icon: const Icon(Icons.close, color: Colors.white, size: 28),
-              onPressed: () => Navigator.of(context).pop(),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Material(
+            color: Colors.black45,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => Navigator.of(context).pop(),
+              child: const SizedBox(
+                width: 44,
+                height: 44,
+                child: Icon(Icons.close, color: Colors.white, size: 26),
+              ),
             ),
-            const Spacer(),
-            // Chiroq — restoranda yorug'lik kam bo'lishi mumkin.
-            // Qo'llab-quvvatlanmagan qurilmada tugma ishlamaydi, lekin
-            // xato ham bermaydi.
-            ValueListenableBuilder<MobileScannerState>(
-              valueListenable: controller,
-              builder: (context, state, _) {
-                final on = state.torchState == TorchState.on;
-                return IconButton(
-                  tooltip: on ? 'Chiroqni o\'chirish' : 'Chiroqni yoqish',
-                  icon: Icon(on ? Icons.flash_on : Icons.flash_off,
-                      color: Colors.white, size: 26),
-                  onPressed: () => controller.toggleTorch(),
-                );
-              },
-            ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// PAST O'RTADAGI chiroq tugmasi.
+///
+/// ┌─ NEGA PASTDA ─────────────────────────────────────────────────────┐
+/// Avval u o'ng yuqorida edi. Skanerlash paytida telefon ikki qo'lda
+/// ushlanadi va bosh barmoq ekranning PASTKI qismiga yetadi —
+/// yuqoridagi tugmaga yetish uchun qo'lni qayta joylashtirish kerak
+/// bo'lardi, ya'ni kadr qimirlab, kod yo'qolardi.
+///
+/// Markazda — chap yoki o'ng qo'lliligiga bog'liq emas.
+/// └───────────────────────────────────────────────────────────────────┘
+///
+/// Qo'llab-quvvatlanmagan qurilmada tugma ishlamaydi, lekin xato ham
+/// bermaydi.
+class _TorchButton extends StatelessWidget {
+  final MobileScannerController controller;
+  const _TorchButton({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 36),
+          child: ValueListenableBuilder<MobileScannerState>(
+            valueListenable: controller,
+            builder: (context, state, _) {
+              final on = state.torchState == TorchState.on;
+              return Material(
+                // Yoqilganda ko'rinishi ham o'zgaradi — mijoz chiroq
+                // yonayotganini ikonkaning o'zidan tashqari fon
+                // rangidan ham biladi.
+                color: on ? Colors.white : Colors.black45,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => controller.toggleTorch(),
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: Icon(
+                      on ? Icons.flash_on : Icons.flash_off,
+                      color: on ? Colors.black : Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -242,7 +292,9 @@ class _ErrorBanner extends StatelessWidget {
       alignment: Alignment.bottomCenter,
       child: SafeArea(
         child: Container(
-          margin: const EdgeInsets.all(16),
+          // Pastdan 112 — chiroq tugmasi (60px + 36 chekinish) ustida
+          // turadi. Aks holda xato matni tugmani bosib qolardi.
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 112),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.red.shade700,

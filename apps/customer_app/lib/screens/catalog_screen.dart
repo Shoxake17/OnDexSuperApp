@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../category_icons.dart';
 import '../data/catalog_repository.dart';
 import 'address_screen.dart';
+import 'category_products_screen.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'wallet_screen.dart';
@@ -487,68 +489,62 @@ class _CategoryTile extends StatelessWidget {
   final String name;
   const _CategoryTile({required this.name});
 
-  /// Nomdan asset yo'lini topadi.
-  ///
-  /// Veb tomonda ayni jadval `lib/categoryIcons.ts` da. Bu DUBLIKAT,
-  /// lekin STACKLAR ORASIDA (Dart va TypeScript) — bir stack ichida
-  /// ikki nusxa yo'q. Rasm fayllarining o'zi esa bitta manba:
-  /// Flutter `assets/categories/`, veb undan nusxa oladi.
-  static const _icons = <String, String>{
-    'burger': 'burger', 'kfc': 'kfc', 'pizza': 'pizza', 'lavash': 'lavash',
-    'sushi': 'sushi', 'kabob': 'kabob', 'somsa': 'somsa', 'hotdog': 'hotdog',
-    'steyk': 'steyk', 'sandvich': 'sandvich', 'salat': 'salat',
-    'pishiriq': 'pishiriq', 'bolalar': 'bolalar', 'norin': 'norin',
-    'osh': 'osh', 'vok': 'vok', 'halal': 'halal', 'gazak': 'gazak',
-    'desert': 'dessert', 'shirinlik': 'shirinlik', 'shirinliklar': 'shirinlik',
-    'ichimlik': 'ichimlik', 'ichimliklar': 'ichimlik',
-    'fastfood': 'fastfood', 'fast food': 'fastfood',
-    'milliy': 'milliy', 'milliy taomlar': 'milliy',
-    'yevropa': 'yevropa', 'yevropa taomlar': 'yevropa',
-    'italya': 'italya', 'yapon': 'yapon', 'turkcha': 'turkcha',
-    'lagmon': 'lag\'mon', 'lag\'mon': 'lag\'mon',
-    'suyuq ovqat': 'suyuq-ovqat', 'quyuq ovqatlar': 'quyuq-ovqatlar',
-  };
-
-  String? get _asset {
-    final key = name.trim().toLowerCase();
-    final file = _icons[key];
-    return file == null ? null : 'assets/categories/$file.png';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final asset = _asset;
+    // Jadval va normalizatsiya `lib/category_icons.dart` da — vebdagi
+    // `lib/categoryIcons.ts` bilan bir xil. Avval bu yerda qat'iy
+    // solishtiruvli qisqa jadval turardi va ko'plik shakllar
+    // ("Burgerlar", "Steyklar") umuman topilmasdi.
+    final asset = categoryIconFor(name);
+
     return SizedBox(
       width: 76,
-      child: Column(
-        children: [
-          Container(
-            width: 62,
-            height: 62,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFF5F5F5),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        // Turkum bosilsa — o'sha turkumdagi taomlar (vebdagi
+        // `/search?category=...`). Avval plitka UMUMAN bosilmasdi.
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CategoryProductsScreen(category: name),
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 62,
+              height: 62,
+              // Ichki chekinish: surat ramkaga tegib turmasin (vebdagi
+              // `p-1` bilan bir xil).
+              padding: const EdgeInsets.all(5),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFF5F5F5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: asset == null
+                  ? const Icon(Icons.restaurant, color: Color(0xFF9E9E9E))
+                  : Image.asset(
+                      asset,
+                      // `contain` — surat TO'LIQ ko'rinsin. Avval
+                      // `cover` edi va u kvadrat rasmni dumaloq
+                      // ramkaga sig'dirish uchun chetlarini KESIB
+                      // tashlardi (vebda esa `object-contain`).
+                      fit: BoxFit.contain,
+                      // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.restaurant, color: Color(0xFF9E9E9E)),
+                    ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: asset == null
-                ? const Icon(Icons.restaurant, color: Color(0xFF9E9E9E))
-                : Image.asset(
-                    asset,
-                    fit: BoxFit.cover,
-                    // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.restaurant, color: Color(0xFF9E9E9E)),
-                  ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            name,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, height: 1.15),
-          ),
-        ],
+            const SizedBox(height: 6),
+            Text(
+              name,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, height: 1.15),
+            ),
+          ],
+        ),
       ),
     );
   }
