@@ -5,10 +5,16 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../widgets/product_grid.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'checkout_screen.dart';
 
 /// Savat — NATIVE.
+///
+/// Veb bilan parity: `apps/web/app/(food)/cart/page.tsx` — yopishqoq
+/// sarlavhada restoran nomi va jami, qatorlarda QATOR SUMMASI
+/// (miqdor × narx), "Menyuni ochish" tugmasi, pastda "Yana nimadir
+/// kerakmi?" bo'limi (to'liq menyu, turkumlarga bo'lingan).
 ///
 /// ┌─ NARX: NIMA VIZUAL, NIMA HAQIQIY ─────────────────────────────────┐
 /// Ro'yxatdagi har taom yonidagi narx — MENYUDAN olingan, ya'ni
@@ -30,6 +36,12 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   final _cart = CartStore.instance;
 
+  List<Map<String, dynamic>> _menu = const [];
+  List<Map<String, dynamic>> _promos = const [];
+  Set<String> _favorites = <String>{};
+  StreamSubscription<Cached<List<dynamic>>>? _menuSub;
+  StreamSubscription<Cached<List<dynamic>>>? _promoSub;
+
   /// Serverdan kelgan yakuniy summa. `null` — hali olinmagan.
   int? _quoteTiyin;
   bool _quoting = false;
@@ -43,13 +55,41 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     _cart.addListener(_onCart);
+    _subscribe();
+    _loadFavorites();
     _refreshQuote();
   }
 
   @override
   void dispose() {
     _cart.removeListener(_onCart);
+    _menuSub?.cancel();
+    _promoSub?.cancel();
     super.dispose();
+  }
+
+  void _subscribe() {
+    final rid = _cart.restaurantId;
+    if (rid == null) return;
+    _menuSub?.cancel();
+    _promoSub?.cancel();
+    _menuSub = Repos.menu(rid).observe().listen((c) {
+      if (!mounted || c.value == null) return;
+      setState(() => _menu = c.value!.cast<Map<String, dynamic>>());
+    });
+    _promoSub = Repos.promotions(rid).observe().listen((c) {
+      if (!mounted || c.value == null) return;
+      setState(() => _promos = c.value!.cast<Map<String, dynamic>>());
+    });
+  }
+
+  Future<void> _loadFavorites() async {
+    try {
+      final ids = await api.favoriteIds();
+      if (mounted) setState(() => _favorites = ids);
+    } catch (_) {
+      // Anonim foydalanuvchida 401 — bu normal holat.
+    }
   }
 
   void _onCart() {
@@ -94,7 +134,8 @@ class _CartScreenState extends State<CartScreen> {
         // Summani KO'RSATMAYMIZ: noto'g'ri raqam ko'rsatgandan ko'ra
         // "hisoblab bo'lmadi" deyish to'g'ri.
         _quoteTiyin = null;
-        _quoteError = e is ApiException ? e.message : 'Summani hisoblab bo\'lmadi';
+        _quoteError =
+            e is ApiException ? e.message : 'Summani hisoblab bo\'lmadi';
       });
     }
   }
@@ -104,41 +145,195 @@ class _CartScreenState extends State<CartScreen> {
           {'product_id': e.key, 'qty': e.value}
       ];
 
+  Map<String, Map<String, dynamic>> get _byId =>
+      {for (final p in _menu) (p['id'] as String? ?? ''): p};
+
+  void _onFavoriteChanged(String productId, bool favorited) {
+    setState(() {
+      if (favorited) {
+        _favorites.add(productId);
+      } else {
+        _favorites.remove(productId);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final rid = _cart.restaurantId;
 
+    if (_cart.isEmpty || rid == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          title: const Text('Savat'),
+        ),
+        body: const _EmptyCart(),
+      );
+    }
+
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Savat'),
-        actions: [
-          if (!_cart.isEmpty)
-            TextButton(
-              onPressed: _confirmClear,
-              child: const Text('Tozalash'),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _cart.restaurantName ?? 'Savat',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
+            if (_quoteTiyin != null)
+              Text(
+                formatSum(_quoteTiyin!),
+                style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF16A34A)),
+              ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            onPressed: _confirmClear,
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Savatni tozalash',
+          ),
         ],
       ),
-      body: _cart.isEmpty || rid == null
-          ? const _EmptyCart()
-          : _CartBody(restaurantId: rid),
-      bottomNavigationBar: _cart.isEmpty || rid == null
-          ? null
-          : _Bottom(
-              quoteTiyin: _quoteTiyin,
-              quoting: _quoting,
-              error: _quoteError,
-              onRetry: _refreshQuote,
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          if (_cart.isDineIn)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _TableBanner(label: _cart.tableLabel),
             ),
+
+          // ── Savatdagi taomlar ────────────────────────────────────
+          for (final e in _cart.items.entries)
+            _CartRow(
+              product: _byId[e.key],
+              productId: e.key,
+              qty: e.value,
+              restaurantId: rid,
+              promotions: _promos,
+            ),
+
+          // ── Menyuga qaytish ──────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: SizedBox(
+              height: 48,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF171717),
+                  side: const BorderSide(color: Color(0xFFE0E0E0)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Menyuni ochish',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ),
+
+          // ── Qo'shimcha taklif ────────────────────────────────────
+          //
+          // Vebdagi "Yana nimadir kerakmi?" bo'limi. Nativda umuman
+          // yo'q edi — mijoz savatga o'tgach menyuga qaytmasdan hech
+          // narsa qo'sha olmasdi.
+          if (_menu.isNotEmpty) ..._upsellSections(rid),
+        ],
+      ),
+      bottomNavigationBar: _Bottom(
+        quoteTiyin: _quoteTiyin,
+        quoting: _quoting,
+        error: _quoteError,
+        onRetry: _refreshQuote,
+      ),
     );
+  }
+
+  List<Widget> _upsellSections(String restaurantId) {
+    final order = <String>[];
+    final byCategory = <String, List<Map<String, dynamic>>>{};
+    for (final p in _menu) {
+      final c = categoryOf(p);
+      if (!byCategory.containsKey(c)) {
+        byCategory[c] = [];
+        order.add(c);
+      }
+      byCategory[c]!.add(p);
+    }
+
+    return [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 26, 16, 0),
+        child: Text('Yana nimadir kerakmi?',
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      ),
+      for (final c in order) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(c,
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: productGridDelegate,
+            itemCount: byCategory[c]!.length,
+            itemBuilder: (_, i) {
+              final p = byCategory[c]![i];
+              final id = (p['id'] as String?) ?? '';
+              final discount = computeProductDiscount(p, _promos);
+              return ProductCard(
+                product: p,
+                qty: _cart.qtyOf(id),
+                discount: discount,
+                promoted: PromotionIndex(_promos).covers(p, discount),
+                favorited: _favorites.contains(id),
+                onAdd: () => _cart.increment(
+                  restaurantId: restaurantId,
+                  productId: id,
+                  restaurantName: _cart.restaurantName,
+                ),
+                onRemove: () => _cart.decrement(
+                    restaurantId: restaurantId, productId: id),
+                onFavoriteChanged: (fav) => _onFavoriteChanged(id, fav),
+              );
+            },
+          ),
+        ),
+      ],
+    ];
   }
 
   Future<void> _confirmClear() async {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Savatni tozalash'),
-        content: const Text('Barcha taomlar olib tashlanadimi?'),
+        title: const Text('Savat tozalansinmi?'),
+        content: const Text(
+            'Barcha tanlangan taomlar savatdan olib tashlanadi.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -146,7 +341,8 @@ class _CartScreenState extends State<CartScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Ha'),
+            child: const Text('Ha, tozalash',
+                style: TextStyle(color: Color(0xFFDC2626))),
           ),
         ],
       ),
@@ -156,69 +352,28 @@ class _CartScreenState extends State<CartScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// RO'YXAT
+// SAVAT QATORI
 // ═══════════════════════════════════════════════════════════════════
 
-/// Savatdagi taomlar. Nom va narx MENYU keshidan olinadi — savatda
-/// faqat ID va miqdor saqlanadi.
+/// Savatdagi taom. Nom va narx MENYU keshidan olinadi — savatda faqat
+/// ID va miqdor saqlanadi.
 ///
 /// NEGA SAVATDA NARX SAQLANMAYDI: saqlansa u eskirardi va mijoz eski
 /// narxni ko'rib, checkout'da boshqasini olardi. Menyu keshi esa
 /// o'zi yangilanadi.
-class _CartBody extends StatelessWidget {
-  final String restaurantId;
-  const _CartBody({required this.restaurantId});
-
-  @override
-  Widget build(BuildContext context) {
-    final cart = CartStore.instance;
-
-    return StreamBuilder<Cached<List<dynamic>>>(
-      stream: Repos.menu(restaurantId).observe(),
-      builder: (context, snap) {
-        final menu = (snap.data?.value ?? const [])
-            .cast<Map<String, dynamic>>();
-        final byId = {for (final p in menu) (p['id'] as String? ?? ''): p};
-
-        final entries = cart.items.entries.toList();
-
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            if (cart.isDineIn) _TableBanner(label: cart.tableLabel),
-            if (cart.restaurantName != null &&
-                cart.restaurantName!.isNotEmpty) ...[
-              Text(
-                cart.restaurantName!,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-            ],
-            for (final e in entries)
-              _CartRow(
-                product: byId[e.key],
-                productId: e.key,
-                qty: e.value,
-                restaurantId: restaurantId,
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
 class _CartRow extends StatelessWidget {
   final Map<String, dynamic>? product;
   final String productId;
   final int qty;
   final String restaurantId;
+  final List<Map<String, dynamic>> promotions;
 
   const _CartRow({
     required this.product,
     required this.productId,
     required this.qty,
     required this.restaurantId,
+    required this.promotions,
   });
 
   @override
@@ -231,24 +386,26 @@ class _CartRow extends StatelessWidget {
     // taom o'chib ketgandek tuyulardi.
     final name = (p?['name'] as String?) ?? 'Yuklanmoqda…';
     final price = (p?['price_tiyin'] as num?)?.toInt() ?? 0;
-    final discount = (p?['discount_price_tiyin'] as num?)?.toInt() ?? 0;
-    final effective = (discount > 0 && discount < price) ? discount : price;
     final image = (p?['image_url'] as String?) ?? '';
+    final weight = (p?['weight'] as num?)?.toDouble() ?? 0;
+    final unit = formatWeightUnit((p?['weight_unit'] as String?) ?? '');
+    final discount =
+        p == null ? null : computeProductDiscount(p, promotions);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              width: 56,
-              height: 56,
+              width: 64,
+              height: 64,
               child: image.isEmpty
                   ? Container(
                       color: const Color(0xFFF5F5F5),
                       child: const Icon(Icons.restaurant_menu,
-                          size: 20, color: Color(0xFFBDBDBD)),
+                          size: 24, color: Color(0xFFBDBDBD)),
                     )
                   : Image.network(
                       fullImageUrl(image),
@@ -256,7 +413,7 @@ class _CartRow extends StatelessWidget {
                       errorBuilder: (_, __, ___) => Container(
                         color: const Color(0xFFF5F5F5),
                         child: const Icon(Icons.restaurant_menu,
-                            size: 20, color: Color(0xFFBDBDBD)),
+                            size: 24, color: Color(0xFFBDBDBD)),
                       ),
                     ),
             ),
@@ -266,17 +423,57 @@ class _CartRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                if (effective > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(formatSum(effective),
-                        style: const TextStyle(
-                            fontSize: 13, color: Color(0xFF757575))),
+                Text.rich(
+                  TextSpan(
+                    text: name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    children: [
+                      if (weight > 0)
+                        TextSpan(
+                          text:
+                              '  ${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'
+                                  .trimRight(),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.normal,
+                              color: Color(0xFF9E9E9E)),
+                        ),
+                    ],
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                // QATOR SUMMASI (miqdor × narx) — birlik narxi emas.
+                // Vebda ham shunday: mijoz uchun "bu taom uchun
+                // qancha to'layman" degan savol muhimroq.
+                if (discount != null)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        formatSum(discount.discountedPriceTiyin * qty),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFE53935)),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          formatSum(price * qty),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF757575),
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(formatSum(price * qty),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -307,38 +504,41 @@ class _QtyBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 34,
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0E0E0)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkResponse(
-            onTap: onRemove,
-            child: const SizedBox(
-              width: 34,
-              height: 34,
-              child: Icon(Icons.remove, size: 17),
-            ),
-          ),
-          SizedBox(
-            width: 22,
-            child: Text('$qty',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          InkResponse(
-            onTap: onAdd,
-            child: const SizedBox(
-              width: 34,
-              height: 34,
-              child: Icon(Icons.add, size: 17, color: kBrand),
-            ),
-          ),
-        ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RoundButton(icon: Icons.remove, onTap: onRemove),
+        SizedBox(
+          width: 28,
+          child: Text('$qty',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        _RoundButton(icon: Icons.add, onTap: onAdd),
+      ],
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _RoundButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(icon, size: 18, color: Colors.black),
+        ),
       ),
     );
   }
@@ -355,7 +555,6 @@ class _TableBanner extends StatelessWidget {
         ? 'Stoldan buyurtma'
         : '$label-stol · stoldan buyurtma';
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFFDEDE7),
@@ -405,8 +604,12 @@ class _Bottom extends StatelessWidget {
     final ready = quoteTiyin != null && !quoting;
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE5E5E5))),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -454,12 +657,19 @@ class _Bottom extends StatelessWidget {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : Text(
-                        ready
-                            ? 'Rasmiylashtirish · ${formatSum(quoteTiyin!)}'
-                            : 'Summa hisoblanmadi',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Buyurtma rasmiylashtirish',
+                              style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.bold)),
+                          Text(
+                            ready ? formatSum(quoteTiyin!) : 'Summa yo\'q',
+                            style: const TextStyle(
+                                fontSize: 15.5, fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ),
               ),
             ),
@@ -496,7 +706,7 @@ class _EmptyCart extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             const Text(
-              'Menyudan taom tanlang — u shu yerda paydo bo\'ladi.',
+              'Buyurtma berish uchun avval restoran menyusidan taom tanlang.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Color(0xFF757575)),
             ),

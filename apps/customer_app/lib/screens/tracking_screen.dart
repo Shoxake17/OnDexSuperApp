@@ -91,15 +91,38 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   color: kBrand,
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     children: [
-                      _StatusHeader(order: o!),
+                      _PlacedAt(order: o!),
+                      const SizedBox(height: 12),
+                      _StatusHeader(order: o),
                       const SizedBox(height: 22),
                       _Timeline(order: o),
                       const SizedBox(height: 22),
                       _ItemsCard(order: o),
                       const SizedBox(height: 14),
                       _WhereCard(order: o),
+                      if (_isFinished(o)) ...[
+                        const SizedBox(height: 26),
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kBrand,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                            ),
+                            // Buyurtma tugagan — bu ekranda qiladigan
+                            // ish qolmadi. Vebda ham shu tugma bor.
+                            onPressed: () => Navigator.of(context)
+                                .popUntil((r) => r.isFirst),
+                            child: const Text('Bosh sahifaga qaytish',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -109,6 +132,44 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
 // ═══════════════════════════════════════════════════════════════════
 
+/// Buyurtma tugagan (yoki bekor bo'lgan) — bu ekranda qiladigan ish
+/// qolmadi.
+bool _isFinished(Map<String, dynamic> o) {
+  final s = (o['status'] as String?) ?? '';
+  return s == 'delivered' || s == 'served' || s == 'cancelled' ||
+      s == 'rejected';
+}
+
+/// "№ ... · 14:32 da joylandi" — vebdagi sarlavha ostidagi qator.
+class _PlacedAt extends StatelessWidget {
+  final Map<String, dynamic> order;
+  const _PlacedAt({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    final number = (order['order_number'] as String?) ?? '';
+    final at = DateTime.tryParse((order['created_at'] as String?) ?? '');
+    if (number.isEmpty && at == null) return const SizedBox.shrink();
+
+    final parts = <String>[
+      if (number.isNotEmpty) number,
+      if (at != null)
+        '${at.toLocal().hour.toString().padLeft(2, '0')}:'
+            '${at.toLocal().minute.toString().padLeft(2, '0')} da joylandi',
+    ];
+    return Text(
+      parts.join('  ·  '),
+      style: const TextStyle(fontSize: 13, color: Color(0xFF757575)),
+    );
+  }
+}
+
+/// Holat kartasi — MARKAZLASHGAN va holat rangida bo'yalgan.
+///
+/// Avval bu chapga tekislangan oddiy qator edi. Vebda esa u sahifaning
+/// eng ko'zga tashlanadigan elementi (`rounded-2xl p-5 text-center`) —
+/// mijoz ekranni ochganda birinchi navbatda "buyurtmam qay holatda?"
+/// degan savolga javob izlaydi.
 class _StatusHeader extends StatelessWidget {
   final Map<String, dynamic> order;
   const _StatusHeader({required this.order});
@@ -116,36 +177,54 @@ class _StatusHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = (order['status'] as String?) ?? '';
+    final isDineIn = (order['type'] as String?) == 'dine_in';
     final (label, icon, color) = statusStyleOf(status);
+    final courierId = (order['courier_id'] as String?) ?? '';
+    final table = (order['table_label'] as String?) ?? '';
+    final partySize = (order['party_size'] as num?)?.toInt() ?? 0;
 
-    return Row(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 40),
+          const SizedBox(height: 8),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          const SizedBox(height: 4),
+          Text(
+            _hint(status),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF757575)),
           ),
-          child: Icon(icon, color: color, size: 28),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
+          // Kuryer ID — stol buyurtmasida ma'nosiz (kuryer yo'q).
+          if (!isDineIn && courierId.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Kuryer: $courierId',
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(
-                _hint(status),
-                style: const TextStyle(fontSize: 13, color: Color(0xFF757575)),
+                      fontSize: 13, color: Color(0xFF757575))),
+            ),
+          if (isDineIn && table.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                partySize > 0
+                    ? '$table-stol · $partySize kishi'
+                    : '$table-stol',
+                style:
+                    const TextStyle(fontSize: 13, color: Color(0xFF757575)),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
 
@@ -321,29 +400,77 @@ class _ItemsCard extends StatelessWidget {
     final total = (order['total_tiyin'] as num?)?.toInt() ?? 0;
     final discount = (order['discount_tiyin'] as num?)?.toInt() ?? 0;
     final subtotal = (order['subtotal_tiyin'] as num?)?.toInt() ?? 0;
+    final promotionName = ((order['promotion_name'] as String?) ?? '').trim();
+    final totalItems = items.fold<int>(
+        0, (a, it) => a + (it is Map ? ((it['qty'] as num?)?.toInt() ?? 0) : 0));
+    final statusColor =
+        statusStyleOf((order['status'] as String?) ?? '').$3;
 
     return _Panel(
-      title: 'Buyurtma',
+      title: 'Buyurtma tarkibi',
+      // Taom soni — vebdagi holat rangidagi belgi.
+      trailing: totalItems > 0
+          ? Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('$totalItems ta taom',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor)),
+            )
+          : null,
       child: Column(
         children: [
           for (final it in items)
             if (it is Map)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   children: [
-                    Text('${it['qty']}×',
-                        style: const TextStyle(
-                            color: Color(0xFF757575),
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text((it['name'] as String?) ?? '',
-                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                    // Rasm o'lchami QAT'IY — turli o'lchamdagi rasmlar
+                    // ro'yxatni notekis ko'rsatardi.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _ItemImage(
+                            url: (it['image_url'] as String?) ?? ''),
+                      ),
                     ),
-                    Text(formatSum(
-                        ((it['price_tiyin'] as num?)?.toInt() ?? 0) *
-                            ((it['qty'] as num?)?.toInt() ?? 1))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text((it['name'] as String?) ?? '',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${(it['qty'] as num?)?.toInt() ?? 1} × '
+                            '${formatSum((it['price_tiyin'] as num?)?.toInt() ?? 0)}',
+                            style: const TextStyle(
+                                fontSize: 12, color: Color(0xFF757575)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formatSum(((it['price_tiyin'] as num?)?.toInt() ?? 0) *
+                          ((it['qty'] as num?)?.toInt() ?? 1)),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
                   ],
                 ),
               ),
@@ -351,7 +478,11 @@ class _ItemsCard extends StatelessWidget {
           if (discount > 0) ...[
             _Line(label: 'Taomlar', value: formatSum(subtotal)),
             _Line(
-              label: 'Chegirma',
+              // Aksiya nomi bo'lsa u ko'rsatiladi — mijoz chegirma
+              // QAYERDAN kelganini bilishi kerak.
+              label: promotionName.isEmpty
+                  ? 'Aksiya chegirmasi'
+                  : 'Aksiya: $promotionName',
               value: '− ${formatSum(discount)}',
               color: const Color(0xFF16A34A),
             ),
@@ -435,10 +566,37 @@ class _WhereCard extends StatelessWidget {
   }
 }
 
+/// Buyurtma tarkibidagi taom rasmi.
+class _ItemImage extends StatelessWidget {
+  final String url;
+  const _ItemImage({required this.url});
+
+  static const _placeholder = ColoredBox(
+    color: Color(0xFFF5F5F5),
+    child: Center(
+      child: Icon(Icons.restaurant_menu, size: 22, color: Color(0xFFBDBDBD)),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty) return _placeholder;
+    return Image.network(
+      fullImageUrl(url),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _placeholder,
+    );
+  }
+}
+
 class _Panel extends StatelessWidget {
   final String title;
   final Widget child;
-  const _Panel({required this.title, required this.child});
+
+  /// Sarlavha o'ng tomonidagi ixtiyoriy belgi (masalan taom soni).
+  final Widget? trailing;
+
+  const _Panel({required this.title, required this.child, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -452,11 +610,18 @@ class _Panel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF757575))),
+          Row(
+            children: [
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF757575))),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
           const SizedBox(height: 10),
           child,
         ],
