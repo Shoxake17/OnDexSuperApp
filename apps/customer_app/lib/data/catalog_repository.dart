@@ -55,6 +55,11 @@ class Repos {
 
   static const _ttlFavorites = Duration(minutes: 10);
 
+  /// Aksiyalar — vaqtga BOG'LIQ (boshlanish/tugash sanasi bor), ya'ni
+  /// server javobi soat o'tishi bilan o'z-o'zidan o'zgaradi. Shuning
+  /// uchun menyudan qisqa: tugagan aksiya narxi ekranda uzoq turmasin.
+  static const _ttlPromotions = Duration(minutes: 1);
+
   // ── Katalog (ommaviy) ────────────────────────────────────────────
 
   static Repository<List<dynamic>> restaurants() => _list(
@@ -79,6 +84,19 @@ class Repos {
         key: 'menu.$restaurantId',
         ttl: _ttlMenu,
         fetch: () => api.menu(restaurantId),
+      );
+
+  /// Restoranning FAOL aksiyalari — menyudagi chegirma narxi va
+  /// "Aksiya" lentasi shundan chiziladi.
+  ///
+  /// DIQQAT: bu FAQAT ko'rsatish uchun. To'lanadigan summa har doim
+  /// `POST /restaurants/{id}/quote` dan keladi — vebda ham shunday
+  /// (`lib/use-quote.ts`).
+  static Repository<List<dynamic>> promotions(String restaurantId) => _list(
+        store: _public,
+        key: 'promos.$restaurantId',
+        ttl: _ttlPromotions,
+        fetch: () => api.activePromotions(restaurantId),
       );
 
   // ── Shaxsiy (shifrlangan) ────────────────────────────────────────

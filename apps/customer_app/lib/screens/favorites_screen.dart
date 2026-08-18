@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../widgets/product_grid.dart' show FavoriteButton;
+import '../widgets/product_grid.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'menu_screen.dart';
 
@@ -114,13 +114,7 @@ class FavoritesScreenState extends State<FavoritesScreen> {
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 22,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: 0.62,
-                        ),
+                        gridDelegate: productGridDelegate,
                         itemCount: _items.length,
                         itemBuilder: (context, i) => _FavoriteCard(
                           product: _items[i],
@@ -134,6 +128,17 @@ class FavoritesScreenState extends State<FavoritesScreen> {
   }
 }
 
+/// Sevimli taom kartochkasi.
+///
+/// Kartochkaning O'ZI menyudagi bilan AYNAN bir xil
+/// ([ProductCard]) — bu yerda faqat ikkita farq qo'shiladi:
+///   * pastda restoran nomi (menyuda kerak emas — u allaqachon
+///     sarlavhada turadi);
+///   * restoran yopiq bo'lsa kartochka so'niq va bosilmaydi.
+///
+/// Miqdor boshqaruvi ATAYLAB yo'q (`qty: null`): bitta buyurtma bitta
+/// restorandan bo'lishi shart, shuning uchun bu yerdan to'g'ridan-to'g'ri
+/// savatga qo'shilmaydi — avval restoran menyusiga o'tiladi.
 class _FavoriteCard extends StatelessWidget {
   final Map<String, dynamic> product;
   final VoidCallback onTap;
@@ -143,114 +148,47 @@ class _FavoriteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imgUrl = product['image_url'] as String? ?? '';
-    final weight = ((product['weight'] ?? 0) as num).toDouble();
-    final weightUnit =
-        formatWeightUnit((product['weight_unit'] as String?) ?? 'g');
-    final name = product['name'] as String? ?? '';
-    final price = (product['price_tiyin'] ?? 0) as int;
     final restaurantName = product['restaurant_name'] as String? ?? '';
     final restaurantOpen = product['restaurant_open'] == true;
     final restaurantLogo = product['restaurant_logo_url'] as String? ?? '';
-    final surface = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Opacity(
       opacity: restaurantOpen ? 1 : 0.4,
-      child: InkWell(
+      child: ProductCard(
+        product: product,
+        favorited: true,
         onTap: restaurantOpen ? onTap : null,
-        borderRadius: BorderRadius.circular(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        onFavoriteChanged: (fav) {
+          // Bu yerda faqat "olib tashlash" (fav=false) ma'noga ega —
+          // "Istaklarim" sahifasidagi barcha kartochka allaqachon
+          // saqlangan.
+          if (!fav) onRemoved();
+        },
+        footer: Row(
           children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: imgUrl.isEmpty
-                          ? Container(
-                              color: surface,
-                              child: const Icon(Icons.restaurant,
-                                  color: Colors.grey, size: 36),
-                            )
-                          : Image.network(
-                              fullImageUrl(imgUrl),
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, progress) {
-                                if (progress == null) return child;
-                                return Container(color: surface);
-                              },
-                              errorBuilder: (_, __, ___) => Container(
-                                color: surface,
-                                child: const Icon(Icons.restaurant,
-                                    color: Colors.grey, size: 36),
-                              ),
-                            ),
+            if (restaurantLogo.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: Image.network(
+                      fullImageUrl(restaurantLogo),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
-                  ),
-                  Positioned(
-                    left: 8,
-                    top: 8,
-                    child: FavoriteButton(
-                      productId: product['id'] as String,
-                      initialFavorited: true,
-                      onChanged: (fav) {
-                        // Bu yerda faqat "olib tashlash" (fav=false)
-                        // ma'noga ega — "Istaklarim" sahifasidagi barcha
-                        // kartochka allaqachon saqlangan.
-                        if (!fav) onRemoved();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(formatSum(price),
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 2),
-            Text(
-              name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13),
-            ),
-            if (weight > 0) ...[
-              const SizedBox(height: 2),
-              Text('${weight % 1 == 0 ? weight.toInt() : weight} $weightUnit',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                if (restaurantLogo.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: Image.network(
-                          fullImageUrl(restaurantLogo),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                  ),
-                Expanded(
-                  child: Text(
-                    restaurantOpen ? restaurantName : '$restaurantName (yopiq)',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ),
-              ],
+              ),
+            Expanded(
+              child: Text(
+                restaurantOpen ? restaurantName : '$restaurantName (yopiq)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ),
           ],
         ),
