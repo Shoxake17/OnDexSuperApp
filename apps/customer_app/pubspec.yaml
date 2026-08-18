@@ -67,6 +67,10 @@ flutter:
   assets:
     - assets/logo.png
     - assets/categories/
+    # To'lov tizimlari logotiplari — rasmiylashtirish ekranidagi
+    # "To'lov usuli" bo'limi uchun (image/ papkasidan nusxa; u repoga
+    # kirmaydi, shuning uchun fayllar SHU YERDA saqlanadi).
+    - assets/payments/
     - assets/eltago.png
     - assets/ondex_hero.png
     - assets/google_logo.png

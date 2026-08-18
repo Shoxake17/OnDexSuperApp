@@ -561,89 +561,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _enterCoupon() async {
-    final controller = TextEditingController(text: _coupon ?? '');
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0E0E0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text('Kupon yoki promokod',
-                  style:
-                      TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: 'Masalan: ONDEX10',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Bu matn ATAYLAB bor: kupon tizimi hali ulanmagan va
-              // kod kiritgan mijoz chegirmani KUTIB qolmasligi kerak.
-              const Row(
-                children: [
-                  Icon(Icons.info_outline, size: 15, color: Color(0xFF9E9E9E)),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Kupon tizimi hali ulanmagan — kod summani '
-                      'o\'zgartirmaydi. Aksiyalar avtomatik qo\'llanadi.',
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 50,
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kBrand,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () =>
-                      Navigator.of(ctx).pop(controller.text.trim()),
-                  child: const Text('Saqlash',
-                      style: TextStyle(
-                          fontSize: 15.5, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (_) => _CouponSheet(initialCode: _coupon ?? ''),
     );
-    controller.dispose();
     if (result != null && mounted) {
       setState(() => _coupon = result.isEmpty ? null : result);
     }
@@ -773,6 +696,129 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// KUPON PANELI
+// ═══════════════════════════════════════════════════════════════════
+
+/// Kupon kodini kiritish paneli.
+///
+/// ┌─ NEGA ALOHIDA StatefulWidget ─────────────────────────────────────┐
+/// Avval `TextEditingController` chaqiruvchi metodda yaratilib,
+/// `await showModalBottomSheet(...)` dan KEYIN darhol `dispose()`
+/// qilinardi. Bu qurilmada QIZIL XATO ekranini berardi:
+///
+///   'package:flutter/src/widgets/framework.dart': Failed assertion:
+///   '_dependents.isEmpty': is not true
+///
+/// Sabab: `showModalBottomSheet` marshrut yopilishi bilan DARHOL
+/// qaytadi, lekin panel vidjetlari yopilish ANIMATSIYASI davomida
+/// daraxtda qoladi va `TextField` hali o'sha kontrollerga obuna
+/// bo'lib turadi. Obunachisi bor `Listenable` ni yo'q qilish esa
+/// aynan shu assertni buzadi.
+///
+/// Endi kontroller panelning O'ZIGA tegishli va uning `dispose()`
+/// ida tozalanadi — ya'ni vidjet daraxtdan chindan chiqqanda.
+/// └───────────────────────────────────────────────────────────────────┘
+class _CouponSheet extends StatefulWidget {
+  final String initialCode;
+  const _CouponSheet({required this.initialCode});
+
+  @override
+  State<_CouponSheet> createState() => _CouponSheetState();
+}
+
+class _CouponSheetState extends State<_CouponSheet> {
+  late final _controller = TextEditingController(text: widget.initialCode);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // Klaviatura panelni bosib qolmasin.
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text('Kupon yoki promokod',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+              decoration: InputDecoration(
+                hintText: 'Masalan: ONDEX10',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Bu matn ATAYLAB bor: kupon tizimi hali ulanmagan va kod
+            // kiritgan mijoz chegirmani KUTIB qolmasligi kerak.
+            const Row(
+              children: [
+                Icon(Icons.info_outline, size: 15, color: Color(0xFF9E9E9E)),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Kupon tizimi hali ulanmagan — kod summani '
+                    'o\'zgartirmaydi. Aksiyalar avtomatik qo\'llanadi.',
+                    style: TextStyle(
+                        fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 50,
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: kBrand,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () =>
+                    Navigator.of(context).pop(_controller.text.trim()),
+                child: const Text('Saqlash',
+                    style: TextStyle(
+                        fontSize: 15.5, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // TO'LOV USULLARI — HAMMASI MOCK
 // ═══════════════════════════════════════════════════════════════════
 //
@@ -788,24 +834,76 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 // `payment_method` qo'shiladi va karta/Payme/Click tanlanganda
 // buyurtmadan KEYIN to'lov ekrani ochiladi.
 // └───────────────────────────────────────────────────────────────────┘
+/// To'lov tizimlari logotiplari — `assets/payments/`.
+const _kVisa = 'assets/payments/visa.png';
+const _kMastercard = 'assets/payments/mastercard.png';
+const _kUzcard = 'assets/payments/uzcard.png';
+const _kHumo = 'assets/payments/humo.png';
+const _kPayme = 'assets/payments/payme.png';
+const _kClick = 'assets/payments/click.png';
+
 enum _PayMethod {
-  card('Bank kartasi', 'Visa, Mastercard, UzCard', Icons.credit_card,
-      Color(0xFFFDE8E2), kBrand),
-  cash('Naqd pul', 'Yetkazib berishda', Icons.payments_outlined,
-      Color(0xFFE8F5E9), Color(0xFF2E7D32)),
-  payme('Payme', 'Ilova orqali to\'lov', Icons.account_balance_wallet_outlined,
-      Color(0xFFE0F7FA), Color(0xFF00838F)),
-  click('Click', 'Ilova orqali to\'lov', Icons.bolt, Color(0xFFFFEBEE),
-      Color(0xFFC62828));
+  /// Chap tomonda umumiy karta ikoni, O'NG tomonda esa qabul
+  /// qilinadigan tizimlar logotiplari — maketdagidek.
+  card(
+    title: 'Bank kartasi',
+    subtitle: 'Visa, Mastercard, UzCard, Humo',
+    icon: Icons.credit_card,
+    tile: Color(0xFFFDE8E2),
+    iconColor: kBrand,
+    trailingLogos: [_kVisa, _kMastercard, _kUzcard, _kHumo],
+  ),
+  cash(
+    title: 'Naqd pul',
+    subtitle: 'Yetkazib berishda',
+    icon: Icons.payments_outlined,
+    tile: Color(0xFFE8F5E9),
+    iconColor: Color(0xFF2E7D32),
+  ),
+
+  /// Payme va Click uchun ikon O'RNIGA brend logotipi turadi — ular
+  /// tanilgan belgilar va umumiy ikonka ularni tanib olishni
+  /// qiyinlashtirardi.
+  payme(
+    title: 'Payme',
+    subtitle: 'Ilova orqali to\'lov',
+    icon: Icons.account_balance_wallet_outlined,
+    tile: Colors.white,
+    iconColor: Color(0xFF00838F),
+    logo: _kPayme,
+  ),
+  click(
+    title: 'Click',
+    subtitle: 'Ilova orqali to\'lov',
+    icon: Icons.bolt,
+    tile: Colors.white,
+    iconColor: Color(0xFFC62828),
+    logo: _kClick,
+  );
 
   final String title;
   final String subtitle;
+
+  /// Zaxira ikon — logotip fayli topilmasa ishlatiladi.
   final IconData icon;
   final Color tile;
   final Color iconColor;
 
-  const _PayMethod(
-      this.title, this.subtitle, this.icon, this.tile, this.iconColor);
+  /// Chapdagi katakcha ichida ikon O'RNIGA chiziladigan logotip.
+  final String? logo;
+
+  /// Qator oxirida chiziladigan logotiplar.
+  final List<String> trailingLogos;
+
+  const _PayMethod({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.tile,
+    required this.iconColor,
+    this.logo,
+    this.trailingLogos = const [],
+  });
 }
 
 class _PayMethodRow extends StatelessWidget {
@@ -854,14 +952,30 @@ class _PayMethodRow extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Container(
-              width: 40,
-              height: 30,
+              width: 44,
+              height: 32,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: method.tile,
                 borderRadius: BorderRadius.circular(8),
+                // Oq katakcha (Payme/Click logotiplari) fonda
+                // yo'qolib ketmasin.
+                border: method.tile == Colors.white
+                    ? Border.all(color: const Color(0xFFEEEEEE))
+                    : null,
               ),
-              child: Icon(method.icon, size: 19, color: method.iconColor),
+              clipBehavior: Clip.antiAlias,
+              child: method.logo == null
+                  ? Icon(method.icon, size: 19, color: method.iconColor)
+                  : Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: _Logo(
+                        asset: method.logo!,
+                        // Logotip KESILMASIN — `contain`.
+                        fallback: Icon(method.icon,
+                            size: 19, color: method.iconColor),
+                      ),
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -873,14 +987,57 @@ class _PayMethodRow extends StatelessWidget {
                           fontSize: 15, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 1),
                   Text(method.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12.5, color: Color(0xFF9E9E9E))),
                 ],
               ),
             ),
+            if (method.trailingLogos.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final logo in method.trailingLogos)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 5),
+                      child: SizedBox(
+                        width: 30,
+                        height: 20,
+                        child: _Logo(asset: logo),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Logotip rasmi.
+///
+/// `contain` — turli nisbatdagi logotiplar (Visa keng, Humo kvadratga
+/// yaqin) KESILMASDAN, o'z nisbatini saqlab chiziladi.
+///
+/// Fayl topilmasa ilova YIQILMAYDI: zaxira vidjet yoki bo'sh joy
+/// qoladi. Bu muhim, chunki assetlar `image/` papkasidan nusxa
+/// olinadi va u repoga kirmaydi.
+class _Logo extends StatelessWidget {
+  final String asset;
+  final Widget? fallback;
+
+  const _Logo({required this.asset, this.fallback});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      asset,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => fallback ?? const SizedBox.shrink(),
     );
   }
 }
