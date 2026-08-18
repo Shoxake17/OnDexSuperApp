@@ -85,7 +85,11 @@ class FavoritesScreenState extends State<FavoritesScreen> {
   @override
   Widget build(BuildContext context) {
     return SheetScaffold(
-      title: 'Istaklarim',
+      // Sarlavha "Sevimlilar" — pastki menyudagi yorliq bilan ham,
+      // vebdagi sahifa nomi bilan ham bir xil. Avval bu yerda
+      // "Istaklarim" turardi, ya'ni bitta bo'lim ilovaning o'zida ikki
+      // xil atalardi.
+      title: 'Sevimlilar',
       child: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -114,7 +118,11 @@ class FavoritesScreenState extends State<FavoritesScreen> {
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                        gridDelegate: productGridDelegate,
+                        // Bu ekrandagi kartochkada QO'SHIMCHA qator bor
+                        // (restoran nomi) — balandlik unga ham joy
+                        // ajratishi kerak.
+                        gridDelegate: productGridOf(context,
+                            extraHeight: kCardFooterHeight),
                         itemCount: _items.length,
                         itemBuilder: (context, i) => _FavoriteCard(
                           product: _items[i],

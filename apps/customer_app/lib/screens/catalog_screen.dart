@@ -453,7 +453,15 @@ class _CategoryRow extends StatelessWidget {
         if (list.isEmpty) return const SizedBox.shrink();
 
         return SizedBox(
-          height: 104,
+          // ┌─ BALANDLIK O'LCHANDI, TAXMIN QILINMADI ─────────────────┐
+          // Avval 104 edi va u YETMASDI: chekinish (12+8) + doira (62)
+          // + oraliq (6) + ikki qatorli nom (12px × 1.15 × 2 ≈ 28) =
+          // ~116. Debug build'da qurilmada "BOTTOM OVERFLOWED" qizil
+          // bannerí chiqqan; release build'da esa banner ko'rsatilmaydi
+          // va nom jimgina kesilardi — shuning uchun bu uzoq vaqt
+          // sezilmagan.
+          // └─────────────────────────────────────────────────────────┘
+          height: 120,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),

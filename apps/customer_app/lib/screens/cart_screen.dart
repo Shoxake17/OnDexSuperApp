@@ -299,7 +299,7 @@ class _CartScreenState extends State<CartScreen> {
           child: GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: productGridDelegate,
+            gridDelegate: productGridOf(context),
             itemCount: byCategory[c]!.length,
             itemBuilder: (_, i) {
               final p = byCategory[c]![i];

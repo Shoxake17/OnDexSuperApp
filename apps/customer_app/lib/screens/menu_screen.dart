@@ -563,7 +563,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverGrid.builder(
-                    gridDelegate: productGridDelegate,
+                    gridDelegate: productGridOf(context),
                     itemCount: s.items.length,
                     itemBuilder: (_, i) => _card(s.items[i]),
                   ),
@@ -813,7 +813,7 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
             )
           : GridView.builder(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              gridDelegate: productGridDelegate,
+              gridDelegate: productGridOf(context),
               itemCount: results.length,
               itemBuilder: (_, i) => widget.buildCard(results[i]),
             ),

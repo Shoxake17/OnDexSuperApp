@@ -521,19 +521,62 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
+/// Rasm ostidagi matn blokining balandligi (piksel).
+///
+/// Narx (~20) + oraliqlar (8+2) + ikki qatorli nom (13px × 1.25 × 2 ≈ 34)
+/// + og'irlik (17) + kichik zaxira. Ikki qator DOIM zaxiraga olinadi —
+/// aks holda bir qatorli va ikki qatorli nomli kartochkalar turli
+/// balandlikda bo'lib, to'r notekis ko'rinardi.
+///
+/// Qiymat QURILMADA o'lchandi: avval 82 edi va "Istaklarim" ekranida
+/// "BOTTOM OVERFLOWED BY 4.0 PIXELS" bergan. Zaxira ataylab ozgina
+/// ortiqcha — bir necha piksel bo'sh joy sezilmaydi, toshib ketish esa
+/// darhol ko'rinadi.
+const _kCardTextHeight = 88.0;
+
+/// [ProductCard.footer] bor bo'lganda qo'shiladigan balandlik
+/// (restoran nomi qatori: 16px logo + 4px chekinish).
+const kCardFooterHeight = 24.0;
+
 /// Kartochkalar to'ri — vebdagi `grid-cols-2` bilan bir xil.
 ///
-/// `childAspectRatio` ATAYLAB yo'q: kartochka balandligi matn
-/// uzunligiga qarab o'zgaradi (uzun nom ikki qatorga tushadi) va qat'iy
-/// nisbat qo'yilsa qisqa nomli kartochkalarda ortiqcha bo'shliq,
-/// uzunlarida esa kesilish paydo bo'lardi. `SliverGrid` o'rniga
-/// `MasonryGrid` kerak bo'lmasligi uchun eng baland element bo'yicha
-/// tenglashtiriladi — buni `mainAxisExtent` bilan emas, o'lchov
-/// natijasida qilamiz.
-const productGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 240,
-  crossAxisSpacing: 14,
-  mainAxisSpacing: 20,
-  // Kvadrat rasm + narx + ikki qatorli nom + og'irlik uchun.
-  childAspectRatio: 0.62,
-);
+/// ┌─ NEGA `childAspectRatio` EMAS ────────────────────────────────────┐
+/// Avval bu yerda qat'iy `childAspectRatio: 0.62` turardi va u NOTO'G'RI
+/// edi: nisbat kenglikka bog'liq. Kartochka balandligi = kvadrat rasm
+/// (kenglikka teng) + matn bloki (kenglikdan MUSTAQIL, ~82px). Ya'ni
+/// to'g'ri nisbat `w / (w + 82)` — telefon kengligiga qarab 0.70 dan
+/// 0.81 gacha o'zgaradi.
+///
+/// Qat'iy 0.62 keng ekranda kerakdan baland katak berardi va qatorlar
+/// orasida katta bo'sh joy qolardi (qurilmada aynan shu ko'rindi).
+///
+/// `mainAxisExtent` bilan balandlik ANIQ hisoblanadi — na bo'sh joy,
+/// na kesilish.
+/// └───────────────────────────────────────────────────────────────────┘
+///
+/// [availableWidth] — to'r egallaydigan kenglik (yon chekinishlar
+/// AYIRILGAN holda).
+SliverGridDelegate productGridDelegate(
+  double availableWidth, {
+  int columns = 2,
+  double spacing = 14,
+  double extraHeight = 0,
+}) {
+  final cell = (availableWidth - spacing * (columns - 1)) / columns;
+  return SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: columns,
+    crossAxisSpacing: spacing,
+    mainAxisSpacing: 20,
+    mainAxisExtent: cell + _kCardTextHeight + extraHeight,
+  );
+}
+
+/// Ekran kengligidan to'r kengligini hisoblaydi — barcha chaqiruv
+/// joylarida yon chekinish 16px.
+///
+/// [extraHeight] — kartochkada qo'shimcha qator bo'lsa
+/// ("Istaklarim" dagi restoran nomi): [kCardFooterHeight].
+SliverGridDelegate productGridOf(BuildContext context,
+        {double extraHeight = 0}) =>
+    productGridDelegate(MediaQuery.sizeOf(context).width - 32,
+        extraHeight: extraHeight);
