@@ -119,10 +119,10 @@ class _HomeShellState extends State<HomeShell> {
       // ochiladi — ular bu Scaffold'ni butunlay bosib turadi, ya'ni
       // menyuni qo'lda yashirish kerak emas.
       bottomNavigationBar: _OndexBottomBar(
-              currentTab: _index,
-              onSelectTab: _selectTab,
-              onScanQr: _scanTableQr,
-            ),
+        currentTab: _index,
+        onSelectTab: _selectTab,
+        onScanQr: _scanTableQr,
+      ),
     );
   }
 
@@ -203,40 +203,56 @@ class _OndexBottomBar extends StatelessWidget {
     return Material(
       color: theme.colorScheme.surface,
       elevation: 8,
-      child: SizedBox(
-        height: 64,
-        child: Row(
-          children: [
-            _NavItem(
-              icon: Icons.home_outlined,
-              activeIcon: Icons.home,
-              label: 'Bosh sahifa',
-              selected: currentTab == 0,
-              onTap: () => onSelectTab(0),
-            ),
-            _NavItem(
-              icon: Icons.receipt_long_outlined,
-              activeIcon: Icons.receipt_long,
-              label: 'Buyurtmalar',
-              selected: currentTab == 2,
-              onTap: () => onSelectTab(2),
-            ),
-            Expanded(child: Center(child: _QrButton(onTap: onScanQr))),
-            _NavItem(
-              icon: Icons.favorite_border,
-              activeIcon: Icons.favorite,
-              label: 'Sevimlilar',
-              selected: currentTab == 1,
-              onTap: () => onSelectTab(1),
-            ),
-            _NavItem(
-              icon: Icons.person_outline,
-              activeIcon: Icons.person,
-              label: 'Profil',
-              selected: currentTab == 3,
-              onTap: () => onSelectTab(3),
-            ),
-          ],
+      // ┌─ SAFEAREA SHART ────────────────────────────────────────────┐
+      // Busiz menyu ekranning eng pastiga chizilardi va Android'ning
+      // TIZIM navigatsiya paneli uning ustiga tushardi: uch tugmali
+      // navigatsiyada (48dp) "Bosh sahifa"/"Buyurtmalar" yozuvlari
+      // tizim tugmalari ostida qolib, QR tugmasi yarim yashirinardi.
+      //
+      // Jest navigatsiyali telefonda past chiziq atigi ~24dp bo'lgani
+      // uchun bu deyarli sezilmasdi — xato AYNAN uch tugmali qurilmada
+      // ko'rindi.
+      //
+      // `top: false` — yuqori chekinish bu yerda keraksiz, uni
+      // `Scaffold.body` dagi SafeArea allaqachon qo'llaydi.
+      // └─────────────────────────────────────────────────────────────┘
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              _NavItem(
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home,
+                label: 'Bosh sahifa',
+                selected: currentTab == 0,
+                onTap: () => onSelectTab(0),
+              ),
+              _NavItem(
+                icon: Icons.receipt_long_outlined,
+                activeIcon: Icons.receipt_long,
+                label: 'Buyurtmalar',
+                selected: currentTab == 2,
+                onTap: () => onSelectTab(2),
+              ),
+              Expanded(child: Center(child: _QrButton(onTap: onScanQr))),
+              _NavItem(
+                icon: Icons.favorite_border,
+                activeIcon: Icons.favorite,
+                label: 'Sevimlilar',
+                selected: currentTab == 1,
+                onTap: () => onSelectTab(1),
+              ),
+              _NavItem(
+                icon: Icons.person_outline,
+                activeIcon: Icons.person,
+                label: 'Profil',
+                selected: currentTab == 3,
+                onTap: () => onSelectTab(3),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -298,8 +314,7 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        selected ? _kBrand : Theme.of(context).colorScheme.outline;
+    final color = selected ? _kBrand : Theme.of(context).colorScheme.outline;
     return Expanded(
       child: InkResponse(
         onTap: onTap,

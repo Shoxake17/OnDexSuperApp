@@ -44,6 +44,13 @@ class _CartScreenState extends State<CartScreen> {
 
   /// Serverdan kelgan yakuniy summa. `null` — hali olinmagan.
   int? _quoteTiyin;
+
+  /// Hisob tafsilotlari — rasmiylashtirish ekraniga uzatiladi, u
+  /// darhol to'liq hisobni chizsin va qayta so'rov kutmasin.
+  int? _quoteSubtotal;
+  int? _quoteDiscount;
+  String? _quotePromotionName;
+
   bool _quoting = false;
   String? _quoteError;
 
@@ -125,6 +132,9 @@ class _CartScreenState extends State<CartScreen> {
       if (!mounted || seq != _quoteSeq) return;
       setState(() {
         _quoteTiyin = (res['total_tiyin'] as num?)?.toInt();
+        _quoteSubtotal = (res['subtotal_tiyin'] as num?)?.toInt();
+        _quoteDiscount = (res['discount_tiyin'] as num?)?.toInt();
+        _quotePromotionName = res['promotion_name'] as String?;
         _quoting = false;
       });
     } catch (e) {
@@ -262,6 +272,9 @@ class _CartScreenState extends State<CartScreen> {
       ),
       bottomNavigationBar: _Bottom(
         quoteTiyin: _quoteTiyin,
+        subtotalTiyin: _quoteSubtotal,
+        discountTiyin: _quoteDiscount,
+        promotionName: _quotePromotionName,
         quoting: _quoting,
         error: _quoteError,
         onRetry: _refreshQuote,
@@ -583,12 +596,18 @@ class _TableBanner extends StatelessWidget {
 
 class _Bottom extends StatelessWidget {
   final int? quoteTiyin;
+  final int? subtotalTiyin;
+  final int? discountTiyin;
+  final String? promotionName;
   final bool quoting;
   final String? error;
   final VoidCallback onRetry;
 
   const _Bottom({
     required this.quoteTiyin,
+    required this.subtotalTiyin,
+    required this.discountTiyin,
+    required this.promotionName,
     required this.quoting,
     required this.error,
     required this.onRetry,
@@ -645,8 +664,12 @@ class _Bottom extends StatelessWidget {
                 onPressed: ready
                     ? () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) =>
-                                CheckoutScreen(quoteTiyin: quoteTiyin!),
+                            builder: (_) => CheckoutScreen(
+                              quoteTiyin: quoteTiyin!,
+                              subtotalTiyin: subtotalTiyin,
+                              discountTiyin: discountTiyin,
+                              promotionName: promotionName,
+                            ),
                           ),
                         )
                     : null,
