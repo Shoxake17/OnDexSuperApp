@@ -143,6 +143,21 @@ type Deps struct {
 	// tashqi xizmatda PUL sarflaydi, shuning uchun chegara SHART.
 	Model3DLimiter *ratelimit.Limiter
 
+	// UploadLimiter — media yuklash uchun xodim bo'yicha chegara.
+	//
+	// ┌─ NEGA YUKLASHGA HAM CHEGARA KERAK ─────────────────────────────┐
+	// Yuklash autentifikatsiya talab qiladi, shuning uchun uzoq vaqt
+	// chegarasiz qoldirilgandi. Lekin kitob PDF i qo'shilgach hisob
+	// o'zgardi: bitta so'rov 25 MB qabul qiladi, uni R2 ga yozadi
+	// (JOY VA PUL) va ustiga 2000 sahifagacha PDF tahlil qiladi
+	// (PROTSESSOR). Ya'ni o'g'irlangan restoran tokeni bilan bir necha
+	// daqiqada bucket'ni ham, protsessorni ham band qilib bo'ladi.
+	//
+	// Rasm yuklash ham shu chegaraga tushadi: u yengilroq, lekin
+	// alohida hisoblagich saqlashga arzimaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	UploadLimiter *ratelimit.Limiter
+
 	// Notifications — saqlangan bildirishnomalar ombori
 	// (`GET /notifications`). `nil` bo'lsa endpointlar 503 qaytaradi.
 	Notifications notify.Store

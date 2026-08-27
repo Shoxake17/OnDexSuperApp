@@ -14,13 +14,59 @@ import (
 	"chustapp/internal/users"
 )
 
+// uploadQuotaKey — yuklash chegarasi kimga hisoblanadi.
+//
+// Restoran xodimi uchun kalit RESTORAN bo'yicha: bir nechta xodim
+// bo'lishi mumkin, lekin bucket va hisob bitta. Adminda `EntityID`
+// bo'lmaydi, shuning uchun uning o'z ID si ishlatiladi — aks holda
+// barcha adminlar bitta chelakni bo'lishardi va biri ikkinchisini
+// bloklab qo'yardi.
+//
+// Claims umuman bo'lmasa (bu yo'lda bo'lmasligi kerak, `s.auth`
+// o'tkazmaydi) chegara eng qattiq holatga tushadi: hamma uchun bitta
+// kalit.
+func uploadQuotaKey(c *users.Claims) string {
+	if c == nil {
+		return "anon"
+	}
+	if c.EntityID != "" {
+		return c.EntityID
+	}
+	if c.Subject != "" {
+		return c.Subject
+	}
+	return "anon"
+}
+
 func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 	// maxUploadSize / allowedImageExt — yuklash chegaralari.
 	const maxUploadSize = 5 << 20 // 5MB
 	allowedImageExt := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
 
+	// allowUpload — xodim bo'yicha tezlik chegarasi.
+	//
+	// Kalit RESTORAN/foydalanuvchi bo'yicha, IP bo'yicha emas: bitta
+	// restoranning bir nechta xodimi bo'lishi mumkin, lekin bucket
+	// bitta va uni to'ldirish pul turadi. Admin ham shu chegaraga
+	// tushadi — o'g'irlangan admin tokeni eng xavflisi.
+	allowUpload := func(w http.ResponseWriter, r *http.Request) bool {
+		if s.UploadLimiter == nil {
+			return true
+		}
+		key := "upload:" + uploadQuotaKey(claimsFrom(r))
+		if s.UploadLimiter.Allow(key) {
+			return true
+		}
+		httpError(w, http.StatusTooManyRequests,
+			errors.New("juda ko'p yuklash — biroz kuting va qayta urining"))
+		return false
+	}
+
 	mux.HandleFunc("POST /uploads", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
+			if !allowUpload(w, r) {
+				return
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 			if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 				httpError(w, http.StatusBadRequest, errors.New("fayl juda katta (maks 5MB) yoki formati noto'g'ri"))
@@ -82,6 +128,9 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 	// bannerining teskarisi (tik, 2:3) va boshqa papkaga tushadi.
 	mux.HandleFunc("POST /uploads/book-cover", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
+			if !allowUpload(w, r) {
+				return
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 			if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 				httpError(w, http.StatusBadRequest, errors.New("fayl juda katta (maks 5MB) yoki formati noto'g'ri"))
@@ -130,6 +179,9 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 	// └────────────────────────────────────────────────────────────────────┘
 	mux.HandleFunc("POST /uploads/book-pdf", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
+			if !allowUpload(w, r) {
+				return
+			}
 			r.Body = http.MaxBytesReader(w, r.Body, books.MaxPDFBytes)
 			// Diskka emas, XOTIRAGA: chegara allaqachon 25MB va
 			// `ParseMultipartForm` ga shu qiymat berilsa vaqtinchalik

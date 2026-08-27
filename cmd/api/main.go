@@ -816,6 +816,11 @@ func main() {
 		Devices:        deviceStore,
 		Model3D:        model3DSvc,
 		Model3DLimiter: model3DLimiter,
+		// Yuklash: xodim uchun daqiqasiga ~6 ta, qisqa muddatda 12
+		// tagacha ketma-ket. Menyuni to'ldirish (bir necha o'nlab rasm)
+		// bemalol sig'adi, 25 MB li PDF larni ketma-ket haydash esa
+		// yo'q — R2 da joy ham, PDF tahlili ham pul turadi.
+		UploadLimiter: ratelimit.New(6.0/60.0, 12),
 	})
 
 	// Tugallanmagan 3D vazifalarni davom ettiramiz. Server qayta ishga
