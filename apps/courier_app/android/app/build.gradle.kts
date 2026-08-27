@@ -1,8 +1,31 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// +- RELIZ IMZOSI ---------------------------------------------------+
+// Kalit `android/key.properties` dan o'qiladi. U `.gitignore` da -
+// imzolash kaliti repoga HECH QACHON tushmasligi kerak.
+//
+// FAYL YO'Q BO'LSA build YIQILMAYDI, debug kalitiga tushadi. Bu
+// ataylab: `flutter run --release` kalitsiz ham ishlashi kerak.
+//
+// DIQQAT: bu mantiq uzoq vaqt FAQAT customer_app da bor edi. Kuryer va
+// affitsiant ilovalari `key.properties` ni umuman o'qimasdi va reliz
+// build JIMGINA debug kaliti bilan imzolanardi - `gradlew signingReport`
+// buni ochib berdi (2026-08-27). Debug kaliti ochiq, ya'ni bunday APK ni
+// istalgan odam "xuddi shu ilova" deb yangilay olardi.
+//
+// KALIT YO'QOLSA ILOVANI BOSHQA YANGILAB BO'LMAYDI - zaxirasini saqlang.
+// +------------------------------------------------------------------+
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "com.ondex.courier"
@@ -29,11 +52,45 @@ android {
         versionName = flutter.versionName
     }
 
+    // Kalit bo'lsa reliz konfiguratsiyasi yaratiladi; bo'lmasa
+    // yaratilmaydi va quyida debug kalitiga tushiladi.
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        // +- DEV VA PROD YONMA-YON --------------------------------------+
+        // Android ilovalarni PAKET NOMI bo'yicha ajratadi. Suffikssiz
+        // dev build prod'ni almashtirib yuborardi (yoki imzo boshqacha
+        // bo'lgani uchun umuman o'rnatilmasdi).
+        //
+        // Dev  -> com.ondex.*.dev   nomi: "... Dev"
+        // Prod -> com.ondex.*       nomi: o'zining nomi
+        //
+        // DIQQAT: `.dev` paketi Firebase va Google Maps kalitida
+        // ALOHIDA ro'yxatdan o'tishi SHART. Aks holda dev build'da
+        // google-services plagini yiqiladi va xarita ochilmaydi.
+        // +--------------------------------------------------------------+
+        debug {
+            applicationIdSuffix = ".dev"
+        }
+
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Kalit bo'lsa RELIZ, bo'lmasa debug - va bu holat
+            // build vaqtida ko'rinib turadi (`gradlew signingReport`).
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("OGOHLANTIRISH: key.properties yo'q - APK DEBUG kaliti bilan imzolanadi, TARQATISH UCHUN YAROQSIZ")
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

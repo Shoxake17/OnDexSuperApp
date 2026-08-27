@@ -5,6 +5,7 @@
   "_xarita": "Xarita WebView2 ichida ${ONDEX_API_URL}/map-picker ni ochadi, ya'ni Google'ga ketadigan referrer 'https://api-ondex.shoxpro.uz/*' bo'ladi. Google Cloud Console'dagi kalit cheklovi ro'yxatida shu qator BO'LISHI SHART.",
   "_dev": "Mahalliy ishlash uchun: config/dev.json (localhost) yoki config/dev-tunnel.json (HTTPS domen).",
 
+  "ONDEX_APP_VERSION": "0.1.0",
   "ONDEX_API_URL": "https://api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://web-ondex.shoxpro.uz"
 }

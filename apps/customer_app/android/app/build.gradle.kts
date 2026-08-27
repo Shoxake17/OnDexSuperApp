@@ -113,6 +113,22 @@ android {
     }
 
     buildTypes {
+        // +- DEV VA PROD YONMA-YON --------------------------------------+
+        // Android ilovalarni PAKET NOMI bo'yicha ajratadi. Suffikssiz
+        // dev build prod'ni almashtirib yuborardi (yoki imzo boshqacha
+        // bo'lgani uchun umuman o'rnatilmasdi).
+        //
+        // Dev  -> com.ondex.*.dev   nomi: "... Dev"
+        // Prod -> com.ondex.*       nomi: o'zining nomi
+        //
+        // DIQQAT: `.dev` paketi Firebase va Google Maps kalitida
+        // ALOHIDA ro'yxatdan o'tishi SHART. Aks holda dev build'da
+        // google-services plagini yiqiladi va xarita ochilmaydi.
+        // +--------------------------------------------------------------+
+        debug {
+            applicationIdSuffix = ".dev"
+        }
+
         release {
             // ┌─ GODOT UCHUN QOIDALAR ─────────────────────────────────┐
             // R8 release qurilishida sinf nomlarini qisqartiradi.

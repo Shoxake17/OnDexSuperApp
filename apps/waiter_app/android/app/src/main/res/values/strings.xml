@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ilova nomi. Manifestda qattiq yozilmaydi, chunki DEV va PROD
+  build'lari telefonda YONMA-YON turadi va ularni ajratib bo'lishi
+  kerak - dev variantida bu qiymat src/debug/ dagi nusxa bilan
+  ALMASHTIRILADI.
+-->
+<resources>
+    <string name="app_name">OnDex Affitsiant</string>
+</resources>
