@@ -202,9 +202,13 @@ func (n *fakeNotifier) wasCancelled(id string) bool {
 // fakeGeoClient — Google Distance Matrix'ni taqlid qiladi: har bir kuryer
 // ID uchun oldindan belgilangan ETA qaytaradi (haqiqiy tarmoq so'rovisiz).
 type fakeGeoClient struct {
-	mu    sync.Mutex
-	etas  map[string]time.Duration
-	fail  bool
+	mu   sync.Mutex
+	etas map[string]time.Duration
+	fail bool
+	// notOK — shu ID'lar uchun element darajasida `OK=false` qaytariladi
+	// (Google'ning ZERO_RESULTS javobi), lekin so'rovning O'ZI muvaffaqiyatli
+	// bo'ladi. Aynan shu holat production'da yetkazishni to'xtatib qo'ygan.
+	notOK map[string]bool
 	calls int
 }
 
@@ -221,6 +225,11 @@ func (g *fakeGeoClient) FetchETAs(_ context.Context, _ geo.LatLng, candidates []
 	}
 	results := make([]geo.Result, len(candidates))
 	for i, c := range candidates {
+		if g.notOK[c.ID] {
+			// Google ZERO_RESULTS qaytardi: ID bor, ETA yo'q.
+			results[i] = geo.Result{ID: c.ID, OK: false}
+			continue
+		}
 		eta, ok := g.etas[c.ID]
 		if !ok {
 			eta = 10 * time.Minute

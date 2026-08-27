@@ -431,8 +431,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 			// shuning uchun tez-tez tekshirish arzon, va birinchi onlayn
 			// bo'lgan kuryerga taklif kechikmasdan yetib boradi.
 			pause = d.retryPause()
-			slog.Info("dispatch: hozircha bo'sh onlayn kuryer yo'q, kutilmoqda...",
-				"order", orderID, "cycle", failedCycles)
+			if len(candidates) > 0 {
+				// MUHIM FARQ: bazada nomzod BOR, lekin saralashdan
+				// keyin bo'sh qoldi. Avval bu holat ham xuddi "kuryer
+				// yo'q" kabi ko'rinardi va nosozlikni topish soatlab
+				// vaqt oldi — endi loglardan darhol ajraladi.
+				slog.Warn("dispatch: bazada nomzod bor, lekin saralashdan keyin bo'sh qoldi",
+					"order", orderID, "cycle", failedCycles, "nomzodlar", len(candidates))
+			} else {
+				slog.Info("dispatch: hozircha bo'sh onlayn kuryer yo'q, kutilmoqda...",
+					"order", orderID, "cycle", failedCycles)
+			}
 		} else {
 			slog.Info("dispatch: bu tsiklda hech kim qabul qilmadi, qayta urinish davom etadi",
 				"order", orderID, "cycle", failedCycles, "pause", pause)
@@ -499,12 +508,63 @@ func (d *Dispatcher) rankCandidates(ctx context.Context, candidates []*Courier, 
 		return ScoreCandidates(scored, params.PreparationTime)
 	}
 
-	scored := make([]ScoredCandidate, 0, len(results))
-	for _, res := range results {
-		if !res.OK {
-			continue // Google yo'l topmadi (ZERO_RESULTS) — bu nomzod inobatga olinmaydi
+	// ┌─ NEGA "OK EMAS" NOMZOD TASHLANMAYDI ──────────────────────────┐
+	// Avval bu yerda `if !res.OK { continue }` turardi va nomzod JIM
+	// tashlab yuborilardi. Jonli production'da shu bitta qator butun
+	// yetkazishni to'xtatib qo'ydi:
+	//
+	//   kuryer vehicle_type=bike -> mode=bicycling -> Google
+	//   O'zbekistonda velosiped yo'nalishlarini UMUMAN qo'llamaydi ->
+	//   element status ZERO_RESULTS (yuqori status esa "OK", ya'ni
+	//   yuqoridagi `err != nil` zaxira shoxi ham ishlamaydi)
+	//
+	// Natija: bazada bo'sh, yaqin, onlayn kuryer TURGANIDA ham
+	// `scored` bo'sh qolib, tsikl "hozircha bo'sh onlayn kuryer yo'q"
+	// deb 1076 marta aylandi va BIRORTA taklif yuborilmadi.
+	//
+	// Endi ETA'siz qolgan nomzodga to'g'ri chiziq zaxira ETA beriladi —
+	// bu `err != nil` holatida allaqachon ishonilgan hisob. Taxminiy
+	// ETA bilan taklif yuborish — kuryerni butunlay ko'rmaslikdan
+	// beqiyos yaxshiroq.
+	// └───────────────────────────────────────────────────────────────┘
+	scored := make([]ScoredCandidate, 0, len(candidates))
+	withETA := make(map[string]struct{}, len(results))
+	fallbackIDs := make([]string, 0)
+
+	fallbackFor := func(c *Courier) ScoredCandidate {
+		return ScoredCandidate{
+			Courier: c,
+			ETA: haversineFallbackETA(params.RestaurantLocation,
+				geo.LatLng{Lat: c.Lat, Lng: c.Lng}, vehicleToMode(c.VehicleType)),
 		}
-		scored = append(scored, ScoredCandidate{Courier: byID[res.ID], ETA: res.Duration})
+	}
+
+	for _, res := range results {
+		c := byID[res.ID]
+		if c == nil {
+			continue // Google javobida notanish ID — inobatga olinmaydi
+		}
+		withETA[res.ID] = struct{}{}
+		if !res.OK {
+			fallbackIDs = append(fallbackIDs, res.ID)
+			scored = append(scored, fallbackFor(c))
+			continue
+		}
+		scored = append(scored, ScoredCandidate{Courier: c, ETA: res.Duration})
+	}
+	// Google javobida umuman qaytmagan nomzodlar ham yo'qolmasin.
+	for _, c := range candidates {
+		if _, ok := withETA[c.ID]; !ok {
+			fallbackIDs = append(fallbackIDs, c.ID)
+			scored = append(scored, fallbackFor(c))
+		}
+	}
+	if len(fallbackIDs) > 0 {
+		// `rankCandidates` faqat nomzodlar havuzi O'ZGARGANDA
+		// chaqiriladi, shuning uchun bu log tsikl bo'yicha
+		// takrorlanmaydi.
+		slog.Warn("dispatch: Google bu nomzodlarga ETA bermadi — zaxira (to'g'ri chiziq) ETA ishlatildi",
+			"couriers", fallbackIDs)
 	}
 	return ScoreCandidates(scored, params.PreparationTime)
 }

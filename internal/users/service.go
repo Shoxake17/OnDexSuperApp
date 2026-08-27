@@ -85,7 +85,11 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 	}); err != nil {
 		return "", "", err
 	}
-	if err := s.sms.Send(phone, fmt.Sprintf("ChustApp tasdiqlash kodi: %s", code)); err != nil {
+	// DIQQAT: bu matn Eskiz kabinetida MODERATSIYADAN o'tgan shablon
+	// bilan AYNAN bir xil bo'lishi shart. Tasdiqlanmagan matnni Eskiz
+	// rad etadi va foydalanuvchi kodni umuman olmaydi. Matnni
+	// o'zgartirsangiz — avval Eskiz'da yangi shablonni tasdiqlating.
+	if err := s.sms.Send(phone, fmt.Sprintf("OnDex tasdiqlash kodi: %s", code)); err != nil {
 		return "", "", err
 	}
 	return phone, code, nil
