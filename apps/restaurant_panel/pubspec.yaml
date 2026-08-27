@@ -22,7 +22,7 @@ dependencies:
   qr_flutter: ^4.1.0
 
 dev_dependencies:
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
   # Widget testlari uchun. Birinchi test — kartochka sarlavhasining
   # "overflow" bermasligi (`test/order_card_header_test.dart`).
   flutter_test:
