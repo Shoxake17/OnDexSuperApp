@@ -359,6 +359,16 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 	}
 }
 
+// claimsFrom — `auth` middleware kontekstga qo'ygan claims'ni qaytaradi.
+//
+// COMMA-OK bilan (panic'siz): `auth` bilan O'RALMAGAN handler — masalan
+// kelajakda qo'shiladigan ochiq (public) route — buni chaqirsa, xom
+// `.(*users.Claims)` assertioni nil interface'da PANIC berardi (500/DoS).
+// Endi bunday holatda nil qaytadi. `rateLimitedGeo` allaqachon
+// `if c := claimsFrom(r); c != nil` deb tekshiradi, ya'ni nil qaytishi
+// kutilgan xatti-harakat; `auth` ostidagi handlerlar uchun esa qiymat
+// har doim mavjud, shuning uchun ular o'zgarishsiz ishlaydi.
 func claimsFrom(r *http.Request) *users.Claims {
-	return r.Context().Value(claimsKey).(*users.Claims)
+	c, _ := r.Context().Value(claimsKey).(*users.Claims)
+	return c
 }

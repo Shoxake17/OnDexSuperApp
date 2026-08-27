@@ -43,17 +43,23 @@ export type ProductSearchResult = Product & {
 };
 
 // GET /restaurants/{id}/active-promotions natijasi (faqat mijozga
-// tegishli/xavfsiz maydonlar — cmd/api/main.go'ga qarang). DIQQAT:
-// max_discount_amount_tiyin bu javobda YO'Q (faqat backend'ning ichki
-// hisob-kitobida ishlatiladi) — shuning uchun bu yerdagi vizual taxmin
-// (computeProductDiscount) uni cheklovsiz hisoblaydi; YAKUNIY chegirma
-// har doim checkout'da serverda (max bilan) hisoblanadi.
+// tegishli/xavfsiz maydonlar — internal/httpapi/routes_promotions.go).
+//
+// Chegirma CHEKLOVLARI ham shu javobda keladi: ularsiz menyudagi narx
+// serverning narxidan farq qilardi (`max_discount_amount_tiyin` avval
+// umuman yuborilmasdi va "30%, lekin ko'pi bilan 50 000 so'm" aksiyasi
+// menyuda to'liq 30% bo'lib ko'rinardi).
 export type ActivePromotion = {
   id: string;
   name: string;
   type: string; // percent | fixed_amount | bogo | bundle | free_delivery | loyalty
   discount_unit: string; // percent | amount
   discount_value: number;
+  // Cheklovlar — 0 = cheklov yo'q. Ikkalasi ham HISOBGA OLINISHI SHART:
+  // aks holda menyuda ko'rsatilgan narx serverning narxidan farq qiladi
+  // (max_discount_amount_tiyin avval API javobida umuman yo'q edi).
+  min_order_amount_tiyin: number;
+  max_discount_amount_tiyin: number;
   applies_to_orders: boolean;
   applies_to_products: boolean;
   applies_to_categories: boolean;

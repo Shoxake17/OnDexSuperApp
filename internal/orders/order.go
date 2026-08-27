@@ -86,6 +86,20 @@ type Item struct {
 	// (promotions.TargetCategories) qo'llash uchun kerak. Boshqa
 	// maydonlar kabi suratga olinadi (snapshot).
 	Category string `json:"category,omitempty"`
+	// Model3DURL — taomning 3D modeli (GLB), ImageURL kabi SURATGA
+	// OLINADI.
+	//
+	// ┌─ NEGA BUYURTMA ICHIDA SAQLANADI ──────────────────────────┐
+	// Mijoz stolda buyurtma bergach taomni AR'da (kamera orqali
+	// stol ustida) ko'radi. Buning uchun har bir qator uchun model
+	// havolasi kerak.
+	//
+	// Uni MAHSULOTDAN har safar qidirish noto'g'ri bo'lardi: taom
+	// menyudan o'chirilishi yoki modeli almashtirilishi mumkin, eski
+	// buyurtma esa o'zi bergan taomni ko'rsatishda davom etishi
+	// kerak — nom va narx bilan bir xil mantiq.
+	// └───────────────────────────────────────────────────────────┘
+	Model3DURL string `json:"model_3d_url,omitempty"`
 }
 
 type StatusChange struct {
@@ -116,28 +130,42 @@ type Order struct {
 	// raqam. Buyurtmani RESTORANDA olib ketishda kuryer shu raqamning
 	// OXIRGI 4 xonasini xodimga og'zaki aytadi — alohida tasdiqlash kodi
 	// endi YO'Q (statemachine.go'dagi StatusReady qoidasiga qarang).
-	OrderNumber  string         `json:"order_number"`
-	CustomerID   string         `json:"customer_id"`
-	RestaurantID string         `json:"restaurant_id"`
-	CourierID    string         `json:"courier_id,omitempty"` // dispatch muvaffaqiyatli bo'lganda to'ladi
-	Items        []Item         `json:"items"`
+	OrderNumber  string `json:"order_number"`
+	CustomerID   string `json:"customer_id"`
+	RestaurantID string `json:"restaurant_id"`
+	CourierID    string `json:"courier_id,omitempty"` // dispatch muvaffaqiyatli bo'lganda to'ladi
+	Items        []Item `json:"items"`
 	// SubtotalTiyin — aksiya qo'llanilishidan OLDINGI summa (Σ price*qty).
 	// DiscountTiyin — shu summadan qancha ayirilgani (0 = aksiya
 	// qo'llanilmagan). TotalTiyin har doim SubtotalTiyin-DiscountTiyin'ga
 	// teng — HAQIQIY, promotions.ApplyBest orqali hisoblangan qiymatlar,
 	// checkout'da ko'rsatiladigan raqamlar bilan bir xil manba.
-	SubtotalTiyin   int64  `json:"subtotal_tiyin"`
-	DiscountTiyin   int64  `json:"discount_tiyin,omitempty"`
-	PromotionID     string `json:"promotion_id,omitempty"`
+	SubtotalTiyin int64  `json:"subtotal_tiyin"`
+	DiscountTiyin int64  `json:"discount_tiyin,omitempty"`
+	PromotionID   string `json:"promotion_id,omitempty"`
 	// PromotionName — qo'llanilgan aksiya nomi, buyurtma vaqtida
 	// suratga olinadi (aksiya keyin o'chirilsa/o'zgartirilsa ham eski
 	// buyurtma tarixida asl nom saqlanadi).
 	PromotionName string `json:"promotion_name,omitempty"`
-	TotalTiyin    int64  `json:"total_tiyin"`
-	Status        Status `json:"status"`
-	History      []StatusChange `json:"history"`
-	DeliveryLat  float64        `json:"delivery_lat"`
-	DeliveryLng  float64        `json:"delivery_lng"`
+	// PromotionDiscountTiyin — DiscountTiyin ning AYNAN shu aksiya bergan
+	// qismi. Savatga bir vaqtda bir nechta aksiya tushishi mumkin (har
+	// qator o'zining eng foydalisini oladi) va mahsulotning o'z chegirma
+	// narxi ham qo'shilishi mumkin, shuning uchun chekda aksiya nomi
+	// FAQAT shu qiymat butun chegirmaga teng bo'lganda ko'rsatiladi —
+	// aks holda "Chegirma" deb yoziladi.
+	PromotionDiscountTiyin int64 `json:"promotion_discount_tiyin,omitempty"`
+
+	// PaymentMethod — mijoz tanlagan to'lov usuli (bo'sh = naqd).
+	PaymentMethod PaymentMethod `json:"payment_method,omitempty"`
+	// PaymentState — KARTA to'lovining holati. Naqd buyurtmada bo'sh
+	// bo'ladi va hech qachon tekshiruvga tushmaydi.
+	PaymentState PaymentState `json:"payment_state,omitempty"`
+
+	TotalTiyin int64          `json:"total_tiyin"`
+	Status                 Status         `json:"status"`
+	History                []StatusChange `json:"history"`
+	DeliveryLat            float64        `json:"delivery_lat"`
+	DeliveryLng            float64        `json:"delivery_lng"`
 	// DeliveryAddress — buyurtma berilgan PAYTDAGI manzil tafsilotlari
 	// SURATI (podyezd/qavat/kvartira/domofon/izoh). Foydalanuvchining
 	// profilidagi manzilga HAVOLA emas, nusxa — mijoz keyin manzilini
@@ -212,6 +240,58 @@ func (o *Order) IsTerminal() bool {
 
 // IsDineIn — stolda ovqatlanish buyurtmasimi.
 func (o *Order) IsDineIn() bool { return o.Type.Normalized() == TypeDineIn }
+
+// PaymentMethod — mijoz tanlagan to'lov usuli.
+type PaymentMethod string
+
+const (
+	// PaymentCash — naqd (yetkazganda kuryerga, stolda affitsiantga).
+	// BO'SH maydon ham naqd deb qaraladi — shu tufayli eski
+	// buyurtmalar to'lov tekshiruviga umuman tushmaydi.
+	PaymentCash PaymentMethod = "cash"
+	// PaymentCard — karta orqali OLDINDAN (Octo to'lov sahifasi).
+	PaymentCard PaymentMethod = "card"
+)
+
+// RequiresPrepayment — buyurtma oshxonaga tushishidan OLDIN pul
+// bloklangan bo'lishi shartmi.
+func (m PaymentMethod) RequiresPrepayment() bool { return m == PaymentCard }
+
+// PaymentState — karta to'lovining holati (naqdda ishlatilmaydi).
+type PaymentState string
+
+const (
+	// PaymentAwaiting — to'lov kutilmoqda.
+	PaymentAwaiting PaymentState = "awaiting"
+	// PaymentHeld — pul BLOKLANDI. Buyurtma endi oshxonaga tushadi.
+	PaymentHeld PaymentState = "held"
+	// PaymentPaid — pul yechildi (restoran qabul qilgandan keyin).
+	PaymentPaid PaymentState = "paid"
+	// PaymentFailed — to'lov amalga oshmadi yoki muddati tugadi.
+	PaymentFailed PaymentState = "failed"
+	// PaymentRefunded — pul mijozga qaytarildi.
+	PaymentRefunded PaymentState = "refunded"
+)
+
+// Settled — pul kafolatlanganmi (bloklangan yoki yechilgan).
+func (s PaymentState) Settled() bool { return s == PaymentHeld || s == PaymentPaid }
+
+// AwaitingPayment — buyurtma to'lov kutayotgan KARTA buyurtmasimi.
+//
+// ┌─ ENG MUHIM TEKSHIRUV ─────────────────────────────────────────────┐
+// Shu shart rost bo'lganda buyurtma:
+//   - restoranga bildirishnoma YUBORILMAYDI,
+//   - restoran/affitsiant ro'yxatida KO'RINMAYDI,
+//   - holati O'ZGARMAYDI (bekor qilishdan tashqari).
+//
+// Ya'ni to'lanmagan buyurtma oshxonaga hech qanday yo'l bilan tusha
+// olmaydi. Tekshiruv BITTA joyda — `Service.ChangeStatus` da —
+// majburlanadi, shuning uchun yangi handler qo'shilganda ham uni
+// chetlab o'tib bo'lmaydi.
+// └───────────────────────────────────────────────────────────────────┘
+func (o *Order) AwaitingPayment() bool {
+	return o.PaymentMethod.RequiresPrepayment() && !o.PaymentState.Settled()
+}
 
 // NeedsDispatchRecovery — server qayta ishga tushganda bu buyurtmaga
 // kuryer qidiruvini QAYTA boshlash kerakmi.

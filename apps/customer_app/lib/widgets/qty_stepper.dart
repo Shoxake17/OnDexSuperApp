@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'common.dart';
+
 /// Miqdor boshqaruvi "− n +" — BITTA nusxa.
 ///
 /// ┌─ NEGA ALOHIDA FAYL ───────────────────────────────────────────────┐
@@ -34,7 +36,8 @@ class QtyStepper extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _RoundButton(icon: Icons.remove, onTap: onRemove, size: size),
+        RoundIconButton(
+            icon: Icons.remove, onTap: onRemove, size: size, elevation: 2),
         SizedBox(
           width: size - 4,
           child: Text(
@@ -43,38 +46,9 @@ class QtyStepper extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
-        _RoundButton(icon: Icons.add, onTap: onAdd, size: size),
+        RoundIconButton(
+            icon: Icons.add, onTap: onAdd, size: size, elevation: 2),
       ],
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final double size;
-
-  const _RoundButton({
-    required this.icon,
-    required this.onTap,
-    required this.size,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(icon, size: size * 0.56, color: Colors.black),
-        ),
-      ),
     );
   }
 }

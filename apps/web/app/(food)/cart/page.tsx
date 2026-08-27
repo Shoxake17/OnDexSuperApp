@@ -58,12 +58,12 @@ export default function CartPage() {
     [menu],
   );
 
-  const { totalTiyin, subtotalTiyin, loading: quoteLoading } = useQuote(
-    restaurantId,
-    cart.items,
-    productsById,
-    promotions,
-  );
+  const {
+    totalTiyin,
+    subtotalTiyin,
+    loading: quoteLoading,
+    quoteLines,
+  } = useQuote(restaurantId, cart.items, productsById, promotions);
 
   const cartEntries = useMemo(
     () =>
@@ -131,7 +131,18 @@ export default function CartPage() {
 
         <div className="divide-y divide-neutral-100 dark:divide-neutral-900">
           {cartEntries.map(({ id, qty, product }) => {
-            const discount = computeProductDiscount(product, promotions);
+            // Qator narxi AVVAL serverdan (quote.lines) — checkout'da
+            // olinadigan pul ham o'sha. Javob yo'q bo'lsa (anonim
+            // foydalanuvchi/tarmoq xatosi) mahalliy taxminga tushamiz.
+            const lineSubtotal = product.price_tiyin * qty;
+            const estimate = computeProductDiscount(
+              product,
+              promotions,
+              subtotalTiyin,
+            );
+            const lineTotal =
+              quoteLines.get(id) ??
+              (estimate ? estimate.discountedPriceTiyin * qty : lineSubtotal);
             const weightUnit =
               product.weight_unit === "l" ? "L" : product.weight_unit;
             return (
@@ -163,19 +174,17 @@ export default function CartPage() {
                       </span>
                     )}
                   </p>
-                  {discount ? (
+                  {lineTotal < lineSubtotal ? (
                     <div className="mt-1 flex items-baseline gap-1.5">
                       <span className="font-bold text-[#E53935]">
-                        {formatSum(discount.discountedPriceTiyin * qty)}
+                        {formatSum(lineTotal)}
                       </span>
                       <span className="text-xs text-neutral-500 line-through">
-                        {formatSum(product.price_tiyin * qty)}
+                        {formatSum(lineSubtotal)}
                       </span>
                     </div>
                   ) : (
-                    <p className="mt-1 font-bold">
-                      {formatSum(product.price_tiyin * qty)}
-                    </p>
+                    <p className="mt-1 font-bold">{formatSum(lineTotal)}</p>
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -212,7 +221,11 @@ export default function CartPage() {
                 <h3 className="pb-2 pt-4 text-base font-semibold">{category}</h3>
                 <div className="grid grid-cols-2 gap-x-3.5 gap-y-5">
                   {items.map((p) => {
-                    const discount = computeProductDiscount(p, promotions);
+                    const discount = computeProductDiscount(
+                      p,
+                      promotions,
+                      subtotalTiyin,
+                    );
                     const qty = cart.items[p.id] ?? 0;
                     return (
                       <ProductCard

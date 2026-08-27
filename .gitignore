@@ -238,3 +238,6 @@ deploy/
 apps/web/playwright-report/
 apps/web/test-results/
 
+
+# Book Cafe: oxirgi ishlagan qurilma manzili (mahalliy)
+scripts/.bookcafe_device

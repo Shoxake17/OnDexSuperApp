@@ -5,7 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../api.dart';
-import '../widgets/maps_loader.dart';
+import '../widgets/app_text_field.dart';
+import '../widgets/common.dart';
 import 'address_search_screen.dart';
 
 /// Yetkazib berish manzilini xaritadan tanlash ekrani (Yandex Go uslubi):
@@ -68,7 +69,7 @@ class _AddressScreenState extends State<AddressScreen> {
 
   Future<void> _loadMaps() async {
     try {
-      await ensureGoogleMapsLoaded();
+      await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (!mounted) return;
       setState(() => _mapsReady = true);
       _scheduleResolve(_center);
@@ -140,23 +141,19 @@ class _AddressScreenState extends State<AddressScreen> {
       }
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
-        _snack('Joylashuvga ruxsat berilmadi');
+        snack('Joylashuvga ruxsat berilmadi');
         return;
       }
       final pos = await Geolocator.getCurrentPosition();
       final here = LatLng(pos.latitude, pos.longitude);
       await _animateTo(here, 17);
     } catch (_) {
-      _snack('Joylashuvni aniqlab bo\'lmadi');
+      snack('Joylashuvni aniqlab bo\'lmadi');
     } finally {
       if (mounted) setState(() => _locating = false);
     }
   }
 
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
 
   /// Barcha DASTUR o'zi buyuradigan kamera harakatlari shu orqali o'tadi —
   /// `_programmaticMoves` hisoblagichi animatsiya davomida `onCameraMove`ning
@@ -210,7 +207,7 @@ class _AddressScreenState extends State<AddressScreen> {
 
   Future<void> _save() async {
     if (_addressCtrl.text.trim().isEmpty) {
-      _snack('Manzil aniqlanmadi — xaritada joyni tanlang');
+      snack('Manzil aniqlanmadi — xaritada joyni tanlang');
       return;
     }
     setState(() => _saving = true);
@@ -228,9 +225,9 @@ class _AddressScreenState extends State<AddressScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(_addressCtrl.text.trim());
     } on ApiException catch (e) {
-      _snack(e.message);
+      snack(e.message);
     } catch (_) {
-      _snack('Saqlab bo\'lmadi — internetni tekshiring');
+      snack('Saqlab bo\'lmadi — internetni tekshiring');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -299,7 +296,7 @@ class _AddressScreenState extends State<AddressScreen> {
                   Positioned(
                     left: 12,
                     top: 12,
-                    child: _RoundButton(
+                    child: RoundIconButton(
                       icon: Icons.arrow_back,
                       onTap: () => Navigator.of(context).pop(),
                     ),
@@ -308,7 +305,7 @@ class _AddressScreenState extends State<AddressScreen> {
                   Positioned(
                     right: 12,
                     top: 12,
-                    child: _RoundButton(
+                    child: RoundIconButton(
                       tooltip: _mapType == MapType.normal
                           ? 'Sputnik (3D) ko\'rinish'
                           : 'Oddiy xarita (2D)',
@@ -334,7 +331,7 @@ class _AddressScreenState extends State<AddressScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _RoundButton(
+                        RoundIconButton(
                           tooltip: 'Joriy joylashuvim',
                           icon: _locating
                               ? Icons.hourglass_top
@@ -369,18 +366,14 @@ class _AddressScreenState extends State<AddressScreen> {
                               Text('Manzil aniqlanmoqda...'),
                             ],
                           )
-                        : TextField(
+                        : AppTextField(
                             controller: _addressCtrl,
+                            hint: 'Manzilni qidirish uchun bosing',
+                            icon: Icons.search,
+                            // Bu maydon TUGMA: bosilganda manzil qidiruv
+                            // ekrani ochiladi, o'zida yozilmaydi.
                             readOnly: true,
                             onTap: _openAddressSearch,
-                            style: const TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.w600),
-                            decoration: const InputDecoration(
-                              hintText: 'Manzilni qidirish uchun bosing',
-                              suffixIcon: Icon(Icons.search, size: 20),
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
                           ),
                     const SizedBox(height: 12),
                     Row(
@@ -447,41 +440,12 @@ class _FieldBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const UnderlineInputBorder(),
-      ),
-    );
+    // Ilgari tagi chizilgan (`UnderlineInputBorder`) edi va ekrandagi
+    // qolgan maydonlardan ajralib turardi. Endi umumiy ko'rinish.
+    return AppTextField(controller: controller, hint: label);
   }
 }
 
-class _RoundButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-  final String? tooltip;
-  const _RoundButton({required this.icon, required this.onTap, this.tooltip});
-
-  @override
-  Widget build(BuildContext context) {
-    final btn = Material(
-      color: Theme.of(context).colorScheme.surface,
-      shape: const CircleBorder(),
-      elevation: 3,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, size: 22),
-        ),
-      ),
-    );
-    return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
-  }
-}
 
 /// Zoom bloki — faqat kattalashtirish/kichiklashtirish, boshqa ikon yo'q.
 class _ZoomBlock extends StatelessWidget {
@@ -497,7 +461,9 @@ class _ZoomBlock extends StatelessWidget {
     return SizedBox(
       width: 44,
       child: Material(
-        color: Theme.of(context).colorScheme.surface,
+        // Qat'iy oq — pastki menyu paneli bilan bir xil. `colorScheme`
+      // qurilma mavzusiga bog'liq va kulrang tusga kirardi.
+      color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         elevation: 3,
         child: Column(

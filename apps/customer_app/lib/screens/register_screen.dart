@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
+import '../widgets/common.dart';
 import '../widgets/auth_flow.dart';
 import '../widgets/auth_ui.dart';
 
@@ -63,10 +63,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     super.dispose();
   }
 
-  void _snack(String msg, {bool error = false}) {
-    if (!mounted) return;
-    authSnack(context, msg, error: error);
-  }
 
   /// Formani SERVERGA YUBORISHDAN OLDIN tekshiradi.
   ///
@@ -114,7 +110,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   Future<void> _submit() async {
     final problem = _validate();
     if (problem != null) {
-      _snack(problem, error: true);
+      snack(problem, error: true);
       return;
     }
     setState(() => _busy = true);
@@ -170,16 +166,10 @@ class _RegisterScreenState extends State<RegisterScreen>
         'dev_code': devCode,
         'password': _password.text,
       });
-    } on OtpDeliveryFailure catch (e) {
-      // Zanjirning HAMMA pog'onasi qulagan — sabab allaqachon
-      // foydalanuvchi tilida.
-      _snack(e.message, error: true);
-    } on PhoneAuthFailure catch (e) {
-      _snack(e.message, error: true);
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+    } catch (e) {
+      // Zanjirning qaysi pog'onasi qulagani muhim emas — sabab
+      // `authErrorText` da foydalanuvchi tiliga o'giriladi.
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

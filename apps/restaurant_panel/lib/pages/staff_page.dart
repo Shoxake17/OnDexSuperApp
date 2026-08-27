@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../widgets/page_header.dart';
 
 /// Affitsiantlar — restoran o'z xodimlarini o'zi boshqaradi.
 ///
@@ -151,65 +152,47 @@ class _StaffPageState extends State<StaffPage> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Affitsiantlar',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const Spacer(),
-            FilledButton.icon(
-              onPressed: _add,
-              icon: const Icon(Icons.person_add),
-              label: const Text('Affitsiant qo\'shish'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Affitsiant "OnDex Affitsiant" ilovasida stol buyurtmalarini '
+    // Sarlavha, chekinish va xato satri — BARCHA bo'limlar bilan bir xil
+    // manbadan (`widgets/page_header.dart`). Avval bu sahifa o'z
+    // dizaynini alohida chizardi va kontent ekran chetiga yopishib
+    // turardi (chekinish umuman yo'q edi).
+    return PageScaffold(
+      title: 'Affitsiantlar',
+      subtitle: 'Affitsiant "OnDex Affitsiant" ilovasida stol buyurtmalarini '
           'ko\'radi va tayyor bo\'lganda xabar oladi.',
-          style: TextStyle(color: Colors.grey),
-        ),
-        const SizedBox(height: 16),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(_error!, style: const TextStyle(color: Colors.red)),
-          ),
-        Expanded(
-          child: _waiters.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Hali affitsiant qo\'shilmagan',
-                    style: TextStyle(color: Colors.grey),
+      action: PageActionButton(
+        icon: Icons.person_add_rounded,
+        label: 'Affitsiant qo\'shish',
+        onPressed: _add,
+      ),
+      error: _error,
+      child: _waiters.isEmpty
+          ? const Center(
+              child: Text(
+                'Hali affitsiant qo\'shilmagan',
+                style: TextStyle(color: OnDexColors.inkDim),
+              ),
+            )
+          : ListView.separated(
+              itemCount: _waiters.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final w = _waiters[i];
+                return ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.room_service),
                   ),
-                )
-              : ListView.separated(
-                  itemCount: _waiters.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final w = _waiters[i];
-                    return ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.room_service),
-                      ),
-                      title: Text(w['name'] as String? ?? '—'),
-                      subtitle: Text(w['phone'] as String? ?? ''),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.person_remove),
-                        color: OnDexColors.danger,
-                        tooltip: 'Ishdan bo\'shatish',
-                        onPressed: () => _remove(w),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+                  title: Text(w['name'] as String? ?? '—'),
+                  subtitle: Text(w['phone'] as String? ?? ''),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.person_remove),
+                    color: OnDexColors.danger,
+                    tooltip: 'Ishdan bo\'shatish',
+                    onPressed: () => _remove(w),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

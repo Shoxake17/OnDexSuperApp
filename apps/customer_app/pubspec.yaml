@@ -39,6 +39,13 @@ dependencies:
   # tushuntirishni ko'rsatardi, ya'ni stol oqimi ilovada amalda
   # ishlamasdi.
   mobile_scanner: ^7.4.0
+  # Taomni kamera tasviri ustida ko'rsatish (`ar/ar_camera_screen.dart`).
+  #
+  # `mobile_scanner` ham kamera oynasini bera olardi, lekin u HAR
+  # KADRDA QR qidiradi — bu yerda esa skanerlash umuman kerak emas va
+  # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
+  # rasmiy `camera` plagini.
+  camera: ^0.11.0
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +74,9 @@ flutter:
   assets:
     - assets/logo.png
     - assets/categories/
+    # Bo'sh ekranlar uchun OnDex maskoti (sevimlilar, savat,
+    # bildirishnomalar) — `widgets/empty_state.dart`.
+    - assets/empty/
     # To'lov tizimlari logotiplari — rasmiylashtirish ekranidagi
     # "To'lov usuli" bo'limi uchun (image/ papkasidan nusxa; u repoga
     # kirmaydi, shuning uchun fayllar SHU YERDA saqlanadi).

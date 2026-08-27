@@ -38,17 +38,19 @@ class SheetScaffold extends StatelessWidget {
     this.actions = const [],
   });
 
-  static const _backdrop = Color(0xFFE5E5E5);
   static const _card = Colors.white;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: _backdrop,
-      padding: const EdgeInsets.only(top: 4),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: Container(
+    // ┌─ TAB EKRANLARIDA DUMALOQ BURCHAK YO'Q ────────────────────────┐
+    // Istaklarim / Buyurtmalarim / Profil — bosh sahifa bilan bir xil
+    // qatlamda: ular ILOVANING O'ZI, ustiga ochilgan panel emas.
+    // Dumaloq burchak faqat PUSH qilingan sahifalarda (menyu, savat,
+    // checkout) — u yerda karta ostidagi sahifa ko'rinib turadi.
+    // └───────────────────────────────────────────────────────────────┘
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: _card),
+      child: Container(
           color: _card,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -76,9 +78,7 @@ class SheetScaffold extends StatelessWidget {
               ),
               Expanded(child: child),
             ],
-          ),
-        ),
-      ),
+          )),
     );
   }
 }

@@ -119,6 +119,22 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, catalog.PredefinedCategories)
 	})
 
+	// publicProducts — OCHIQ javob uchun nusxa: restoranning ichki
+	// maydonlari (`catalog.Product.PublicView`) kesiladi. Ro'yxat
+	// nusxalanadi — repo qaytargan obyektlar o'zgartirilmaydi (ular
+	// kesh/xotira ombori bilan bo'lishilgan bo'lishi mumkin).
+	publicProducts := func(list []*catalog.Product) []*catalog.Product {
+		out := make([]*catalog.Product, 0, len(list))
+		for _, p := range list {
+			if p == nil {
+				continue
+			}
+			pub := p.PublicView()
+			out = append(out, &pub)
+		}
+		return out
+	}
+
 	// GET /products/search?q=... — ochiq. Restoranga bog'liq bo'lmagan
 	// holda, turkum yoki nom bo'yicha barcha restoranlardagi mos taomlarni
 	// bitta ro'yxatda qaytaradi (mijoz ilovasining turkum filtri uchun).
@@ -155,9 +171,39 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusInternalServerError, err)
 			return
 		}
+		// Ichki maydonlar (ulgurji narx) KESHGA YOZILISHDAN OLDIN
+		// olib tashlanadi — shunda ommaviy kesh ularni umuman
+		// saqlamaydi va keyingi so'rovlarda ham sizib chiqmaydi.
+		list = publicProducts(list)
 		s.Cache.SetJSON(r.Context(), menuCacheKey(restaurantID), list, 30*time.Second)
 		writeJSON(w, http.StatusOK, list)
 	})
+
+	// GET /restaurants/{id}/products — restoran panelining TO'LIQ ro'yxati.
+	//
+	// Ochiq `/menu` dan farqi: bu yerda restoranning ichki maydonlari ham
+	// (ulgurji narx) qaytadi, shuning uchun endpoint avtorizatsiya va
+	// EGALIK tekshiruvidan o'tadi. Kesh ishlatilmaydi — panel har doim
+	// eng so'nggi holatni ko'rishi kerak.
+	mux.HandleFunc("GET /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			restaurantID := r.PathValue("id")
+			claims := claimsFrom(r)
+			if claims.Role == users.RoleRestaurant && claims.EntityID != restaurantID {
+				httpError(w, http.StatusForbidden, errors.New("boshqa restoran menyusini ko'rib bo'lmaydi"))
+				return
+			}
+			if _, err := s.CatalogRepo.GetRestaurant(r.Context(), restaurantID); err != nil {
+				httpError(w, http.StatusNotFound, err)
+				return
+			}
+			list, err := s.CatalogRepo.ListProducts(r.Context(), restaurantID)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		}))
 	// POST /restaurants/{id}/products — restoran o'z menyusini boshqaradi (yoki admin)
 	mux.HandleFunc("POST /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +232,14 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			}
 			if p.DiscountPriceTiyin > 0 && p.DiscountPriceTiyin >= p.PriceTiyin {
 				httpError(w, http.StatusBadRequest, errors.New("discount_price_tiyin asosiy narxdan kichik bo'lishi kerak"))
+				return
+			}
+			// Ulgurji narx — ixtiyoriy ichki maydon. ASOSIY NARX BILAN
+			// TAQQOSLANMAYDI: u sotuv narxidan yuqori ham bo'lishi mumkin
+			// (masalan aksiya davrida zarariga sotish) — bu restoranning
+			// o'z biznes qarori, tizim unga aralashmaydi.
+			if p.WholesalePriceTiyin < 0 {
+				httpError(w, http.StatusBadRequest, errors.New("wholesale_price_tiyin manfiy bo'lishi mumkin emas"))
 				return
 			}
 			p.PrepTimeText = strings.TrimSpace(p.PrepTimeText)

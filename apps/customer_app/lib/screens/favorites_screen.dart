@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'menu_screen.dart';
@@ -102,19 +104,10 @@ class FavoritesScreenState extends State<FavoritesScreen> {
                     ],
                   )
                 : _items.isEmpty
-                    ? ListView(
-                        children: const [
-                          SizedBox(height: 120),
-                          Icon(Icons.favorite_border,
-                              size: 56, color: Colors.grey),
-                          SizedBox(height: 12),
-                          Center(
-                            child: Text(
-                                'Hali hech narsa saqlanmagan\nYoqtirgan taomlaringizni yurak belgisi bilan belgilang',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey)),
-                          ),
-                        ],
+                    ? const EmptyStateList(
+                        image: 'assets/empty/favorites.png',
+                        title: 'Sevimli mahsulotlarni saqlash uchun '
+                            'yurakchani bosing',
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -182,11 +175,7 @@ class _FavoriteCard extends StatelessWidget {
                   child: SizedBox(
                     width: 16,
                     height: 16,
-                    child: Image.network(
-                      fullImageUrl(restaurantLogo),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
+                    child: RemoteImage(url: restaurantLogo),
                   ),
                 ),
               ),

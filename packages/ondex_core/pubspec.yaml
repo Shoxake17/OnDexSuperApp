@@ -13,6 +13,9 @@ dependencies:
   web_socket_channel: ^3.0.0
   flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.2.0
+  # Google Maps JS skriptini yuklash uchun (faqat veb build'da
+  # kompilyatsiya qilinadi — `src/maps/` dagi shartli eksportga qarang).
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

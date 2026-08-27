@@ -28,20 +28,34 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			if p.ComputeStatus(now) != promotions.StatusActive {
 				continue
 			}
+			// ┌─ NEGA HAMMA CHEKLOV MAYDONI KERAK ────────────────────┐
+			// Klient (menyu kartochkasi) shu ma'lumot asosida
+			// chegirmali narxni CHIZADI. Maydon yuborilmasa, u
+			// cheklovni bilmay to'liq chegirmani ko'rsatadi va
+			// checkout'dagi HAQIQIY summa boshqacha chiqadi —
+			// `max_discount_amount_tiyin` aynan shu sababdan
+			// yetishmasdi ("30%, lekin ko'pi bilan 50 000 so'm"
+			// aksiyasida menyu to'liq 30% ni ko'rsatardi).
+			//
+			// `discount_unit` — EffectiveUnit(), ya'ni turga zid
+			// bo'lgan eski yozuv ham klientga to'g'ri birlikda
+			// boradi.
+			// └───────────────────────────────────────────────────────┘
 			out = append(out, map[string]any{
-				"id":                     p.ID,
-				"name":                   p.Name,
-				"description":            p.Description,
-				"type":                   p.Type,
-				"discount_unit":          p.DiscountUnit,
-				"discount_value":         p.DiscountValue,
-				"min_order_amount_tiyin": p.MinOrderAmountTiyin,
-				"applies_to_products":    p.AppliesToProducts,
-				"applies_to_orders":      p.AppliesToOrders,
-				"applies_to_categories":  p.AppliesToCategories,
-				"target_product_ids":     p.TargetProductIDs,
-				"target_categories":      p.TargetCategories,
-				"min_previous_orders":    p.MinPreviousOrders,
+				"id":                        p.ID,
+				"name":                      p.Name,
+				"description":               p.Description,
+				"type":                      p.Type,
+				"discount_unit":             p.EffectiveUnit(),
+				"discount_value":            p.DiscountValue,
+				"min_order_amount_tiyin":    p.MinOrderAmountTiyin,
+				"max_discount_amount_tiyin": p.MaxDiscountAmountTiyin,
+				"applies_to_products":       p.AppliesToProducts,
+				"applies_to_orders":         p.AppliesToOrders,
+				"applies_to_categories":     p.AppliesToCategories,
+				"target_product_ids":        p.TargetProductIDs,
+				"target_categories":         p.TargetCategories,
+				"min_previous_orders":       p.MinPreviousOrders,
 			})
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -205,6 +219,26 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			unit := promotions.DiscountUnit(req.DiscountUnit)
 			if unit != promotions.DiscountUnitPercent && unit != promotions.DiscountUnitAmount {
 				httpError(w, http.StatusBadRequest, errors.New("discount_unit noto'g'ri (percent yoki amount)"))
+				return
+			}
+			// ┌─ TUR VA BIRLIK ZID BO'LMASLIGI KERAK ─────────────────┐
+			// "Foiz orqali chegirma" turi + `amount` birligi kabi
+			// juftlik AVVAL ruxsat etilardi va server bilan klient uni
+			// BOSHQACHA o'qirdi: menyuda "-20%" ko'rinib, haqiqatda 20
+			// tiyin chegirma berilardi. Endi bunday yozuv umuman
+			// yaratilmaydi (mavjud eskilarini `EffectiveUnit()`
+			// xavfsiz o'qiydi).
+			//
+			// Jimgina TO'G'RILAB qo'yilmaydi — kiritilgan raqamning
+			// MA'NOSI o'zgarib ketardi (20% mi, 20 tiyinmi?), shuning
+			// uchun restoran o'zi hal qilishi uchun xato qaytariladi.
+			// └───────────────────────────────────────────────────────┘
+			if typ == promotions.TypePercent && unit != promotions.DiscountUnitPercent {
+				httpError(w, http.StatusBadRequest, errors.New("foiz orqali chegirma uchun birlik % bo'lishi kerak"))
+				return
+			}
+			if typ == promotions.TypeFixedAmount && unit != promotions.DiscountUnitAmount {
+				httpError(w, http.StatusBadRequest, errors.New("summa orqali chegirma uchun birlik so'm bo'lishi kerak"))
 				return
 			}
 			if unit == promotions.DiscountUnitPercent {

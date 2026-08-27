@@ -62,11 +62,7 @@ class CourierApi extends ApiClient {
   /// Koordinatani manzil matniga aylantiradi (yetkazib berish nuqtasini
   /// ko'rsatish uchun) — backend orqali (CORS sabab to'g'ridan-to'g'ri
   /// brauzerdan chaqirib bo'lmaydi).
-  Future<String?> reverseGeocode(double lat, double lng) async {
-    final d = await send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
-    final addr = d['address'] as String?;
-    return (addr == null || addr.isEmpty) ? null : addr;
-  }
+  // Mantiq `ondex_core.ApiClient.reverseGeocode` da.
 
   /// Ikki nuqta orasidagi HAQIQIY yo'l marshrutini (Google Directions API,
   /// backend orqali) oladi — xaritada kuryerdan restoran/mijozgacha chiziq

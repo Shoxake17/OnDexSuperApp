@@ -2,22 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'screens/login_screen.dart';
-import 'screens/waiter_shell.dart';
+import 'screens/waiter_home.dart';
 import 'session.dart';
 import 'theme.dart';
 
 void main() {
   runApp(const WaiterApp());
 }
-
-// Mijoz va kuryer ilovalari bilan bir xil qorong'i palitra.
-// `.copyWith(primary: kBrandColor)` — Material3'ning `fromSeed` tonal
-// palitrasi seed rangni ANIQ o'zi sifatida saqlamaydi, shuning uchun
-// brend rangi majburan qayta yoziladi.
-final _darkScheme = ColorScheme.fromSeed(
-  seedColor: kBrandColor,
-  brightness: Brightness.dark,
-).copyWith(primary: kBrandColor);
 
 class WaiterApp extends StatelessWidget {
   const WaiterApp({super.key});
@@ -27,16 +18,10 @@ class WaiterApp extends StatelessWidget {
     return MaterialApp(
       title: 'OnDex Affitsiant',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: _darkScheme,
-        scaffoldBackgroundColor: kBackground,
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: kBackground,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-        ),
-      ),
+      // Mavzu BITTA joyda (`theme.dart`) — ekranlar rang/radiusni o'zi
+      // belgilamaydi. Mijoz va kuryer ilovalari bilan bir xil qorong'i
+      // palitra: uchalasi bitta oila ekani ko'rinib turishi kerak.
+      theme: buildWaiterTheme(),
       home: const _Root(),
     );
   }
@@ -78,7 +63,7 @@ class _RootState extends State<_Root> {
       final role = user['role'] as String? ?? '';
       final entityId = user['entity_id'] as String? ?? '';
       if (role == 'waiter' && entityId.isNotEmpty) {
-        _child = const WaiterShell();
+        _child = const WaiterHome();
       } else {
         await tokenStore.clear();
         api.token = null;
@@ -96,7 +81,9 @@ class _RootState extends State<_Root> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
     return _child;
   }

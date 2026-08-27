@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+// `tableText` — `api.dart` orqali `ondex_core` dan keladi (u yerda
+// butun yadro qayta eksport qilinadi, `formatSum` kabi).
+import '../widgets/order_card_header.dart' show isDineInOrder;
+import '../widgets/page_header.dart';
 
 const _monthNamesShort = [
   'yan',
@@ -118,7 +122,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1195,6 +1199,12 @@ class _ActiveOrderRow extends StatelessWidget {
         : '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
     final courierName = order['courier_name'] as String? ?? '';
     final hasCourier = (order['courier_id'] as String? ?? '').isNotEmpty;
+    // Stol buyurtmasida kuryer yo'q va BO'LMAYDI — backend u uchun
+    // dispatch'ni umuman ishga tushirmaydi (`routes_orders.go`:
+    // `if !o.IsDineIn()`). Bu tekshiruvsiz qator "Kuryer qidirilmoqda"
+    // deb turardi va restoran xodimi tizim ishlamayapti deb o'ylardi.
+    final dineIn = isDineInOrder(order);
+    final tableLabel = order['table_label'] as String? ?? '';
     final (label, color, bg) = orderStatusStyle(order['status'] as String? ?? '');
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
@@ -1217,19 +1227,31 @@ class _ActiveOrderRow extends StatelessWidget {
             ),
           ),
           Icon(
-            hasCourier ? Icons.pedal_bike_rounded : Icons.hourglass_empty_rounded,
+            dineIn
+                ? Icons.room_service_rounded
+                : (hasCourier
+                    ? Icons.pedal_bike_rounded
+                    : Icons.hourglass_empty_rounded),
             size: 17,
-            color: hasCourier ? OnDexColors.info : OnDexColors.inkFaint,
+            color: dineIn
+                ? OnDexColors.primary
+                : (hasCourier ? OnDexColors.info : OnDexColors.inkFaint),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              hasCourier
-                  ? (courierName.isEmpty ? 'Kuryer yo\'lda' : courierName)
-                  : 'Kuryer qidirilmoqda',
+              dineIn
+                  ? '${tableText(tableLabel)} · affitsiant'
+                  : (hasCourier
+                      ? (courierName.isEmpty ? 'Kuryer yo\'lda' : courierName)
+                      : 'Kuryer qidirilmoqda'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, color: OnDexColors.ink),
+              style: TextStyle(
+                fontSize: 12.5,
+                color: dineIn ? OnDexColors.primary : OnDexColors.ink,
+                fontWeight: dineIn ? FontWeight.w600 : FontWeight.normal,
+              ),
             ),
           ),
           Text(formatSum((order['total_tiyin'] ?? 0) as int),

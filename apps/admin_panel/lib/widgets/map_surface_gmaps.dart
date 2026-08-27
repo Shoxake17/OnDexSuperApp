@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import 'maps_loader.dart';
+// ensureGoogleMapsLoaded va pi ikkalasi ham shu yerdan keladi:
+// pi.dart ondex_core ni qayta eksport qiladi. Kuryer va mijoz
+// ilovalarida ham xuddi shunday.
+import '../api.dart';
+
 
 /// Google Cloud'dan olingan vector Map ID (ixtiyoriy).
 /// Bu ID bilan web'da 3D binolar va qiyalik (tilt) to'liq ishlaydi:
@@ -46,7 +50,7 @@ class _MapSurfaceState extends State<MapSurface> {
   /// frontend kodida saqlanmaydi).
   Future<void> _load() async {
     try {
-      await ensureGoogleMapsLoaded();
+      await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (mounted) setState(() => _ready = true);
     } catch (e) {
       if (mounted) setState(() => _error = 'Xarita yuklanmadi: $e');

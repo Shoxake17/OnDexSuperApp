@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/page_sheet.dart';
+
 import '../api.dart';
+import '../widgets/common.dart';
+import '../data/favorites_store.dart';
 import '../widgets/product_grid.dart';
+import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'menu_screen.dart';
 
@@ -38,13 +43,12 @@ class CategoryProductsScreen extends StatefulWidget {
 class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   List<Map<String, dynamic>>? _items;
   String? _error;
-  Set<String> _favorites = <String>{};
 
   @override
   void initState() {
     super.initState();
     _load();
-    _loadFavorites();
+    FavoritesStore.instance.load(force: true);
   }
 
   Future<void> _load() async {
@@ -56,19 +60,10 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException ? e.message : 'Yuklab bo\'lmadi';
+        _error = errorText(e, 'Yuklab bo\'lmadi');
         _items ??= const [];
       });
     }
-  }
-
-  /// Yurak belgilarining boshlang'ich holati. Anonim foydalanuvchida
-  /// 401 keladi — bu xato emas, shunchaki hech narsa belgilanmagan.
-  Future<void> _loadFavorites() async {
-    try {
-      final ids = await api.favoriteIds();
-      if (mounted) setState(() => _favorites = ids);
-    } catch (_) {}
   }
 
   void _open(Map<String, dynamic> p) {
@@ -85,45 +80,24 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
   Widget build(BuildContext context) {
     final items = _items;
 
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: const Color(0xFF171717),
-        elevation: 0,
-        title: Text(
-          widget.category,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-      ),
+      appBar: PageAppBar(title: widget.category),
       body: RefreshIndicator(
         color: kBrand,
         onRefresh: _load,
         child: items == null
             ? const Center(child: CircularProgressIndicator())
             : items.isEmpty
-                ? ListView(
-                    children: [
-                      const SizedBox(height: 100),
-                      Center(
-                        child: Text(
-                          _error ?? 'Bu turkumda taom topilmadi',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFF757575)),
-                        ),
-                      ),
-                      if (_error != null)
-                        Center(
-                          child: TextButton(
-                            onPressed: _load,
-                            child: const Text('Qaytadan urinish',
-                                style: TextStyle(color: kBrand)),
-                          ),
-                        ),
-                    ],
+                ? ErrorViewList(
+                    message: _error ?? 'Bu turkumda taom topilmadi',
+                    // Xato bo'lmasa (shunchaki bo'sh turkum) qayta
+                    // urinishning ma'nosi yo'q.
+                    onRetry: _error == null ? null : _load,
+                    icon: _error == null
+                        ? Icons.search_off
+                        : Icons.error_outline,
                   )
                 : GridView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -134,23 +108,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                     itemCount: items.length,
                     itemBuilder: (_, i) => _CategoryCard(
                       product: items[i],
-                      favorited:
-                          _favorites.contains(items[i]['id'] as String? ?? ''),
+                      favorited: FavoritesStore.instance
+                          .contains(items[i]['id'] as String? ?? ''),
                       onTap: () => _open(items[i]),
-                      onFavoriteChanged: (fav) {
-                        final id = (items[i]['id'] as String?) ?? '';
-                        setState(() {
-                          if (fav) {
-                            _favorites.add(id);
-                          } else {
-                            _favorites.remove(id);
-                          }
-                        });
-                      },
                     ),
                   ),
       ),
-    );
+    ));
   }
 }
 
@@ -161,13 +125,11 @@ class _CategoryCard extends StatelessWidget {
   final Map<String, dynamic> product;
   final bool favorited;
   final VoidCallback onTap;
-  final ValueChanged<bool> onFavoriteChanged;
 
   const _CategoryCard({
     required this.product,
     required this.favorited,
     required this.onTap,
-    required this.onFavoriteChanged,
   });
 
   @override
@@ -182,7 +144,6 @@ class _CategoryCard extends StatelessWidget {
         product: product,
         favorited: favorited,
         onTap: open ? onTap : null,
-        onFavoriteChanged: onFavoriteChanged,
         footer: Row(
           children: [
             if (logo.isNotEmpty)
@@ -193,11 +154,7 @@ class _CategoryCard extends StatelessWidget {
                   child: SizedBox(
                     width: 16,
                     height: 16,
-                    child: Image.network(
-                      fullImageUrl(logo),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
+                    child: RemoteImage(url: logo),
                   ),
                 ),
               ),

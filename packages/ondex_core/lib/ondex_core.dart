@@ -21,6 +21,8 @@ export 'src/cache/repository.dart';
 export 'src/config.dart';
 export 'src/format.dart';
 export 'src/live_bus.dart';
+// Google Maps JS yuklovchisi — veb'da haqiqiy, qolgan nishonlarda stub.
+export 'src/maps/maps_loader.dart';
 export 'src/order_status.dart';
 export 'src/token_store.dart';
 export 'src/ws_client.dart';

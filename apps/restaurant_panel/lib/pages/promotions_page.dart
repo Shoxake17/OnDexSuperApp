@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../widgets/page_header.dart';
 
 enum _PromoStatusFilter { all, active, scheduled, expired, paused }
 
@@ -19,6 +20,50 @@ const _promoTypes = [
   'free_delivery',
   'loyalty',
 ];
+
+/// Chegirma birligi tur bilan qat'iy belgilangan holatdagi ko'rsatkich —
+/// tashqi ko'rinishi maydonlar bilan bir xil, lekin bosilmaydi.
+class _FixedUnitBox extends StatelessWidget {
+  final String label;
+
+  const _FixedUnitBox({required this.label});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: OnDexColors.pageBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: OnDexColors.cardBorder),
+        ),
+        child: Text(label,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: OnDexColors.inkDim)),
+      );
+}
+
+/// Tur MAJBURLAYDIGAN chegirma birligi (null = birlikni restoran o'zi
+/// tanlaydi).
+///
+/// ┌─ NEGA MAJBURIY ───────────────────────────────────────────────────┐
+/// Avval "Aksiya turi" va "Chegirma birligi" mustaqil edi, ya'ni
+/// "Summa orqali chegirma" turini tanlab, birlikni `%` da qoldirish
+/// mumkin edi. Bunday yozuvni backend SUMMA (tiyin) deb, mijoz ilovasi
+/// esa FOIZ deb o'qirdi: menyuda "-20%" ko'rinib, haqiqatda 20 tiyin
+/// chegirma berilardi.
+///
+/// Endi tur birlikni belgilaydi va backend zid juftlikni umuman
+/// qabul qilmaydi (routes_promotions.go). Qolgan turlarda (1+1,
+/// to'plam, sodiqlik) birlik haqiqatan ham erkin.
+/// └───────────────────────────────────────────────────────────────────┘
+String? _unitForType(String type) => switch (type) {
+      'percent' => 'percent',
+      'fixed_amount' => 'amount',
+      _ => null,
+    };
 
 String _typeLabel(String type) => switch (type) {
       'percent' => 'Foiz orqali chegirma',
@@ -280,7 +325,7 @@ class _PromotionsPageState extends State<PromotionsPage> {
 
     if (_showForm) {
       return SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: _PromotionFormPage(
           key: ValueKey(_editing?['id'] ?? '__new__'),
           existing: _editing,
@@ -320,7 +365,7 @@ class _PromotionsPageState extends State<PromotionsPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -437,56 +482,22 @@ class _PromotionsPageState extends State<PromotionsPage> {
 // Sarlavha
 // ---------------------------------------------------------------------------
 
+/// Sarlavha bloki — dizayn `widgets/page_header.dart` da (menyu va
+/// boshqa bo'limlar bilan bitta manbadan).
 class _Header extends StatelessWidget {
   final VoidCallback onAdd;
   const _Header({required this.onAdd});
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final narrow = c.maxWidth < 760;
-      const titleBlock = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Aksiyalar',
-              style: TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  color: OnDexColors.ink)),
-          SizedBox(height: 4),
-          Text('Aksiyalarni boshqarish va samaradorligini kuzatish',
-              style: TextStyle(fontSize: 14, color: OnDexColors.inkDim)),
-        ],
+  Widget build(BuildContext context) => PageHeader(
+        title: 'Aksiyalar',
+        subtitle: 'Aksiyalarni boshqarish va samaradorligini kuzatish',
+        action: PageActionButton(
+          icon: Icons.add_rounded,
+          label: 'Yangi aksiya yaratish',
+          onPressed: onAdd,
+        ),
       );
-      final controls = Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          FilledButton.icon(
-            onPressed: onAdd,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-              textStyle:
-                  const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-            ),
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text('Yangi aksiya yaratish'),
-          ),
-        ],
-      );
-      if (narrow) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [titleBlock, const SizedBox(height: 16), controls],
-        );
-      }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [const Expanded(child: titleBlock), controls],
-      );
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1356,6 +1367,11 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
     if (_discountUnit != 'percent' && _discountUnit != 'amount') {
       _discountUnit = 'percent';
     }
+    // Tur birlikni majburlasa — saqlangan (ehtimol zid) qiymat emas,
+    // AYNAN shu birlik ishlatiladi: backend ham qiymatni shunday
+    // hisoblaydi (`Promotion.EffectiveUnit`), ya'ni forma haqiqatni
+    // ko'rsatadi.
+    _discountUnit = _unitForType(_type) ?? _discountUnit;
     // discount_value backend'da: percent birligi uchun 1-100 (raqamning
     // o'zi), amount birligi uchun TIYIN (boshqa summa maydonlari — masalan
     // min_order_amount_tiyin — bilan bir xil konvensiya). Forma esa
@@ -1709,7 +1725,14 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
                               selected: _type == t,
                               onTap: _saving
                                   ? null
-                                  : () => setState(() => _type = t),
+                                  : () => setState(() {
+                                        _type = t;
+                                        // Tur birlikni belgilaydi —
+                                        // zid juftlik yaratib
+                                        // bo'lmaydi (_unitForType).
+                                        _discountUnit =
+                                            _unitForType(t) ?? _discountUnit;
+                                      }),
                             ),
                           ),
                       ],
@@ -1859,32 +1882,49 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
                         ),
                       ),
                       const SizedBox(width: 10),
+                      // Birlik TURGA bog'liq: "Foiz orqali chegirma" —
+                      // faqat %, "Summa orqali chegirma" — faqat so'm.
+                      // Bunday turlarda tanlov ko'rsatilmaydi (o'zgartirib
+                      // bo'lmaydigan dropdown ko'rsatish faqat
+                      // chalkashtiradi), qolganlarida esa erkin tanlanadi.
                       SizedBox(
                         width: 92,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _discountUnit,
-                          isExpanded: true,
-                          dropdownColor: OnDexColors.cardBg,
-                          decoration: _formDec(),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'percent', child: Text('%')),
-                            DropdownMenuItem(
-                                value: 'amount', child: Text('so\'m')),
-                          ],
-                          onChanged: _saving
-                              ? null
-                              : (v) => setState(
-                                  () => _discountUnit = v ?? 'percent'),
-                        ),
+                        child: _unitForType(_type) != null
+                            ? _FixedUnitBox(
+                                label:
+                                    _discountUnit == 'percent' ? '%' : 'so\'m')
+                            : DropdownButtonFormField<String>(
+                                key: ValueKey('unit-$_discountUnit'),
+                                initialValue: _discountUnit,
+                                isExpanded: true,
+                                dropdownColor: OnDexColors.cardBg,
+                                decoration: _formDec(),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'percent', child: Text('%')),
+                                  DropdownMenuItem(
+                                      value: 'amount', child: Text('so\'m')),
+                                ],
+                                onChanged: _saving
+                                    ? null
+                                    : (v) => setState(
+                                        () => _discountUnit = v ?? 'percent'),
+                              ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text('Foiz (%) yoki aniq summa kiriting',
-                    style:
-                        TextStyle(fontSize: 11.5, color: OnDexColors.inkFaint)),
+                Text(
+                    switch (_type) {
+                      'percent' =>
+                        'Foiz (1-100). Tanlangan turga ko\'ra birlik — %',
+                      'fixed_amount' =>
+                        'Aniq summa (so\'m). Tanlangan turga ko\'ra birlik — so\'m',
+                      _ => 'Foiz (%) yoki aniq summa kiriting',
+                    },
+                    style: const TextStyle(
+                        fontSize: 11.5, color: OnDexColors.inkFaint)),
                 const SizedBox(height: 16),
                 _LabeledField(
                   label: 'Minimal buyurtma summasi (ixtiyoriy)',

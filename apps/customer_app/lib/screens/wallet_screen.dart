@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/page_sheet.dart';
+import '../widgets/sheet_page.dart';
+
 /// Hamyon — HALI QURILMAGAN.
 ///
 /// Veb bilan parity: `apps/web/app/(food)/wallet/page.tsx`.
@@ -21,14 +24,11 @@ class WalletScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: const Color(0xFF171717),
-        elevation: 0,
-        title: const Text('Hamyon',
+      appBar: const PageAppBar(
+        titleWidget: Text('Hamyon',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
       ),
       body: Center(
@@ -65,6 +65,6 @@ class WalletScreen extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }

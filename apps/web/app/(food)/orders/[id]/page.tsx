@@ -6,6 +6,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
 import { goBack } from "@/lib/nav";
+import { discountLineLabel } from "@/lib/promotions";
 import { DetailedOrderProgress, stageOf, statusStyleOf, extractStageTimes } from "@/lib/order-status";
 import CourierMap from "./courier-map";
 import MobileSheet from "../../mobile-sheet";
@@ -31,6 +32,13 @@ type Order = {
   discount_tiyin: number;
   total_tiyin: number;
   promotion_name?: string;
+  // Chegirmaning AYNAN shu aksiya bergan qismi — chekda nom faqat u
+  // butun chegirmaga teng bo'lganda ko'rsatiladi (savatda bir nechta
+  // aksiya va mahsulot chegirmasi aralashishi mumkin).
+  promotion_discount_tiyin?: number;
+  // Karta to'lovi: `payment_state` faqat karta buyurtmasida to'ladi.
+  payment_method?: string;
+  payment_state?: string;
   status: string;
   history?: HistoryEntry[];
   delivery_lat?: number;
@@ -55,6 +63,9 @@ export default function OrderTrackingPage({
   const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  // Karta to'lovi holati (to'lov sahifasi yopilib qolgan holat uchun).
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [courierLatLng, setCourierLatLng] = useState<{ lat: number; lng: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -125,6 +136,40 @@ export default function OrderTrackingPage({
       .catch(() => {});
   }, [order?.delivery_lat, order?.delivery_lng, address]);
 
+  // To'lov sahifasini QAYTA ochish: mijoz oynani yopib yuborgan yoki
+  // to'lov bank tomonda uzilib qolgan bo'lishi mumkin (masalan
+  // "takroriy SMS xabarlarining maksimal soni"). `retry=1` bilan
+  // server eski urinishni yopib YANGI tranzaksiya ochadi — o'sha o'lik
+  // havolani qayta ochish yordam bermaydi.
+  async function payAgain() {
+    if (paying) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await fetch(`/api/proxy/orders/${id}/pay?retry=1`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      // `pay_url` — Octo to'lov sahifasi, HAR DOIM tashqi `https://`
+      // manzil. Sxemani qat'iy tekshiramiz — `javascript:` yoki boshqa
+      // sxema `location.href` ga tushib XSS/qayta yo'naltirish bermasin
+      // (notifications sahifasidagi "server URL'iga ishonmaslik" tamoyili).
+      if (
+        !res.ok ||
+        typeof data.pay_url !== "string" ||
+        !/^https:\/\//i.test(data.pay_url)
+      ) {
+        throw new Error(data.error || "To'lov sahifasini ochib bo'lmadi");
+      }
+      window.location.href = data.pay_url;
+    } catch (e) {
+      setPayError(
+        e instanceof Error ? e.message : "To'lov sahifasini ochib bo'lmadi",
+      );
+      setPaying(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -142,6 +187,12 @@ export default function OrderTrackingPage({
       </main>
     );
   }
+
+  // Karta buyurtmasi puli bloklanmaguncha oshxonaga tushmaydi.
+  const awaitingPayment =
+    order.payment_method === "card" &&
+    order.payment_state !== "held" &&
+    order.payment_state !== "paid";
 
   const cancelled = order.status === "cancelled" || order.status === "rejected";
   const dineIn = order.type === "dine_in";
@@ -169,6 +220,34 @@ export default function OrderTrackingPage({
         {createdAt.getHours().toString().padStart(2, "0")}:
         {createdAt.getMinutes().toString().padStart(2, "0")} da joylandi
       </p>
+
+      {/* To'lov kutayotgan buyurtma — eng tepada, chunki bu yerda
+          mijozdan HARAKAT talab qilinadi (tracking_screen.dart dagi
+          bilan bir xil qoida). */}
+      {awaitingPayment && !cancelled && (
+        <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="font-bold text-amber-800 dark:text-amber-300">
+            To&apos;lov kutilmoqda
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+            Buyurtma restoranga <b>yuborilmagan</b>. To&apos;lovni
+            yakunlaganingizdan keyin u avtomatik oshxonaga tushadi. Pul darhol
+            yechilmaydi — vaqtincha bloklanadi va restoran buyurtmani qabul
+            qilgandagina yechiladi.
+          </p>
+          {payError && (
+            <p className="mt-2 text-sm text-[#E53935]">{payError}</p>
+          )}
+          <button
+            type="button"
+            disabled={paying}
+            onClick={payAgain}
+            className="mt-3 w-full rounded-xl bg-[#E53935] px-4 py-3 font-semibold text-white disabled:opacity-60"
+          >
+            {paying ? "Ochilmoqda…" : "To'lovni yakunlash"}
+          </button>
+        </div>
+      )}
 
       <div
         className="mt-3 rounded-2xl p-5 text-center"
@@ -264,7 +343,11 @@ export default function OrderTrackingPage({
         {order.discount_tiyin > 0 && (
           <div className="flex justify-between p-3 text-sm text-green-600 dark:text-green-400">
             <span>
-              {order.promotion_name ? `Aksiya: ${order.promotion_name}` : "Aksiya chegirmasi"}
+              {discountLineLabel(
+                order.discount_tiyin,
+                order.promotion_discount_tiyin ?? 0,
+                order.promotion_name,
+              )}
             </span>
             <span className="font-bold">-{formatSum(order.discount_tiyin)}</span>
           </div>

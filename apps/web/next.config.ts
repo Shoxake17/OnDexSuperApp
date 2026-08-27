@@ -35,6 +35,20 @@ const nextConfig: NextConfig = {
 // └────────────────────────────────────────────────────────────────────┘
 const isProd = process.env.NODE_ENV === "production";
 
+/// Media (rasm/3D model) ombori domeni — R2 ning ochiq manzili.
+/// Faqat origin qismi olinadi va faqat https qabul qilinadi: CSP ga
+/// yo'l yoki noto'g'ri sxema tushib qolmasin.
+const mediaOrigin = (() => {
+  const raw = (process.env.NEXT_PUBLIC_MEDIA_ORIGIN ?? "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" ? u.origin : "";
+  } catch {
+    return "";
+  }
+})();
+
 function contentSecurityPolicy(): string {
   return [
     "default-src 'self'",
@@ -58,8 +72,24 @@ function contentSecurityPolicy(): string {
     // belgilangach shu qator o'sha domenga toraytiriladi.
     "img-src 'self' data: blob: https:",
 
-    // Xarita tile'lari va API so'rovlari.
-    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${isProd ? "" : " ws: wss:"}`,
+    // Xarita tile'lari, API so'rovlari va media ombori.
+    //
+    // ┌─ NEGA MEDIA ORIGIN ALOHIDA ────────────────────────────────┐
+    // 3D model (GLB) `<model-viewer>` tomonidan `fetch` orqali
+    // olinadi, ya'ni u `connect-src` ga tushadi — `img-src` emas.
+    // R2 domeni bu ro'yxatda bo'lmasa brauzer so'rovni BLOKLAYDI va
+    // model hech qachon ko'rinmaydi (xato konsolda ham jimgina
+    // qoladi).
+    //
+    // `https:` deb keng ochish ATAYLAB qilinmadi: `img-src` dan
+    // farqli o'laroq `connect-src` orqali ma'lumot CHIQARIB
+    // yuborish mumkin, ya'ni u ancha xavfliroq. Shuning uchun aniq
+    // domen `NEXT_PUBLIC_MEDIA_ORIGIN` orqali beriladi (masalan
+    // https://pub-xxxx.r2.dev). Berilmasa — ro'yxat o'zgarmaydi.
+    // └────────────────────────────────────────────────────────────┘
+    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${
+      mediaOrigin ? ` ${mediaOrigin}` : ""
+    }${isProd ? "" : " ws: wss:"}`,
 
     "font-src 'self' data:",
 

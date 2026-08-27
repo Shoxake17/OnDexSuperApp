@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -23,8 +24,12 @@ import (
 	"chustapp/internal/geo"
 	"chustapp/internal/httpapi"
 	"chustapp/internal/images"
+	"chustapp/internal/model3d"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
+	"chustapp/internal/payments"
+	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/revoke"
 	"chustapp/internal/storage"
@@ -134,6 +139,7 @@ func main() {
 	var userRepo users.Repository
 	var codeStore users.CodeStore
 	var catalogRepo catalog.Repository
+	var bookRepo catalog.BookRepository
 	var promotionsRepo promotions.Repository
 	var favoritesRepo favorites.Repository
 	var pgPool *pgxpool.Pool // katalog Mongo'da bo'lmasa zaxira sifatida ishlatiladi
@@ -291,6 +297,8 @@ func main() {
 			}
 		}
 		catalogRepo = storage.NewMongoCatalogRepo(mdb)
+		// Kitob ombori faqat Mongo rejimida: katalog ham shu yerda.
+		bookRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
 		slog.Info("rejim: MongoDB (katalog)")
 	} else if devMode {
@@ -327,9 +335,73 @@ func main() {
 		}
 		imageStore = r2
 		slog.Info("rejim: Cloudflare R2 (rasm saqlash)")
-	} else {
+		// Brauzer 3D modelni (GLB) `fetch` orqali oladi va bu boshqa
+		// domendan CORS sarlavhasini TALAB qiladi. Rasmlar `<img>`
+		// bilan ko'rsatilgani uchun bu ilgari kerak bo'lmagan.
+		// Mavjud qoida bo'lsa tegilmaydi (`EnsurePublicReadCORS`).
+		//
+		// ALOHIDA kontekst: yuqoridagi `ctx` R2 klientini qurish uchun
+		// edi va `cancel()` allaqachon chaqirilgan.
+		corsCtx, corsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := r2.EnsurePublicReadCORS(corsCtx); err != nil {
+			// Odatiy sabab: R2 tokenida bucket SOZLAMALARI huquqi yo'q
+			// (faqat obyekt o'qish/yozish) — bu to'g'ri, eng kam huquq.
+			// Mobil ilova baribir ishlaydi (`model_3d_view.dart` sahifa
+			// origin'ini model domeniga qo'yadi), lekin VEB/Mini App
+			// uchun qoida Cloudflare panelidan qo'lda qo'yilishi kerak:
+			// R2 → bucket → Settings → CORS Policy → GET/HEAD, origin *.
+			slog.Warn("R2 CORS qoidasi qo'yilmadi — veb/Mini App'da 3D model yuklanmasligi mumkin "+
+				"(Cloudflare panelidan qo'lda qo'ying: R2 → bucket → Settings → CORS Policy)",
+				"err", err)
+		}
+		corsCancel()
+	} else if devMode {
 		imageStore = images.NewLocalStore("uploads")
-		slog.Warn("rejim: lokal disk (rasm saqlash) — R2_BUCKET berilmagan, production uchun tavsiya etilmaydi")
+		slog.Warn("rejim: lokal disk (media saqlash) — R2_BUCKET berilmagan. " +
+			"FAQAT dev uchun: fayllar server diskida qoladi va deploy'da yo'qoladi")
+	} else {
+		// ┌─ FAIL-CLOSED: PRODUCTION'DA FAQAT R2 ─────────────────────┐
+		// Barcha media (taom rasmlari, 3D modellar, kelajakdagi video
+		// va hujjatlar) obyekt omborida turishi SHART.
+		//
+		// Lokal disk production'da jimgina ma'lumot yo'qotadi:
+		// konteyner qayta yaratilganda (har deploy) `uploads/` papkasi
+		// bo'shab qoladi — restoranlar menyusidagi rasmlar va 3D
+		// modellar birdaniga yo'qoladi, xato esa hech qayerda
+		// ko'rinmaydi. Bu MongoDB'siz ishga tushish bilan bir xil
+		// toifadagi xato, shuning uchun javob ham bir xil: to'xtash.
+		// └───────────────────────────────────────────────────────────┘
+		slog.Error("R2_BUCKET berilmagan — media ombori yo'q. " +
+			"Production'da bu MAJBURIY: rasm, 3D model va boshqa fayllar " +
+			"faqat Cloudflare R2 da saqlanadi (lokal disk deploy'da yo'qoladi).")
+		os.Exit(1)
+	}
+
+	// ---------- 3D model generatsiyasi (ixtiyoriy) ----------
+	// TRIPO_API_KEY berilmasa xizmat O'CHIQ bo'ladi: tegishli
+	// endpointlar 503 qaytaradi, qolgan hamma narsa normal ishlaydi.
+	// Bu — R2/Redis/Telegram bilan bir xil falsafa: ixtiyoriy
+	// komponent hech qachon ilovani to'xtatmaydi.
+	//
+	// KALIT FAQAT SHU YERDA O'QILADI va hech qachon mijozga
+	// yuborilmaydi (`internal/httpapi/routes_model3d.go` izohiga
+	// qarang).
+	var model3DSvc *model3d.Service
+	var model3DLimiter *ratelimit.Limiter
+	if tripoKey := strings.TrimSpace(os.Getenv("TRIPO_API_KEY")); tripoKey != "" {
+		gen := model3d.NewTripoClient(
+			tripoKey,
+			os.Getenv("TRIPO_BASE_URL"),      // bo'sh = rasmiy manzil
+			os.Getenv("TRIPO_MODEL_VERSION"), // bo'sh = provayder standarti
+		)
+		// Kuzatuvchi (`SetOnUpdate`) `httpapi.New` ichida ulanadi.
+		model3DSvc = model3d.NewService(gen, imageStore, catalogRepo, model3d.DefaultConfig(), nil)
+		// Restoran uchun: soatiga ~20 ta generatsiya, qisqa muddatda
+		// 5 tagacha ketma-ket. Har biri tashqi xizmatda pul sarflaydi.
+		model3DLimiter = ratelimit.New(20.0/3600.0, 5)
+		slog.Info("3D model generatsiyasi yoqilgan", "provayder", gen.Name())
+	} else {
+		slog.Info("3D model generatsiyasi o'chiq — TRIPO_API_KEY berilmagan")
 	}
 
 	// ---------- Redis: kesh + OTP kodlar (ixtiyoriy) ----------
@@ -596,6 +668,76 @@ func main() {
 	}
 	tableSvc := tables.NewService(tableRepo)
 
+	// ── Karta orqali to'lov (Octo) ──
+	//
+	// ┌─ SOZLANMAGAN BO'LSA TIZIM NORMAL ISHLAYDI ────────────────────┐
+	// Kalitlar bo'lmasa `octoClient`/`paymentSvc` nil qoladi:
+	// buyurtmalar faqat NAQD bo'ladi, to'lov endpointlari 503
+	// qaytaradi, qolgan hamma narsa avvalgidek. Ya'ni to'lovni
+	// bosqichma-bosqich yoqish mumkin.
+	// └───────────────────────────────────────────────────────────────┘
+	var octoClient *octo.Client
+	var paymentSvc *payments.Service
+	if shopID := strings.TrimSpace(os.Getenv("OCTO_SHOP_ID")); shopID != "" {
+		id, err := strconv.ParseInt(shopID, 10, 64)
+		if err != nil {
+			slog.Error("OCTO_SHOP_ID raqam bo'lishi kerak", "qiymat", shopID, "err", err)
+			os.Exit(1)
+		}
+		octoClient, err = octo.New(octo.Config{
+			ShopID: id,
+			Secret: os.Getenv("OCTO_SECRET"),
+			// Imzo kaliti (`unique_key`) Octo texnik jamoasidan
+			// alohida olinadi. Bo'sh bo'lsa imzo tekshirilmaydi va
+			// to'lov FAQAT provayder API'si orqali tasdiqlanadi.
+			SignatureKey: os.Getenv("OCTO_SIGNATURE_KEY"),
+			// Standart holda TEST rejimi: `.env` da ataylab
+			// `OCTO_TEST=false` yozilmaguncha haqiqiy pul
+			// harakatlanmaydi.
+			Test: !strings.EqualFold(strings.TrimSpace(os.Getenv("OCTO_TEST")), "false"),
+		})
+		if err != nil {
+			// Kalit berilgan-u, noto'g'ri bo'lsa — JIMGINA o'chirib
+			// qo'yilmaydi: aks holda karta to'lovi ishlamayotganini
+			// hech kim sezmasdi.
+			slog.Error("Octo sozlanmadi", "err", err)
+			os.Exit(1)
+		}
+
+		var paymentRepo payments.Repository
+		if pgPool != nil {
+			paymentRepo = storage.NewPostgresPaymentRepo(pgPool)
+		} else {
+			paymentRepo = storage.NewMemoryPaymentRepo()
+			slog.Warn("rejim: in-memory (to'lovlar) — server qayta ishga tushganda yo'qoladi")
+		}
+
+		notifyURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_API_URL")), "/") +
+			"/payments/octo/callback"
+		paymentSvc, err = payments.NewService(paymentRepo, octoClient, orderSvc,
+			httpapi.NewID, payments.Options{
+				ReturnURL:  strings.TrimSpace(os.Getenv("OCTO_RETURN_URL")),
+				NotifyURL:  notifyURL,
+				TTLMinutes: 30,
+				// Dalilsiz callback'ga ishonish — FAQAT dev.
+				// `payments.NewService` uni production'da rad etadi.
+				TrustCallbackWithoutProof: devMode && strings.EqualFold(
+					strings.TrimSpace(os.Getenv("OCTO_TRUST_CALLBACK_DEV")), "true"),
+				Production: !devMode,
+			})
+		if err != nil {
+			slog.Error("to'lov xizmati sozlanmadi", "err", err)
+			os.Exit(1)
+		}
+		// Buyurtma qabul qilinganda pulni yechish / rad etilganda
+		// bo'shatish shu bog'lanish orqali ishlaydi.
+		orderSvc.WithPayments(paymentSvc)
+		slog.Info("rejim: karta orqali to'lov (Octo) yoqilgan",
+			"shop_id", id, "test", octoClient.TestMode(), "callback", notifyURL)
+	} else {
+		slog.Warn("OCTO_SHOP_ID yo'q — karta orqali to'lov O'CHIQ, buyurtmalar faqat naqd")
+	}
+
 	// Dispatch matching engine — Google Distance Matrix orqali HAQIQIY ETA.
 	// MUHIM: bu ham xuddi geokodlash kabi SERVER-SERVER chaqiruv, shuning
 	// uchun veb (HTTP referrer bilan cheklangan) yoki Android (paket+SHA-1
@@ -640,6 +782,7 @@ func main() {
 		CourierRepo:    courierRepo,
 		UserRepo:       userRepo,
 		CatalogRepo:    catalogRepo,
+		BookRepo:       bookRepo,
 		PromotionsRepo: promotionsRepo,
 		FavoritesRepo:  favoritesRepo,
 		Cache:          redisCache,
@@ -652,6 +795,8 @@ func main() {
 		OrderSvc:       orderSvc,
 		CatalogSvc:     catalogSvc,
 		TableSvc:       tableSvc,
+		Payments:       paymentSvc,
+		OctoClient:     octoClient,
 		Dispatcher:     dispatcher,
 		DevMode:        devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI —
@@ -666,10 +811,24 @@ func main() {
 		Telegram: tgVerifier,
 		// Mini App `initData` imzosini tekshirish uchun (server.go izohi).
 		TelegramBotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
-		Notifications: notifStore,
-		PushTokens:    tokenStore,
-		Devices:       deviceStore,
+		Notifications:  notifStore,
+		PushTokens:     tokenStore,
+		Devices:        deviceStore,
+		Model3D:        model3DSvc,
+		Model3DLimiter: model3DLimiter,
 	})
+
+	// Tugallanmagan 3D vazifalarni davom ettiramiz. Server qayta ishga
+	// tushganda kuzatuvchi gorutinalar yo'qoladi va mahsulot abadiy
+	// "tayyorlanmoqda" holatida qolardi (`ResumePending` izohiga
+	// qarang). Fon rejimida — ishga tushishni sekinlashtirmasin.
+	if model3DSvc != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			model3DSvc.ResumePending(ctx)
+		}()
+	}
 
 	// Dispatch tiklash (crash-recovery) — dispatch holati FAQAT xotirada
 	// (Dispatcher.pending map + fon goroutine) saqlanadi. Server process

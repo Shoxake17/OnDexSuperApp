@@ -3,11 +3,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../widgets/app_text_field.dart';
+import '../widgets/page_sheet.dart';
+import '../data/quote_service.dart';
+import '../widgets/product_grid.dart' show discountLineLabel;
 import '../widgets/qty_stepper.dart';
+import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
+import 'payment_webview_screen.dart';
 import 'tracking_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -82,12 +89,24 @@ class CheckoutScreen extends StatefulWidget {
   final int? discountTiyin;
   final String? promotionName;
 
+  /// Chegirmaning aksiya bergan qismi (tiyin) — qolgani mahsulotlarning
+  /// o'z chegirma narxlari.
+  final int promotionDiscountTiyin;
+
+  /// Serverning QATOR bo'yicha hisobi (`product_id` -> qator summasi,
+  /// tiyin) — savat ekranidagi so'rovdan ko'chiriladi, shuning uchun bu
+  /// ekran ochilishi bilan taomlar yonida HAQIQIY narx turadi.
+  /// Miqdor o'zgarsa `_refreshQuote()` uni yangilaydi.
+  final Map<String, int> quoteLineTotals;
+
   const CheckoutScreen({
     super.key,
     required this.quoteTiyin,
     this.subtotalTiyin,
     this.discountTiyin,
     this.promotionName,
+    this.promotionDiscountTiyin = 0,
+    this.quoteLineTotals = const {},
   });
 
   @override
@@ -126,15 +145,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   late int? _subtotal = widget.subtotalTiyin;
   late int? _discount = widget.discountTiyin;
   late String? _promotionName = widget.promotionName;
+  /// Chegirmaning AYNAN aksiya bergan qismi — hisob qatori nomi shunga
+  /// qarab tanlanadi (`discountLineLabel`).
+  late int _promotionDiscount = widget.promotionDiscountTiyin;
+  late Map<String, int> _lineTotals = widget.quoteLineTotals;
   bool _quoting = false;
-  int _quoteSeq = 0;
 
-  /// Tanlangan to'lov usuli. MOCK: `POST /orders` bu maydonni QABUL
-  /// QILMAYDI, ya'ni tanlov serverga UMUMAN yuborilmaydi va buyurtma
-  /// qaysi usul tanlansa ham bir xil yaratiladi.
+  /// Eskirgan javoblardan himoya shu obyekt ichida.
+  final _quoteFetcher = QuoteFetcher();
+
+  /// Tanlangan to'lov usuli — serverga HAQIQATAN yuboriladi.
   ///
-  /// Standart qiymat ATAYLAB naqd: ayni paytda haqiqatda shunday —
-  /// hisob kuryerga yetkazib berishda to'lanadi.
+  /// `card` tanlansa buyurtma TO'LOV KUTIB yaratiladi (restoranga
+  /// ko'rinmaydi), so'ng `POST /orders/{id}/pay` orqali Octo to'lov
+  /// sahifasi ochiladi. Pul BLOKLANADI, restoran buyurtmani qabul
+  /// qilgandagina yechiladi.
+  ///
+  /// Standart — naqd: kuryerga/affitsiantga to'lanadi.
   _PayMethod _payMethod = _PayMethod.cash;
 
   /// Kiritilgan kupon kodi. MOCK: kod bo'yicha chegirma tizimi
@@ -202,34 +229,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   /// Miqdor o'zgargach yakuniy summani QAYTA so'raydi.
+  ///
+  /// So'rov `data/quote_service.dart` da — savat va menyu ekranlari
+  /// bilan bitta kod.
   Future<void> _refreshQuote() async {
     final rid = _cart.restaurantId;
     if (rid == null || _cart.isEmpty) return;
 
-    final seq = ++_quoteSeq;
     setState(() => _quoting = true);
     try {
-      final res = await api.quote(rid, [
-        for (final e in _cart.items.entries)
-          {'product_id': e.key, 'qty': e.value}
-      ]);
-      if (!mounted || seq != _quoteSeq) return;
-      final t = (res['total_tiyin'] as num?)?.toInt();
+      final q = await _quoteFetcher.fetch(rid);
+      if (!mounted || q == null) return; // eskirgan javob
       setState(() {
         _quoting = false;
-        if (t != null && t > 0) {
-          _total = t;
-          _subtotal = (res['subtotal_tiyin'] as num?)?.toInt();
-          _discount = (res['discount_tiyin'] as num?)?.toInt();
-          _promotionName = res['promotion_name'] as String?;
-          _error = null;
-        }
+        // Ishonchsiz summa (0 yoki manfiy) ekrandagi hisobni
+        // O'ZGARTIRMAYDI — savatdan kelgan qiymat qoladi.
+        if (!q.isUsable) return;
+        _total = q.totalTiyin!;
+        _subtotal = q.subtotalTiyin;
+        _discount = q.discountTiyin;
+        _promotionName = q.promotionName;
+        _promotionDiscount = q.promotionDiscountTiyin;
+        _lineTotals = q.lineTotals;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted || seq != _quoteSeq) return;
+      if (!mounted) return;
       setState(() {
         _quoting = false;
-        _error = e is ApiException ? e.message : 'Summani hisoblab bo\'lmadi';
+        _error = errorText(e, 'Summani hisoblab bo\'lmadi');
       });
     }
   }
@@ -256,6 +284,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
     setState(() => _loadingAddress = true);
     await _loadAddress();
+  }
+
+  /// Karta to'lovini boshlaydi va Octo sahifasini ILOVA ICHIDA ochadi.
+  ///
+  /// ┌─ NEGA WEBVIEW ────────────────────────────────────────────────┐
+  /// Mijoz ilovadan chiqmasligi kerak. Karta ma'lumoti esa bizning
+  /// kodimizdan o'tmasligi kerak (aks holda PCI DSS majburiy bo'ladi),
+  /// shuning uchun sahifani o'zimiz chizmaymiz — Octo'nikini
+  /// ko'rsatamiz. Octo'da mobil SDK yo'q.
+  ///
+  /// Ba'zi banklarning 3-D Secure oynasi WebView'da ochilmasligi
+  /// mumkin — shuning uchun o'sha ekranda "Brauzerda ochish" tugmasi
+  /// qoldirilgan (`PaymentWebViewScreen`).
+  /// └───────────────────────────────────────────────────────────────┘
+  Future<bool> _startCardPayment(String orderId) async {
+    try {
+      final p = await api.startPayment(orderId);
+      final url = (p['pay_url'] as String?) ?? '';
+      if (url.isEmpty) throw Exception('havola bo\'sh');
+
+      if (!mounted) return false;
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            payUrl: url,
+            returnUrl: (p['return_url'] as String?) ?? '',
+          ),
+        ),
+      );
+      // Oyna yopilgani to'lov o'tganini BILDIRMAYDI — haqiqiy holatni
+      // faqat provayderning callback'i belgilaydi. Kuzatuv ekrani
+      // serverdan holatni so'rab turadi.
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      setState(() {
+        _submitting = false;
+        _error = errorText(
+            e,
+            'To\'lov sahifasini ochib bo\'lmadi. Buyurtma to\'lanmagan holda '
+            'kutmoqda — "Buyurtmalarim" bo\'limidan qayta urinib ko\'ring.');
+      });
+      return false;
+    }
   }
 
   Future<void> _submit() async {
@@ -287,9 +359,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         lng: _isDineIn ? null : (_address!['lng'] as num).toDouble(),
         tableToken: _isDineIn ? _cart.tableToken : null,
         partySize: _isDineIn ? _partySize : null,
+        paymentMethod: _payMethod == _PayMethod.card ? 'card' : 'cash',
       );
 
       if (!mounted) return;
+
+      // ┌─ KARTA: TO'LOV SAHIFASI ──────────────────────────────────┐
+      // Buyurtma yaratildi, lekin u TO'LOV KUTIB turibdi va
+      // oshxonaga tushmagan. To'lov havolasi olinmasa — buyurtmani
+      // shu yerda bekor qilamiz: mijoz "buyurtma berildi" deb
+      // o'ylab qolmasligi kerak.
+      // └───────────────────────────────────────────────────────────┘
+      if (_payMethod == _PayMethod.card) {
+        final orderId = (order['id'] as String?) ?? '';
+        final ok = await _startCardPayment(orderId);
+        if (!ok) return; // xato ekranda ko'rsatildi, savat saqlanib qoldi
+        if (!mounted) return;
+      }
 
       // Savat FAQAT muvaffaqiyatdan keyin tozalanadi. Oldin tozalansa
       // va so'rov yiqilsa, mijoz savatini yo'qotgan bo'lardi.
@@ -305,26 +391,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // katalogga qaytadi — buyurtma allaqachon berilgan, unga
       // qaytishning ma'nosi yo'q.
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => TrackingScreen(orderId: id)),
+        sheetRoute(TrackingScreen(orderId: id)),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = e is ApiException ? e.message : 'Buyurtma yuborilmadi';
+        _error = errorText(e, 'Buyurtma yuborilmadi');
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-      appBar: AppBar(
+      appBar: PageAppBar(
         backgroundColor: const Color(0xFFFAFAFA),
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: const Color(0xFF171717),
-        elevation: 0,
         centerTitle: true,
         titleSpacing: 0,
         leadingWidth: 64,
@@ -344,7 +428,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
         ),
-        title: const Text('Rasmiylashtirish',
+        titleWidget: const Text('Rasmiylashtirish',
             style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       ),
       body: _loadingAddress
@@ -368,7 +452,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ],
             ),
       bottomNavigationBar: _bottomBar(),
-    );
+    ));
   }
 
   // ── Manzil va yetkazish vaqti ─────────────────────────────────────
@@ -425,7 +509,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           _CardRow(
             icon: Icons.qr_code_2,
-            title: (label == null || label.isEmpty) ? 'Stol' : '$label-stol',
+            title: tableText(label ?? ''),
             subtitle: 'Buyurtma to\'g\'ridan-to\'g\'ri oshxonaga tushadi',
           ),
           const Divider(height: 1, indent: 44),
@@ -504,6 +588,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               productId: entries[i].key,
               qty: entries[i].value,
               restaurantId: rid,
+              serverLineTotalTiyin: _lineTotals[entries[i].key],
             ),
           ],
         ],
@@ -587,9 +672,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               _TotalLine(label: 'Savatdagi tovarlar', value: formatSum(sub)),
             if (disc > 0)
               _TotalLine(
-                label: (_promotionName ?? '').trim().isEmpty
-                    ? 'Aksiya chegirmasi'
-                    : 'Aksiya: ${_promotionName!.trim()}',
+                label: discountLineLabel(
+                  discountTiyin: disc,
+                  promotionDiscountTiyin: _promotionDiscount,
+                  promotionName: _promotionName,
+                ),
                 value: '− ${formatSum(disc)}',
                 color: const Color(0xFF16A34A),
               ),
@@ -765,17 +852,13 @@ class _CouponSheetState extends State<_CouponSheet> {
             const Text('Kupon yoki promokod',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            TextField(
+            AppTextField(
               controller: _controller,
+              hint: 'Masalan: ONDEX10',
               autofocus: true,
               textCapitalization: TextCapitalization.characters,
               textInputAction: TextInputAction.done,
               onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
-              decoration: InputDecoration(
-                hintText: 'Masalan: ONDEX10',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
             ),
             const SizedBox(height: 10),
             // Bu matn ATAYLAB bor: kupon tizimi hali ulanmagan va kod
@@ -1139,11 +1222,19 @@ class _OrderItemRow extends StatelessWidget {
   final int qty;
   final String restaurantId;
 
+  /// Serverning shu qator uchun yakuniy summasi (tiyin). `null` —
+  /// javob yo'q; shunda mahsulotning O'Z chegirma narxiga tushamiz
+  /// (aksiyalar bu yerda taxmin qilinmaydi: server ularni butun savatga
+  /// qo'llaydi, ya'ni bitta qatorga "to'g'ri" ulush faqat serverdan
+  /// kelishi mumkin).
+  final int? serverLineTotalTiyin;
+
   const _OrderItemRow({
     required this.product,
     required this.productId,
     required this.qty,
     required this.restaurantId,
+    required this.serverLineTotalTiyin,
   });
 
   @override
@@ -1156,6 +1247,8 @@ class _OrderItemRow extends StatelessWidget {
     final price = (p?['price_tiyin'] as num?)?.toInt() ?? 0;
     final discount = (p?['discount_price_tiyin'] as num?)?.toInt() ?? 0;
     final unit = (discount > 0 && discount < price) ? discount : price;
+    final lineSubtotal = price * qty;
+    final lineTotal = serverLineTotalTiyin ?? unit * qty;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -1173,10 +1266,9 @@ class _OrderItemRow extends StatelessWidget {
                       child: const Icon(Icons.restaurant_menu,
                           color: Color(0xFFBDBDBD)),
                     )
-                  : Image.network(
-                      fullImageUrl(image),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                  : RemoteImage(
+                      url: image,
+                      placeholder: Container(
                         color: const Color(0xFFF5F5F5),
                         child: const Icon(Icons.restaurant_menu,
                             color: Color(0xFFBDBDBD)),
@@ -1223,12 +1315,23 @@ class _OrderItemRow extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                formatSum(unit * qty),
+                formatSum(lineTotal),
                 style: const TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.bold,
                     color: kBrand),
               ),
+              // Chegirma bo'lsa tan narx ham ko'rinadi — mijoz nechi
+              // so'm yutganini ko'rsin (savat ekranidagi bilan bir xil).
+              if (lineTotal < lineSubtotal)
+                Text(
+                  formatSum(lineSubtotal),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF9E9E9E),
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
             ],
           ),
         ],

@@ -21,7 +21,7 @@ func (r *fakePromoRepo) GetByID(context.Context, string) (*promotions.Promotion,
 	return nil, promotions.ErrNotFound
 }
 func (r *fakePromoRepo) Save(context.Context, *promotions.Promotion) error { return nil }
-func (r *fakePromoRepo) Delete(context.Context, string) error             { return nil }
+func (r *fakePromoRepo) Delete(context.Context, string) error              { return nil }
 func (r *fakePromoRepo) DeleteByRestaurant(context.Context, string) (int, error) {
 	return 0, nil
 }
@@ -62,7 +62,7 @@ func TestProductDiscountAndPromotionDoNotStack(t *testing.T) {
 		ProductID: "p1", Name: "Coca Cola", Category: "Ichimliklar", Qty: 2,
 		PriceTiyin: 1500000, DiscountPriceTiyin: 500000,
 	}}
-	subtotal, discount, applied, err := svc.priceCart(context.Background(), "r1", items, "")
+	subtotal, discount, applied, lineDiscounts, err := svc.priceCart(context.Background(), "r1", items, "")
 	if err != nil {
 		t.Fatalf("kutilmagan xato: %v", err)
 	}
@@ -78,11 +78,16 @@ func TestProductDiscountAndPromotionDoNotStack(t *testing.T) {
 	if discount != 2000000 {
 		t.Errorf("chegirma: %d, kutilgan 2000000 (mahsulot chegirmasi yutishi kerak)", discount)
 	}
-	if applied != nil {
-		t.Errorf("mahsulot chegirmasi yutganda aksiya qo'llanmasligi kerak, olindi %q", applied.Promotion.Name)
+	if len(applied.Promotions) != 0 {
+		t.Errorf("mahsulot chegirmasi yutganda aksiya qo'llanmasligi kerak: %+v", applied.Promotions)
 	}
 	if total := subtotal - discount; total != 1000000 {
 		t.Errorf("jami: %d, kutilgan 1000000 (2 x 5 000 so'm) — NOL BO'LMASLIGI kerak", total)
+	}
+	// Qator taqsimoti ham to'liq: bitta qator bor, unga BUTUN chegirma
+	// tegishli bo'lishi kerak (klient savatda aynan shu raqamni chizadi).
+	if len(lineDiscounts) != 1 || lineDiscounts[0] != discount {
+		t.Errorf("qator taqsimoti: %v, kutilgan [%d]", lineDiscounts, discount)
 	}
 }
 
@@ -101,7 +106,7 @@ func TestPromotionWinsWhenBetterThanProductDiscount(t *testing.T) {
 		ProductID: "p1", Name: "Osh", Qty: 1,
 		PriceTiyin: 1400000, DiscountPriceTiyin: 1300000,
 	}}
-	subtotal, discount, applied, err := svc.priceCart(context.Background(), "r1", items, "")
+	subtotal, discount, applied, _, err := svc.priceCart(context.Background(), "r1", items, "")
 	if err != nil {
 		t.Fatalf("kutilmagan xato: %v", err)
 	}
@@ -111,8 +116,184 @@ func TestPromotionWinsWhenBetterThanProductDiscount(t *testing.T) {
 	if discount != 700000 {
 		t.Errorf("chegirma: %d, kutilgan 700000 (aksiya yutishi kerak)", discount)
 	}
-	if applied == nil || applied.Promotion.Name != "50% chegirma" {
-		t.Errorf("aksiya qo'llanishi va chekda ko'rinishi kerak edi: %+v", applied)
+	if p := applied.Primary(); p == nil || p.Promotion.Name != "50% chegirma" {
+		t.Errorf("aksiya qo'llanishi va chekda ko'rinishi kerak edi: %+v", applied.Promotions)
+	}
+}
+
+// ★ HAQIQIY REGRESSIYA (2026-08-18, "Feel Food", telefonda o'lchandi):
+// menyuda 12 000 so'mlik Cola aksiya bilan 7 000, 15 000 so'mlik Cola
+// o'z chegirma narxi bilan 5 000 ko'rinardi — ya'ni jami 12 000. Savat
+// esa 17 000 so'm derdi.
+//
+// Sabab: aksiya (5 000 + 5 000 = 10 000) va mahsulot chegirmasi
+// (10 000) BUTUN savat uchun raqobatlashib, faqat bittasi
+// qo'llanardi. To'g'ri qoida — HAR QATOR o'zining eng yaxshisini oladi
+// (bitta qatorda ikkalasi qo'shilmaydi).
+func TestPriceCartTakesBestDiscountPerLine(t *testing.T) {
+	promo := activePromo(&promotions.Promotion{
+		ID: "pr1", Name: "Mustaqillik kuni",
+		Type: promotions.TypeFixedAmount, DiscountUnit: promotions.DiscountUnitAmount,
+		DiscountValue:       500000, // 5 000 so'm har donaga
+		AppliesToCategories: true,
+		TargetCategories:    []string{"Ichimliklar"},
+	})
+	svc := newPricingService(promo)
+
+	items := []Item{
+		// 1 L — faqat aksiya: 12 000 -> 7 000.
+		{ProductID: "cola-1l", Name: "Coca Cola 1 L", Category: "Ichimliklar", Qty: 1,
+			PriceTiyin: 1200000},
+		// 1.5 L — o'z chegirma narxi foydaliroq: 15 000 -> 5 000.
+		{ProductID: "cola-15l", Name: "Coca Cola 1.5 L", Category: "Ichimliklar", Qty: 1,
+			PriceTiyin: 1500000, DiscountPriceTiyin: 500000},
+	}
+	subtotal, discount, applied, lineDiscounts, err := svc.priceCart(context.Background(), "r1", items, "")
+	if err != nil {
+		t.Fatalf("kutilmagan xato: %v", err)
+	}
+	if subtotal != 2700000 {
+		t.Errorf("subtotal: %d, kutilgan 2700000", subtotal)
+	}
+	if discount != 1500000 {
+		t.Errorf("chegirma: %d, kutilgan 1500000 (5 000 + 10 000 so'm)", discount)
+	}
+	if total := subtotal - discount; total != 1200000 {
+		t.Errorf("jami: %d, kutilgan 1200000 (12 000 so'm) — menyudagi 7 000 + 5 000", total)
+	}
+	if lineDiscounts[0] != 500000 || lineDiscounts[1] != 1000000 {
+		t.Errorf("taqsimot: %v, kutilgan [500000 1000000]", lineDiscounts)
+	}
+	if applied.PromotionTiyin != 500000 {
+		t.Errorf("aksiya hissasi: %d, kutilgan 500000", applied.PromotionTiyin)
+	}
+	var sum int64
+	for _, d := range lineDiscounts {
+		sum += d
+	}
+	if sum != discount {
+		t.Errorf("qatorlar yig'indisi %d, jami chegirma %d — teng emas", sum, discount)
+	}
+}
+
+// Aksiya hech bir qatorda mahsulot chegirmasidan foydali bo'lmasa —
+// UMUMAN qo'llanmaydi: chekda nomi chiqmaydi, statistikasi oshmaydi.
+func TestPriceCartPromotionNotAppliedWhenNeverBetter(t *testing.T) {
+	promo := activePromo(&promotions.Promotion{
+		ID: "pr1", Name: "Kichik aksiya",
+		Type: promotions.TypeFixedAmount, DiscountUnit: promotions.DiscountUnitAmount,
+		DiscountValue:       100000, // 1 000 so'm
+		AppliesToCategories: true,
+		TargetCategories:    []string{"Ichimliklar"},
+	})
+	svc := newPricingService(promo)
+
+	items := []Item{
+		{ProductID: "cola", Name: "Coca Cola", Category: "Ichimliklar", Qty: 2,
+			PriceTiyin: 1500000, DiscountPriceTiyin: 500000}, // -10 000 har donaga
+	}
+	_, discount, applied, lineDiscounts, err := svc.priceCart(context.Background(), "r1", items, "")
+	if err != nil {
+		t.Fatalf("kutilmagan xato: %v", err)
+	}
+	if discount != 2000000 {
+		t.Errorf("chegirma: %d, kutilgan 2000000 (2 x 10 000 so'm)", discount)
+	}
+	if len(applied.Promotions) != 0 {
+		t.Errorf("aksiya qo'llanmasligi kerak edi: %+v", applied.Promotions)
+	}
+	if lineDiscounts[0] != 2000000 {
+		t.Errorf("taqsimot: %v, kutilgan [2000000]", lineDiscounts)
+	}
+}
+
+// ★ HAQIQIY REGRESSIYA (2026-08-18, telefonda o'lchandi): savatda IKKI
+// XIL aksiya bo'lganda ham har mahsulot o'zining chegirmasini olishi
+// kerak. 12 000 so'mlik Cola (-5 000) + 10 000 so'mlik kokteyl (-20%)
+// = 15 000 so'm. Avval server butun savatga faqat BITTA aksiya
+// qo'llardi va 17 000 so'm chiqardi.
+func TestPriceCartAppliesTwoPromotionsOnDifferentLines(t *testing.T) {
+	drinks := activePromo(&promotions.Promotion{
+		ID: "pr1", Name: "Ichimliklarga -5 000",
+		Type: promotions.TypeFixedAmount, DiscountUnit: promotions.DiscountUnitAmount,
+		DiscountValue:       500000,
+		AppliesToCategories: true,
+		TargetCategories:    []string{"Ichimliklar"},
+	})
+	kokteyl := activePromo(&promotions.Promotion{
+		ID: "pr2", Name: "Kokteylga 20%",
+		Type: promotions.TypePercent, DiscountUnit: promotions.DiscountUnitPercent,
+		DiscountValue:     20,
+		AppliesToProducts: true,
+		TargetProductIDs:  []string{"kokteyl"},
+	})
+	svc := newPricingService(drinks, kokteyl)
+
+	items := []Item{
+		{ProductID: "cola", Name: "Coca Cola", Category: "Ichimliklar", Qty: 1,
+			PriceTiyin: 1200000},
+		{ProductID: "kokteyl", Name: "Kokteyl", Category: "Kokteyllar", Qty: 1,
+			PriceTiyin: 1000000},
+	}
+	subtotal, discount, applied, lineDiscounts, err := svc.priceCart(context.Background(), "r1", items, "")
+	if err != nil {
+		t.Fatalf("kutilmagan xato: %v", err)
+	}
+	if subtotal != 2200000 {
+		t.Errorf("subtotal: %d, kutilgan 2200000", subtotal)
+	}
+	if total := subtotal - discount; total != 1500000 {
+		t.Errorf("jami: %d, kutilgan 1500000 (7 000 + 8 000 so'm)", total)
+	}
+	if lineDiscounts[0] != 500000 || lineDiscounts[1] != 200000 {
+		t.Errorf("taqsimot: %v, kutilgan [500000 200000]", lineDiscounts)
+	}
+	// Ikkala aksiya ham statistikaga o'z hissasi bilan tushishi kerak.
+	if len(applied.Promotions) != 2 {
+		t.Fatalf("ikkala aksiya ham qo'llanishi kerak edi: %+v", applied.Promotions)
+	}
+	if p := applied.Primary(); p == nil || p.Promotion.ID != "pr1" || p.DiscountTiyin != 500000 {
+		t.Errorf("asosiy aksiya: %+v, kutilgan pr1 / 500000", p)
+	}
+}
+
+// Quote klientga qator narxlarini ham beradi va ular jamiga ANIQ
+// qo'shiladi — savat ekrani aynan shu raqamlarni chizadi.
+func TestQuoteReturnsConsistentLines(t *testing.T) {
+	promo := activePromo(&promotions.Promotion{
+		ID: "pr1", Name: "30%",
+		Type: promotions.TypePercent, DiscountUnit: promotions.DiscountUnitPercent,
+		DiscountValue: 30, AppliesToOrders: true,
+	})
+	svc := newPricingService(promo)
+
+	items := []Item{
+		{ProductID: "a", Name: "Osh", Qty: 2, PriceTiyin: 3500001},
+		{ProductID: "b", Name: "Choy", Qty: 1, PriceTiyin: 500001},
+	}
+	q, err := svc.Quote(context.Background(), "r1", items, "")
+	if err != nil {
+		t.Fatalf("kutilmagan xato: %v", err)
+	}
+	if len(q.Lines) != 2 {
+		t.Fatalf("qator soni: %d, kutilgan 2", len(q.Lines))
+	}
+	var lineTotals, lineDiscounts int64
+	for _, l := range q.Lines {
+		if l.SubtotalTiyin != l.UnitPriceTiyin*int64(l.Qty) {
+			t.Errorf("qator %s: subtotal %d, kutilgan %d", l.ProductID, l.SubtotalTiyin, l.UnitPriceTiyin*int64(l.Qty))
+		}
+		if l.TotalTiyin != l.SubtotalTiyin-l.DiscountTiyin {
+			t.Errorf("qator %s: jami %d, kutilgan %d", l.ProductID, l.TotalTiyin, l.SubtotalTiyin-l.DiscountTiyin)
+		}
+		lineTotals += l.TotalTiyin
+		lineDiscounts += l.DiscountTiyin
+	}
+	if lineTotals != q.TotalTiyin {
+		t.Errorf("qatorlar jami %d, quote jami %d — teng bo'lishi shart", lineTotals, q.TotalTiyin)
+	}
+	if lineDiscounts != q.DiscountTiyin {
+		t.Errorf("qator chegirmalari %d, quote chegirmasi %d", lineDiscounts, q.DiscountTiyin)
 	}
 }
 
@@ -126,7 +307,7 @@ func TestDiscountNeverExceedsSubtotal(t *testing.T) {
 	svc := newPricingService(promo)
 	items := []Item{{ProductID: "p1", Name: "Choy", Qty: 1, PriceTiyin: 500000}}
 
-	subtotal, discount, _, err := svc.priceCart(context.Background(), "r1", items, "")
+	subtotal, discount, _, _, err := svc.priceCart(context.Background(), "r1", items, "")
 	if err != nil {
 		t.Fatalf("kutilmagan xato: %v", err)
 	}

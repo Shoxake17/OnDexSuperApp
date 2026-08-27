@@ -19,7 +19,9 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
@@ -27,8 +29,12 @@ import (
 	"chustapp/internal/favorites"
 	"chustapp/internal/firebaseauth"
 	"chustapp/internal/images"
+	"chustapp/internal/model3d"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
+	"chustapp/internal/payments"
+	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/revoke"
 	"chustapp/internal/tables"
@@ -47,6 +53,10 @@ type Deps struct {
 	CourierRepo    couriers.Repository
 	UserRepo       users.Repository
 	CatalogRepo    catalog.Repository
+	// BookRepo — kafe kutubxonasi. IXTIYORIY: faqat Mongo rejimida
+	// ulanadi. `nil` bo'lsa kitob endpointlari xizmat yo'qligini
+	// aytadi, qolgan API esa ishlayveradi.
+	BookRepo       catalog.BookRepository
 	PromotionsRepo promotions.Repository
 	FavoritesRepo  favorites.Repository
 
@@ -66,6 +76,14 @@ type Deps struct {
 	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
 	// — bu funksiyani bosqichma-bosqich yoqish uchun.
 	TableSvc *tables.Service
+
+	// Payments — karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
+	// 503 qaytaradi va buyurtmalar faqat NAQD bo'ladi (tizimning
+	// qolgan qismi normal ishlaydi).
+	Payments *payments.Service
+	// OctoClient — callback imzosini tekshirish uchun. `Payments`
+	// bilan birga to'ldiriladi.
+	OctoClient *octo.Client
 
 	// DevMode — dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
@@ -117,6 +135,14 @@ type Deps struct {
 	// narsa o'zgarishsiz ishlaydi (`devices.go`).
 	Devices users.DeviceStore
 
+	// Model3D — taom rasmidan 3D model generatsiyasi. `nil` bo'lsa
+	// tegishli endpointlar 503 qaytaradi va qolgan hamma narsa
+	// o'zgarishsiz ishlaydi (`TRIPO_API_KEY` sozlanmagan holat).
+	Model3D *model3d.Service
+	// Model3DLimiter — restoran bo'yicha tezlik chegarasi. Har chaqiruv
+	// tashqi xizmatda PUL sarflaydi, shuning uchun chegara SHART.
+	Model3DLimiter *ratelimit.Limiter
+
 	// Notifications — saqlangan bildirishnomalar ombori
 	// (`GET /notifications`). `nil` bo'lsa endpointlar 503 qaytaradi.
 	Notifications notify.Store
@@ -135,7 +161,33 @@ type Server struct {
 }
 
 func New(d Deps) *Server {
-	return &Server{Deps: d, speedGate: delivery.NewSpeedGate()}
+	s := &Server{Deps: d, speedGate: delivery.NewSpeedGate()}
+
+	// 3D model holati o'zgarganda ikki ish qilinadi. Ikkalasi ham
+	// SHART:
+	//   * menyu keshi tozalanadi — aks holda mijoz ilovasi 30 soniya
+	//     davomida eski (modelsiz) menyuni olib turardi;
+	//   * restoran kanaliga xabar — panel tugmani "tayyorlanmoqda"
+	//     dan "tayyor" ga o'zi almashtiradi, sahifani yangilash
+	//     kerak bo'lmaydi.
+	if s.Model3D != nil {
+		s.Model3D.SetOnUpdate(func(p *catalog.Product) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if s.Cache != nil {
+				s.Cache.Del(ctx, menuCacheKey(p.RestaurantID))
+			}
+			if s.Hub != nil {
+				s.Hub.Send(restaurantTopic(p.RestaurantID), map[string]any{
+					"type":       "model3d_updated",
+					"product_id": p.ID,
+					"status":     p.Model3DStatus,
+					"model_url":  p.Model3DURL,
+				})
+			}
+		})
+	}
+	return s
 }
 
 // Routes — barcha endpointlarni ro'yxatga oladi va tayyor handler
@@ -154,14 +206,17 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
 	s.registerTableRoutes(mux)
+	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)
 	s.registerCourierRoutes(mux)
 	s.registerPromotionRoutes(mux)
+	s.registerPaymentRoutes(mux)
 	s.registerAdminRoutes(mux)
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)
 	s.registerUploadRoutes(mux)
+	s.registerModel3DRoutes(mux)
 
 	return withBodyLimit(withCORS(mux, allowedOrigins, s.DevMode))
 }

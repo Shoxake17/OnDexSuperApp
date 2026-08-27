@@ -31,6 +31,13 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   { method: "GET", pattern: "products/search" },
   { method: "POST", pattern: "orders" },
   { method: "GET", pattern: "orders/*" },
+  // Karta orqali to'lov: havolani olish va holatni kuzatish.
+  // Faqat SHU ikkitasi — callback endpointi (`payments/octo/callback`)
+  // ATAYLAB ro'yxatda yo'q: uni Octo serveri to'g'ridan-to'g'ri
+  // chaqiradi, brauzer orqali o'tishning hech qanday sababi yo'q va
+  // ochib qo'yilsa soxta xabar yuborish yo'li paydo bo'lardi.
+  { method: "POST", pattern: "orders/*/pay" },
+  { method: "GET", pattern: "orders/*/payment" },
   { method: "GET", pattern: "favorites" },
   { method: "GET", pattern: "favorites/ids" },
   { method: "POST", pattern: "favorites/*" },

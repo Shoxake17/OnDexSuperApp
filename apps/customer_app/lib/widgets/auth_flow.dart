@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../screens/lock_gate.dart';
+import '../services/firebase_phone.dart' show PhoneAuthFailure;
 import '../services/google_auth.dart';
+import '../services/otp_delivery.dart' show OtpDeliveryFailure;
 import '../services/telegram_auth.dart';
 import '../session.dart';
 import 'auth_ui.dart';
@@ -24,6 +26,25 @@ import 'auth_ui.dart';
 /// har uchala ekran shu yerdan foydalanadi.
 
 /// Xato/xabar ko'rsatish — uchala ekranda bir xil ko'rinish.
+/// Auth oqimidagi XATOLARNI foydalanuvchi matniga aylantiradi.
+///
+/// ┌─ NEGA UMUMIY ─────────────────────────────────────────────────────┐
+/// Kod yuborish va tasdiqlash oltita joyda chaqiriladi (kirish,
+/// ro'yxatdan o'tish, parolni tiklash, PIN tiklash…). Har birida AYNAN
+/// bir xil to'rt bosqichli `catch` zanjiri qo'lda yozilgan edi:
+///
+///   on OtpDeliveryFailure / on PhoneAuthFailure / on ApiException /
+///   catch (_) -> 'Serverga ulanib bo'lmadi — internetni tekshiring'
+///
+/// Oxirgi satr o'nta joyda so'zma-so'z takrorlanardi. Endi bitta joyda.
+/// └───────────────────────────────────────────────────────────────────┘
+String authErrorText(Object e) {
+  if (e is OtpDeliveryFailure) return e.message;
+  if (e is PhoneAuthFailure) return e.message;
+  if (e is ApiException) return e.message;
+  return 'Serverga ulanib bo\'lmadi — internetni tekshiring';
+}
+
 void authSnack(BuildContext context, String msg, {bool error = false}) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     content: Text(msg),

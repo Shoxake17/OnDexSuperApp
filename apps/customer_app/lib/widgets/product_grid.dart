@@ -14,6 +14,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../data/favorites_store.dart';
+import 'common.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -40,25 +42,46 @@ class ProductDiscount {
 /// `apps/web/lib/promotions.ts` dagi `computeProductDiscount()` bilan
 /// BIR XIL mantiq.
 ///
-/// ┌─ BU TAXMIN, HISOB-KITOB EMAS ─────────────────────────────────────┐
-/// Bu yerdagi natija FAQAT ekranga chiziladi. Haqiqiy summa har doim
-/// serverda hisoblanadi (`internal/promotions/apply.go`) va mijozga
-/// `POST /restaurants/{id}/quote` orqali qaytadi. Ya'ni bu funksiya
-/// noto'g'ri ishlasa ham mijoz noto'g'ri summa TO'LAMAYDI — u faqat
-/// noto'g'ri raqam ko'radi.
+/// ┌─ KARTOCHKADAGI NARX NIMANI ANGLATADI ─────────────────────────────┐
+/// Server HAR QATORGA o'zining eng foydali chegirmasini beradi
+/// (`promotions.Apply`), shuning uchun kartochkadagi narx —
+/// "shu taomni olsam, u shu narxda bo'ladi" degani. Menyudagi narxlar
+/// yig'indisi savatdagi jami bilan mos tushishi SHART.
 ///
-/// Faqat mahsulot/turkum darajasidagi `percent`/`fixed_amount`
-/// aksiyalar qatnashadi: butun buyurtmaga tegishli yoki BOGO/to'plam
-/// aksiyalar uchun "bitta taomning yangi narxi" tushunchasi ma'noga
-/// ega emas.
-///
-/// Chegirmalar QO'SHILMAYDI — server bilan bir xil qoida bo'yicha eng
-/// foydalisi tanlanadi (`internal/orders/service.go` `priceCart`).
+/// Yakuniy raqam baribir SERVERDAN olinadi: savat va rasmiylashtirish
+/// ekranlari `POST /restaurants/{id}/quote` javobidagi `lines`
+/// massivini chizadi (bu funksiya faqat MENYU kartochkasi uchun).
 /// └───────────────────────────────────────────────────────────────────┘
+///
+/// Server bilan bir xil qoidalar:
+///   • mexanika TUR (`type`) bo'yicha aniqlanadi — `discount_unit`
+///     emas (`promotions.Promotion.EffectiveUnit`). Avval klient
+///     birlikka qarardi va tur bilan zid yozuvda menyuda "-20%" yozib,
+///     server 20 tiyin chegirma berardi;
+///   • `min_order_amount_tiyin` — savat summasi yetmasa aksiya
+///     KO'RSATILMAYDI (server ham qo'llamaydi);
+///   • `max_discount_amount_tiyin` — chegirma shu chegaradan oshmaydi;
+///   • chegirmalar QO'SHILMAYDI — bitta taomga eng foydalisi tanlanadi.
+///
+/// Qatnashadigan aksiyalar: `percent` va `fixed_amount` — mahsulotga,
+/// turkumga yoki BUTUN BUYURTMAGA tegishli bo'lishidan qat'i nazar.
+///
+/// 1+1 (BOGO), to'plam va sodiqlik aksiyalari ATAYLAB hisoblanmaydi:
+/// ularning qiymati savatning qolgan qismiga bog'liq (nechta dona
+/// olingani, to'plamning boshqa taomlari, oldingi buyurtmalar soni),
+/// ya'ni bitta kartochkada halol ko'rsatib bo'lmaydi. Ular faqat
+/// "Aksiya" lentasi bilan belgilanadi va savatda HAQIQIY narx bilan
+/// qo'llanadi — ya'ni mijoz kutganidan ko'ra ARZONROQ chiqadi, aksincha
+/// emas.
+///
+/// [cartSubtotalTiyin] — joriy savatning CHEGIRMASIZ summasi (0 =
+/// noma'lum/bo'sh). Faqat `min_order_amount_tiyin` shartini tekshirish
+/// uchun kerak.
 ProductDiscount? computeProductDiscount(
   Map<String, dynamic> product,
-  List<Map<String, dynamic>> promotions,
-) {
+  List<Map<String, dynamic>> promotions, {
+  int cartSubtotalTiyin = 0,
+}) {
   final id = (product['id'] as String?) ?? '';
   final category = categoryOf(product);
   final price = (product['price_tiyin'] as num?)?.toInt() ?? 0;
@@ -75,34 +98,74 @@ ProductDiscount? computeProductDiscount(
     bestLabel = '-${formatSum(bestDiscount)}';
   }
 
+  // "Minimal buyurtma summasi" sharti: savat allaqachon shu summadan
+  // katta bo'lsa — savat summasi, aks holda kamida shu taomning o'zi
+  // (kartochka ma'nosi: "yolg'iz olsam").
+  final basis = cartSubtotalTiyin > price ? cartSubtotalTiyin : price;
+
   for (final p in promotions) {
     final type = (p['type'] as String?) ?? '';
     if (type != 'percent' && type != 'fixed_amount') continue;
-    if (p['applies_to_orders'] == true) continue;
 
+    // Butun buyurtmaga tegishli aksiya HAR QATORGA ham tushadi (server
+    // uni shu qatorning ulushi sifatida hisoblaydi), shuning uchun u
+    // ham nomzod. Avval o'tkazib yuborilardi va kartochka aksiyani
+    // ko'rsatmasdi — savatda esa narx arzonlab, ikki xil raqam chiqardi.
+    final appliesToOrders = p['applies_to_orders'] == true;
     final matchesProduct = p['applies_to_products'] == true &&
         ((p['target_product_ids'] as List?) ?? const []).contains(id);
     final matchesCategory = p['applies_to_categories'] == true &&
         ((p['target_categories'] as List?) ?? const []).contains(category);
-    if (!matchesProduct && !matchesCategory) continue;
+    if (!appliesToOrders && !matchesProduct && !matchesCategory) continue;
 
-    final unit = ((p['discount_unit'] as String?) ?? '').isEmpty
-        ? 'percent'
-        : p['discount_unit'] as String;
+    final minOrder = (p['min_order_amount_tiyin'] as num?)?.toInt() ?? 0;
+    if (minOrder > 0 && basis < minOrder) continue;
+
     final value = (p['discount_value'] as num?)?.toInt() ?? 0;
     if (value <= 0) continue;
 
     // Foizda butun bo'lish — server ham shunday yaxlitlaydi.
-    var lineDiscount = unit == 'amount' ? value : (price * value) ~/ 100;
+    var lineDiscount = type == 'fixed_amount' ? value : (price * value) ~/ 100;
     if (lineDiscount > price) lineDiscount = price;
+
+    // Maksimal chegirma chegarasi — chegara ishlaganda "-20%" yozuvi
+    // yolg'on bo'lib qoladi, shuning uchun yorliq summaga o'tadi.
+    final maxDiscount = (p['max_discount_amount_tiyin'] as num?)?.toInt() ?? 0;
+    var capped = false;
+    if (maxDiscount > 0 && lineDiscount > maxDiscount) {
+      lineDiscount = maxDiscount;
+      capped = true;
+    }
     if (lineDiscount <= bestDiscount) continue;
 
     bestDiscount = lineDiscount;
-    bestLabel = unit == 'amount' ? '-${formatSum(lineDiscount)}' : '-$value%';
+    bestLabel = (type == 'percent' && !capped)
+        ? '-$value%'
+        : '-${formatSum(lineDiscount)}';
   }
 
   if (bestDiscount <= 0 || bestLabel == null) return null;
   return ProductDiscount(price - bestDiscount, bestLabel);
+}
+
+/// Hisob-kitobdagi chegirma qatorining yozuvi.
+///
+/// Chegirma IKKI manbadan kelishi mumkin — aksiya va mahsulotning o'z
+/// chegirma narxi — va bitta savatda ular ARALASH bo'lishi mumkin
+/// (server har qatorga eng foydalisini beradi). Shunday holatda
+/// "Aksiya: <nom>" deb yozish mijozga noto'g'ri ma'lumot berardi:
+/// summaning bir qismi umuman o'sha aksiyadan emas.
+///
+/// Shuning uchun nom FAQAT chegirmaning HAMMASI aksiyadan bo'lganda
+/// ko'rsatiladi. `apps/web/lib/promotions.ts` da bir xil qoida.
+String discountLineLabel({
+  required int discountTiyin,
+  required int promotionDiscountTiyin,
+  String? promotionName,
+}) {
+  final name = (promotionName ?? '').trim();
+  if (name.isEmpty || promotionDiscountTiyin < discountTiyin) return 'Chegirma';
+  return 'Aksiya: $name';
 }
 
 /// Aksiya BOR-YO'QLIGINI aniqlaydi (lenta uchun).
@@ -157,6 +220,10 @@ class PromotionIndex {
 /// ko'rmaydi.
 class FavoriteButton extends StatefulWidget {
   final String productId;
+
+  /// ESKIRGAN: holat endi [FavoritesStore] dan olinadi. Parametr
+  /// chaqiruvchilarni buzmaslik uchun qoldirilgan va E'TIBORGA
+  /// OLINMAYDI.
   final bool initialFavorited;
   // onChanged — muvaffaqiyatli o'zgarishdan KEYIN chaqiriladi (masalan
   // "Istaklarim" sahifasi shu orqali mahsulotni ro'yxatdan olib tashlaydi).
@@ -176,34 +243,27 @@ class FavoriteButton extends StatefulWidget {
 }
 
 class _FavoriteButtonState extends State<FavoriteButton> {
-  late bool _favorited = widget.initialFavorited;
   bool _busy = false;
 
-  @override
-  void didUpdateWidget(covariant FavoriteButton old) {
-    super.didUpdateWidget(old);
-    if (old.productId != widget.productId ||
-        old.initialFavorited != widget.initialFavorited) {
-      _favorited = widget.initialFavorited;
-    }
-  }
-
+  /// ┌─ HOLAT BU YERDA SAQLANMAYDI ────────────────────────────────────┐
+  /// Ilgari har tugma o'z `_favorited` ini saqlardi. Shuning uchun
+  /// bitta mahsulot ikki joyda ko'rinsa (menyu to'ri va taom tavsifi
+  /// paneli) ular bir-biridan bexabar qolardi va biri eskirgan belgini
+  /// ko'rsatib turardi.
+  ///
+  /// Endi yagona manba — [FavoritesStore]. Tugma unga QULOQ SOLADI,
+  /// ya'ni qayerda bosilishidan qat'i nazar hamma nusxa bir vaqtda
+  /// o'zgaradi.
+  /// └─────────────────────────────────────────────────────────────────┘
   Future<void> _toggle() async {
     if (_busy) return;
-    final next = !_favorited;
-    setState(() {
-      _favorited = next;
-      _busy = true;
-    });
+    setState(() => _busy = true);
     try {
-      if (next) {
-        await api.addFavorite(widget.productId);
-      } else {
-        await api.removeFavorite(widget.productId);
-      }
-      widget.onChanged?.call(next);
+      await FavoritesStore.instance.toggle(widget.productId);
+      widget.onChanged
+          ?.call(FavoritesStore.instance.contains(widget.productId));
     } catch (_) {
-      if (mounted) setState(() => _favorited = !next);
+      // Belgi `FavoritesStore` da allaqachon o'z holiga qaytarilgan.
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -211,22 +271,28 @@ class _FavoriteButtonState extends State<FavoriteButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 3,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: _toggle,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(
-            _favorited ? Icons.favorite : Icons.favorite_border,
-            color: _favorited ? const Color(0xFFE53935) : Colors.black,
-            size: widget.size,
+    return ListenableBuilder(
+      listenable: FavoritesStore.instance,
+      builder: (context, _) {
+        final favorited = FavoritesStore.instance.contains(widget.productId);
+        return Material(
+          color: Colors.white,
+          shape: const CircleBorder(),
+          elevation: 3,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _toggle,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                favorited ? Icons.favorite : Icons.favorite_border,
+                color: favorited ? const Color(0xFFE53935) : Colors.black,
+                size: widget.size,
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -338,7 +404,7 @@ class ProductCard extends StatelessWidget {
                   Positioned(
                     right: 8,
                     bottom: 8,
-                    child: _RoundButton(icon: Icons.add, onTap: onAdd),
+                    child: RoundIconButton(icon: Icons.add, onTap: onAdd, iconSize: 19),
                   ),
                 if (available && qty != null && qty! > 0)
                   Positioned(
@@ -348,7 +414,7 @@ class ProductCard extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _RoundButton(icon: Icons.remove, onTap: onRemove),
+                        RoundIconButton(icon: Icons.remove, onTap: onRemove, iconSize: 19),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 5),
@@ -369,7 +435,7 @@ class ProductCard extends StatelessWidget {
                                 fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                         ),
-                        _RoundButton(icon: Icons.add, onTap: onAdd),
+                        RoundIconButton(icon: Icons.add, onTap: onAdd, iconSize: 19),
                       ],
                     ),
                   ),
@@ -454,18 +520,8 @@ class _ProductImage extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) {
-    if (url.isEmpty) return _placeholder;
-    return Image.network(
-      fullImageUrl(url),
-      fit: BoxFit.cover,
-      // Rasm kelguncha JOY EGALLANADI — aks holda kartochkalar
-      // yuklanish paytida sakrab qolardi.
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : const SizedBox.shrink(),
-      errorBuilder: (_, __, ___) => _placeholder,
-    );
-  }
+  Widget build(BuildContext context) =>
+      RemoteImage(url: url, placeholder: _placeholder);
 }
 
 class _Badge extends StatelessWidget {
@@ -491,31 +547,6 @@ class _Badge extends StatelessWidget {
         text,
         style: TextStyle(
             fontSize: 11, fontWeight: FontWeight.bold, color: foreground),
-      ),
-    );
-  }
-}
-
-/// Rasm ustidagi oq dumaloq tugma (+ / −).
-class _RoundButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _RoundButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 3,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(icon, size: 19, color: Colors.black),
-        ),
       ),
     );
   }

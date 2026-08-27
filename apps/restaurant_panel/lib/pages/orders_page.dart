@@ -6,6 +6,7 @@ import '../api.dart';
 import '../live.dart';
 import '../sound.dart';
 import '../widgets/order_card_header.dart';
+import '../widgets/page_header.dart';
 import '../theme.dart';
 
 const _preparingStatuses = {'accepted', 'preparing'};
@@ -283,7 +284,7 @@ class _OrdersPageState extends State<OrdersPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1066,6 +1067,11 @@ class _ReadyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final courierId = order['courier_id'] as String? ?? '';
     final courierName = order['courier_name'] as String? ?? '';
+    // Stol buyurtmasiga kuryer UMUMAN tegishli emas — taomni affitsiant
+    // zalga olib boradi. Bu tekshiruvsiz kartochka "Kuryer
+    // qidirilmoqda..." deb abadiy aylanib turardi (izohi:
+    // `isDineInOrder`).
+    final dineIn = isDineInOrder(order);
     return _CardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1073,7 +1079,9 @@ class _ReadyCard extends StatelessWidget {
           OrderCardHeader(order: order),
           const SizedBox(height: 8),
           _ItemsList(order: order),
-          _PhoneRow(phone: order['customer_phone'] as String?),
+          // Stol buyurtmasida mijoz telefoni saqlanmaydi (u zalda
+          // o'tiribdi) — bo'sh qator chizmaymiz.
+          if (!dineIn) _PhoneRow(phone: order['customer_phone'] as String?),
           _TotalRow(totalTiyin: (order['total_tiyin'] ?? 0) as int),
           const SizedBox(height: 10),
           // MUHIM: bu yerda "Kuryerga topshirish" tugmasi ATAYLAB YO'Q —
@@ -1087,36 +1095,63 @@ class _ReadyCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
             decoration: BoxDecoration(
-              color: courierId.isEmpty ? OnDexColors.pageBg : OnDexColors.successBg,
+              color: dineIn
+                  ? OnDexColors.primaryTint
+                  : (courierId.isEmpty
+                      ? OnDexColors.pageBg
+                      : OnDexColors.successBg),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: courierId.isEmpty
+            child: dineIn
+                // Kutish indikatori YO'Q: bu yerda kutiladigan hech
+                // narsa yo'q. Taom tayyor bo'lishi bilan affitsiant
+                // ilovasiga (`apps/waiter_app`) darhol chiqadi va u
+                // "Yetkazdim" bosgach buyurtma yopiladi.
                 ? const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        width: 13,
-                        height: 13,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: OnDexColors.inkFaint),
-                      ),
-                      SizedBox(width: 9),
-                      Text('Kuryer qidirilmoqda...',
-                          style: TextStyle(fontSize: 12.5, color: OnDexColors.inkDim)),
+                      Icon(Icons.room_service_rounded,
+                          size: 15, color: OnDexColors.primary),
+                      SizedBox(width: 8),
+                      Text('Affitsiant zalga olib boradi',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: OnDexColors.primary,
+                              fontWeight: FontWeight.w700)),
                     ],
                   )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.pedal_bike_rounded, size: 15, color: OnDexColors.success),
-                      const SizedBox(width: 8),
-                      Text(
-                          courierName.isEmpty
-                              ? 'Kuryer biriktirildi, kutilmoqda'
-                              : '$courierName kelmoqda',
-                          style: const TextStyle(
-                              fontSize: 12.5, color: OnDexColors.success, fontWeight: FontWeight.w700)),
-                    ],
-                  ),
+                : courierId.isEmpty
+                    ? const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: OnDexColors.inkFaint),
+                          ),
+                          SizedBox(width: 9),
+                          Text('Kuryer qidirilmoqda...',
+                              style: TextStyle(
+                                  fontSize: 12.5, color: OnDexColors.inkDim)),
+                        ],
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.pedal_bike_rounded,
+                              size: 15, color: OnDexColors.success),
+                          const SizedBox(width: 8),
+                          Text(
+                              courierName.isEmpty
+                                  ? 'Kuryer biriktirildi, kutilmoqda'
+                                  : '$courierName kelmoqda',
+                              style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: OnDexColors.success,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
           ),
         ],
       ),

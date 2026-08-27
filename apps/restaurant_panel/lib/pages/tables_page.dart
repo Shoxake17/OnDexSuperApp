@@ -3,6 +3,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../widgets/page_header.dart';
 
 /// Stollar va ularning QR kodlari.
 ///
@@ -118,61 +119,40 @@ class _TablesPageState extends State<TablesPage> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Stollar (QR kod)',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const Spacer(),
-            FilledButton.icon(
-              onPressed: _addTable,
-              icon: const Icon(Icons.add),
-              label: const Text('Stol qo\'shish'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Har bir stolga QR kod chop etib, stol ustiga qo\'ying. '
+    // Sarlavha/chekinish — umumiy manbadan (`widgets/page_header.dart`),
+    // "Xodimlar" va boshqa bo'limlar bilan bir xil.
+    return PageScaffold(
+      title: 'Stollar (QR kod)',
+      subtitle: 'Har bir stolga QR kod chop etib, stol ustiga qo\'ying. '
           'Mijoz uni skanerlab, o\'sha stolga buyurtma beradi.',
-          style: TextStyle(color: Colors.grey),
-        ),
-        const SizedBox(height: 16),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(_error!, style: const TextStyle(color: Colors.red)),
-          ),
-        Expanded(
-          child: _tables.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Hali stol qo\'shilmagan',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                )
-              : GridView.builder(
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 280,
-                    mainAxisExtent: 360,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: _tables.length,
-                  itemBuilder: (_, i) => _TableCard(
-                    table: _tables[i],
-                    onRename: () => _rename(_tables[i]),
-                    onToggleActive: () => _toggleActive(_tables[i]),
-                    onDelete: () => _delete(_tables[i]),
-                  ),
-                ),
-        ),
-      ],
+      action: PageActionButton(
+        icon: Icons.add_rounded,
+        label: 'Stol qo\'shish',
+        onPressed: _addTable,
+      ),
+      error: _error,
+      child: _tables.isEmpty
+          ? const Center(
+              child: Text(
+                'Hali stol qo\'shilmagan',
+                style: TextStyle(color: OnDexColors.inkDim),
+              ),
+            )
+          : GridView.builder(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 280,
+                mainAxisExtent: 360,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: _tables.length,
+              itemBuilder: (_, i) => _TableCard(
+                table: _tables[i],
+                onRename: () => _rename(_tables[i]),
+                onToggleActive: () => _toggleActive(_tables[i]),
+                onDelete: () => _delete(_tables[i]),
+              ),
+            ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../session.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
@@ -105,11 +106,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   String get _phoneFull => AuthPhoneField.fullPhone(_phone);
 
-  void _snack(String msg, {bool error = false}) {
-    if (!mounted) return;
-    authSnack(context, msg, error: error);
-  }
-
   /// SMS kod so'rash.
   ///
   /// Raqam to'liqligi SHU YERDA tekshiriladi: bu endpoint SMS cheklovi
@@ -119,11 +115,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   Future<void> _sendCode() async {
     final byPhone = _method == AuthMethod.phone;
     if (byPhone && _phone.text.trim().length < 9) {
-      _snack('Telefon raqamini to\'liq kiriting', error: true);
+      snack('Telefon raqamini to\'liq kiriting', error: true);
       return;
     }
     if (!byPhone && !looksLikeEmail(_email.text.trim())) {
-      _snack('Email manzilini to\'g\'ri kiriting', error: true);
+      snack('Email manzilini to\'g\'ri kiriting', error: true);
       return;
     }
     setState(() => _busy = true);
@@ -141,7 +137,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           _otpChannel = ticket.channel;
         });
         startResendTimer();
-        _snack(ticket.channel == OtpChannel.telegram
+        snack(ticket.channel == OtpChannel.telegram
             ? 'Kod Telegram botga yuborildi'
             : 'Kod yuborildi');
         return;
@@ -162,13 +158,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         WidgetsBinding.instance.addPostFrameCallback(
             (_) => _otpKey.currentState?.fill(devCode));
       }
-      _snack('Kod yuborildi');
+      snack('Kod yuborildi');
     } on PhoneAuthFailure catch (e) {
-      _snack(e.message, error: true);
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+      snack(e.message, error: true);
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -198,7 +192,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   Future<void> _reset() async {
     final problem = _validate();
     if (problem != null) {
-      _snack(problem, error: true);
+      snack(problem, error: true);
       return;
     }
     setState(() => _busy = true);
@@ -211,7 +205,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           if (_otpChannel == OtpChannel.firebase) {
             final vid = _verificationId;
             if (vid == null) {
-              _snack('Kod muddati tugadi — qayta yuboring', error: true);
+              snack('Kod muddati tugadi — qayta yuboring', error: true);
               return;
             }
             final idToken = await FirebasePhoneAuth.idTokenFor(vid, _code);
@@ -234,15 +228,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       );
       await tokenStore.write(api.token!);
       if (!mounted) return;
-      _snack('Parol yangilandi');
+      snack('Parol yangilandi');
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LockedHome()),
         (route) => false,
       );
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

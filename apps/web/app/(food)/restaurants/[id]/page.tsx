@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publicFetch } from "@/lib/api";
+import { safeJsonLdHtml } from "@/lib/json-ld";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
 import MenuContent from "./menu-content";
 
@@ -59,8 +60,10 @@ export default async function MenuPage({
     <>
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // eslint-disable-next-line react/no-danger -- JSON-LD; `<` ESCAPE
+        // qilingan (safeJsonLdHtml) — restoran nomi/manzili restoran egasi
+        // kiritadigan matn, xom JSON.stringify saqlangan XSS berardi.
+        dangerouslySetInnerHTML={{ __html: safeJsonLdHtml(jsonLd) }}
       />
       <MenuContent
         restaurant={restaurant}

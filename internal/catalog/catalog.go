@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -16,7 +17,7 @@ type Restaurant struct {
 	Open     bool    `json:"open"`
 	LogoURL  string  `json:"logo_url"`
 	CoverURL string  `json:"cover_url"`
-	Tags string `json:"tags"`
+	Tags     string  `json:"tags"`
 
 	// ┌─ 0 = "MA'LUMOT YO'Q", "yomon" EMAS ────────────────────────────┐
 	// Mijoz tomonida 0 bo'lganda tegishli chip UMUMAN chizilmaydi —
@@ -35,22 +36,58 @@ type Restaurant struct {
 	// yetkazishning umumiy taxminiy oralig'i.
 	ETAMinMinutes int `json:"eta_min_minutes"`
 	ETAMaxMinutes int `json:"eta_max_minutes"`
+
+	// ┌─ 3D MAKET ─────────────────────────────────────────────────────┐
+	// Ba'zi restoranlarning ichki maketi 3D da chizilgan: mijoz ilova
+	// ichida kirib, aylanib, stolga o'tirib buyurtma bera oladi.
+	//
+	// Bog'lanish SHU YERDA, ilovada EMAS. Aks holda har yangi kafe
+	// qo'shilganda ilovaning yangi versiyasini chiqarish kerak
+	// bo'lardi. Endi admin panelda manzilni yozish kifoya.
+	//
+	// Bo'sh bo'lsa — bu restoranda 3D yo'q va mijozga taklif
+	// ko'rsatilmaydi. Ulanmagan restoranlarga begona maket
+	// bog'lanmasligi shu bilan ta'minlanadi.
+	// └────────────────────────────────────────────────────────────────┘
+	//
+	// Maket fayli (.pck) manzili. Faqat R2 domeni qabul qilinadi.
+	Scene3DURL string `json:"scene_3d_url,omitempty"`
+	// Faylning SHA-256 yig'indisi. Ilova yuklab olgach TEKSHIRADI:
+	// maket ichida bajariladigan kod bor, tekshiruvsiz ishga
+	// tushirish mumkin emas.
+	Scene3DSHA256 string `json:"scene_3d_sha256,omitempty"`
+	// Fayl hajmi (bayt) — mijozga "~104 MB yuklanadi" deb oldindan
+	// aytish uchun.
+	Scene3DBytes int64 `json:"scene_3d_bytes,omitempty"`
 }
 
 type Product struct {
-	ID           string  `json:"id"`
-	RestaurantID string  `json:"restaurant_id"`
-	Name         string  `json:"name"`
-	Category     string  `json:"category"`
-	PriceTiyin   int64   `json:"price_tiyin"`
+	ID           string `json:"id"`
+	RestaurantID string `json:"restaurant_id"`
+	Name         string `json:"name"`
+	Category     string `json:"category"`
+	PriceTiyin   int64  `json:"price_tiyin"`
 	// DiscountPriceTiyin — ixtiyoriy chegirma narxi, 0 = chegirma yo'q.
 	// Agar 0 dan katta bo'lsa, PriceTiyin'dan KICHIK bo'lishi shart
 	// (tekshiruv POST /restaurants/{id}/products handler'ida).
-	DiscountPriceTiyin int64   `json:"discount_price_tiyin"`
-	Stock              int     `json:"stock"`       // 0 = cheksiz (nazorat qilinmaydi); restoran paneli UI'sida endi ko'rsatilmaydi
-	Weight             float64 `json:"weight"`      // 0 = ko'rsatilmaydi (ixtiyoriy); birligi WeightUnit'da
-	WeightUnit         string  `json:"weight_unit"` // "g","kg","ml","l","dona","porsiya" — faqat Weight > 0 bo'lsa ma'noli
-	Description        string  `json:"description"` // ixtiyoriy, mijoz ilovasida taom tafsilotlar oynasida ko'rsatiladi
+	DiscountPriceTiyin int64 `json:"discount_price_tiyin"`
+	// WholesalePriceTiyin — ixtiyoriy ULGURJI narx (0 = kiritilmagan).
+	//
+	// ┌─ MIJOZGA HECH QACHON KO'RSATILMAYDI ──────────────────────────┐
+	// Bu — restoranning ICHKI biznes ma'lumoti (tannarx/ulgurji
+	// hisob-kitob uchun). Ochiq endpoint'lar (`GET /restaurants/{id}/
+	// menu`, `GET /products/search`) uni `PublicView()` orqali OLIB
+	// TASHLAB yuboradi; restoran paneli esa avtorizatsiya talab
+	// qiladigan `GET /restaurants/{id}/products` dan oladi.
+	//
+	// Narxlashga UMUMAN ta'sir qilmaydi — mijoz to'laydigan summa faqat
+	// PriceTiyin, DiscountPriceTiyin va aksiyalardan kelib chiqadi.
+	// └───────────────────────────────────────────────────────────────┘
+	WholesalePriceTiyin int64   `json:"wholesale_price_tiyin"`
+	Stock               int     `json:"stock"`       // 0 = cheksiz (nazorat qilinmaydi); restoran paneli UI'sida endi ko'rsatilmaydi
+	Weight              float64 `json:"weight"`      // 0 = ko'rsatilmaydi (ixtiyoriy); birligi WeightUnit'da
+	WeightUnit          string  `json:"weight_unit"` // "g","kg","ml","l","dona","porsiya" — faqat Weight > 0 bo'lsa ma'noli
+	Description         string  `json:"description"` // ixtiyoriy, mijoz ilovasida taom tafsilotlar oynasida ko'rsatiladi
 	// PrepTimeText — ixtiyoriy, erkin matnli taxminiy tayyorlash vaqti
 	// (masalan "20-30 daqiqa"), mijozga ko'rsatish uchun. Bu — buyurtma
 	// qabul qilinganda restoran kiritadigan HAQIQIY, aniq
@@ -59,6 +96,46 @@ type Product struct {
 	PrepTimeText string `json:"prep_time_text"`
 	ImageURL     string `json:"image_url"`
 	Available    bool   `json:"available"`
+
+	// ┌─ 3D MODEL (AI orqali rasmdan generatsiya) ────────────────────┐
+	// Model3DURL — R2 dagi tayyor GLB fayl. Mijozga FAQAT shu maydon
+	// ko'rsatiladi (`PublicView`), qolgan ikkitasi restoran panelining
+	// ichki holati.
+	//
+	// Generatsiya UZOQ (bir necha daqiqa) va TASHQI xizmatga bog'liq,
+	// shuning uchun holat mahsulotning O'ZIDA saqlanadi: server qayta
+	// ishga tushsa ham tugallanmagan vazifa yo'qolmaydi
+	// (`Model3DTaskID` bo'yicha davom ettiriladi).
+	// └───────────────────────────────────────────────────────────────┘
+	Model3DURL    string `json:"model_3d_url,omitempty"`
+	Model3DStatus string `json:"model_3d_status,omitempty"`
+	Model3DTaskID string `json:"model_3d_task_id,omitempty"`
+}
+
+// 3D model holatlari. Bo'sh satr — hech qachon generatsiya qilinmagan.
+const (
+	Model3DPending = "pending" // Tripo'da navbatda/ishlanmoqda
+	Model3DReady   = "ready"   // GLB R2 ga yuklandi, Model3DURL to'ldi
+	Model3DFailed  = "failed"  // generatsiya yiqildi (qayta urinsa bo'ladi)
+)
+
+// PublicView — mahsulotning MIJOZGA ko'rsatiladigan nusxasi: restoranning
+// ichki biznes maydonlari (hozircha ulgurji narx) olib tashlanadi.
+//
+// Ochiq endpoint'lar `catalog.Product` ni to'g'ridan-to'g'ri JSON qilib
+// yozadi, ya'ni struct'ga qo'shilgan HAR QANDAY yangi maydon avtomatik
+// ravishda ommaviy bo'lib qoladi. Shuning uchun ichki maydonlar shu
+// yagona joyda kesiladi — yangi maydon qo'shganda ham shu yerga qarash
+// kifoya.
+func (p Product) PublicView() Product {
+	p.WholesalePriceTiyin = 0
+	// 3D generatsiyasining ICHKI holati mijozga kerak emas: unga faqat
+	// tayyor model havolasi (`Model3DURL`) ko'rsatiladi. Task ID esa
+	// tashqi xizmatdagi ichki identifikator — uni tarqatishning hech
+	// qanday sababi yo'q ("eng kam ma'lumot" prinsipi).
+	p.Model3DStatus = ""
+	p.Model3DTaskID = ""
+	return p
 }
 
 // MaxPrepTimeTextLength — PrepTimeText uchun maksimal uzunlik (erkin matn,
@@ -87,6 +164,60 @@ const MaxDescriptionLength = 1000
 // ekanligini ko'rsatish uchun kerakli minimal restoran ma'lumoti (mijoz
 // ilovasi turkum bo'yicha barcha restoranlardagi taomlarni bitta ro'yxatda
 // ko'rsatishi uchun).
+// Book — kafe kutubxonasidagi kitob.
+//
+// ┌─ NEGA MAHSULOT EMAS ───────────────────────────────────────────────┐
+// Kitob sotilmaydi va savatga tushmaydi: u faqat 3D maketda javondan
+// olib o'qish uchun. Mahsulot modeliga qo'shilsa, narx, ombor va
+// buyurtma mantig'i unga ham tegishli bo'lib qolardi - va kitobni
+// tasodifan sotib olish mumkin bo'lardi.
+//
+// Alohida tur bu ehtimolni butunlay yo'q qiladi: kitobda narx maydoni
+// UMUMAN yo'q.
+// └────────────────────────────────────────────────────────────────────┘
+type Book struct {
+	ID           string `json:"id"`
+	RestaurantID string `json:"restaurant_id"`
+	Title        string `json:"title"`
+	Author       string `json:"author"`
+
+	// CoverURL — muqova rasmi (ixtiyoriy).
+	CoverURL string `json:"cover_url"`
+
+	// Text — kitob matni. 3D maketdagi o'quvchi uni sahifalarga
+	// bo'lib chiqaradi: sahifa o'lchami ekranga bog'liq, shuning
+	// uchun bo'linish SERVERDA emas, ko'rsatish paytida bo'ladi.
+	Text string `json:"text"`
+
+	// Pages — sahifa rasmlari (ixtiyoriy). Matnli kitob uchun bo'sh.
+	// Ikkalasi ham bo'lsa, rasmlar ustun turadi.
+	Pages []string `json:"pages"`
+
+	// PDFURL — yuklangan PDF ning R2 dagi manzili.
+	//
+	// ┌─ NEGA MATN BILAN BIRGA SAQLANADI ──────────────────────────────┐
+	// `Text` PDF dan SERVERDA ajratiladi va o'sha zahoti saqlanadi.
+	// Ya'ni maketdagi o'quvchi PDF ni umuman yuklab olmaydi — u
+	// tayyor matnni oladi. Godot PDF ni ocha olmaydi, ochsa ham 20 MB
+	// faylni telefonda tahlil qilish o'rinsiz bo'lardi.
+	//
+	// PDF ning o'zi asl nusxa sifatida qoladi: matn qaytadan
+	// ajratilishi kerak bo'lsa (masalan ajratuvchi yaxshilansa) manba
+	// yo'qolmagan bo'ladi.
+	// └────────────────────────────────────────────────────────────────┘
+	PDFURL string `json:"pdf_url"`
+
+	// Active — o'chirilgan kitob maketda ko'rinmaydi, lekin
+	// yozuvi saqlanib qoladi.
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// MaxBookTextBytes — kitob matnining eng katta hajmi.
+//
+// Chegara ataylab: matn Mongo yozuviga to'liq sig'ishi va bitta
+// so'rovda uzatilishi kerak. 400 KB ~ 200 sahifalik kitob.
+const MaxBookTextBytes = 400 * 1024
 type ProductSearchResult struct {
 	Product
 	RestaurantName    string `json:"restaurant_name"`
@@ -143,6 +274,25 @@ var (
 	ErrUnavailable      = errors.New("taom hozir mavjud emas")
 )
 
+// BookRepository — kafe kutubxonasi.
+//
+// ┌─ NEGA `Repository` GA QO'SHILMADI ─────────────────────────────────┐
+// Uni umumiy katalog interfeysiga qo'shish barcha amalga oshirishlarni
+// (jumladan sinovlar uchun xotira omborini) o'zgartirishni talab
+// qilardi - kitoblar esa ularga umuman kerak emas.
+//
+// Alohida interfeys bo'lgani uchun server uni IXTIYORIY deb qaraydi:
+// ombor ulanmagan bo'lsa, kitob endpointlari xizmat yo'qligini
+// aytadi va qolgan hamma narsa ishlayveradi.
+// └────────────────────────────────────────────────────────────────────┘
+type BookRepository interface {
+	// ListBooks — restoran kitoblari. `withText=false` bo'lsa matn
+	// qaytmaydi: ro'yxatda u kerak emas va javobni shishirardi.
+	ListBooks(ctx context.Context, restaurantID string, withText bool) ([]*Book, error)
+	GetBook(ctx context.Context, id string) (*Book, error)
+	SaveBook(ctx context.Context, b *Book) error
+	DeleteBook(ctx context.Context, id string) error
+}
 type Repository interface {
 	ListRestaurants(ctx context.Context) ([]*Restaurant, error)
 	GetRestaurant(ctx context.Context, id string) (*Restaurant, error)

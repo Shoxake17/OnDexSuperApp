@@ -1,5 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+// `SystemChrome` / `SystemUiMode` uchun.
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'session.dart';
@@ -9,6 +11,18 @@ import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ┌─ TIZIM PANELLARI SHAFFOF ─────────────────────────────────────┐
+  // Ilova status-bar va pastki navigatsiya paneli ORQASIGA ham
+  // chizadi. Busiz Android o'z fonini qo'yadi va biz so'ragan rang
+  // (oq pastki panel, qora status chizig'i) e'tiborga olinmasdi —
+  // Back/Home/Menu paneli to'q kulrang bo'lib qolardi.
+  //
+  // Chekinishlarni `SafeArea` va `Scaffold` hisobga oladi, ya'ni
+  // tarkib panellar ostida qolib ketmaydi.
+  // └───────────────────────────────────────────────────────────────┘
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
   // Firebase Phone Auth uchun. Sozlamalar `google-services.json` dan
   // (Android) build vaqtida olinadi.
   //

@@ -28,6 +28,11 @@ type mongoRestaurant struct {
 	RatingCount   int     `bson:"rating_count"`
 	ETAMinMinutes int     `bson:"eta_min_minutes"`
 	ETAMaxMinutes int     `bson:"eta_max_minutes"`
+	// 3D maket: bo'sh bo'lsa restoranda 3D yo'q. Eski hujjatlarda
+	// bu maydonlar yo'q va BSON ularni bo'sh qoldiradi.
+	Scene3DURL    string `bson:"scene_3d_url"`
+	Scene3DSHA256 string `bson:"scene_3d_sha256"`
+	Scene3DBytes  int64  `bson:"scene_3d_bytes"`
 }
 
 func (d mongoRestaurant) toDomain() *catalog.Restaurant {
@@ -36,6 +41,7 @@ func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 		LogoURL: d.LogoURL, CoverURL: d.CoverURL, Tags: d.Tags,
 		Rating: d.Rating, RatingCount: d.RatingCount,
 		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
+		Scene3DURL: d.Scene3DURL, Scene3DSHA256: d.Scene3DSHA256, Scene3DBytes: d.Scene3DBytes,
 	}
 }
 
@@ -45,38 +51,51 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 		LogoURL: x.LogoURL, CoverURL: x.CoverURL, Tags: x.Tags,
 		Rating: x.Rating, RatingCount: x.RatingCount,
 		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
+		Scene3DURL: x.Scene3DURL, Scene3DSHA256: x.Scene3DSHA256, Scene3DBytes: x.Scene3DBytes,
 	}
 }
 
 type mongoProduct struct {
-	ID                 string  `bson:"_id"`
-	RestaurantID       string  `bson:"restaurant_id"`
-	Name               string  `bson:"name"`
-	Category           string  `bson:"category"`
-	PriceTiyin         int64   `bson:"price_tiyin"`
-	DiscountPriceTiyin int64   `bson:"discount_price_tiyin"`
-	Stock              int     `bson:"stock"`
-	Weight             float64 `bson:"weight"`
-	WeightUnit         string  `bson:"weight_unit"`
-	Description        string  `bson:"description"`
-	PrepTimeText       string  `bson:"prep_time_text"`
-	ImageURL           string  `bson:"image_url"`
-	Available          bool    `bson:"available"`
+	ID                  string  `bson:"_id"`
+	RestaurantID        string  `bson:"restaurant_id"`
+	Name                string  `bson:"name"`
+	Category            string  `bson:"category"`
+	PriceTiyin          int64   `bson:"price_tiyin"`
+	DiscountPriceTiyin  int64   `bson:"discount_price_tiyin"`
+	WholesalePriceTiyin int64   `bson:"wholesale_price_tiyin"`
+	Stock               int     `bson:"stock"`
+	Weight              float64 `bson:"weight"`
+	WeightUnit          string  `bson:"weight_unit"`
+	Description         string  `bson:"description"`
+	PrepTimeText        string  `bson:"prep_time_text"`
+	ImageURL            string  `bson:"image_url"`
+	Available           bool    `bson:"available"`
+	// 3D model (AI generatsiyasi). `omitempty` — eski hujjatlarda bu
+	// maydonlar yo'q va bo'lishi ham shart emas.
+	Model3DURL    string `bson:"model_3d_url,omitempty"`
+	Model3DStatus string `bson:"model_3d_status,omitempty"`
+	Model3DTaskID string `bson:"model_3d_task_id,omitempty"`
 }
 
 func (d mongoProduct) toDomain() *catalog.Product {
 	return &catalog.Product{
 		ID: d.ID, RestaurantID: d.RestaurantID, Name: d.Name, Category: d.Category,
-		PriceTiyin: d.PriceTiyin, DiscountPriceTiyin: d.DiscountPriceTiyin, Stock: d.Stock, Weight: d.Weight, WeightUnit: d.WeightUnit,
+		PriceTiyin: d.PriceTiyin, DiscountPriceTiyin: d.DiscountPriceTiyin,
+		WholesalePriceTiyin: d.WholesalePriceTiyin,
+		Stock:               d.Stock, Weight: d.Weight, WeightUnit: d.WeightUnit,
 		Description: d.Description, PrepTimeText: d.PrepTimeText, ImageURL: d.ImageURL, Available: d.Available,
+		Model3DURL: d.Model3DURL, Model3DStatus: d.Model3DStatus, Model3DTaskID: d.Model3DTaskID,
 	}
 }
 
 func productDoc(x *catalog.Product) mongoProduct {
 	return mongoProduct{
 		ID: x.ID, RestaurantID: x.RestaurantID, Name: x.Name, Category: x.Category,
-		PriceTiyin: x.PriceTiyin, DiscountPriceTiyin: x.DiscountPriceTiyin, Stock: x.Stock, Weight: x.Weight, WeightUnit: x.WeightUnit,
+		PriceTiyin: x.PriceTiyin, DiscountPriceTiyin: x.DiscountPriceTiyin,
+		WholesalePriceTiyin: x.WholesalePriceTiyin,
+		Stock:               x.Stock, Weight: x.Weight, WeightUnit: x.WeightUnit,
 		Description: x.Description, PrepTimeText: x.PrepTimeText, ImageURL: x.ImageURL, Available: x.Available,
+		Model3DURL: x.Model3DURL, Model3DStatus: x.Model3DStatus, Model3DTaskID: x.Model3DTaskID,
 	}
 }
 
@@ -214,6 +233,9 @@ func (r *MongoCatalogRepo) SearchProducts(ctx context.Context, query string) ([]
 
 	var list []*catalog.ProductSearchResult
 	for cur.Next(ctx) {
+		// `wholesale_price_tiyin` bu yerda ATAYLAB YO'Q: qidiruv — OCHIQ
+		// endpoint, ulgurji narx esa restoranning ichki ma'lumoti.
+		// O'qilmagan maydon hech qachon sizib chiqa olmaydi.
 		var doc struct {
 			ID                 string          `bson:"_id"`
 			RestaurantID       string          `bson:"restaurant_id"`

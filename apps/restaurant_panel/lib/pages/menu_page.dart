@@ -4,7 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../theme.dart';
+import '../widgets/page_header.dart';
 
 enum _StatusFilter { all, active, inactive }
 
@@ -43,11 +45,26 @@ class MenuPageState extends State<MenuPage> {
   bool _showForm = false;
   Map<String, dynamic>? _editingProduct;
 
+  /// Jonli yangilanish — 3D model generatsiyasi UZOQ davom etadi
+  /// (bir necha daqiqa) va u fon rejimida tugaydi. Busiz restoran
+  /// "tayyorlanmoqda" yozuviga qarab turib, sahifani qo'lda qayta
+  /// yuklashga majbur bo'lardi.
+  ///
+  /// Qayta ulanish mantiqi bu yerda YO'Q — u `LiveBus` ichida
+  /// (buyurtmalar sahifasidagi bilan bir xil naqsh).
+  late final LiveRefresher _live;
+
   @override
   void initState() {
     super.initState();
     _load();
     _loadCategories();
+    _live = LiveRefresher(
+      bus: restaurantLive,
+      onRefresh: _load,
+      types: const {'model3d_updated', 'menu_updated'},
+      offlineInterval: const Duration(seconds: 30),
+    )..start();
     _searchCtrl.addListener(() {
       setState(() {
         _search = _searchCtrl.text.trim().toLowerCase();
@@ -58,6 +75,7 @@ class MenuPageState extends State<MenuPage> {
 
   @override
   void dispose() {
+    _live.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -109,7 +127,7 @@ class MenuPageState extends State<MenuPage> {
         priceTiyin: (p['price_tiyin'] ?? 0) as int,
         available: next,
         category: p['category'] ?? '',
-        discountPriceTiyin: (p['discount_price_tiyin'] ?? 0) as int,
+        wholesalePriceTiyin: (p['wholesale_price_tiyin'] ?? 0) as int,
         stock: (p['stock'] ?? 0) as int,
         weight: ((p['weight'] ?? 0) as num).toDouble(),
         weightUnit: (p['weight_unit'] as String?) ?? 'g',
@@ -117,6 +135,54 @@ class MenuPageState extends State<MenuPage> {
         prepTimeText: (p['prep_time_text'] as String?) ?? '',
         imageUrl: p['image_url'] ?? '',
       );
+      _load();
+    } catch (e) {
+      _snack('Xato: $e');
+    }
+  }
+
+  // ---------- 3D model ----------
+
+  /// Generatsiyani boshlaydi.
+  ///
+  /// Javob TEZ qaytadi — model fon rejimida tayyorlanadi. Ro'yxat
+  /// darhol yangilanadi (holat "tayyorlanmoqda" bo'ladi), tayyor
+  /// bo'lganda esa `LiveRefresher` uni o'zi qayta yuklaydi.
+  Future<void> _generate3D(Map<String, dynamic> p) async {
+    try {
+      await api.generateModel3D(p['id'] as String);
+      _snack('3D model tayyorlanmoqda — bir necha daqiqa vaqt oladi');
+      _load();
+    } on ApiException catch (e) {
+      _snack(e.message);
+    } catch (e) {
+      _snack('Xato: $e');
+    }
+  }
+
+  Future<void> _remove3D(Map<String, dynamic> p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('3D modelni o\'chirish'),
+        content: Text('"${p['name']}" uchun 3D model mijoz ilovasida '
+            'ko\'rsatilmaydigan bo\'ladi. Keyin qayta yaratsangiz bo\'ladi.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Bekor qilish')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: OnDexColors.danger),
+            child: const Text('O\'chirish'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.removeModel3D(p['id'] as String);
+      _snack('3D model o\'chirildi');
       _load();
     } catch (e) {
       _snack('Xato: $e');
@@ -259,7 +325,7 @@ class MenuPageState extends State<MenuPage> {
           .toList()
         ..sort();
       return SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: _ProductFormPage(
           key: ValueKey(_editingProduct?['id'] ?? '__new__'),
           existing: _editingProduct,
@@ -285,7 +351,7 @@ class MenuPageState extends State<MenuPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: kPagePadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -363,6 +429,8 @@ class MenuPageState extends State<MenuPage> {
                 onPreview: _showPreview,
                 onToggleAvailable: _toggleAvailable,
                 onDelete: _confirmDelete,
+                onModel3D: (p, remove) =>
+                    remove ? _remove3D(p) : _generate3D(p),
               ),
             if (filtered.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -395,49 +463,24 @@ class _CategoryAgg {
 // Sarlavha
 // ---------------------------------------------------------------------------
 
+/// Sarlavha bloki — dizayn `widgets/page_header.dart` da, BARCHA
+/// bo'limlar bilan bitta manbadan (avval bu yerda va "Aksiyalar"da
+/// deyarli bir xil kod ikki nusxada yozilgan edi).
 class _Header extends StatelessWidget {
   final VoidCallback onAddProduct;
   const _Header({required this.onAddProduct});
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final narrow = c.maxWidth < 700;
-      const titleBlock = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Menyu',
-              style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
-          SizedBox(height: 4),
-          Text('Menyudagi mahsulotlarni boshqarish',
-              style: TextStyle(fontSize: 14, color: OnDexColors.inkDim)),
-        ],
-      );
-      // Foydalanuvchi so'rovi bo'yicha sal kattaroq qilingan (avval standart
-      // FilledButton o'lchami edi) — asosiy amal tugmasi bo'lgani uchun
-      // ko'zga yaqqolroq tashlanishi kerak.
-      final addButton = FilledButton.icon(
-        onPressed: onAddProduct,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-          textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) => PageHeader(
+        title: 'Menyu',
+        subtitle: 'Menyudagi mahsulotlarni boshqarish',
+        narrowBelow: 700,
+        action: PageActionButton(
+          icon: Icons.add_rounded,
+          label: 'Mahsulot qo\'shish',
+          onPressed: onAddProduct,
         ),
-        icon: const Icon(Icons.add_rounded, size: 20),
-        label: const Text('Mahsulot qo\'shish'),
       );
-      if (narrow) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [titleBlock, const SizedBox(height: 16), addButton],
-        );
-      }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [const Expanded(child: titleBlock), addButton],
-      );
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +658,11 @@ class _ProductTable extends StatelessWidget {
   final void Function(Map<String, dynamic>) onToggleAvailable;
   final void Function(Map<String, dynamic>) onDelete;
 
+  /// 3D model amali. `remove: true` — modelni uzish, aks holda
+  /// generatsiyani boshlash. Ikkita alohida callback o'rniga bitta:
+  /// ular doim juft yuradi va parametrlar ro'yxatini shishirmasin.
+  final void Function(Map<String, dynamic> product, bool remove) onModel3D;
+
   const _ProductTable({
     required this.products,
     required this.soldMap,
@@ -622,6 +670,7 @@ class _ProductTable extends StatelessWidget {
     required this.onPreview,
     required this.onToggleAvailable,
     required this.onDelete,
+    required this.onModel3D,
   });
 
   @override
@@ -652,6 +701,7 @@ class _ProductTable extends StatelessWidget {
               onPreview: () => onPreview(products[i]),
               onToggleAvailable: () => onToggleAvailable(products[i]),
               onDelete: () => onDelete(products[i]),
+              onModel3D: (remove) => onModel3D(products[i], remove),
             ),
           ],
         ],
@@ -694,6 +744,7 @@ class _ProductRow extends StatelessWidget {
   final VoidCallback onPreview;
   final VoidCallback onToggleAvailable;
   final VoidCallback onDelete;
+  final void Function(bool remove) onModel3D;
 
   const _ProductRow({
     required this.product,
@@ -702,6 +753,7 @@ class _ProductRow extends StatelessWidget {
     required this.onPreview,
     required this.onToggleAvailable,
     required this.onDelete,
+    required this.onModel3D,
   });
 
   @override
@@ -712,6 +764,12 @@ class _ProductRow extends StatelessWidget {
     final category = (product['category'] as String? ?? '').trim();
     final available = product['available'] == true;
     final (catColor, catBg) = _categoryStyle(category);
+    // 3D model holati — backend `model_3d_status` va `model_3d_url`
+    // beradi (panel `GET /restaurants/{id}/products` dan TO'LIQ
+    // obyektni oladi; mijozga faqat havola ko'rinadi).
+    final model3DStatus = (product['model_3d_status'] as String?) ?? '';
+    final hasModel3D =
+        ((product['model_3d_url'] as String?) ?? '').isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -747,10 +805,20 @@ class _ProductRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
+                          ),
+                          if (model3DStatus.isNotEmpty || hasModel3D) ...[
+                            const SizedBox(width: 6),
+                            _Model3DBadge(status: model3DStatus, ready: hasModel3D),
+                          ],
+                        ],
+                      ),
                       if (desc.isNotEmpty)
                         Text(desc,
                             maxLines: 1,
@@ -827,12 +895,35 @@ class _ProductRow extends StatelessWidget {
                   onSelected: (v) {
                     if (v == 'toggle') onToggleAvailable();
                     if (v == 'delete') onDelete();
+                    if (v == 'gen3d') onModel3D(false);
+                    if (v == 'rm3d') onModel3D(true);
                   },
                   itemBuilder: (context) => [
                     PopupMenuItem(
                       value: 'toggle',
                       child: Text(available ? 'Nofaol qilish' : 'Faol qilish'),
                     ),
+                    // 3D amali holatga qarab: tayyor bo'lsa "qayta
+                    // yaratish" + "o'chirish", tayyorlanayotgan bo'lsa
+                    // umuman ko'rsatilmaydi (ikkinchi marta bosish
+                    // faqat kredit sarflardi).
+                    if (model3DStatus != 'pending') ...[
+                      PopupMenuItem(
+                        value: 'gen3d',
+                        enabled: imgUrl.isNotEmpty,
+                        child: Text(
+                          hasModel3D ? '3D modelni qayta yaratish' : '3D model yaratish',
+                          style: TextStyle(
+                            color: imgUrl.isEmpty ? OnDexColors.inkFaint : null,
+                          ),
+                        ),
+                      ),
+                      if (hasModel3D)
+                        const PopupMenuItem(
+                          value: 'rm3d',
+                          child: Text('3D modelni o\'chirish'),
+                        ),
+                    ],
                     const PopupMenuItem(
                       value: 'delete',
                       child: Text('O\'chirish', style: TextStyle(color: OnDexColors.danger)),
@@ -842,6 +933,166 @@ class _ProductRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "3D model yaratamizmi?" taklif oynasi.
+///
+/// Rasm yuklangandan keyin chiqadi. Ikkala tanlov ham to'liq
+/// ishlaydigan natija beradi — "Yo'q" hech narsani buzmaydi, mahsulot
+/// oddiy rasm bilan menyuda qoladi.
+class _Model3DOfferDialog extends StatelessWidget {
+  final String productName;
+  const _Model3DOfferDialog({required this.productName});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: OnDexColors.purpleBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.view_in_ar_rounded,
+                color: OnDexColors.purple, size: 20),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(child: Text('3D model yaratilsinmi?')),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'Rasm asosida '),
+              TextSpan(
+                text: '«$productName»',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const TextSpan(text: ' ning haqiqiy 3D modelini yaratamizmi?'),
+            ]),
+            style: const TextStyle(fontSize: 14, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          const _OfferPoint(
+            icon: Icons.photo_camera_rounded,
+            text: 'Mijoz stolda buyurtma bergach, taomni telefon kamerasi '
+                'orqali STOL USTIDA ko\'radi',
+          ),
+          const _OfferPoint(
+            icon: Icons.schedule_rounded,
+            text: 'Tayyorlash bir necha daqiqa vaqt oladi — menyu shu '
+                'vaqtda ham normal ishlayveradi',
+          ),
+          const _OfferPoint(
+            icon: Icons.info_outline_rounded,
+            text: '"Yo\'q" desangiz taom oddiy rasm bilan saqlanadi. '
+                'Keyinroq "Ko\'proq" menyusidan yaratsangiz ham bo\'ladi',
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          style: TextButton.styleFrom(foregroundColor: OnDexColors.inkDim),
+          child: const Text('Yo\'q, oddiy rasm'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.pop(context, true),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+          label: const Text('Ha, yaratilsin'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OfferPoint extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _OfferPoint({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: OnDexColors.inkFaint),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    fontSize: 12.5, color: OnDexColors.inkDim, height: 1.4)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 3D model holati belgisi — mahsulot nomi yonida.
+///
+/// Restoran menyuga qarab qaysi taomda 3D bor, qaysinisi hali
+/// tayyorlanmoqda, qaysinisi yiqilganini BIR QARASHDA ko'rishi kerak:
+/// generatsiya pul sarflaydi va uzoq davom etadi, ya'ni bu holat
+/// menyudagi muhim ma'lumot.
+class _Model3DBadge extends StatelessWidget {
+  final String status;
+  final bool ready;
+
+  const _Model3DBadge({required this.status, required this.ready});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color, bg, icon) = switch (status) {
+      'pending' => (
+          'Tayyorlanmoqda',
+          OnDexColors.warning,
+          OnDexColors.warningBg,
+          Icons.hourglass_top_rounded,
+        ),
+      'failed' => (
+          '3D xato',
+          OnDexColors.danger,
+          OnDexColors.dangerBg,
+          Icons.error_outline_rounded,
+        ),
+      _ when ready => (
+          '3D',
+          OnDexColors.purple,
+          OnDexColors.purpleBg,
+          Icons.view_in_ar_rounded,
+        ),
+      _ => ('', OnDexColors.inkFaint, OnDexColors.pageBg, Icons.help_outline),
+    };
+    if (label.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
         ],
       ),
     );
@@ -1251,7 +1502,10 @@ class _ProductFormPageState extends State<_ProductFormPage> {
   late final TextEditingController _name;
   late final TextEditingController _customCategory;
   late final TextEditingController _price;
-  late final TextEditingController _discountPrice;
+  /// Ulgurji narx — IXTIYORIY ichki maydon (mijozga ko'rsatilmaydi).
+  /// Avval bu yerda "Chegirma narxi" turardi; chegirmalar endi faqat
+  /// "Aksiyalar" bo'limi orqali beriladi.
+  late final TextEditingController _wholesalePrice;
   late final TextEditingController _prepTime;
   late final TextEditingController _description;
   String _weightUnit = 'g';
@@ -1279,7 +1533,7 @@ class _ProductFormPageState extends State<_ProductFormPage> {
     _name = TextEditingController();
     _customCategory = TextEditingController();
     _price = TextEditingController();
-    _discountPrice = TextEditingController();
+    _wholesalePrice = TextEditingController();
     _prepTime = TextEditingController();
     _description = TextEditingController();
     _rebuildCategoryOptions();
@@ -1303,8 +1557,9 @@ class _ProductFormPageState extends State<_ProductFormPage> {
     _name.text = e?['name'] ?? '';
     _customCategory.text = '';
     _price.text = e == null ? '' : ((e['price_tiyin'] as int) ~/ 100).toString();
-    final existingDiscount = ((e?['discount_price_tiyin'] ?? 0) as num).toInt();
-    _discountPrice.text = existingDiscount > 0 ? (existingDiscount ~/ 100).toString() : '';
+    final existingWholesale = ((e?['wholesale_price_tiyin'] ?? 0) as num).toInt();
+    _wholesalePrice.text =
+        existingWholesale > 0 ? (existingWholesale ~/ 100).toString() : '';
     _prepTime.text = e?['prep_time_text'] as String? ?? '';
     _existingWeight = ((e?['weight'] ?? 0) as num).toDouble();
     _weightUnit = (e?['weight_unit'] as String?) ?? 'g';
@@ -1336,7 +1591,7 @@ class _ProductFormPageState extends State<_ProductFormPage> {
   void _resetForNext() {
     _name.clear();
     _price.clear();
-    _discountPrice.clear();
+    _wholesalePrice.clear();
     _prepTime.clear();
     _description.clear();
     _existingWeight = 0;
@@ -1362,8 +1617,8 @@ class _ProductFormPageState extends State<_ProductFormPage> {
         ? _customCategory.text.trim()
         : (_selectedCategory ?? '');
     final sum = int.tryParse(_price.text.trim());
-    final discountText = _discountPrice.text.trim();
-    final discountSum = discountText.isEmpty ? 0 : int.tryParse(discountText);
+    final wholesaleText = _wholesalePrice.text.trim();
+    final wholesaleSum = wholesaleText.isEmpty ? 0 : int.tryParse(wholesaleText);
     final prepTime = _prepTime.text.trim();
     // Miqdor (stock) maydoni endi ushbu formada ko'rsatilmaydi — lekin agar
     // taom avval (eski versiyada) stock bilan saqlangan bo'lsa, tahrirlashda
@@ -1382,12 +1637,11 @@ class _ProductFormPageState extends State<_ProductFormPage> {
       setState(() => _error = 'Narxni to\'g\'ri kiriting');
       return;
     }
-    if (discountText.isNotEmpty && discountSum == null) {
-      setState(() => _error = 'Chegirma narxini to\'g\'ri kiriting');
-      return;
-    }
-    if (discountSum != null && discountSum > 0 && discountSum >= sum) {
-      setState(() => _error = 'Chegirma narxi asosiy narxdan kichik bo\'lishi kerak');
+    // Ulgurji narx — ixtiyoriy. Asosiy narx bilan TAQQOSLANMAYDI: u
+    // undan yuqori ham bo'lishi mumkin (bu restoranning o'z hisob-kitobi,
+    // mijoz to'laydigan summaga umuman ta'sir qilmaydi).
+    if (wholesaleText.isNotEmpty && (wholesaleSum == null || wholesaleSum < 0)) {
+      setState(() => _error = 'Ulgurji narxni to\'g\'ri kiriting');
       return;
     }
 
@@ -1400,12 +1654,12 @@ class _ProductFormPageState extends State<_ProductFormPage> {
       if (_pickedBytes != null) {
         imageUrl = await api.uploadImage(_pickedBytes!, _pickedName ?? 'rasm.jpg');
       }
-      await api.saveProduct(
+      final saved = await api.saveProduct(
         id: widget.existing?['id'],
         name: name,
         category: category,
         priceTiyin: sum * 100,
-        discountPriceTiyin: (discountSum ?? 0) * 100,
+        wholesalePriceTiyin: (wholesaleSum ?? 0) * 100,
         stock: stock,
         weight: _existingWeight,
         weightUnit: _weightUnit,
@@ -1414,6 +1668,14 @@ class _ProductFormPageState extends State<_ProductFormPage> {
         imageUrl: imageUrl,
         available: _available,
       );
+      if (!mounted) return;
+
+      // ── 3D model taklifi ──
+      //
+      // Taklif SAQLANGANDAN KEYIN chiqadi: mahsulot allaqachon
+      // menyuda, ya'ni restoran "Yo'q" desa ham hech narsa
+      // yo'qolmaydi — oddiy rasm bilan saqlangan holicha qoladi.
+      await _maybeOfferModel3D(saved, imageUrl);
       if (!mounted) return;
       if (continueAdding) {
         setState(() {
@@ -1428,6 +1690,57 @@ class _ProductFormPageState extends State<_ProductFormPage> {
       setState(() => _error = 'Xato yuz berdi, qayta urinib ko\'ring');
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Rasm yuklangan mahsulot uchun 3D model taklif qiladi.
+  ///
+  /// ┌─ QACHON SO'RALADI ────────────────────────────────────────────┐
+  /// Taklif FAQAT quyidagi hollarda chiqadi:
+  ///   * mahsulotda rasm bor (rasmsiz model yasab bo'lmaydi);
+  ///   * modeli hali yo'q va tayyorlanayotgani ham yo'q.
+  ///
+  /// Har saqlashda qayta so'ralsa — restoran allaqachon "Yo'q" degan
+  /// taomni tahrirlaganda yana bezovta bo'lardi. Model bor bo'lsa esa
+  /// qayta yaratish "Ko'proq" menyusi orqali, ATAYLAB qo'lda
+  /// chaqiriladi: har generatsiya PUL sarflaydi.
+  /// └───────────────────────────────────────────────────────────────┘
+  Future<void> _maybeOfferModel3D(
+      Map<String, dynamic> saved, String imageUrl) async {
+    if (imageUrl.trim().isEmpty) return;
+    if (((saved['model_3d_url'] as String?) ?? '').isNotEmpty) return;
+    if (saved['model_3d_status'] == 'pending') return;
+
+    final productId = (saved['id'] as String?) ?? '';
+    if (productId.isEmpty) return;
+
+    final name = (saved['name'] as String?) ?? '';
+    final wants = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _Model3DOfferDialog(productName: name),
+    );
+    if (wants != true || !mounted) return;
+
+    try {
+      await api.generateModel3D(productId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('3D model tayyorlanmoqda — bir necha daqiqa vaqt '
+              'oladi. Tayyor bo\'lganda menyuda «3D» belgisi paydo bo\'ladi.'),
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      // Xato saqlashni BUZMAYDI: mahsulot allaqachon menyuda.
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('3D model: ${e.message}')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('3D modelni boshlab bo\'lmadi')),
+      );
     }
   }
 
@@ -1540,12 +1853,21 @@ class _ProductFormPageState extends State<_ProductFormPage> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: _LabeledField(
-                        label: 'Chegirma narxi',
+                        // Chegirma narxi bu yerdan OLIB TASHLANDI:
+                        // chegirmalar faqat "Aksiyalar" bo'limida
+                        // beriladi (bitta joyda boshqariladi, muddati
+                        // va qamrovi bilan). Ulgurji narx esa —
+                        // restoranning o'z hisob-kitobi uchun, mijozga
+                        // umuman ko'rsatilmaydi.
+                        label: 'Ulgurji narx',
                         child: TextField(
-                          controller: _discountPrice,
+                          controller: _wholesalePrice,
                           keyboardType: TextInputType.number,
                           onChanged: (_) => setState(() {}),
-                          decoration: _formDec(hint: '0', suffix: 'so\'m'),
+                          decoration: _formDec(
+                              hint: '0',
+                              suffix: 'so\'m',
+                              helper: 'Ixtiyoriy, faqat siz ko\'rasiz'),
                         ),
                       ),
                     ),
@@ -1645,7 +1967,6 @@ class _ProductFormPageState extends State<_ProductFormPage> {
                   ? _customCategory.text
                   : (_selectedCategory ?? ''),
               priceText: _price.text,
-              discountPriceText: _discountPrice.text,
               prepTimeText: _prepTime.text,
             ),
           );
@@ -1938,7 +2259,6 @@ class _LivePreview extends StatelessWidget {
   final String description;
   final String category;
   final String priceText;
-  final String discountPriceText;
   final String prepTimeText;
 
   const _LivePreview({
@@ -1948,15 +2268,12 @@ class _LivePreview extends StatelessWidget {
     required this.description,
     required this.category,
     required this.priceText,
-    this.discountPriceText = '',
     this.prepTimeText = '',
   });
 
   @override
   Widget build(BuildContext context) {
     final sum = int.tryParse(priceText.trim()) ?? 0;
-    final discountSum = int.tryParse(discountPriceText.trim()) ?? 0;
-    final hasDiscount = discountSum > 0 && discountSum < sum;
     final hasImage = imageBytes != null || imageUrl.isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(12),
@@ -2034,22 +2351,15 @@ class _LivePreview extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (hasDiscount)
-                Text(formatSum(sum * 100),
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: OnDexColors.inkFaint,
-                        decoration: TextDecoration.lineThrough)),
-              Text(formatSum((hasDiscount ? discountSum : sum) * 100),
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: hasDiscount ? OnDexColors.danger : OnDexColors.ink)),
-            ],
-          ),
+          // Bu — MIJOZ ko'radigan kartochka, shuning uchun faqat sotuv
+          // narxi. Ulgurji narx bu yerda UMUMAN ko'rsatilmaydi, chegirma
+          // esa "Aksiyalar" bo'limidan kelib chiqadi (mahsulot formasida
+          // chegirma narxi endi yo'q).
+          Text(formatSum(sum * 100),
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: OnDexColors.ink)),
         ],
       ),
     );

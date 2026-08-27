@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -74,6 +75,26 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// decodeRaw — `decodeJSON` bilan bir xil, lekin XOM tanani ham
+// qaytaradi.
+//
+// Nega kerak: to'lov provayderining callback'i nizo chiqqanda yagona
+// dalil bo'ladi, shuning uchun u AYNAN kelgan holida bazaga yoziladi.
+// Struct'ga dekodlangan nusxa yetarli emas — undagi noma'lum
+// maydonlar yo'qoladi.
+func decodeRaw(w http.ResponseWriter, r *http.Request, dst any) ([]byte, bool) {
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpError(w, http.StatusBadRequest, errors.New("so'rovni o'qib bo'lmadi"))
+		return nil, false
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		httpError(w, http.StatusBadRequest, errors.New("so'rov formati noto'g'ri"))
+		return nil, false
+	}
+	return raw, true
 }
 
 // rateLimited — cheklovni tekshiradi. Rad etilsa javobni (aniq kutish

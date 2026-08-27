@@ -3,9 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import 'ar_table_screen.dart';
 import '../live.dart';
+import '../widgets/common.dart';
 import '../widgets/order_status.dart';
+import '../widgets/page_sheet.dart';
+import '../widgets/sheet_page.dart';
+import '../widgets/product_grid.dart' show discountLineLabel;
 import 'catalog_screen.dart' show kBrand;
+import 'payment_webview_screen.dart';
 
 /// Buyurtma kuzatuvi — NATIVE (mobil oqimdagi OXIRGI WebView shu edi).
 ///
@@ -26,11 +32,113 @@ class TrackingScreen extends StatefulWidget {
   State<TrackingScreen> createState() => _TrackingScreenState();
 }
 
+/// To'lov kutayotgan buyurtma uchun ogohlantirish.
+///
+/// ┌─ NEGA ALOHIDA KARTOCHKA ──────────────────────────────────────────┐
+/// Karta tanlangan buyurtma pul bloklanmaguncha OSHXONAGA TUSHMAYDI.
+/// Mijoz to'lov oynasini yopib yuborsa, buyurtma jimgina kutib turardi
+/// va u "buyurtma qabul qilindi" deb o'ylab qolardi. Shuning uchun
+/// holat ochiq aytiladi va qayta to'lash tugmasi beriladi.
+/// └───────────────────────────────────────────────────────────────────┘
+class _AwaitingPaymentCard extends StatelessWidget {
+  final VoidCallback onPay;
+  final bool busy;
+  final String? error;
+
+  const _AwaitingPaymentCard({
+    required this.onPay,
+    required this.busy,
+    required this.error,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFD9A8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.credit_card, size: 20, color: Color(0xFFB26A00)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('To\'lov kutilmoqda',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Color(0xFFB26A00))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Buyurtma restoranga YUBORILMAGAN. To\'lovni yakunlaganingizdan '
+            'keyin u avtomatik oshxonaga tushadi.\n\n'
+            'Pul darhol yechilmaydi — u vaqtincha bloklanadi va restoran '
+            'buyurtmani qabul qilgandagina yechiladi.',
+            style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF6B4A00)),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(error!,
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFFB3261E))),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 46,
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: kBrand,
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: busy ? null : onPay,
+              icon: busy
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.lock_outline, size: 18),
+              label: Text(busy ? 'Ochilmoqda…' : 'To\'lovni yakunlash'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TrackingScreenState extends State<TrackingScreen> {
   Map<String, dynamic>? _order;
   bool _loading = true;
   String? _error;
   late final LiveRefresher _live;
+
+  /// Karta to'lovi holati (to'lov sahifasi yopilib qolgan holat uchun).
+  bool _paying = false;
+  String? _payError;
+
+  /// "Stolni kameraga tuting" taklifi BIR MARTA ko'rsatiladi.
+  ///
+  /// Ro'yxat har 15-20 soniyada qayta yuklanadi (`LiveRefresher`);
+  /// bayroqsiz taklif har yangilanishda qayta ochilib, mijozni
+  /// bezovta qilardi.
+  bool _arPromptShown = false;
+
+  /// Shu buyurtmadagi 3D modeli bor taomlar. FAQAT stol
+  /// buyurtmasida — yetkazib berishda mijoz stol oldida emas.
+  List<ArDish> get _arDishes {
+    final o = _order;
+    if (o == null) return const [];
+    if ((o['type'] as String?) != 'dine_in') return const [];
+    return ArDish.fromOrder(o);
+  }
 
   @override
   void initState() {
@@ -51,6 +159,42 @@ class _TrackingScreenState extends State<TrackingScreen> {
     super.dispose();
   }
 
+  /// Buyurtma berilgandan keyin "Stolni kameraga tuting" taklifi.
+  ///
+  /// Taklif SHU YERDA, buyurtma yuklangandan keyin chiqadi (checkout
+  /// ekranida emas): u paytda buyurtma tarkibi hali serverdan
+  /// olinmagan va qaysi taomda 3D borligi noma'lum bo'ladi.
+  void _maybePromptAr() {
+    if (_arPromptShown) return;
+    final dishes = _arDishes;
+    if (dishes.isEmpty) return;
+    _arPromptShown = true;
+
+    // Ekran chizilib bo'lgach ochiladi: `_load` `initState` dan ham
+    // chaqiriladi va o'sha paytda dialog ochib bo'lmaydi.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => _ArPromptDialog(
+          count: dishes.length,
+          onOpen: () {
+            Navigator.pop(ctx);
+            _openAr();
+          },
+        ),
+      );
+    });
+  }
+
+  void _openAr() {
+    final dishes = _arDishes;
+    if (dishes.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ArTableScreen(dishes: dishes),
+    ));
+  }
+
   Future<void> _load() async {
     try {
       final o = await api.getOrder(widget.orderId);
@@ -60,6 +204,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
         _loading = false;
         _error = null;
       });
+      _maybePromptAr();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -67,8 +212,58 @@ class _TrackingScreenState extends State<TrackingScreen> {
         // Buyurtma ALLAQACHON ko'rsatilgan bo'lsa uni o'chirmaymiz —
         // tarmoq uzilgani uchun mijoz holatini yo'qotmasligi kerak.
         if (_order == null) {
-          _error = e is ApiException ? e.message : 'Buyurtmani ochib bo\'lmadi';
+          _error = errorText(e, 'Buyurtmani ochib bo\'lmadi');
         }
+      });
+    }
+  }
+
+  /// To'lov kutayotgan KARTA buyurtmasimi.
+  ///
+  /// Server `payment_state` ni faqat karta buyurtmasida to'ldiradi,
+  /// shuning uchun naqd buyurtmada bu hech qachon rost bo'lmaydi.
+  static bool _awaitingPayment(Map<String, dynamic> o) {
+    final method = (o['payment_method'] as String?) ?? '';
+    final state = (o['payment_state'] as String?) ?? '';
+    return method == 'card' && state != 'held' && state != 'paid';
+  }
+
+  /// To'lov sahifasini QAYTA ochadi.
+  ///
+  /// Mijoz to'lov oynasini yopib yuborgan yoki to'lov bank tomonda
+  /// uzilib qolgan bo'lishi mumkin (masalan "takroriy SMS xabarlarining
+  /// maksimal soni"). Shuning uchun bu yerda `retry: true` yuboriladi —
+  /// server eski urinishni yopib, YANGI tranzaksiya ochadi. Aks holda
+  /// mijoz o'sha o'lik havolaga qaytaverib tuzoqqa tushib qolardi.
+  Future<void> _payAgain() async {
+    if (_paying) return;
+    setState(() {
+      _paying = true;
+      _payError = null;
+    });
+    try {
+      final p = await api.startPayment(widget.orderId, retry: true);
+      final url = (p['pay_url'] as String?) ?? '';
+      if (url.isEmpty) throw Exception('havola bo\'sh');
+      if (!mounted) return;
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            payUrl: url,
+            returnUrl: (p['return_url'] as String?) ?? '',
+          ),
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _paying = false);
+      // Oyna yopilishi to'lov o'tganini bildirmaydi — serverdan
+      // haqiqiy holatni so'raymiz.
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _paying = false;
+        _payError = errorText(e, 'To\'lov sahifasini ochib bo\'lmadi');
       });
     }
   }
@@ -77,16 +272,18 @@ class _TrackingScreenState extends State<TrackingScreen> {
   Widget build(BuildContext context) {
     final o = _order;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(o == null
+    return SheetPage(
+        child: Scaffold(
+      backgroundColor: Colors.white,
+      appBar: PageAppBar(
+        title: o == null
             ? 'Buyurtma'
-            : '№ ${(o['order_number'] as String?) ?? ''}'),
+            : '№ ${(o['order_number'] as String?) ?? ''}',
       ),
       body: _loading && o == null
           ? const Center(child: CircularProgressIndicator())
           : _error != null && o == null
-              ? _ErrorView(message: _error!, onRetry: _load)
+              ? ErrorView(message: _error!, onRetry: _load)
               : RefreshIndicator(
                   color: kBrand,
                   onRefresh: _load,
@@ -95,7 +292,29 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     children: [
                       _PlacedAt(order: o!),
                       const SizedBox(height: 12),
+                      // To'lov kutayotgan buyurtma — eng tepada, chunki
+                      // bu yerda mijozdan HARAKAT talab qilinadi.
+                      if (_awaitingPayment(o)) ...[
+                        _AwaitingPaymentCard(
+                          onPay: _payAgain,
+                          busy: _paying,
+                          error: _payError,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       _StatusHeader(order: o),
+                      // ── Stolda AR ko'rish ──
+                      //
+                      // Faqat STOL buyurtmasida va faqat 3D modeli bor
+                      // taom bo'lsa. Holat tepasida turadi: mijoz
+                      // taomni kutayotgan paytda aynan shu qiziq.
+                      if (_arDishes.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _ArCard(
+                          count: _arDishes.length,
+                          onOpen: _openAr,
+                        ),
+                      ],
                       const SizedBox(height: 22),
                       _Timeline(order: o),
                       const SizedBox(height: 22),
@@ -126,11 +345,138 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     ],
                   ),
                 ),
-    );
+    ));
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════
+
+/// "Stolni kameraga tuting" taklifi — buyurtma berilgandan keyin
+/// bir marta chiqadi.
+class _ArPromptDialog extends StatelessWidget {
+  const _ArPromptDialog({required this.count, required this.onOpen});
+
+  final int count;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      contentPadding: const EdgeInsets.fromLTRB(24, 26, 24, 8),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: kBrand.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.photo_camera_rounded,
+                color: kBrand, size: 30),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Stolni kameraga tuting',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            count == 1
+                ? 'Buyurtma qilgan taomingizni stol ustida, haqiqiy '
+                    'o\'lchamda ko\'rishingiz mumkin.'
+                : 'Buyurtma qilgan $count ta taomingizni stol ustida, '
+                    'haqiqiy o\'lchamda ko\'rishingiz mumkin.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: 13.5, color: Color(0xFF616161), height: 1.45),
+          ),
+        ],
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      actions: [
+        Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: FilledButton.icon(
+                onPressed: onOpen,
+                style: FilledButton.styleFrom(
+                  backgroundColor: kBrand,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.view_in_ar_rounded, size: 19),
+                label: const Text('Ko\'rish',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF9E9E9E)),
+              child: const Text('Keyinroq'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Kuzatuv ekranidagi doimiy AR kartochkasi — taklif oynasi yopilgan
+/// bo'lsa ham mijoz uni istalgan paytda ochishi kerak.
+class _ArCard extends StatelessWidget {
+  const _ArCard({required this.count, required this.onOpen});
+
+  final int count;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFF3E9),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              const Icon(Icons.view_in_ar_rounded, color: kBrand, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Stolda ko\'rish',
+                        style: TextStyle(
+                            fontSize: 14.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(
+                      count == 1
+                          ? 'Taomni kamera orqali stol ustida ko\'ring'
+                          : '$count ta taomni kamera orqali ko\'ring',
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFF757575)),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: kBrand),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Buyurtma tugagan (yoki bekor bo'lgan) — bu ekranda qiladigan ish
 /// qolmadi.
@@ -178,7 +524,7 @@ class _StatusHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (order['status'] as String?) ?? '';
     final isDineIn = (order['type'] as String?) == 'dine_in';
-    final (label, icon, color) = statusStyleOf(status);
+    final (label, icon, color) = statusStyleOf(status, dineIn: isDineIn);
     final courierId = (order['courier_id'] as String?) ?? '';
     final table = (order['table_label'] as String?) ?? '';
     final partySize = (order['party_size'] as num?)?.toInt() ?? 0;
@@ -200,7 +546,7 @@ class _StatusHeader extends StatelessWidget {
                   fontSize: 18, fontWeight: FontWeight.bold, color: color)),
           const SizedBox(height: 4),
           Text(
-            _hint(status),
+            _hint(status, isDineIn),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13, color: Color(0xFF757575)),
           ),
@@ -216,9 +562,12 @@ class _StatusHeader extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
+                // `tableText` — `ondex_core` da. Qo'lda "$table-stol"
+                // deb yozilsa, restoran stolni "Stol-1" deb nomlaganda
+                // "Stol-1-stol" chiqardi.
                 partySize > 0
-                    ? '$table-stol · $partySize kishi'
-                    : '$table-stol',
+                    ? '${tableText(table)} · $partySize kishi'
+                    : tableText(table),
                 style:
                     const TextStyle(fontSize: 13, color: Color(0xFF757575)),
               ),
@@ -232,18 +581,27 @@ class _StatusHeader extends StatelessWidget {
   ///
   /// Holat nomining o'zi yetarli emas: "Tayyor" — mijoz uchun nima
   /// degani? Shuning uchun har biriga kutish izohi qo'shiladi.
-  static String _hint(String status) => switch (status) {
-        'created' => 'Restoran buyurtmani ko\'rishini kutmoqdamiz',
-        'accepted' => 'Restoran qabul qildi, tayyorlash boshlanadi',
-        'preparing' => 'Taomingiz tayyorlanmoqda',
-        'ready' => 'Tayyor — kuryer olib ketishini kutmoqda',
-        'picked_up' => 'Kuryer yo\'lda',
-        'delivered' => 'Yoqimli ishtaha!',
-        'served' => 'Yoqimli ishtaha!',
-        'rejected' => 'Restoran buyurtmani qabul qila olmadi',
-        'cancelled' => 'Buyurtma bekor qilindi',
-        _ => '',
-      };
+  static String _hint(String status, bool dineIn) {
+    // Stolda `ready` — taom tayyor va AFFITSIANT olib kelmoqda. Kuryer
+    // bu buyurtmaga umuman chaqirilmaydi (backend dispatch'ni ishga
+    // tushirmaydi), shuning uchun "kuryer kutilmoqda" yozuvi mijozni
+    // hech qachon sodir bo'lmaydigan narsani kutishga majbur qilardi.
+    if (dineIn && status == 'ready') {
+      return 'Affitsiant taomni stolingizga olib kelmoqda';
+    }
+    return switch (status) {
+      'created' => 'Restoran buyurtmani ko\'rishini kutmoqdamiz',
+      'accepted' => 'Restoran qabul qildi, tayyorlash boshlanadi',
+      'preparing' => 'Taomingiz tayyorlanmoqda',
+      'ready' => 'Tayyor — kuryer olib ketishini kutmoqda',
+      'picked_up' => 'Kuryer yo\'lda',
+      'delivered' => 'Yoqimli ishtaha!',
+      'served' => 'Yoqimli ishtaha!',
+      'rejected' => 'Restoran buyurtmani qabul qila olmadi',
+      'cancelled' => 'Buyurtma bekor qilindi',
+      _ => '',
+    };
+  }
 }
 
 /// Bosqichlar chizig'i — buyurtma tarixidan quriladi.
@@ -261,10 +619,15 @@ class _Timeline extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    // Stolda "yo'lda" bosqichi YO'Q — afitsiant stolga olib keladi.
-    final stages = isDineIn
-        ? ['Qabul qilindi', 'Tayyorlanmoqda', 'Stolga berildi']
-        : stageLabels;
+    // Stolda "yo'lda" bosqichi YO'Q — affitsiant stolga olib keladi.
+    // Ro'yxat `widgets/order_status.dart` da (bitta manba): ilgari u shu
+    // yerda qo'lda yozilgan edi va "Buyurtmalarim" kartochkasidagi
+    // chiziq bilan mos kelmasdi.
+    //
+    // Bu TARIX chizig'i, shuning uchun `dineInTimelineLabels` — oxirgi
+    // qadam "Stolga berildi" (vaqti bilan), qisqa chiziqdagi "Tayyor"
+    // emas.
+    final stages = isDineIn ? dineInTimelineLabels : stageLabels;
     final reached = _reachedIndex(status, isDineIn);
 
     return Column(
@@ -401,10 +764,16 @@ class _ItemsCard extends StatelessWidget {
     final discount = (order['discount_tiyin'] as num?)?.toInt() ?? 0;
     final subtotal = (order['subtotal_tiyin'] as num?)?.toInt() ?? 0;
     final promotionName = ((order['promotion_name'] as String?) ?? '').trim();
+    final promotionDiscount =
+        (order['promotion_discount_tiyin'] as num?)?.toInt() ?? 0;
     final totalItems = items.fold<int>(
         0, (a, it) => a + (it is Map ? ((it['qty'] as num?)?.toInt() ?? 0) : 0));
-    final statusColor =
-        statusStyleOf((order['status'] as String?) ?? '').$3;
+    // `dineIn` uzatiladi: hozir ikkala turda ham rang bir xil, lekin
+    // stol uslubi keyin o'zgarsa bu chaqiruv jimgina eskirib qolmasin.
+    final statusColor = statusStyleOf(
+      (order['status'] as String?) ?? '',
+      dineIn: (order['type'] as String?) == 'dine_in',
+    ).$3;
 
     return _Panel(
       title: 'Buyurtma tarkibi',
@@ -478,11 +847,16 @@ class _ItemsCard extends StatelessWidget {
           if (discount > 0) ...[
             _Line(label: 'Taomlar', value: formatSum(subtotal)),
             _Line(
-              // Aksiya nomi bo'lsa u ko'rsatiladi — mijoz chegirma
-              // QAYERDAN kelganini bilishi kerak.
-              label: promotionName.isEmpty
-                  ? 'Aksiya chegirmasi'
-                  : 'Aksiya: $promotionName',
+              // Aksiya nomi FAQAT chegirmaning hammasi o'sha aksiyadan
+              // bo'lganda ko'rsatiladi: savatga bir vaqtda bir nechta
+              // aksiya va mahsulot chegirmasi tushishi mumkin (qoida
+              // savat/checkout ekranlari bilan bitta manbadan —
+              // `discountLineLabel`).
+              label: discountLineLabel(
+                discountTiyin: discount,
+                promotionDiscountTiyin: promotionDiscount,
+                promotionName: promotionName,
+              ),
               value: '− ${formatSum(discount)}',
               color: const Color(0xFF16A34A),
             ),
@@ -543,7 +917,7 @@ class _WhereCard extends StatelessWidget {
           children: [
             const Icon(Icons.qr_code_2, size: 18, color: kBrand),
             const SizedBox(width: 8),
-            Text(table.isEmpty ? 'Stolda' : '$table-stol'),
+            Text(table.isEmpty ? 'Stolda' : tableText(table)),
           ],
         ),
       );
@@ -579,14 +953,8 @@ class _ItemImage extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) {
-    if (url.isEmpty) return _placeholder;
-    return Image.network(
-      fullImageUrl(url),
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => _placeholder,
-    );
-  }
+  Widget build(BuildContext context) =>
+      RemoteImage(url: url, placeholder: _placeholder);
 }
 
 class _Panel extends StatelessWidget {
@@ -630,27 +998,3 @@ class _Panel extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 40, color: Color(0xFF9E9E9E)),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('Qayta urinish')),
-          ],
-        ),
-      ),
-    );
-  }
-}

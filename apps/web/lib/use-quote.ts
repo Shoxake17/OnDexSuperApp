@@ -16,6 +16,14 @@ export function useQuote(
   promotions: ActivePromotion[],
 ) {
   const [quoteTotal, setQuoteTotal] = useState<number | null>(null);
+  // Serverning QATOR bo'yicha hisobi: product_id -> chegirmadan keyingi
+  // qator summasi. Savat qatorlari AYNAN shundan chiziladi — server
+  // butun savatga bitta aksiya qo'llaydi, ya'ni "har taomga o'zining
+  // eng yaxshi chegirmasi" hisobi qatorlar yig'indisini jamidan
+  // ajratib yuborardi (19 000 va 24 000 so'm).
+  const [quoteLines, setQuoteLines] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = useState(false);
 
   const subtotalTiyin = useMemo(() => {
@@ -32,11 +40,11 @@ export function useQuote(
     for (const [id, qty] of Object.entries(cartItems)) {
       const p = productsById.get(id);
       if (!p) continue;
-      const d = computeProductDiscount(p, promotions);
+      const d = computeProductDiscount(p, promotions, subtotalTiyin);
       total += (d ? d.discountedPriceTiyin : p.price_tiyin) * qty;
     }
     return total;
-  }, [cartItems, productsById, promotions]);
+  }, [cartItems, productsById, promotions, subtotalTiyin]);
 
   const itemsKey = JSON.stringify(cartItems);
 
@@ -46,6 +54,7 @@ export function useQuote(
       .map(([product_id, qty]) => ({ product_id, qty }));
     if (!restaurantId || items.length === 0) {
       setQuoteTotal(0);
+      setQuoteLines(new Map());
       setLoading(false);
       return;
     }
@@ -67,10 +76,26 @@ export function useQuote(
         // son bo'lmagan qiymat) "narx aniqlanmadi" deb qaraladi va
         // vizual taxminga tushiladi; checkout esa uni bloklaydi.
         const t = q?.total_tiyin;
-        setQuoteTotal(typeof t === "number" && t > 0 ? t : null);
+        const ok = typeof t === "number" && t > 0;
+        setQuoteTotal(ok ? t : null);
+        // Qator narxlari FAQAT jami ishonchli bo'lganda ishlatiladi —
+        // aks holda savat qatorlari va pastdagi jami turli manbadan
+        // kelib qolardi.
+        const lines = new Map<string, number>();
+        if (ok && Array.isArray(q?.lines)) {
+          for (const l of q.lines) {
+            if (typeof l?.product_id === "string" && typeof l?.total_tiyin === "number") {
+              lines.set(l.product_id, l.total_tiyin);
+            }
+          }
+        }
+        setQuoteLines(lines);
       })
       .catch(() => {
-        if (!cancelled) setQuoteTotal(null);
+        if (!cancelled) {
+          setQuoteTotal(null);
+          setQuoteLines(new Map());
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -83,5 +108,5 @@ export function useQuote(
 
   const totalTiyin = quoteTotal ?? visualTotalTiyin;
 
-  return { totalTiyin, subtotalTiyin, loading, quoteTotal };
+  return { totalTiyin, subtotalTiyin, loading, quoteTotal, quoteLines };
 }

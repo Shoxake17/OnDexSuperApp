@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../live.dart';
 import '../widgets/order_status.dart';
+import '../widgets/sheet_page.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'tracking_screen.dart';
 
@@ -120,7 +122,11 @@ class _OrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final id = order['id'] as String;
     final status = order['status'] as String? ?? 'created';
-    final (label, icon, color) = statusStyleOf(status);
+    // Stol (QR) buyurtmasida kuryer YO'Q — matn, ikonka va bosqichlar
+    // shunga qarab o'zgaradi. Busiz zalda o'tirgan mijoz "Tayyor —
+    // kuryer kutilmoqda" degan yozuvni ko'rardi.
+    final isDineIn = (order['type'] as String?) == 'dine_in';
+    final (label, icon, color) = statusStyleOf(status, dineIn: isDineIn);
     final restaurantName = order['restaurant_name'] as String? ?? '';
     final logoUrl = order['restaurant_logo_url'] as String? ?? '';
     final total = (order['total_tiyin'] ?? 0) as int;
@@ -133,7 +139,7 @@ class _OrderCard extends StatelessWidget {
     // `surfaceContainerHighest` ishlatilardi — u mavzuga bog'liq
     // kulrang berib, veb kartochkasidan sezilarli farq qilardi.
     const surface = Color(0xFFF5F5F5);
-    final stage = stageOf(status);
+    final stage = stageOf(status, dineIn: isDineIn);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -146,7 +152,7 @@ class _OrderCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => TrackingScreen(orderId: id)),
+          sheetRoute(TrackingScreen(orderId: id)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -163,19 +169,15 @@ class _OrderCard extends StatelessWidget {
                       // kartochkani kerakdan baland qilardi.
                       width: 48,
                       height: 48,
-                      child: logoUrl.isEmpty
-                          ? Container(
-                              color: surface,
-                              child: const Icon(Icons.storefront,
-                                  color: Colors.grey, size: 20))
-                          : Image.network(
-                              fullImageUrl(logoUrl),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                  color: surface,
-                                  child: const Icon(Icons.storefront,
-                                      color: Colors.grey, size: 20)),
-                            ),
+                      // Bo'sh yo'l ham, yiqilgan rasm ham bitta
+                      // o'rinbosarga tushadi (`RemoteImage`).
+                      child: RemoteImage(
+                        url: logoUrl,
+                        placeholder: Container(
+                            color: surface,
+                            child: const Icon(Icons.storefront,
+                                color: Colors.grey, size: 20)),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -260,7 +262,7 @@ class _OrderCard extends StatelessWidget {
               ),
               if (stage >= 0) ...[
                 const SizedBox(height: 16),
-                OrderProgressStepper(stage: stage),
+                OrderProgressStepper(stage: stage, dineIn: isDineIn),
               ],
             ],
           ),

@@ -8,10 +8,18 @@ module chustapp
 // kutubxonada 23 ta CVE topgandi (crypto/tls, crypto/x509, net/url,
 // net/http) — ularning hammasi 1.25.6...1.25.12 da tuzatilgan.
 //
-// Yangi CVE chiqqanda bu raqamni oshiring. CI `1.25.x` ishlatadi va
-// eng yangi patchni o'zi oladi, shuning uchun kunlik skanerlash
+// Yangi CVE chiqqanda bu raqamni oshiring. CI mos `1.26.x` ni ishlatadi
+// va eng yangi patchni o'zi oladi, shuning uchun kunlik skanerlash
 // ogohlantirishni oldindan beradi.
-go 1.25.12
+//
+// 2026-yil ko'tarilishi: `govulncheck` 1.26.5 standart kutubxonasida
+// kod HAQIQATAN chaqiradigan ikki zaiflikni topdi —
+//   * GO-2026-5972 (encoding/asn1 rekursiya chuqurligi; FCM kalitini
+//     o'qishda x509.ParsePKCS8PrivateKey orqali),
+//   * GO-2026-5026 (net/http + x/net/idna Punycode; har http.Client.Do).
+// Ikkalasi ham 1.26.6 da tuzatilgan, shuning uchun eng kam talab shu
+// versiyaga ko'tarildi (GOTOOLCHAIN=auto uni o'zi yuklaydi).
+go 1.26.6
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.43.0
@@ -21,11 +29,13 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mayahiro/go-webp v0.3.0
+	github.com/pdfcpu/pdfcpu v0.15.0
 	github.com/redis/go-redis/v9 v9.21.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/crypto v0.55.0
-	golang.org/x/image v0.44.0
+	golang.org/x/image v0.45.0
 )
 
 require (
@@ -44,17 +54,21 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0 // indirect
 	github.com/aws/smithy-go v1.27.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/hhrutter/tiff v1.0.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
+	github.com/mattn/go-runewidth v0.0.27 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ondex_core/ondex_core.dart' show tableText;
 
 import '../theme.dart';
 
@@ -129,7 +130,10 @@ class TableChip extends StatelessWidget {
                 size: 13, color: OnDexColors.primary),
             const SizedBox(width: 4),
             Text(
-              tableLabel.isEmpty ? 'Stol' : '$tableLabel-stol',
+              // `tableText` — `ondex_core` da. Ilgari bu yerda
+              // "$tableLabel-stol" deb yozilardi va restoran stolni
+              // "Stol-1" deb nomlagan bo'lsa "Stol-1-stol" chiqardi.
+              tableText(tableLabel),
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.ellipsis,
@@ -152,6 +156,23 @@ class TableChip extends StatelessWidget {
     );
   }
 }
+
+/// Buyurtma stol (QR kod) buyurtmasimi.
+///
+/// ┌─ NEGA BITTA JOYDA ────────────────────────────────────────────────┐
+/// Bu tekshiruv ilgari faqat `OrderCardHeader` ichida edi, kuryer holati
+/// ko'rsatiladigan joylarda esa YO'Q edi. Natijada stol buyurtmasi
+/// ustida "Kuryer qidirilmoqda..." aylanuvchi indikatori ABADIY turardi:
+/// backend stol buyurtmasi uchun kuryer qidirmaydi (`routes_orders.go` —
+/// `if !o.IsDineIn()`), ya'ni `courier_id` hech qachon to'lmaydi va
+/// indikator hech qachon to'xtamasdi.
+///
+/// `type` maydoni BO'SH bo'lishi mumkin (`json:"type,omitempty"` — eski
+/// va yetkazish buyurtmalari uni yubormaydi), shuning uchun tekshiruv
+/// aynan `== 'dine_in'`: bo'sh = yetkazish. Bu backenddagi
+/// `Type.Normalized()` qoidasi bilan bir xil.
+/// └───────────────────────────────────────────────────────────────────┘
+bool isDineInOrder(Map<String, dynamic> order) => order['type'] == 'dine_in';
 
 /// ISO satrni mahalliy vaqtga aylantiradi (noto'g'ri qiymatda `null`).
 DateTime? parseOrderAt(dynamic iso) =>

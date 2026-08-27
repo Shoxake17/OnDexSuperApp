@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../api.dart';
+import '../widgets/app_text_field.dart';
 
 /// Manzil qidirish ekrani (Yandex Go uslubi): tepada qidiruv maydoni +
 /// "joriy joylashuvim" tugmasi, pastda yozgan matningizga mos manzillar
@@ -139,34 +140,17 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
+                  // Ko'rinish ilovadagi boshqa maydonlar bilan bir xil,
+                  // vazifasi esa o'zgarmagan: bu MANZIL qidiruvi,
+                  // restoran qidirmaydi.
                   Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: TextField(
-                        controller: _ctrl,
-                        focusNode: _focusNode,
-                        onChanged: _onChanged,
-                        decoration: InputDecoration(
-                          hintText: 'Yetkazish manzilini kiriting',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _ctrl.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  icon: const Icon(Icons.close, size: 20),
-                                  onPressed: () {
-                                    _ctrl.clear();
-                                    _onChanged('');
-                                  },
-                                ),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
+                    child: AppTextField(
+                      controller: _ctrl,
+                      focusNode: _focusNode,
+                      hint: 'Yetkazish manzilini kiriting',
+                      icon: Icons.search,
+                      textInputAction: TextInputAction.search,
+                      onChanged: _onChanged,
                     ),
                   ),
                   const SizedBox(width: 8),

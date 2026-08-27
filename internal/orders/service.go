@@ -75,12 +75,31 @@ type Notifier interface {
 	OrderStatusChanged(o *Order, from Status)
 }
 
+// PaymentGateway — buyurtma holati o'zgarganda pulni tasdiqlash yoki
+// bo'shatish. `orders` paketi to'lov provayderini BILMAYDI — bu tor
+// interfeys `internal/payments` da amalga oshiriladi.
+type PaymentGateway interface {
+	// CaptureForOrder — bloklangan pulni yechadi (restoran qabul qildi).
+	CaptureForOrder(ctx context.Context, orderID string, amountTiyin int64) error
+	// ReleaseForOrder — blokni bo'shatadi yoki pulni qaytaradi
+	// (buyurtma rad etildi/bekor qilindi).
+	ReleaseForOrder(ctx context.Context, orderID string) error
+}
+
 type Service struct {
 	repo           Repository
 	notifier       Notifier
 	idgen          func() string
 	now            func() time.Time
 	promotionsRepo promotions.Repository // nil = aksiyalar qo'llanilmaydi (masalan testlarda)
+	payments       PaymentGateway        // nil = karta to'lovi ulanmagan
+}
+
+// WithPayments — karta to'lovini ulaydi. Alohida setter: mavjud
+// `NewService` chaqiruvlari (va o'nlab testlar) o'zgarmasin.
+func (s *Service) WithPayments(p PaymentGateway) *Service {
+	s.payments = p
+	return s
 }
 
 func NewService(repo Repository, notifier Notifier, idgen func() string, promotionsRepo promotions.Repository) *Service {
@@ -91,22 +110,27 @@ func NewService(repo Repository, notifier Notifier, idgen func() string, promoti
 // chaqiradi, shuning uchun mijozga checkout'dan oldin ko'rsatilgan
 // narx bilan buyurtma yaratilganda haqiqatan yozilgan narx HAR DOIM
 // bir xil manbadan kelib chiqadi (ikki xil hisoblash yo'q).
-func (s *Service) priceCart(ctx context.Context, restaurantID string, items []Item, customerID string) (subtotal, discount int64, applied *promotions.AppliedDiscount, err error) {
+// lineDiscounts — chegirmaning savat qatorlari bo'yicha taqsimoti
+// (`items` bilan bir xil uzunlik va tartib). Yig'indisi HAR DOIM
+// `discount` ga teng, ya'ni mijoz ekranda ko'rgan qator narxlari
+// pastdagi jamiga aniq qo'shiladi.
+func (s *Service) priceCart(ctx context.Context, restaurantID string, items []Item, customerID string) (subtotal, discount int64, applied promotions.Result, lineDiscounts []int64, err error) {
+	lineDiscounts = make([]int64, len(items))
 	for _, it := range items {
 		subtotal += it.PriceTiyin * int64(it.Qty)
 	}
 	if s.promotionsRepo == nil {
-		return subtotal, 0, nil, nil
+		return subtotal, 0, applied, lineDiscounts, nil
 	}
 	promos, err := s.promotionsRepo.ListByRestaurant(ctx, restaurantID)
 	if err != nil {
-		return subtotal, 0, nil, err
+		return subtotal, 0, applied, lineDiscounts, err
 	}
 	var previousOrders int
 	if customerID != "" {
 		previousOrders, err = s.repo.CountByCustomerAndRestaurant(ctx, customerID, restaurantID)
 		if err != nil {
-			return subtotal, 0, nil, err
+			return subtotal, 0, applied, lineDiscounts, err
 		}
 	}
 	lines := make([]promotions.CartLine, len(items))
@@ -115,70 +139,126 @@ func (s *Service) priceCart(ctx context.Context, restaurantID string, items []It
 			ProductID: it.ProductID, Category: it.Category, UnitPriceTiyin: it.PriceTiyin, Qty: it.Qty,
 		}
 	}
-	applied = promotions.ApplyBest(promos, lines, previousOrders, s.now())
-	if applied != nil {
-		discount = applied.DiscountTiyin
-	}
-
-	// ---- Mahsulot chegirmasi VS aksiya: ENG YAXSHISI, hech qachon ikkalasi ----
+	// ---- Chegirma: HAR QATOR o'zining eng yaxshisini oladi ----
 	//
 	// Tizimda ikkita mustaqil chegirma mexanizmi bor:
 	//   1) mahsulotning o'z chegirma narxi (`DiscountPriceTiyin`) —
-	//      restoran panelida belgilanadi;
-	//   2) aksiya (`promotions.ApplyBest`).
+	//      restoran panelidagi eski maydon, endi faqat eski yozuvlarda;
+	//   2) aksiyalar (`promotions.Apply`).
 	//
-	// Avval ular QO'SHILARDI: narxlash chegirma narxidan boshlanib,
-	// ustiga aksiya chegirmasi ayirilardi. Haqiqiy holatda bu jamini
-	// NOLGA tushirdi (105 850 so'mlik savat -> 0 so'm, ya'ni bepul
-	// buyurtma). Endi ikkalasi RAQOBATCHI nomzod: qaysi biri mijozga
-	// ko'proq foyda bersa, o'sha BITTASI qo'llanadi.
-	//
-	// Bu `ApplyBest` ning o'z falsafasiga ham mos — u allaqachon bir
-	// nechta aksiyadan faqat bittasini tanlaydi (stacking yo'q).
-	var productDiscount int64
-	for _, it := range items {
+	// Mahsulot chegirmasi har qator uchun "kafolatlangan minimum"
+	// (baseline) bo'lib beriladi, aksiyalar esa faqat undan foydaliroq
+	// qatorlarda yutadi. Bitta qatorda ikkitasi hech qachon
+	// QO'SHILMAYDI, lekin turli qatorlar turli manbadan chegirma oladi —
+	// batafsil izoh `promotions.Apply` da.
+	productLineDiscounts := make([]int64, len(items))
+	for i, it := range items {
 		if it.DiscountPriceTiyin > 0 && it.DiscountPriceTiyin < it.PriceTiyin {
-			productDiscount += (it.PriceTiyin - it.DiscountPriceTiyin) * int64(it.Qty)
+			productLineDiscounts[i] = (it.PriceTiyin - it.DiscountPriceTiyin) * int64(it.Qty)
 		}
 	}
-	if productDiscount > discount {
-		// Mahsulot chegirmasi yutdi — aksiya UMUMAN qo'llanmaydi
-		// (`applied = nil`), shuning uchun chekda aksiya nomi
-		// ko'rsatilmaydi va statistikasi ham oshirilmaydi.
-		discount = productDiscount
-		applied = nil
-	}
+
+	applied = promotions.Apply(promos, lines, productLineDiscounts, previousOrders, s.now())
+	discount = applied.DiscountTiyin
+	copy(lineDiscounts, applied.LineDiscounts)
 
 	// Oxirgi himoya: chegirma hech qachon jamidan oshmaydi. `capDiscount`
 	// buni aksiya uchun allaqachon qiladi, lekin mahsulot chegirmasi
 	// boshqa yo'ldan keladi — invariant bitta joyda kafolatlanishi kerak.
 	if discount > subtotal {
 		discount = subtotal
+		lineDiscounts = promotions.Spread(discount, lineDiscounts)
 	}
-	return subtotal, discount, applied, nil
+	return subtotal, discount, applied, lineDiscounts, nil
 }
 
 // QuoteResult — mijoz ilovasi checkout'dan OLDIN (masalan savatga
 // mahsulot qo'shilganda/o'chirilganda) chaqiradigan HAQIQIY narxlash
 // natijasi — real buyurtma yaratmaydi, faqat oldindan ko'rsatadi.
 type QuoteResult struct {
-	SubtotalTiyin int64  `json:"subtotal_tiyin"`
-	DiscountTiyin int64  `json:"discount_tiyin"`
-	TotalTiyin    int64  `json:"total_tiyin"`
+	SubtotalTiyin int64 `json:"subtotal_tiyin"`
+	DiscountTiyin int64 `json:"discount_tiyin"`
+	TotalTiyin    int64 `json:"total_tiyin"`
+	// PromotionID/PromotionName — ENG KO'P hissa qo'shgan aksiya. Savatga
+	// bir vaqtda bir nechta aksiya tushishi mumkin (har qator o'zining
+	// eng yaxshisini oladi), to'liq ro'yxat — `Promotions`.
 	PromotionID   string `json:"promotion_id,omitempty"`
 	PromotionName string `json:"promotion_name,omitempty"`
+	// PromotionDiscountTiyin — AYNAN SHU (asosiy) aksiya bergan summa.
+	//
+	// Klient hisob qatorini shunga qarab nomlaydi: shu bitta aksiya
+	// chegirmaning HAMMASINI bergan bo'lsa "Aksiya: <nom>", aks holda
+	// (bir nechta aksiya yoki mahsulot chegirmasi aralashgan) oddiy
+	// "Chegirma" — aks holda boshqa manbalardan kelgan summa ham bitta
+	// aksiya nomi ostida ko'rsatilib, mijozga noto'g'ri ma'lumot
+	// berilardi.
+	PromotionDiscountTiyin int64 `json:"promotion_discount_tiyin,omitempty"`
+	// Promotions — savatga tushgan BARCHA aksiyalar va har birining
+	// hissasi (hissasi bo'yicha kamayish tartibida).
+	Promotions []QuotePromotion `json:"promotions,omitempty"`
+	// Lines — HAR BIR savat qatorining yakuniy narxi. Klient savat va
+	// rasmiylashtirish ekranlarida AYNAN shu qiymatlarni chizadi:
+	// `sum(Lines[].TotalTiyin) == TotalTiyin` (invariant).
+	//
+	// Avval qator narxlari klientda alohida taxmin qilinardi va
+	// serverning jamiga mos kelmasdi — savat ekranida qatorlar
+	// yig'indisi bilan pastdagi jami har xil bo'lardi.
+	Lines []QuoteLine `json:"lines"`
+}
+
+// QuotePromotion — savatga qo'llangan bitta aksiya va uning hissasi.
+type QuotePromotion struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	DiscountTiyin int64  `json:"discount_tiyin"`
+}
+
+// QuoteLine — savatdagi bitta taom uchun yakuniy hisob.
+type QuoteLine struct {
+	ProductID      string `json:"product_id"`
+	Qty            int    `json:"qty"`
+	UnitPriceTiyin int64  `json:"unit_price_tiyin"` // ASL (chizilgan) narx
+	// SubtotalTiyin — UnitPriceTiyin * Qty (chegirmasiz).
+	SubtotalTiyin int64 `json:"subtotal_tiyin"`
+	// DiscountTiyin — shu qatorga tegishli JAMI chegirma.
+	DiscountTiyin int64 `json:"discount_tiyin"`
+	// TotalTiyin — SubtotalTiyin - DiscountTiyin, ya'ni mijoz shu taom
+	// uchun haqiqatda to'laydigan summa.
+	TotalTiyin int64 `json:"total_tiyin"`
 }
 
 // Quote — priceCart'ning ochiq (public) o'rovi, HTTP handler uchun.
 func (s *Service) Quote(ctx context.Context, restaurantID string, items []Item, customerID string) (*QuoteResult, error) {
-	subtotal, discount, applied, err := s.priceCart(ctx, restaurantID, items, customerID)
+	subtotal, discount, applied, lineDiscounts, err := s.priceCart(ctx, restaurantID, items, customerID)
 	if err != nil {
 		return nil, err
 	}
-	res := &QuoteResult{SubtotalTiyin: subtotal, DiscountTiyin: discount, TotalTiyin: subtotal - discount}
-	if applied != nil {
-		res.PromotionID = applied.Promotion.ID
-		res.PromotionName = applied.Promotion.Name
+	res := &QuoteResult{
+		SubtotalTiyin: subtotal,
+		DiscountTiyin: discount,
+		TotalTiyin:    subtotal - discount,
+		Lines:         make([]QuoteLine, 0, len(items)),
+	}
+	for i, it := range items {
+		lineSubtotal := it.PriceTiyin * int64(it.Qty)
+		res.Lines = append(res.Lines, QuoteLine{
+			ProductID:      it.ProductID,
+			Qty:            it.Qty,
+			UnitPriceTiyin: it.PriceTiyin,
+			SubtotalTiyin:  lineSubtotal,
+			DiscountTiyin:  lineDiscounts[i],
+			TotalTiyin:     lineSubtotal - lineDiscounts[i],
+		})
+	}
+	for _, ap := range applied.Promotions {
+		res.Promotions = append(res.Promotions, QuotePromotion{
+			ID: ap.Promotion.ID, Name: ap.Promotion.Name, DiscountTiyin: ap.DiscountTiyin,
+		})
+	}
+	if primary := applied.Primary(); primary != nil {
+		res.PromotionID = primary.Promotion.ID
+		res.PromotionName = primary.Promotion.Name
+		res.PromotionDiscountTiyin = primary.DiscountTiyin
 	}
 	return res, nil
 }
@@ -209,16 +289,21 @@ func (s *Service) Create(ctx context.Context, o *Order) (*Order, error) {
 	o.UpdatedAt = o.CreatedAt
 	o.Version = 1
 
-	subtotal, discount, applied, err := s.priceCart(ctx, o.RestaurantID, o.Items, o.CustomerID)
+	subtotal, discount, applied, _, err := s.priceCart(ctx, o.RestaurantID, o.Items, o.CustomerID)
 	if err != nil {
 		return nil, err
 	}
 	o.SubtotalTiyin = subtotal
 	o.DiscountTiyin = discount
 	o.TotalTiyin = subtotal - discount
-	if applied != nil {
-		o.PromotionID = applied.Promotion.ID
-		o.PromotionName = applied.Promotion.Name
+	// Buyurtma yozuvida ENG KO'P hissa qo'shgan aksiya saqlanadi (bir
+	// nechta aksiya tushgan bo'lsa ham) va uning AYNAN O'ZI bergan summa
+	// — chek shu ikkisiga qarab rostgo'y yoziladi: nom faqat chegirmaning
+	// hammasi o'sha aksiyadan bo'lganda ko'rsatiladi.
+	if primary := applied.Primary(); primary != nil {
+		o.PromotionID = primary.Promotion.ID
+		o.PromotionName = primary.Promotion.Name
+		o.PromotionDiscountTiyin = primary.DiscountTiyin
 	}
 
 	// BEPUL buyurtma hech qachon jimgina yaratilmaydi.
@@ -247,15 +332,96 @@ func (s *Service) Create(ctx context.Context, o *Order) (*Order, error) {
 	// saqlashning o'zidan KEYIN, xato bo'lsa ham buyurtma yaratilishini
 	// bloklamaydi (faqat statistikaga ta'sir qiladi, log yozib qo'ya
 	// qolamiz).
-	if applied != nil && s.promotionsRepo != nil {
-		if err := s.promotionsRepo.IncrementUsage(ctx, applied.Promotion.ID, discount); err != nil {
-			slog.Error("aksiya statistikasini oshirib bo'lmadi", "promotion_id", applied.Promotion.ID, "error", err)
+	// HAR BIR qo'llangan aksiya alohida hisoblanadi va har biriga AYNAN
+	// O'ZI bergan summa yoziladi — savatning jami chegirmasi emas (aks
+	// holda mahsulot chegirmalari va boshqa aksiyalarning ulushi ham shu
+	// aksiya "savdosi" bo'lib ko'rinardi).
+	if s.promotionsRepo != nil {
+		for _, ap := range applied.Promotions {
+			if err := s.promotionsRepo.IncrementUsage(ctx, ap.Promotion.ID, ap.DiscountTiyin); err != nil {
+				slog.Error("aksiya statistikasini oshirib bo'lmadi",
+					"promotion_id", ap.Promotion.ID, "error", err)
+			}
 		}
+	}
+	// ┌─ TO'LANMAGAN BUYURTMA OSHXONAGA TUSHMAYDI ────────────────────┐
+	// Karta to'lovida restoran buyurtmani pul BLOKLANGANDAN keyingina
+	// ko'radi (`OnPaymentHeld` bildirishnomani o'sha yerda yuboradi).
+	// Aks holda mijoz to'lamay chiqib ketsa, oshxona taomni allaqachon
+	// tayyorlab qo'ygan bo'lardi.
+	// └───────────────────────────────────────────────────────────────┘
+	if o.AwaitingPayment() {
+		slog.Info("buyurtma to'lov kutmoqda — restoranga hali yuborilmadi",
+			"order", o.ID, "total_tiyin", o.TotalTiyin)
+		return o, nil
 	}
 	if s.notifier != nil {
 		s.notifier.OrderCreated(o)
 	}
 	return o, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TO'LOV BILAN BOG'LIQ AMALLAR (payments.OrderSink)
+// ═══════════════════════════════════════════════════════════════════
+
+// OrderAmountTiyin — to'lanadigan summa AYNAN buyurtmadan olinadi
+// (klient yuborgan qiymatga hech qachon ishonilmaydi).
+func (s *Service) OrderAmountTiyin(ctx context.Context, orderID string) (int64, error) {
+	o, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return 0, err
+	}
+	return o.TotalTiyin, nil
+}
+
+// OnPaymentHeld — pul bloklandi (yoki yechildi). Buyurtma endi
+// restoranga ko'rinadi va bildirishnoma AYNAN shu yerda yuboriladi.
+//
+// Idempotent: to'lov tizimi xabarni takrorlashi mumkin, lekin
+// bildirishnoma faqat BIR MARTA (holat haqiqatan o'zgarganda) ketadi.
+func (s *Service) OnPaymentHeld(ctx context.Context, orderID string) error {
+	o, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if o.PaymentState.Settled() {
+		return nil // allaqachon qayd etilgan
+	}
+	o.PaymentState = PaymentHeld
+	o.UpdatedAt = s.now()
+	if err := s.repo.Save(ctx, o); err != nil {
+		return err
+	}
+	if s.notifier != nil {
+		s.notifier.OrderCreated(o)
+	}
+	slog.Info("to'lov bloklandi — buyurtma restoranga yuborildi", "order", o.ID)
+	return nil
+}
+
+// OnPaymentFailed — to'lov amalga oshmadi yoki muddati tugadi.
+// Buyurtma bekor qilinadi: u hech qachon oshxonaga tushmagan, shuning
+// uchun hech kim zarar ko'rmaydi.
+func (s *Service) OnPaymentFailed(ctx context.Context, orderID string) error {
+	o, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if o.PaymentState.Settled() || o.IsTerminal() {
+		return nil
+	}
+	o.PaymentState = PaymentFailed
+	o.Status = StatusCancelled
+	o.UpdatedAt = s.now()
+	o.History = append(o.History, StatusChange{
+		From: StatusCreated, To: StatusCancelled, By: ActorSystem, At: o.UpdatedAt,
+	})
+	if err := s.repo.Save(ctx, o); err != nil {
+		return err
+	}
+	slog.Info("to'lov amalga oshmadi — buyurtma bekor qilindi", "order", o.ID)
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*Order, error) {
@@ -290,6 +456,18 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		if err := ValidateTransition(o.Type, o.Status, to, by); err != nil {
 			return nil, err
 		}
+		// ┌─ TO'LANMAGAN BUYURTMA HARAKATLANMAYDI ────────────────────┐
+		// Bu — karta to'lovining YAGONA chokepoint'i. Holat
+		// o'zgartirishning hamma yo'li shu funksiyadan o'tgani uchun,
+		// kelajakda yangi handler qo'shilsa ham to'lanmagan buyurtmani
+		// oshxonaga surib yubora olmaydi.
+		//
+		// Bekor qilish ISTISNO: mijoz fikridan qaytsa yoki to'lov
+		// muddati tugasa, buyurtma yopilishi kerak.
+		// └───────────────────────────────────────────────────────────┘
+		if o.AwaitingPayment() && to != StatusCancelled {
+			return nil, fmt.Errorf("buyurtma to'lovi hali tasdiqlanmagan (%s)", o.PaymentState)
+		}
 		if to == StatusPickedUp && o.CourierID == "" {
 			return nil, fmt.Errorf("buyurtmaga kuryer biriktirilmagan")
 		}
@@ -304,12 +482,59 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		if err != nil {
 			return nil, err
 		}
+		s.settlePayment(ctx, o, to)
 		if s.notifier != nil {
 			s.notifier.OrderStatusChanged(o, from)
 		}
 		return o, nil
 	}
 	return nil, ErrConflict
+}
+
+// settlePayment — karta to'lovini buyurtma holatiga moslaydi:
+//
+//	qabul qilindi        -> bloklangan pul YECHILADI (capture)
+//	rad etildi/bekor     -> blok BO'SHATILADI (yoki qaytariladi)
+//
+// Xato buyurtma o'tishini BLOKLAMAYDI (holat allaqachon saqlangan) —
+// u log'ga yoziladi. Sabab: restoran "Qabul qildim" bosganda to'lov
+// provayderining vaqtincha nosozligi tufayli oshxona to'xtab qolmasligi
+// kerak; yechilmagan blok esa keyin qo'lda yoki takroriy urinishda
+// tugallanadi va 30 kundan keyin AVTOMATIK bo'shaydi (pul mijozda).
+func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
+	if s.payments == nil || !o.PaymentMethod.RequiresPrepayment() {
+		return
+	}
+	switch to {
+	case StatusAccepted:
+		if o.PaymentState != PaymentHeld {
+			return
+		}
+		if err := s.payments.CaptureForOrder(ctx, o.ID, o.TotalTiyin); err != nil {
+			slog.Error("to'lovni yechib bo'lmadi", "order", o.ID, "error", err)
+			return
+		}
+		o.PaymentState = PaymentPaid
+		if err := s.repo.Save(ctx, o); err != nil {
+			slog.Error("to'lov holatini saqlab bo'lmadi", "order", o.ID, "error", err)
+		}
+	case StatusRejected, StatusCancelled:
+		if !o.PaymentState.Settled() {
+			return
+		}
+		if err := s.payments.ReleaseForOrder(ctx, o.ID); err != nil {
+			slog.Error("to'lovni bo'shatib bo'lmadi", "order", o.ID, "error", err)
+			return
+		}
+		if o.PaymentState == PaymentPaid {
+			o.PaymentState = PaymentRefunded
+		} else {
+			o.PaymentState = PaymentFailed
+		}
+		if err := s.repo.Save(ctx, o); err != nil {
+			slog.Error("to'lov holatini saqlab bo'lmadi", "order", o.ID, "error", err)
+		}
+	}
 }
 
 // SetPreparationTime — restoran "Qabul qilindi" bosgan payt kiritgan

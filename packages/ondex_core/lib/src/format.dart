@@ -35,3 +35,26 @@ String coreFullImageUrl(String? path, String baseUrl) {
 /// O'lchov birligi — faqat "l" (litr) "L" ga aylantiriladi (sonli "1"
 /// bilan chalkashmasligi uchun; SI belgisi ham shunday tavsiya qiladi).
 String formatWeightUnit(String unit) => unit == 'l' ? 'L' : unit;
+
+/// Stol nomini ko'rsatishga tayyorlaydi: "5" → "5-stol", "Stol-1" →
+/// "Stol-1" (o'zgarishsiz), bo'sh → "Stol".
+///
+/// ┌─ NEGA SHART TEKSHIRILADI ─────────────────────────────────────────┐
+/// Restoran stol nomini ixtiyoriy yozadi: "5", "Stol-1", "VIP zal",
+/// "Teras 3". Qo'shimchani SO'ZSIZ ulash ("$label-stol") "Stol-1-stol"
+/// va "VIP zal-stol" kabi yozuvlar berardi — restoran panelida aynan shu
+/// xato chiqqan edi.
+///
+/// Shuning uchun "-stol" FAQAT nom yalang'och raqam bo'lganda
+/// qo'shiladi; qolgan hamma holatda restoran yozgan nom o'zgarishsiz
+/// ko'rsatiladi.
+///
+/// Bu yerda (`ondex_core`) turishining sababi — bir xil stol nomi
+/// affitsiant ilovasida ham, restoran panelida ham KO'RINADI va ikki
+/// joyda ikki xil yozilmasligi kerak.
+/// └───────────────────────────────────────────────────────────────────┘
+String tableText(String label) {
+  if (label.isEmpty) return 'Stol';
+  if (RegExp(r'^\d+$').hasMatch(label)) return '$label-stol';
+  return label;
+}

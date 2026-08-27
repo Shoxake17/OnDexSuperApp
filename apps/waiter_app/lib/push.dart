@@ -139,12 +139,24 @@ Future<void> unregisterPush() async {
   _currentToken = null;
 }
 
+/// Ovoz yoqilganmi (Profil ekranidagi sozlama).
+///
+/// Ba'zi zallarda tinchlik talab qilinadi (masalan kechki smena) —
+/// o'shanda affitsiant vibratsiya va ekrandagi belgiga tayanadi.
+/// Sozlama `WaiterStore` da saqlanadi, bu yerda faqat joriy qiymat
+/// turadi: `playReadySound` push ishlovchisidan ham chaqiriladi va u
+/// yerda store'ga kirish imkoni yo'q (top-level izolyat).
+bool _soundEnabled = true;
+
+void setPushSoundEnabled(bool value) => _soundEnabled = value;
+
 /// "Tayyor" signali.
 ///
 /// Ilova ochiq turganda push kelmaydi (yuqoridagi `onMessage` ni
 /// ko'ring), shuning uchun ovoz — affitsiantning e'tiborini tortadigan
 /// yagona vosita. Xato yutiladi: ovoz chiqmasa ham ro'yxat yangilanadi.
 Future<void> playReadySound() async {
+  if (!_soundEnabled) return;
   try {
     await _player.play(AssetSource('sound/ready.mp3'));
   } catch (_) {}

@@ -34,8 +34,41 @@ const statusStyles = {
   'cancelled': ('Bekor qilindi', Icons.close, kStatusCancelled),
 };
 
-(String, IconData, Color) statusStyleOf(String status) =>
-    statusStyles[status] ?? (status, Icons.help_outline, Colors.grey);
+/// STOL (QR) buyurtmasida MA'NOSI boshqacha bo'lgan holatlar.
+///
+/// ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+/// `ready` ikkala turda ham bor, lekin mijoz uchun butunlay boshqa narsa
+/// anglatadi:
+///   * yetkazishda — taom tayyor, KURYER olib ketishini kutmoqda;
+///   * stolda      — taom tayyor, AFFITSIANT stolga olib kelmoqda.
+///
+/// Ilgari bitta matn ikkalasiga ham ishlatilardi va QR orqali buyurtma
+/// bergan mijoz (u restoranning O'ZIDA o'tirgan holda) "Tayyor — kuryer
+/// kutilmoqda" degan yozuvni ko'rardi. Kuryer esa bu buyurtmaga umuman
+/// chaqirilmaydi: backend stol buyurtmasi uchun dispatch'ni ishga
+/// tushirmaydi (`internal/httpapi/routes_orders.go` — `if !o.IsDineIn()`),
+/// ya'ni mijoz hech qachon sodir bo'lmaydigan narsani kutardi.
+///
+/// `picked_up`/`delivered` bu yerda YO'Q — stol buyurtmasi bu holatlarga
+/// umuman o'tmaydi (`internal/orders/statemachine.go`: `dine_in` uchun
+/// `ready → served`).
+/// └───────────────────────────────────────────────────────────────────┘
+/// MATN AYNAN backend push va veb bilan bir xil bo'lishi SHART:
+///   * `internal/notify/live.go` → `orderStatusText`
+///   * `apps/web/lib/order-status.tsx` → `DINE_IN_STATUS_LABELS`
+/// Mijoz push'da bir narsa, ekranda boshqa narsa ko'rsa, bu xatoday
+/// tuyuladi. Ikkalasi ham "hozir olib kelishadi" deydi.
+const dineInStatusStyles = {
+  'ready': ('Tayyor — hozir olib kelishadi', Icons.room_service, kStatusCarrot),
+};
+
+(String, IconData, Color) statusStyleOf(String status, {bool dineIn = false}) {
+  if (dineIn) {
+    final override = dineInStatusStyles[status];
+    if (override != null) return override;
+  }
+  return statusStyles[status] ?? (status, Icons.help_outline, Colors.grey);
+}
 
 const stageLabels = [
   'Qabul qilindi',
@@ -43,6 +76,39 @@ const stageLabels = [
   'Yo\'lda',
   'Yetkazildi'
 ];
+
+/// Stol buyurtmasida "Yo'lda" bosqichi YO'Q — taomni affitsiant zaldagi
+/// stolga olib keladi, ya'ni bosqich uchta.
+///
+/// Ro'yxat vebdagi `DINE_IN_STAGE_LABELS` bilan AYNAN bir xil
+/// (`apps/web/lib/order-status.tsx`) — bitta mijoz ikkala klientda ham
+/// bir xil bosqichlarni ko'rishi kerak.
+const dineInStageLabels = [
+  'Qabul qilindi',
+  'Tayyorlanmoqda',
+  'Tayyor',
+];
+
+/// Kuzatuv sahifasidagi TARIX chizig'i uchun yorliqlar.
+///
+/// Qisqa chiziqdan (`dineInStageLabels`) farqi — bu yerda YAKUNIY holat
+/// ham ko'rsatiladi: tarix chizig'i har bosqichning haqiqiy vaqtini
+/// chizadi va "berildi" qadami vaqti bilan ko'rinishi kerak. Qisqa
+/// chiziqda esa yakunlangan buyurtma umuman ko'rsatilmaydi
+/// (`stageOf` → -1), shuning uchun u yerda oxirgi yorliq "Tayyor".
+const dineInTimelineLabels = [
+  'Qabul qilindi',
+  'Tayyorlanmoqda',
+  'Stolga berildi',
+];
+
+/// Buyurtma turiga mos bosqich yorliqlari (qisqa chiziq uchun).
+///
+/// Bitta manba: "Buyurtmalarim" kartochkasi shu yerdan oladi. Ilgari
+/// stol bosqichlari faqat `tracking_screen.dart` ichida qo'lda yozilgan
+/// edi, kartochka esa "Yo'lda"/"Yetkazildi" chizib turardi.
+List<String> stageLabelsFor({required bool dineIn}) =>
+    dineIn ? dineInStageLabels : stageLabels;
 // Har bir INDEKS o'sha bosqich JORIY bo'lganda butun chiziq oladigan rang
 // (0..2 gacha ishlatiladi — "Yetkazildi" alohida, chiziqsiz ko'rsatiladi).
 const stageColors = [
@@ -57,7 +123,24 @@ const stageColors = [
 /// chiziqda guruhlanadi. -1: chiziq ko'rsatilmaydi — bu YETKAZILGAN
 /// (endi alohida, faqat matn bilan ko'rsatiladi — chiziqli holat keraksiz)
 /// va rad etilgan/bekor qilingan holatlar uchun.
-int stageOf(String status) {
+int stageOf(String status, {bool dineIn = false}) {
+  if (dineIn) {
+    // Vebdagi `stageOf` bilan AYNAN bir xil: `ready` — UCHINCHI (oxirgi)
+    // bosqich, ya'ni taom tayyor bo'lganda chiziq to'ladi. `picked_up`
+    // stol buyurtmasida umuman uchramaydi. `served` — terminal, chiziq
+    // umuman ko'rsatilmaydi (yetkazishdagi `delivered` kabi).
+    switch (status) {
+      case 'created':
+      case 'accepted':
+        return 0;
+      case 'preparing':
+        return 1;
+      case 'ready':
+        return 2;
+      default:
+        return -1;
+    }
+  }
   switch (status) {
     case 'created':
     case 'accepted':
@@ -82,19 +165,30 @@ int stageOf(String status) {
 class OrderProgressStepper extends StatelessWidget {
   final int stage; // 0..2 — joriy bosqich
 
-  const OrderProgressStepper({super.key, required this.stage});
+  /// Stol (QR) buyurtmasi — bosqichlar UCHTA bo'ladi va oxirgisi
+  /// "Stolga berildi". Ilgari bosqichlar soni 4 ga qattiq bog'langan
+  /// edi va stol buyurtmasida ham "Yo'lda"/"Yetkazildi" chizilardi.
+  final bool dineIn;
+
+  const OrderProgressStepper({
+    super.key,
+    required this.stage,
+    this.dineIn = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).colorScheme.surfaceContainerHighest;
     final color = stageColors[stage.clamp(0, stageColors.length - 1)];
+    final labels = stageLabelsFor(dineIn: dineIn);
+    final last = labels.length - 1;
     return Column(
       children: [
         Row(
           children: [
-            for (var i = 0; i < 4; i++) ...[
+            for (var i = 0; i < labels.length; i++) ...[
               _Dot(passed: i <= stage, color: color, surface: surface),
-              if (i < 3)
+              if (i < last)
                 Expanded(
                   child: Container(
                     height: 3,
@@ -107,13 +201,13 @@ class OrderProgressStepper extends StatelessWidget {
         const SizedBox(height: 6),
         Row(
           children: [
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < labels.length; i++)
               Expanded(
                 child: Text(
-                  stageLabels[i],
+                  labels[i],
                   textAlign: i == 0
                       ? TextAlign.start
-                      : (i == 3 ? TextAlign.end : TextAlign.center),
+                      : (i == last ? TextAlign.end : TextAlign.center),
                   style: TextStyle(
                     fontSize: 10,
                     color: i <= stage ? color : Colors.grey.shade600,
@@ -136,34 +230,53 @@ const stageIcons = [
   Icons.inventory_2_outlined,
 ];
 
+/// Stol buyurtmasi bosqich ikonkalari — moped ikonkasi ATAYLAB yo'q
+/// (`delivery_dining`): zaldagi mijozga hech kim yetkazib bormaydi.
+const dineInStageIcons = [
+  Icons.check_circle_outline,
+  Icons.soup_kitchen,
+  Icons.room_service,
+];
+
+List<IconData> stageIconsFor({required bool dineIn}) =>
+    dineIn ? dineInStageIcons : stageIcons;
+
 /// "Buyurtma holati" sahifasidagi kengaytirilgan progress — ikonkalar +
 /// har bosqich birinchi marta yetilgan HAQIQIY vaqti (buyurtma tarixidan,
 /// `orders.Order.History`) bilan. Ranglanish mantig'i xuddi shu — barcha
 /// o'tgan/joriy bosqichlar bitta (joriy) rangda.
 class DetailedOrderProgress extends StatelessWidget {
   final int stage; // 0..2
-  final List<DateTime?> stageTimes; // uzunligi 4
+  final List<DateTime?> stageTimes; // uzunligi bosqichlar soniga teng
+  final bool dineIn;
 
-  const DetailedOrderProgress(
-      {super.key, required this.stage, required this.stageTimes});
+  const DetailedOrderProgress({
+    super.key,
+    required this.stage,
+    required this.stageTimes,
+    this.dineIn = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final surface = Theme.of(context).colorScheme.surfaceContainerHighest;
     final color = stageColors[stage.clamp(0, stageColors.length - 1)];
+    final labels = stageLabelsFor(dineIn: dineIn);
+    final icons = stageIconsFor(dineIn: dineIn);
+    final last = labels.length - 1;
     return Column(
       children: [
         Row(
           children: [
-            for (var i = 0; i < 4; i++) ...[
+            for (var i = 0; i < labels.length; i++) ...[
               _IconDot(
                 passed: i <= stage,
                 current: i == stage,
-                icon: stageIcons[i],
+                icon: icons[i],
                 color: color,
                 surface: surface,
               ),
-              if (i < 3)
+              if (i < last)
                 Expanded(
                   child: Container(
                     height: 3,
@@ -177,20 +290,20 @@ class DetailedOrderProgress extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < labels.length; i++)
               Expanded(
                 child: Column(
                   crossAxisAlignment: i == 0
                       ? CrossAxisAlignment.start
-                      : (i == 3
+                      : (i == last
                           ? CrossAxisAlignment.end
                           : CrossAxisAlignment.center),
                   children: [
                     Text(
-                      stageLabels[i],
+                      labels[i],
                       textAlign: i == 0
                           ? TextAlign.start
-                          : (i == 3 ? TextAlign.end : TextAlign.center),
+                          : (i == last ? TextAlign.end : TextAlign.center),
                       style: TextStyle(
                         fontSize: 11,
                         color: i <= stage ? color : Colors.grey.shade600,

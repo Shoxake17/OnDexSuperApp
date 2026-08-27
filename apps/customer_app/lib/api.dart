@@ -6,6 +6,19 @@ import 'package:ondex_core/ondex_core.dart';
 // import qilgani uchun ular tegilmasdan ishlashda davom etadi.
 export 'package:ondex_core/ondex_core.dart';
 
+/// Xatoni foydalanuvchiga ko'rsatiladigan matnga aylantiradi.
+///
+/// Server yuborgan xabar ma'noli (masalan "restoran yopiq"), shuning
+/// uchun u ustun turadi. Boshqa har qanday xato — tarmoq uzilishi,
+/// JSON buzilishi, kutilmagan holat — texnik tafsilotsiz, chaqiruvchi
+/// bergan umumiy matn bilan ko'rsatiladi.
+///
+/// Ilgari bu shart har ekranda qo'lda yozilardi
+/// (`e is ApiException ? e.message : '...'`) va matnlar bir-biridan
+/// farq qila boshlagandi.
+String errorText(Object e, String fallback) =>
+    e is ApiException ? e.message : fallback;
+
 /// Buyurtma yaratishda ishlatiladigan bir martalik tasodifiy kalit
 /// (idempotency key) — tarmoq uzilib, javob kelmay qolgan holatda
 /// foydalanuvchi qayta bossa, server SHU KALITNI oldin ko'rgan-ko'rmaganini
@@ -147,10 +160,15 @@ class CustomerApi extends ApiClient {
     double? lng,
     String? tableToken,
     int? partySize,
+    /// `cash` yoki `card`. Kartada buyurtma TO'LOV KUTIB turadi va
+    /// restoranga ko'rinmaydi — mijoz `startPayment()` orqali to'lov
+    /// havolasini olishi kerak.
+    String paymentMethod = 'cash',
   }) async {
     final body = <String, dynamic>{
       'items': items,
       'idempotency_key': idempotencyKey,
+      'payment_method': paymentMethod,
     };
     if (tableToken != null && tableToken.isNotEmpty) {
       body['table_token'] = tableToken;
@@ -166,6 +184,28 @@ class CustomerApi extends ApiClient {
 
   Future<Map<String, dynamic>> getOrder(String id) async =>
       Map<String, dynamic>.from(await send('GET', '/orders/$id'));
+
+  /// Karta orqali to'lovni boshlaydi va to'lov sahifasi havolasini
+  /// qaytaradi (`pay_url`).
+  ///
+  /// SUMMA YUBORILMAYDI — server uni buyurtmadan oladi. Takroriy
+  /// chaqiruv xavfsiz: hali amal qilayotgan urinish bo'lsa, o'sha
+  /// havola qaytadi (provayder bir xil tranzaksiya ID'sini qayta
+  /// ishlatishga ruxsat bermaydi).
+  ///
+  /// [retry] — mijoz "qayta urinish" bosganda YANGI tranzaksiya
+  /// ochtiradi. Bu kerak, chunki urinish bank tomonda o'lgan bo'lishi
+  /// mumkin (OTP kodini xato kiritish yoki SMS ni ko'p marta so'rash),
+  /// va o'sha havolani qayta ochish yordam bermaydi.
+  Future<Map<String, dynamic>> startPayment(String orderId,
+          {bool retry = false}) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/orders/$orderId/pay${retry ? '?retry=1' : ''}'));
+
+  /// To'lov holati — mijoz to'lov sahifasidan qaytgach shu yerdan
+  /// kuzatiladi (`payment_state`: awaiting/held/paid/failed).
+  Future<Map<String, dynamic>> paymentStatus(String orderId) async =>
+      Map<String, dynamic>.from(await send('GET', '/orders/$orderId/payment'));
 
   /// Stol QR kodidagi tokendan qaysi restoran va qaysi stol ekanini
   /// aniqlaydi (`qr_scan_screen.dart`).
@@ -342,11 +382,8 @@ class CustomerApi extends ApiClient {
   /// Koordinatani manzil matniga aylantiradi — server orqali (Google
   /// Geocoding API'ni brauzerdan to'g'ridan-to'g'ri chaqirish CORS
   /// tomonidan bloklanadi, shuning uchun backend proksi qiladi).
-  Future<String?> reverseGeocode(double lat, double lng) async {
-    final d = await send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
-    final addr = d['address'] as String?;
-    return (addr == null || addr.isEmpty) ? null : addr;
-  }
+  // Mantiq `ondex_core.ApiClient.reverseGeocode` da — u topilmasa
+  // BO'SH satr qaytaradi.
 
   /// Foydalanuvchi yozgan matnga mos manzil takliflari ro'yxati.
   Future<List<Map<String, String>>> addressAutocomplete(String input) async {

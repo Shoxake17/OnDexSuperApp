@@ -3,6 +3,7 @@
 import {
   Banknote,
   ChevronRight,
+  CreditCard,
   Home,
   MessageSquare,
   Phone,
@@ -15,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { formatSum } from "@/lib/format";
 import { newIdempotencyKey } from "@/lib/idempotency";
+import { discountLineLabel } from "@/lib/promotions";
 import { goBack } from "@/lib/nav";
 import { useTableSession } from "@/lib/table-session";
 import MobileSheet from "../mobile-sheet";
@@ -36,6 +38,9 @@ type Quote = {
   discount_tiyin: number;
   total_tiyin: number;
   promotion_name?: string;
+  // Chegirmaning AYNAN aksiya bergan qismi — qolgani mahsulotlarning
+  // o'z chegirma narxlari (hisob qatori nomi shunga qarab tanlanadi).
+  promotion_discount_tiyin?: number;
 };
 
 // image/rasmiy.png + rasmiy1.png namunalariga mos (Yandex Go uslubi):
@@ -60,6 +65,8 @@ export default function CheckoutPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(true);
   const [placing, setPlacing] = useState(false);
+  // To'lov usuli — serverga HAQIQATAN yuboriladi. Standart naqd.
+  const [payMethod, setPayMethod] = useState<"cash" | "card">("cash");
   const [placeError, setPlaceError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
 
@@ -152,6 +159,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           items,
           idempotency_key: idempotencyKeyRef.current,
+          payment_method: payMethod,
           ...(table
             ? { table_token: table.token, party_size: partySize }
             : {}),
@@ -159,6 +167,39 @@ export default function CheckoutPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Xato yuz berdi");
+
+      // ┌─ KARTA: TO'LOV SAHIFASIGA O'TAMIZ ────────────────────────┐
+      // Buyurtma yaratildi, lekin TO'LOV KUTIB turibdi va oshxonaga
+      // tushmagan. Havola olinmasa savat TOZALANMAYDI — mijoz
+      // buyurtmasini yo'qotmasligi kerak.
+      // └───────────────────────────────────────────────────────────┘
+      if (payMethod === "card") {
+        const payRes = await fetch(`/api/proxy/orders/${data.id}/pay`, {
+          method: "POST",
+        });
+        const pay = await payRes.json();
+        // `pay_url` — Octo to'lov sahifasi, HAR DOIM tashqi `https://`
+        // manzil. Sxemani qat'iy tekshiramiz: `javascript:` yoki boshqa
+        // sxema `location.href` ga tushsa XSS/qayta yo'naltirish bo'lardi
+        // (notifications sahifasidagi bir xil tamoyil). Tekshiruv savat
+        // TOZALANISHIDAN OLDIN — noto'g'ri havolada buyurtma yo'qolmasin.
+        if (
+          !payRes.ok ||
+          typeof pay.pay_url !== "string" ||
+          !/^https:\/\//i.test(pay.pay_url)
+        ) {
+          throw new Error(
+            pay.error ||
+              "To'lov sahifasini ochib bo'lmadi. Buyurtma to'lanmagan holda " +
+                "kutmoqda — «Buyurtmalarim» bo'limidan qayta urinib ko'ring.",
+          );
+        }
+        idempotencyKeyRef.current = null;
+        cart.clear();
+        window.location.href = pay.pay_url;
+        return;
+      }
+
       idempotencyKeyRef.current = null;
       cart.clear();
       // Stol seansi buyurtmadan KEYIN ham saqlanadi: mijoz odatda
@@ -335,7 +376,16 @@ export default function CheckoutPage() {
       {/* ── To'lov ───────────────────────────────────────────────────── */}
       <section className="tg-surface mt-3 rounded-2xl bg-neutral-100 p-4 dark:bg-[#242424]">
         <h2 className="text-xl font-extrabold">To&apos;lov</h2>
-        <div className="mt-3 flex items-center gap-3 rounded-xl border-2 border-brand bg-white p-3 dark:bg-[#1A1A1A]">
+
+        <button
+          type="button"
+          onClick={() => setPayMethod("cash")}
+          className={`mt-3 flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left ${
+            payMethod === "cash"
+              ? "border-brand bg-white dark:bg-[#1A1A1A]"
+              : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-[#1A1A1A]"
+          }`}
+        >
           <Banknote size={22} className="shrink-0 text-green-600" />
           <span className="flex-1">
             <span className="block font-semibold">Naqd pul</span>
@@ -345,10 +395,35 @@ export default function CheckoutPage() {
                 : "Kuryerga qo'lda to'lanadi"}
             </span>
           </span>
-        </div>
-        <p className="tg-muted mt-2 text-xs text-neutral-500">
-          Karta orqali to&apos;lov hozircha mavjud emas
-        </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPayMethod("card")}
+          className={`mt-2 flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left ${
+            payMethod === "card"
+              ? "border-brand bg-white dark:bg-[#1A1A1A]"
+              : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-[#1A1A1A]"
+          }`}
+        >
+          <CreditCard size={22} className="shrink-0 text-blue-600" />
+          <span className="flex-1">
+            <span className="block font-semibold">Bank kartasi</span>
+            <span className="tg-muted block text-sm text-neutral-500">
+              Uzcard, Humo, Visa, Mastercard
+            </span>
+          </span>
+        </button>
+
+        {/* Ikki bosqichli to'lovni ATAYLAB tushuntiramiz: mijoz "pul
+            yechildimi?" degan savol bilan qolmasligi kerak. */}
+        {payMethod === "card" && (
+          <p className="tg-muted mt-2 text-xs text-neutral-500">
+            Pul darhol yechilmaydi — vaqtincha bloklanadi va restoran
+            buyurtmani qabul qilgandagina yechiladi. Rad etilsa blok
+            bo&apos;shatiladi.
+          </p>
+        )}
       </section>
 
       {/* ── Buyurtma qiymati ─────────────────────────────────────────── */}
@@ -370,9 +445,11 @@ export default function CheckoutPage() {
             {discount > 0 && (
               <div className="flex justify-between text-green-600 dark:text-green-400">
                 <span>
-                  {quote?.promotion_name
-                    ? `Aksiya: ${quote.promotion_name}`
-                    : "Aksiya chegirmasi"}
+                  {discountLineLabel(
+                    discount,
+                    quote?.promotion_discount_tiyin ?? 0,
+                    quote?.promotion_name,
+                  )}
                 </span>
                 <span className="font-bold">-{formatSum(discount)}</span>
               </div>

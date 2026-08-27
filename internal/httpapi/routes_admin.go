@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"chustapp/internal/catalog"
@@ -12,6 +14,51 @@ import (
 	"chustapp/internal/orders"
 	"chustapp/internal/users"
 )
+
+// isAllowedSceneURL — 3D maket manzili bizning saqlashimizdami.
+//
+// ┌─ NEGA CHEKLOV ─────────────────────────────────────────────────────┐
+// Maket fayli mijoz telefoniga yuklanadi va ichida bajariladigan kod
+// bor. Ixtiyoriy manzilga ruxsat berilsa, admin panelga kirgan kishi
+// (yoki uning hisobini egallagan) mijozlarga begona kod tarqata
+// olardi.
+//
+// Manzil `R2_PUBLIC_URL` dan olinadi — ya'ni qayerga yuklaganimiz va
+// qayerdan berishimiz BIR joyda belgilangan.
+// └────────────────────────────────────────────────────────────────────┘
+func isAllowedSceneURL(raw string) bool {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("R2_PUBLIC_URL")), "/")
+	if base == "" {
+		// R2 sozlanmagan bo'lsa 3D ni yoqib bo'lmaydi. Jimgina
+		// ruxsat berishdan ko'ra rad etish xavfsizroq.
+		return false
+	}
+	if !strings.HasPrefix(base, "https://") {
+		return false
+	}
+	return strings.HasPrefix(raw, base+"/")
+}
+
+// deref — nil ko'rsatkichdan bo'sh satr.
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// isSHA256Hex — 64 ta o'n oltilik belgi.
+func isSHA256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 
@@ -142,6 +189,22 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				RatingCount   int     `json:"rating_count"`
 				ETAMinMinutes int     `json:"eta_min_minutes"`
 				ETAMaxMinutes int     `json:"eta_max_minutes"`
+				// ┌─ KO'RSATKICH, ODDIY QIYMAT EMAS ──────────────────┐
+				// Bu endpointga TO'LIQ holat yuboriladi, lekin eski
+				// mijozlar (admin panelning oldingi versiyasi) 3D
+				// maydonlarini umuman bilmaydi.
+				//
+				// Oddiy `string` bo'lganda ular bo'sh kelardi va
+				// mavjud maket JIMGINA O'CHIB KETARDI — aynan shu
+				// yuz berdi: panel restoranni saqlashi bilan Book
+				// Cafe maketi yo'qoldi.
+				//
+				// Ko'rsatkich bilan "yuborilmadi" (nil) va
+				// "bo'shatilsin" ("") ajraladi.
+				// └───────────────────────────────────────────────────┘
+				Scene3DURL    *string `json:"scene_3d_url"`
+				Scene3DSHA256 *string `json:"scene_3d_sha256"`
+				Scene3DBytes  *int64  `json:"scene_3d_bytes"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -182,6 +245,51 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			rest.RatingCount = req.RatingCount
 			rest.ETAMinMinutes = req.ETAMinMinutes
 			rest.ETAMaxMinutes = req.ETAMaxMinutes
+
+			// ┌─ 3D MAKET UCHUN TEKSHIRUV ────────────────────────────────┐
+			// Maket fayli ichida BAJARILADIGAN kod bor (Godot
+			// skriptlari). Ilova uni yuklab olib ishga tushiradi.
+			//
+			// Shuning uchun manzil ixtiyoriy bo'la olmaydi: faqat
+			// bizning R2 domenimiz qabul qilinadi va SHA-256 majburiy.
+			// Aks holda admin panelga kirgan kishi mijozlarning
+			// telefoniga begona kod yuborishi mumkin bo'lardi.
+			// └───────────────────────────────────────────────────────────┘
+			// Uchtasi BIRGA keladi yoki umuman kelmaydi: yarim
+			// yangilanish (manzil yangi, xesh eski) ilovada "fayl
+			// buzilgan" xatosiga olib kelardi.
+			if req.Scene3DURL != nil || req.Scene3DSHA256 != nil ||
+				req.Scene3DBytes != nil {
+
+				scene := strings.TrimSpace(deref(req.Scene3DURL))
+				digest := strings.ToLower(strings.TrimSpace(deref(req.Scene3DSHA256)))
+				var size int64
+				if req.Scene3DBytes != nil {
+					size = *req.Scene3DBytes
+				}
+
+				if scene != "" {
+					if !isAllowedSceneURL(scene) {
+						httpError(w, http.StatusBadRequest,
+							errors.New("maket manzili faqat R2 domenida bo'lishi kerak"))
+						return
+					}
+					if !isSHA256Hex(digest) {
+						httpError(w, http.StatusBadRequest,
+							errors.New("maket uchun to'g'ri SHA-256 majburiy"))
+						return
+					}
+					if size <= 0 {
+						httpError(w, http.StatusBadRequest,
+							errors.New("maket hajmi ko'rsatilishi kerak"))
+						return
+					}
+				}
+				rest.Scene3DURL = scene
+				rest.Scene3DSHA256 = digest
+				rest.Scene3DBytes = size
+			}
+
 			if err := s.CatalogRepo.SaveRestaurant(r.Context(), rest); err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return

@@ -144,8 +144,13 @@ func (r *MemoryOrderRepo) ListRecent(_ context.Context, limit int) ([]*orders.Or
 	return r.listFiltered(limit, func(*orders.Order) bool { return true })
 }
 
+// ListByRestaurant — to'lanmagan KARTA buyurtmalari ro'yxatga
+// tushmaydi (Postgres implementatsiyasidagi bilan bir xil qoida —
+// izohi o'sha yerda).
 func (r *MemoryOrderRepo) ListByRestaurant(_ context.Context, restaurantID string, limit int) ([]*orders.Order, error) {
-	return r.listFiltered(limit, func(o *orders.Order) bool { return o.RestaurantID == restaurantID })
+	return r.listFiltered(limit, func(o *orders.Order) bool {
+		return o.RestaurantID == restaurantID && !o.AwaitingPayment()
+	})
 }
 
 func (r *MemoryOrderRepo) ListByCustomer(_ context.Context, customerID string, limit int) ([]*orders.Order, error) {

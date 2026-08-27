@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
 import '../session.dart';
@@ -95,10 +96,6 @@ class _LoginScreenState extends State<LoginScreen>
       ? AuthPhoneField.fullPhone(_phone)
       : _email.text.trim();
 
-  void _snack(String msg, {bool error = false}) {
-    if (!mounted) return;
-    authSnack(context, msg, error: error);
-  }
 
   Future<void> _goHome() async {
     await tokenStore.write(api.token!);
@@ -119,25 +116,23 @@ class _LoginScreenState extends State<LoginScreen>
   /// aslida shunchaki maydon to'ldirilmagan.
   Future<void> _loginWithPassword() async {
     if (_method == AuthMethod.phone && _phone.text.trim().length < 9) {
-      _snack('Telefon raqamini to\'liq kiriting');
+      snack('Telefon raqamini to\'liq kiriting');
       return;
     }
     if (_method == AuthMethod.email && _email.text.trim().isEmpty) {
-      _snack('Email manzilini kiriting');
+      snack('Email manzilini kiriting');
       return;
     }
     if (_password.text.isEmpty) {
-      _snack('Parolni kiriting');
+      snack('Parolni kiriting');
       return;
     }
     setState(() => _busy = true);
     try {
       await api.loginWithPassword(_login, _password.text);
       await _goHome();
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -152,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen>
   /// Parolni tiklash alohida funksiya sifatida keyinroq quriladi.
   Future<void> _requestSmsCode() async {
     if (!_verifyByEmail && _phone.text.trim().length < 9) {
-      _snack('Telefon raqamini to\'liq kiriting');
+      snack('Telefon raqamini to\'liq kiriting');
       return;
     }
     setState(() => _busy = true);
@@ -187,14 +182,8 @@ class _LoginScreenState extends State<LoginScreen>
       });
       startResendTimer();
       _otpKey.currentState?.fill('');
-    } on OtpDeliveryFailure catch (e) {
-      _snack(e.message, error: true);
-    } on PhoneAuthFailure catch (e) {
-      _snack(e.message, error: true);
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -213,21 +202,21 @@ class _LoginScreenState extends State<LoginScreen>
   /// qo'yadi, ya'ni tasdiqlashdan KEYIN.
   Future<void> _verifyCode() async {
     if (_code.length != 6) {
-      _snack('6 xonali kodni to\'liq kiriting');
+      snack('6 xonali kodni to\'liq kiriting');
       return;
     }
     final password = _password.text;
     // Parol MAJBURIY: busiz akkaunt parolsiz qolib, keyin kirishning
     // yo'li bo'lmaydi (kirish endi faqat parol bilan).
     if (password.isEmpty) {
-      _snack('Parolni kiriting');
+      snack('Parolni kiriting');
       return;
     }
     // 8 — serverdagi `MinPasswordLength`. Kodni bekor sarflab,
     // keyin 400 olishdan ko'ra shu yerda aytgan ma'qul: kod bir
     // martalik va tekshirilgach o'chadi.
     if (password.runes.length < 8) {
-      _snack('Parol kamida 8 belgidan iborat bo\'lsin');
+      snack('Parol kamida 8 belgidan iborat bo\'lsin');
       return;
     }
     setState(() => _busy = true);
@@ -242,7 +231,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (_otpChannel == OtpChannel.firebase) {
           final vid = _verificationId;
           if (vid == null) {
-            _snack('Kod muddati tugadi — qayta yuboring', error: true);
+            snack('Kod muddati tugadi — qayta yuboring', error: true);
             return;
           }
           final idToken = await FirebasePhoneAuth.idTokenFor(vid, _code);
@@ -256,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen>
           try {
             await api.updateName(_pendingFirstName, _pendingLastName);
           } on ApiException catch (e) {
-            _snack('Kirdingiz, lekin ism saqlanmadi: ${e.message}',
+            snack('Kirdingiz, lekin ism saqlanmadi: ${e.message}',
                 error: true);
           }
         }
@@ -267,16 +256,14 @@ class _LoginScreenState extends State<LoginScreen>
         // Kirish MUVAFFAQIYATLI bo'ldi — parol o'rnatilmagani uni
         // bekor qilmaydi. Foydalanuvchini tizimdan quvib
         // chiqarmaymiz, shunchaki aniq aytamiz.
-        _snack('Kirdingiz, lekin parol o\'rnatilmadi: ${e.message}',
+        snack('Kirdingiz, lekin parol o\'rnatilmadi: ${e.message}',
             error: true);
       }
       await _goHome();
     } on PhoneAuthFailure catch (e) {
-      _snack(e.message, error: true);
-    } on ApiException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Serverga ulanib bo\'lmadi — internetni tekshiring', error: true);
+      snack(e.message, error: true);
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

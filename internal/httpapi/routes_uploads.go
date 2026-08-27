@@ -3,11 +3,13 @@ package httpapi
 import (
 	"bytes"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
 
+	"chustapp/internal/books"
 	"chustapp/internal/images"
 	"chustapp/internal/users"
 )
@@ -72,6 +74,133 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 				return
 			}
 			writeJSON(w, http.StatusCreated, map[string]string{"url": url})
+		}))
+
+	// POST /uploads/book-cover — kitob muqovasi.
+	//
+	// Alohida marshrut, `?type=` emas: kitob muqovasi restoran
+	// bannerining teskarisi (tik, 2:3) va boshqa papkaga tushadi.
+	mux.HandleFunc("POST /uploads/book-cover", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+			if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl juda katta (maks 5MB) yoki formati noto'g'ri"))
+				return
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl topilmadi (multipart 'file' maydoni kerak)"))
+				return
+			}
+			defer file.Close()
+
+			if !allowedImageExt[strings.ToLower(filepath.Ext(header.Filename))] {
+				httpError(w, http.StatusBadRequest, errors.New("faqat jpg, png, webp rasm formatlari qabul qilinadi"))
+				return
+			}
+			webpBytes, err := images.ProcessBookCoverImage(file)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl haqiqiy rasm emas yoki buzilgan"))
+				return
+			}
+			// Kalit TASODIFIY: foydalanuvchi bergan fayl nomi kalitga
+			// umuman qo'shilmaydi. Aks holda `../` yoki bir xil nom
+			// bilan boshqa kitobning muqovasini bosib ketish mumkin
+			// bo'lardi.
+			key := "book-covers/" + NewID() + ".webp"
+			url, err := s.ImageStore.Upload(r.Context(), key,
+				bytes.NewReader(webpBytes), int64(len(webpBytes)), "image/webp")
+			if err != nil {
+				slog.Error("muqova yuklashda xato", "err", err)
+				httpError(w, http.StatusInternalServerError, errors.New("rasm saqlashda xato"))
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]string{"url": url})
+		}))
+
+	// POST /uploads/book-pdf — kitob PDF fayli.
+	//
+	// ┌─ NIMA QAYTADI VA NEGA ─────────────────────────────────────────────┐
+	// Javobda IKKI narsa bor: R2 dagi manzil va PDF dan AJRATILGAN matn.
+	//
+	// Sabab: maketdagi o'quvchi PDF ni ocha olmaydi (Godot'da PDF
+	// tahlilchisi yo'q), shuning uchun matn serverda, yuklash paytida
+	// bir marta ajratiladi. Admin panel ikkalasini ham kitob yozuviga
+	// qo'shib yuboradi.
+	// └────────────────────────────────────────────────────────────────────┘
+	mux.HandleFunc("POST /uploads/book-pdf", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, books.MaxPDFBytes)
+			// Diskka emas, XOTIRAGA: chegara allaqachon 25MB va
+			// `ParseMultipartForm` ga shu qiymat berilsa vaqtinchalik
+			// fayl umuman yaratilmaydi (tozalanmay qolish xavfi yo'q).
+			if err := r.ParseMultipartForm(books.MaxPDFBytes); err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl juda katta (maks 25MB) yoki formati noto'g'ri"))
+				return
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl topilmadi (multipart 'file' maydoni kerak)"))
+				return
+			}
+			defer file.Close()
+
+			if strings.ToLower(filepath.Ext(header.Filename)) != ".pdf" {
+				httpError(w, http.StatusBadRequest, errors.New("faqat PDF qabul qilinadi"))
+				return
+			}
+
+			// Faylni to'liq o'qiymiz: PDF tahlili `io.ReaderAt` talab
+			// qiladi (format oxiridagi jadvaldan boshlab o'qiladi),
+			// ya'ni oqim bo'ylab bir marta o'tish yetmaydi.
+			raw, err := io.ReadAll(file)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, errors.New("fayl o'qilmadi"))
+				return
+			}
+
+			// ┌─ KENGAYTMAGA ISHONILMAYDI ────────────────────────────────┐
+			// `.pdf` deb nomlangan fayl ichida HTML, SVG yoki skript
+			// bo'lishi mumkin. R2 ommaviy domenda turadi va brauzer
+			// ba'zi holatlarda mazmunni o'zi aniqlaydi — ya'ni bu
+			// saqlangan XSS ga yo'l ochardi. Imzo (`%PDF-`) HAQIQIY
+			// formatni tekshiradi.
+			// └───────────────────────────────────────────────────────────┘
+			if len(raw) < 5 || !bytes.HasPrefix(raw, []byte("%PDF-")) {
+				httpError(w, http.StatusBadRequest, errors.New("fayl haqiqiy PDF emas"))
+				return
+			}
+
+			text, pageCount, extractErr := books.ExtractText(bytes.NewReader(raw), int64(len(raw)))
+			if extractErr != nil && !errors.Is(extractErr, books.ErrNoText) {
+				httpError(w, http.StatusBadRequest, extractErr)
+				return
+			}
+
+			key := "book-pdfs/" + NewID() + ".pdf"
+			// Content-Type MAJBURAN qo'yiladi — klient yuborgan qiymat
+			// ishlatilmaydi. Fayl imzo bo'yicha PDF ekani tekshirilgan,
+			// shuning uchun bu yolg'on emas va brauzerning mazmunni
+			// o'zicha aniqlashiga yo'l qo'ymaydi.
+			url, err := s.ImageStore.Upload(r.Context(), key,
+				bytes.NewReader(raw), int64(len(raw)), "application/pdf")
+			if err != nil {
+				slog.Error("PDF yuklashda xato", "err", err)
+				httpError(w, http.StatusInternalServerError, errors.New("PDF saqlashda xato"))
+				return
+			}
+
+			resp := map[string]any{
+				"url":   url,
+				"text":  text,
+				"pages": pageCount,
+			}
+			// Skanerlangan kitob — xato emas, lekin admin buni BILISHI
+			// kerak: maketda kitob ochilganda sahifalar bo'sh bo'ladi.
+			if errors.Is(extractErr, books.ErrNoText) {
+				resp["warning"] = books.ErrNoText.Error()
+			}
+			writeJSON(w, http.StatusCreated, resp)
 		}))
 
 	// GET /uploads/* — faqat lokal disk rejimida kerak (R2'da rasmlar

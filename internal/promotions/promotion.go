@@ -47,6 +47,40 @@ const (
 	DiscountUnitAmount  DiscountUnit = "amount"
 )
 
+// EffectiveUnit — chegirma qiymati HAQIQATDA qaysi birlikda
+// hisoblanishi.
+//
+// ┌─ NEGA ALOHIDA FUNKSIYA ───────────────────────────────────────────┐
+// `Type` va `DiscountUnit` — ikki mustaqil maydon, ya'ni bazada
+// "Summa orqali chegirma" + birlik `percent` kabi ZID juftlik paydo
+// bo'lishi mumkin edi. Server bunday yozuvni bir xil (turga qarab),
+// klient esa boshqacha (birlikka qarab) o'qirdi: menyuda "-20%"
+// ko'rinib, haqiqatda 20 tiyin chegirma berilardi.
+//
+// Endi YAGONA qoida: tur — birinchi darajali haqiqat. "Foiz orqali
+// chegirma" har doim foiz, "Summa orqali chegirma" har doim summa.
+// Saqlangan `DiscountUnit` faqat qolgan turlar (to'plam, sodiqlik)
+// uchun ma'noli. Yangi yozuvlarda zid juftlik HTTP qatlamida
+// (routes_promotions.go) umuman rad etiladi — bu funksiya esa
+// eski/buzilgan yozuvlarni ham xavfsiz o'qiydi.
+//
+// Bo'sh/noma'lum birlik `percent` deb qaraladi (klientdagi standart
+// qiymat bilan bir xil).
+// └───────────────────────────────────────────────────────────────────┘
+func (p *Promotion) EffectiveUnit() DiscountUnit {
+	switch p.Type {
+	case TypePercent:
+		return DiscountUnitPercent
+	case TypeFixedAmount:
+		return DiscountUnitAmount
+	default:
+		if p.DiscountUnit == DiscountUnitAmount {
+			return DiscountUnitAmount
+		}
+		return DiscountUnitPercent
+	}
+}
+
 // Status — HISOBLANGAN holat (bazada saqlanmaydi), Active bayrog'i va
 // StartAt/EndAt/Indefinite'ga qarab joriy vaqt asosida aniqlanadi.
 type Status string

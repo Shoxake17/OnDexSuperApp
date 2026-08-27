@@ -76,6 +76,12 @@ class ApiClient {
           r = await http.get(uri, headers: _headers).timeout(timeout);
         case 'DELETE':
           r = await http.delete(uri, headers: _headers).timeout(timeout);
+        case 'PATCH':
+          // Qisman yangilash (masalan `PATCH /tables/{id}`). Busiz
+          // restoran paneli o'z klientini saqlashga majbur edi.
+          r = await http
+              .patch(uri, headers: _headers, body: jsonEncode(body ?? {}))
+              .timeout(timeout);
         default:
           r = await http
               .post(uri, headers: _headers, body: jsonEncode(body ?? {}))
@@ -178,5 +184,87 @@ class ApiClient {
   Future<String> mapsApiKey() async {
     final d = await send('GET', '/config/maps');
     return d['maps_api_key'] as String;
+  }
+
+  /// Koordinatadan manzil matni (`GET /geocode/reverse`).
+  ///
+  /// Google Geocoding API brauzerdan CORS tufayli chaqirilmaydi —
+  /// shuning uchun so'rov SERVER orqali o'tadi. Uchta ilovada
+  /// (mijoz, kuryer, admin) bir xil yozilgan edi.
+  Future<String> reverseGeocode(double lat, double lng) async {
+    final d = await send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
+    return (d is Map ? d['address'] as String? : null) ?? '';
+  }
+
+  /// Rasm yuklaydi va server bergan yo'lni qaytaradi (`POST /uploads`).
+  ///
+  /// ┌─ NEGA ALOHIDA ─────────────────────────────────────────────────┐
+  /// Bu YAGONA `multipart` so'rov — qolganlari JSON. Shuning uchun u
+  /// `send` orqali o'tmaydi, lekin javobni AYNAN o'sha `_parse` bilan
+  /// o'qiydi: 401, JSON bo'lmagan javob va xato matni bir xil
+  /// ishlansin.
+  ///
+  /// Admin va restoran panellarida ikki nusxa edi va ikkalasi ham
+  /// timeout'siz — yarim ochiq ulanishda yuklash abadiy osilib qolardi.
+  /// └────────────────────────────────────────────────────────────────┘
+  /// [type] — server rasmni qanday kesishini belgilaydi: `cover`
+  /// (keng banner), `logo` (kvadrat, oq joysiz), bo'sh (mahsulot rasmi).
+  Future<String> uploadImage(
+    List<int> bytes,
+    String filename, {
+    String type = '',
+    String field = 'file',
+    Map<String, String> fields = const {},
+  }) async {
+    final data = await sendMultipart(
+      'POST',
+      '/uploads${type.isEmpty ? '' : '?type=$type'}',
+      bytes,
+      filename,
+      field: field,
+      fields: fields,
+      errorText: 'Rasm yuklanmadi — internetni tekshiring',
+      // Rasm chegarasi 5MB — odatiy timeout yetadi. Uzunroq PDF
+      // timeout'i bu yerga tarqalmasin: xatti-harakat o'zgarmasligi kerak.
+      uploadTimeout: timeout,
+    );
+    return (data is Map ? data['url'] as String? : null) ?? '';
+  }
+
+  /// Ixtiyoriy `multipart` yuklash — javob JSON sifatida qaytadi.
+  ///
+  /// `uploadImage` faqat `url` ni qaytaradi va bu uzoq vaqt yetarli edi.
+  /// Kitob PDF i esa manzil BILAN BIRGA ajratilgan matnni ham qaytaradi,
+  /// ya'ni bitta satrga sig'maydi — shuning uchun transport shu yerga
+  /// ajratildi va `uploadImage` uning ustiga qurildi.
+  ///
+  /// Yuklash uzoq davom etadi (25 MB PDF), shuning uchun timeout odatiy
+  /// so'rovnikidan uzunroq: aks holda katta fayl har safar uzilardi.
+  Future<dynamic> sendMultipart(
+    String method,
+    String path,
+    List<int> bytes,
+    String filename, {
+    String field = 'file',
+    Map<String, String> fields = const {},
+    String errorText = 'Fayl yuklanmadi — internetni tekshiring',
+    Duration? uploadTimeout,
+  }) async {
+    final req = http.MultipartRequest(method, Uri.parse('$baseUrl$path'))
+      ..headers['X-Ondex-Client'] = clientHeaderValue
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile.fromBytes(field, bytes,
+          filename: filename));
+    if (token != null) req.headers['Authorization'] = 'Bearer $token';
+
+    http.Response resp;
+    try {
+      final streamed =
+          await req.send().timeout(uploadTimeout ?? timeout * 6);
+      resp = await http.Response.fromStream(streamed);
+    } catch (_) {
+      throw ApiException(errorText);
+    }
+    return _parse(resp);
   }
 }

@@ -1,5 +1,8 @@
 import 'dart:async';
 
+// `ValueListenable` uchun — u `material.dart` orqali kelmaydi.
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter/material.dart';
 // `ScrollCacheExtent` uchun — u `material.dart` orqali kelmaydi.
 import 'package:flutter/rendering.dart';
@@ -7,7 +10,15 @@ import 'package:flutter/rendering.dart';
 import '../api.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../data/favorites_store.dart';
+import '../data/quote_service.dart';
+import '../services/book_cafe_game.dart';
+import '../widgets/app_text_field.dart';
+import '../widgets/common.dart';
+import '../widgets/model_3d_view.dart';
+import '../widgets/page_sheet.dart';
 import '../widgets/product_grid.dart';
+import '../widgets/sheet_page.dart';
 import 'cart_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 
@@ -70,8 +81,8 @@ class MenuScreen extends StatefulWidget {
     if (!context.mounted) return;
 
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MenuScreen(
+      sheetRoute(
+        MenuScreen(
           restaurant: found ??
               {'id': restaurantId, 'name': fallbackName ?? '', 'open': true},
         ),
@@ -87,6 +98,103 @@ class MenuScreen extends StatefulWidget {
 /// ham ishlatiladi, shuning uchun bitta doimiy.
 const double _kChipsHeight = 46;
 
+/// "Kafeni 3D da aylanib ko'rish" chizig'i.
+///
+/// Menyu ustida turadi, lekin uni bosib qolmaydi: taomlar asosiy
+/// mazmun, 3D esa qo'shimcha imkoniyat.
+class _GameBanner extends StatelessWidget {
+  const _GameBanner({
+    required this.ready,
+    required this.progress,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  /// Sahna qurilmada bormi.
+  final bool ready;
+
+  /// `null` — yuklanmayapti. `-1` — hajm noma'lum. 0..1 — jarayon.
+  final double? progress;
+
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = progress != null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Material(
+        color: kBrand.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      // Yuklab olish kerak bo'lsa boshqa ikonka:
+                      // foydalanuvchi bosishdan OLDIN nima bo'lishini
+                      // bilib tursin.
+                      ready
+                          ? Icons.view_in_ar_rounded
+                          : Icons.cloud_download_outlined,
+                      color: kBrand,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Kafeni aylanib ko\'ring',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF171717),
+                            ),
+                          ),
+                          Text(
+                            busy ? 'Yuklanmoqda...' : subtitle,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF6B6B6B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!busy) const Icon(Icons.chevron_right, color: kBrand),
+                  ],
+                ),
+                if (busy) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      // Manfiy qiymat "hajm noma'lum" degani - shunda
+                      // aniq foiz o'rniga cheksiz ko'rsatkich chiziladi.
+                      value: progress! < 0 ? null : progress,
+                      minHeight: 5,
+                      color: kBrand,
+                      backgroundColor: kBrand.withValues(alpha: 0.2),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MenuScreenState extends State<MenuScreen> {
   final _scroll = ScrollController();
   final _chipsScroll = ScrollController();
@@ -100,19 +208,31 @@ class _MenuScreenState extends State<MenuScreen> {
 
   List<Map<String, dynamic>> _menu = const [];
   List<Map<String, dynamic>> _promos = const [];
-  Set<String> _favorites = <String>{};
   bool _menuLoading = true;
   bool _menuOffline = false;
 
   List<_Section> _sections = const [];
   final _sectionKeys = <String, GlobalKey>{};
   final _chipKeys = <String, GlobalKey>{};
-  String _activeCategory = '';
+  /// ┌─ NEGA `setState` EMAS ────────────────────────────────────────┐
+  /// Skroll paytida turkum o'zgarganda `setState` chaqirilsa BUTUN
+  /// menyu daraxti (barcha bo'limlar va to'rlar) qaytadan quriladi —
+  /// aynan shu turkum chegarasida sezilgan "qotish" shundan edi.
+  ///
+  /// `ValueNotifier` bilan faqat chiplar qatori va sarlavha soyasi
+  /// qayta chiziladi, ro'yxatga umuman tegilmaydi.
+  /// └───────────────────────────────────────────────────────────────┘
+  final _activeCategory = ValueNotifier<String>('');
 
   /// Serverdan kelgan yakuniy summa. `null` — hali yo'q, vizual
   /// taxminga tushiladi (veb `lib/use-quote.ts` bilan bir xil naqsh).
   int? _quoteTiyin;
-  int _quoteSeq = 0;
+
+  /// Eskirgan javoblardan himoya shu obyekt ichida.
+  final _quoteFetcher = QuoteFetcher();
+
+  /// Ro'yxat joyidan siljiganmi — sarlavha soyasi shunga bog'liq.
+  final _headerScrolled = ValueNotifier<bool>(false);
 
   String get _id => (widget.restaurant['id'] as String?) ?? '';
   String get _name => (widget.restaurant['name'] as String?) ?? '';
@@ -131,8 +251,184 @@ class _MenuScreenState extends State<MenuScreen> {
     _cart.addListener(_onCart);
     _scroll.addListener(_onScroll);
     _subscribe();
-    _loadFavorites();
+    FavoritesStore.instance.load(force: true);
     _refreshQuote();
+    _checkGame();
+  }
+
+  /// ┌─ 3D MAKET ───────────────────────────────────────────────────┐
+  /// Maket RESTORANGA bog'langan: manzili va SHA-256 restoran
+  /// yozuvida (`scene_3d_url`). Maketi yo'q restoranda banner
+  /// umuman chizilmaydi — begona maket bog'lanib qolmasin.
+  ///
+  /// Maketning o'zi ilova bilan kelmaydi (~104 MB), shuning uchun
+  /// banner ikki holatda bo'ladi:
+  ///   * fayl yo'q  → "yuklab olish" taklifi va hajmi
+  ///   * fayl bor   → to'g'ridan-to'g'ri ochiladi
+  ///
+  /// Tekshiruv fonda ketadi va menyuni kutib turmaydi.
+  /// └──────────────────────────────────────────────────────────────┘
+  late final SceneInfo? _sceneInfo = BookCafeGame.infoOf(widget.restaurant);
+  SceneStatus? _scene;
+
+  /// `null` — yuklab olinmayapti. 0..1 — jarayon. -1 — hajm noma'lum.
+  double? _downloading;
+
+  Future<void> _checkGame() async {
+    final info = _sceneInfo;
+    if (info == null) return;
+    final st = await BookCafeGame.status(
+      restaurantId: _id,
+      sha256: info.sha256,
+    );
+    if (mounted) setState(() => _scene = st);
+  }
+
+  Future<void> _onGameTap() async {
+    if (_downloading != null) return;
+
+    if (_scene?.ready == true) {
+      await _openGame();
+      return;
+    }
+    await _downloadScene();
+  }
+
+  Future<void> _downloadScene() async {
+    final info = _sceneInfo;
+    if (info == null) return;
+
+    setState(() => _downloading = -1);
+    final err = await BookCafeGame.download(
+      restaurantId: _id,
+      info: info,
+      onProgress: (p) {
+        if (mounted) setState(() => _downloading = p ?? -1);
+      },
+    );
+    if (!mounted) return;
+    setState(() => _downloading = null);
+
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Yuklab olinmadi: $err')),
+      );
+      return;
+    }
+    await _checkGame();
+    if (mounted) await _openGame();
+  }
+
+  Future<void> _openGame() async {
+    final info = _sceneInfo;
+    if (info == null) return;
+    // â”Œâ”€ HOLAT IKKI TOMONGA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+    // 3D tomonga hozirgi savat va sevimlilar uzatiladi, u yopilgach
+    // o'zgargani qaytariladi. O'yin serverga o'zi yozmaydi: unda
+    // foydalanuvchi tokeni yo'q va bo'lishi ham kerak emas.
+    // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+    // Sevimlilar `FavoritesStore` orqali: u API chaqiruvini ham,
+    // ekranlarni xabardor qilishni ham o'zi bajaradi. To'g'ridan-
+    // to'g'ri `api` ga murojaat qilinsa, ro'yxat ikki joyda ajralib
+    // qolardi.
+    await FavoritesStore.instance.load();
+    final favBefore = Set<String>.from(FavoritesStore.instance.ids);
+    final cartBefore = _cart.restaurantId == _id
+        ? Map<String, int>.from(_cart.items)
+        : <String, int>{};
+
+    final res = await BookCafeGame.open(
+      restaurantId: _id,
+      sha256: info.sha256,
+      // ┌─ HAQIQIY STOL RAQAMI ──────────────────────────────────────┐
+      // Avval bu yerda bo'sh satr turardi va o'yin o'z standartiga
+      // ("5-stol") qaytardi - shuning uchun HAMMA stol 5-stol bo'lib
+      // ko'rinardi.
+      //
+      // Endi stol QR kodni skanerlaganda boshlangan seansdan olinadi.
+      // Seans bo'lmasa bo'sh qoladi va o'yin stol raqamini umuman
+      // ko'rsatmaydi - yolg'on raqamdan ko'ra yo'qligi yaxshiroq.
+      // └────────────────────────────────────────────────────────────┘
+      tableLabel: _cart.restaurantId == _id ? (_cart.tableLabel ?? '') : '',
+      apiBase: apiBaseUrl,
+      // Yuklanish ekranida kafening O'Z logotipi va nomi chiqadi.
+      // Ma'lumot shu yerda allaqachon bor - 3D tomon uni API'dan
+      // qayta so'ramaydi.
+      name: _name,
+      logoUrl: _logo.isEmpty ? '' : fullImageUrl(_logo),
+      favorites: favBefore,
+      cart: cartBefore,
+    );
+
+    if (!mounted) return;
+    if (res.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('3D maket ochilmadi: ${res.error}')),
+      );
+      // Fayl buzilgan bo'lishi mumkin - holatni yangilaymiz.
+      _checkGame();
+      return;
+    }
+    await _applyGameState(res, favBefore, cartBefore);
+
+    // ┌─ BUYURTMANI OnDex RASMIYLASHTIRADI ────────────────────────┐
+    // O'yin buyurtma bermaydi va bera olmaydi: unda foydalanuvchi
+    // tokeni yo'q. U faqat niyatni qaytaradi, biz esa odatiy savat
+    // oqimini ochamiz - u yerda manzil, to'lov va stol seansi
+    // allaqachon to'g'ri ishlaydi.
+    // └────────────────────────────────────────────────────────────┘
+    if (res.orderRequested && mounted && !_cart.isEmpty) {
+      // Savat ekrani boshqa joylarda ham shu tarzda ochiladi.
+      await Navigator.of(context).push(sheetRoute(const CartScreen()));
+    }
+  }
+
+  /// 3D maketdan qaytgan holatni OnDex tomonga qo'llaydi.
+  ///
+  /// â”Œâ”€ FAQAT FARQ YOZILADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  /// Sevimlilar ro'yxatini butunlay qayta yozish mumkin edi, lekin u
+  /// BOSHQA restoranlarning mahsulotlarini ham o'z ichiga oladi -
+  /// o'yin esa faqat shu kafening menyusini ko'radi. Hammasini
+  /// yozish qolganlarini o'chirib yuborardi.
+  ///
+  /// Shuning uchun faqat FARQ qo'llanadi va u ham menyudagi
+  /// mahsulotlar bilan cheklanadi.
+  /// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+  Future<void> _applyGameState(
+    GameResult res,
+    Set<String> favBefore,
+    Map<String, int> cartBefore,
+  ) async {
+    if (!res.hasState) return;
+    // Holat boshqa restorannikimi - tegmaymiz.
+    if (res.restaurantId.isNotEmpty && res.restaurantId != _id) return;
+
+    // Menyuda bor mahsulotlargina qabul qilinadi: o'yin qaytargan
+    // begona ID savatga tushmasligi kerak.
+    final known = _menu.map((p) => '${p['id'] ?? ''}').toSet();
+
+    // â”€â”€ Savat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    for (final id in {...cartBefore.keys, ...res.cart.keys}) {
+      if (!known.contains(id)) continue;
+      final want = res.cart[id] ?? 0;
+      if (_cart.qtyOf(id) == want) continue;
+      _cart.setQty(restaurantId: _id, productId: id, qty: want);
+    }
+
+    // â”€â”€ Sevimlilar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    for (final id in known) {
+      final was = favBefore.contains(id);
+      final now = res.favorites.contains(id);
+      if (was == now) continue;
+      // `toggle` holatni teskarisiga o'giradi - biz esa aynan
+      // O'ZGARGANLARINI chaqiramiz, ya'ni natija to'g'ri chiqadi.
+      try {
+        await FavoritesStore.instance.toggle(id);
+      } on ApiException {
+        // Bitta sevimli saqlanmasa qolganlari baribir yoziladi.
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -142,6 +438,8 @@ class _MenuScreenState extends State<MenuScreen> {
     _promoSub?.cancel();
     _scroll.dispose();
     _chipsScroll.dispose();
+    _activeCategory.dispose();
+    _headerScrolled.dispose();
     super.dispose();
   }
 
@@ -171,15 +469,6 @@ class _MenuScreenState extends State<MenuScreen> {
     });
   }
 
-  /// Sevimlilar — anonim foydalanuvchida 401 keladi, bu XATO EMAS:
-  /// shunchaki hech narsa belgilanmagan bo'ladi.
-  Future<void> _loadFavorites() async {
-    try {
-      final ids = await api.favoriteIds();
-      if (mounted) setState(() => _favorites = ids);
-    } catch (_) {}
-  }
-
   void _rebuildSections() {
     final order = <String>[];
     final map = <String, List<Map<String, dynamic>>>{};
@@ -196,8 +485,8 @@ class _MenuScreenState extends State<MenuScreen> {
       _sectionKeys.putIfAbsent(s.title, () => GlobalKey());
       _chipKeys.putIfAbsent(s.title, () => GlobalKey());
     }
-    if (_activeCategory.isEmpty && _sections.isNotEmpty) {
-      _activeCategory = _sections.first.title;
+    if (_activeCategory.value.isEmpty && _sections.isNotEmpty) {
+      _activeCategory.value = _sections.first.title;
     }
   }
 
@@ -212,37 +501,33 @@ class _MenuScreenState extends State<MenuScreen> {
   /// Eskirgan javoblar `_quoteSeq` bilan filtrlanadi: mijoz tez "+"
   /// bosganda javoblar tartibsiz kelishi mumkin va eskisi yangisini
   /// bosib ketardi.
+  /// So'rov `data/quote_service.dart` da — savat va rasmiylashtirish
+  /// ekranlari bilan bitta kod.
   Future<void> _refreshQuote() async {
-    if (_cart.isEmpty || _cart.restaurantId != _id) {
-      if (mounted) setState(() => _quoteTiyin = null);
-      return;
-    }
-    final seq = ++_quoteSeq;
     try {
-      final res = await api.quote(_id, [
-        for (final e in _cart.items.entries)
-          {'product_id': e.key, 'qty': e.value}
-      ]);
-      if (!mounted || seq != _quoteSeq) return;
-      final t = (res['total_tiyin'] as num?)?.toInt();
-      // 0 yoki manfiy — "narx aniqlanmadi" deb qaraladi (veb bilan bir
-      // xil qoida): noto'g'ri sozlangan aksiya bepul buyurtma
-      // ko'rinishini bermasligi kerak.
-      setState(() => _quoteTiyin = (t != null && t > 0) ? t : null);
+      final q = await _quoteFetcher.fetch(_id);
+      if (!mounted || q == null) return; // eskirgan javob
+      setState(() => _quoteTiyin = q.totalTiyin);
     } catch (_) {
       // Anonim foydalanuvchi yoki tarmoq xatosi — vizual taxmin.
-      if (mounted && seq == _quoteSeq) setState(() => _quoteTiyin = null);
+      if (mounted) setState(() => _quoteTiyin = null);
     }
   }
+
+  /// Savatning CHEGIRMASIZ summasi — aksiyaning "minimal buyurtma
+  /// summasi" shartini tekshirish uchun (`computeProductDiscount`).
+  /// Savat boshqa restorandan bo'lsa 0.
+  int get _rawSubtotal => rawSubtotal(_menu, restaurantId: _id);
 
   /// Server summasi bo'lmaganda ko'rsatiladigan taxmin.
   int get _visualTotal {
     var total = 0;
-    final byId = {for (final p in _menu) (p['id'] as String? ?? ''): p};
+    final byId = productsById(_menu);
+    final subtotal = _rawSubtotal;
     for (final e in _cart.items.entries) {
       final p = byId[e.key];
       if (p == null) continue;
-      final d = computeProductDiscount(p, _promos);
+      final d = computeProductDiscount(p, _promos, cartSubtotalTiyin: subtotal);
       final unit = d?.discountedPriceTiyin ??
           (p['price_tiyin'] as num?)?.toInt() ??
           0;
@@ -265,7 +550,13 @@ class _MenuScreenState extends State<MenuScreen> {
   /// emas: ekrandan uzoqda qolgan bo'limlarni Flutter yo'q qiladi va
   /// ularning konteksti `null` bo'ladi — indeks esa har doim bor.
   void _onScroll() {
-    if (_sections.isEmpty || !_scroll.hasClients) return;
+    if (!_scroll.hasClients) return;
+
+    // Sarlavha soyasi — ro'yxat joyidan siljigani belgisi.
+    // `ValueNotifier` faqat qiymat O'ZGARGANDA xabar beradi.
+    _headerScrolled.value = _scroll.offset > 2;
+
+    if (_sections.isEmpty) return;
 
     final line = _headerLine + 8;
     var activeIndex = 0;
@@ -290,8 +581,8 @@ class _MenuScreenState extends State<MenuScreen> {
     }
 
     final next = _sections[activeIndex].title;
-    if (next != _activeCategory) {
-      setState(() => _activeCategory = next);
+    if (next != _activeCategory.value) {
+      _activeCategory.value = next;
       _centerChip(next);
     }
   }
@@ -330,7 +621,7 @@ class _MenuScreenState extends State<MenuScreen> {
     final targetIndex = _sections.indexWhere((s) => s.title == category);
     if (targetIndex < 0) return;
     final currentIndex =
-        _sections.indexWhere((s) => s.title == _activeCategory);
+        _sections.indexWhere((s) => s.title == _activeCategory.value);
     final down = targetIndex >= (currentIndex < 0 ? 0 : currentIndex);
 
     for (var attempt = 0; attempt < 20; attempt++) {
@@ -378,31 +669,23 @@ class _MenuScreenState extends State<MenuScreen> {
         restaurantName: _name,
       );
 
-  void _onFavoriteChanged(String productId, bool favorited) {
-    setState(() {
-      if (favorited) {
-        _favorites.add(productId);
-      } else {
-        _favorites.remove(productId);
-      }
-    });
-  }
-
   // ── Chizish ───────────────────────────────────────────────────────
 
   Widget _card(Map<String, dynamic> p) {
     final id = (p['id'] as String?) ?? '';
-    final discount = computeProductDiscount(p, _promos);
+    final discount =
+        computeProductDiscount(p, _promos, cartSubtotalTiyin: _rawSubtotal);
     return ProductCard(
       product: p,
       qty: _cart.restaurantId == _id ? _cart.qtyOf(id) : 0,
       discount: discount,
       promoted: PromotionIndex(_promos).covers(p, discount),
-      favorited: _favorites.contains(id),
+      // Yurakcha holati `FavoritesStore` dan keladi — bu yerda
+      // saqlanmaydi (`widgets/product_grid.dart`).
+      favorited: FavoritesStore.instance.contains(id),
       onAdd: () => _add(p),
       onRemove: () => _remove(p),
       onTap: () => _openDetail(p),
-      onFavoriteChanged: (fav) => _onFavoriteChanged(id, fav),
     );
   }
 
@@ -415,10 +698,10 @@ class _MenuScreenState extends State<MenuScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _ProductSheet(
         product: p,
-        discount: computeProductDiscount(p, _promos),
-        favorited: _favorites.contains(id),
+        discount:
+            computeProductDiscount(p, _promos, cartSubtotalTiyin: _rawSubtotal),
+        favorited: FavoritesStore.instance.contains(id),
         initialQty: _cart.restaurantId == _id ? _cart.qtyOf(id) : 0,
-        onFavoriteChanged: (fav) => _onFavoriteChanged(id, fav),
         onConfirm: (qty) => _setQty(p, qty),
       ),
     );
@@ -442,73 +725,34 @@ class _MenuScreenState extends State<MenuScreen> {
     final showChips = _sections.length > 1;
     final myCart = _cart.restaurantId == _id && !_cart.isEmpty;
 
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      body: RefreshIndicator(
-        color: kBrand,
-        onRefresh: () async {
-          _subscribe(force: true);
-          await _loadFavorites();
-        },
-        child: CustomScrollView(
-          controller: _scroll,
-          physics: const AlwaysScrollableScrollPhysics(),
-          // Kesh maydoni kengaytirildi: yonidagi bo'limlar tirik
-          // qolsa, chip bosilganda pog'ona-pog'ona surish deyarli
-          // kerak bo'lmaydi.
-          scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
-          slivers: [
-            SliverAppBar(
-              pinned: true,
-              elevation: 0,
-              scrolledUnderElevation: 0.5,
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.transparent,
-              foregroundColor: Colors.black,
-              centerTitle: true,
-              titleSpacing: 0,
-              title: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_logo.isNotEmpty) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(7),
-                      child: SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: Image.network(
-                          fullImageUrl(_logo),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: Text(
-                      _name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                IconButton(
-                  onPressed: _menu.isEmpty ? null : _openSearch,
-                  icon: const Icon(Icons.search, size: 24),
-                  tooltip: 'Qidirish',
-                ),
-              ],
-              bottom: showChips
-                  ? PreferredSize(
-                      preferredSize: const Size.fromHeight(_kChipsHeight),
-                      child: SizedBox(
-                        height: _kChipsHeight,
-                        child: ListView.separated(
+      body: Column(
+        children: [
+          // ┌─ SARLAVHA SKROLLDAN TASHQARIDA ───────────────────────┐
+          // Ilgari u `SliverAppBar` edi, ya'ni ro'yxatning BIR
+          // QISMI. Shu sababli uning ustidagi tortish imo-ishorasi
+          // skrollga tegishli bo'lib qolar va sahifani yopish
+          // ishlamasdi (jonli sinovda tasdiqlandi).
+          //
+          // Endi sarlavha ro'yxatning YONIDA turadi: tortish faqat
+          // shu yerga tegishli, ro'yxat esa o'z skrolli va "tortib
+          // yangilash" ini saqlab qoladi.
+          // └───────────────────────────────────────────────────────┘
+          _MenuHeader(
+              name: _name,
+              logo: _logo,
+              scrolled: _headerScrolled,
+              onSearch: _menu.isEmpty ? null : _openSearch,
+              chips: showChips
+                  ? SizedBox(
+                      height: _kChipsHeight,
+                      // Faqat chiplar qatori qayta chiziladi — ro'yxat
+                      // tegilmaydi (skroll silliq qoladi).
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _activeCategory,
+                        builder: (_, active, __) => ListView.separated(
                           key: _chipsListKey,
                           controller: _chipsScroll,
                           scrollDirection: Axis.horizontal,
@@ -520,7 +764,7 @@ class _MenuScreenState extends State<MenuScreen> {
                             return _CategoryChip(
                               key: _chipKeys[title],
                               label: title,
-                              active: title == _activeCategory,
+                              active: title == active,
                               onTap: () => _scrollToCategory(title),
                             );
                           },
@@ -528,9 +772,44 @@ class _MenuScreenState extends State<MenuScreen> {
                       ),
                     )
                   : null,
-            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+        color: kBrand,
+        onRefresh: () async {
+          _subscribe(force: true);
+          await FavoritesStore.instance.load(force: true);
+        },
+        child: CustomScrollView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          // Kesh maydoni kengaytirildi: yonidagi bo'limlar tirik
+          // qolsa, chip bosilganda pog'ona-pog'ona surish deyarli
+          // kerak bo'lmaydi.
+          scrollCacheExtent: const ScrollCacheExtent.viewport(1.5),
+          slivers: [
+            if (_menuOffline) const SliverToBoxAdapter(
+                          child: OfflineNotice(
+                            message: 'Menyu yangilanmadi — saqlangan nusxa',
+                            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          ),
+                        ),
 
-            if (_menuOffline) const SliverToBoxAdapter(child: _OfflineStrip()),
+            // Banner FAQAT maketi bor restoranda. `_sceneInfo` restoran
+            // yozuvidan olinadi, ya'ni ulanmagan kafeda u `null` va
+            // taklif umuman chizilmaydi.
+            if (_sceneInfo != null && _scene?.available == true)
+              SliverToBoxAdapter(
+                child: _GameBanner(
+                  ready: _scene!.ready,
+                  progress: _downloading,
+                  subtitle: _scene!.ready
+                      ? 'Ichkariga kirib, stolga o\'tirib buyurtma bering'
+                      : 'Ichkarini ko\'rish uchun ${_sceneInfo.sizeText} '
+                          'yuklab olinadi',
+                  onTap: _onGameTap,
+                ),
+              ),
 
             if (_menuLoading)
               const SliverFillRemaining(
@@ -570,20 +849,131 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               ],
 
-            // Suzuvchi tugma kontentni bosib qolmasin.
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            // ┌─ BO'SH JOY FAQAT KERAK BO'LGANDA ───────────────────┐
+            // Bu joy suzuvchi "Savat" tugmasi ostidagi taomlarni
+            // bosib qolmasligi uchun. Lekin u SHARTSIZ qo'yilgan edi:
+            // savat bo'sh bo'lsa tugma ham yo'q, joy esa qolaverar va
+            // ro'yxat oxirida sababsiz bo'shliq ko'rinardi.
+            // └─────────────────────────────────────────────────────┘
+            SliverToBoxAdapter(child: SizedBox(height: myCart ? 96 : 16)),
           ],
         ),
+      ),
+          ),
+        ],
       ),
       floatingActionButton: myCart
           ? _CartPill(
               totalTiyin: _quoteTiyin ?? _visualTotal,
               count: _cart.totalQty,
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CartScreen()),
+                // Savat ham pastdan suzib chiqadi.
+                sheetRoute(const CartScreen()),
               ),
             )
           : null,
+    ));
+  }
+}
+
+/// Menyuning qotirilgan sarlavhasi: orqaga, logo + nom, qidiruv va
+/// (ixtiyoriy) turkum chiplari.
+///
+/// `AppBar` ATAYLAB ishlatilmadi — u faqat `Scaffold.appBar` yoki
+/// `SliverAppBar` sifatida to'g'ri turadi, bizga esa u ustunning oddiy
+/// bo'lagi bo'lishi kerak (izohga qarang).
+class _MenuHeader extends StatelessWidget {
+  final String name;
+  final String logo;
+  final ValueListenable<bool> scrolled;
+  final VoidCallback? onSearch;
+  final Widget? chips;
+
+  const _MenuHeader({
+    required this.name,
+    required this.logo,
+    required this.scrolled,
+    required this.onSearch,
+    required this.chips,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: scrolled,
+      // Sarlavha tarkibi soya o'zgarganda QAYTA QURILMAYDI — u
+      // `child` sifatida bir marta quriladi va shundayligicha
+      // uzatiladi.
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: kToolbarHeight,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Orqaga',
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (logo.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(7),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: RemoteImage(url: logo),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onSearch,
+                  icon: const Icon(Icons.search, size: 24),
+                  tooltip: 'Qidirish',
+                ),
+              ],
+            ),
+          ),
+          if (chips != null) chips!,
+        ],
+      ),
+      builder: (_, isScrolled, child) => AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          // Ro'yxat sarlavha ostidan suriladi — skroll boshlangach
+          // soya ularni ajratib turadi (bosh sahifadagi bilan bir xil).
+          boxShadow: isScrolled
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : const [],
+        ),
+        child: child,
+      ),
     );
   }
 }
@@ -755,43 +1145,20 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
                 ((p['name'] as String?) ?? '').toLowerCase().contains(q))
             .toList();
 
-    return Scaffold(
+    return PageSheet(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.black,
-        elevation: 0,
+      appBar: PageAppBar(
         titleSpacing: 0,
-        title: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F7),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE0E0E0)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.search, size: 20, color: Color(0xFF9E9E9E)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  // Qidiruv oynasi ATAYLAB ochilgan — klaviatura darhol
-                  // tayyor bo'lishi kerak.
-                  autofocus: true,
-                  textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: 'Taom qidirish...',
-                  ),
-                  onChanged: (v) => setState(() => _query = v),
-                ),
-              ),
-            ],
-          ),
+        titleWidget: AppTextField(
+          controller: _controller,
+          hint: 'Taom qidirish...',
+          icon: Icons.search,
+          // Qidiruv oynasi ATAYLAB ochilgan — klaviatura darhol
+          // tayyor bo'lishi kerak.
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          onChanged: (v) => setState(() => _query = v),
         ),
         actions: [
           IconButton(
@@ -817,7 +1184,7 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
               itemCount: results.length,
               itemBuilder: (_, i) => widget.buildCard(results[i]),
             ),
-    );
+    ));
   }
 }
 
@@ -831,12 +1198,56 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
 ///
 /// Reyting/ingredient kabi elementlar ATAYLAB yo'q — backend'da bunday
 /// ma'lumot yo'q (loyihaning "soxta raqam yo'q" qoidasi).
+/// "3D" almashtirgichi — rasm ustida suzadi.
+///
+/// Yoqilganda brend rangida bo'ladi, ya'ni mijoz qaysi rejimda
+/// turganini bir qarashda ko'radi.
+class _View3DToggle extends StatelessWidget {
+  const _View3DToggle({required this.active, required this.onTap});
+
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? kBrand : const Color(0xCCFFFFFF),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                active ? Icons.photo_outlined : Icons.view_in_ar_rounded,
+                size: 16,
+                color: active ? Colors.white : const Color(0xFF424242),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                active ? 'Rasm' : '3D',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: active ? Colors.white : const Color(0xFF424242),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductSheet extends StatefulWidget {
   final Map<String, dynamic> product;
   final ProductDiscount? discount;
   final bool favorited;
   final int initialQty;
-  final ValueChanged<bool> onFavoriteChanged;
   final ValueChanged<int> onConfirm;
 
   const _ProductSheet({
@@ -844,7 +1255,6 @@ class _ProductSheet extends StatefulWidget {
     required this.discount,
     required this.favorited,
     required this.initialQty,
-    required this.onFavoriteChanged,
     required this.onConfirm,
   });
 
@@ -854,6 +1264,34 @@ class _ProductSheet extends StatefulWidget {
 
 class _ProductSheetState extends State<_ProductSheet> {
   late int _qty = widget.initialQty > 0 ? widget.initialQty : 1;
+
+  /// 3D ko'rinish yoqilganmi.
+  ///
+  /// Standart — O'CHIQ: 3D chizish xotira va batareya talab qiladi,
+  /// mijozlarning ko'pchiligi esa oddiy rasmga qaraydi. WebView faqat
+  /// foydalanuvchi almashtirgichni bosganda quriladi.
+  bool _show3D = false;
+
+  /// ┌─ MIQDOR DARHOL SAVATGA YOZILADI ────────────────────────────────┐
+  /// Ilgari paneldagi "+/−" faqat MAHALLIY sonni o'zgartirardi va
+  /// savatga yozish uchun "Qo'shish" tugmasini bosish shart edi.
+  /// Natijada mijoz panelda miqdorni o'zgartirib, panelni yopib
+  /// yuborsa — menyudagi son eski holicha qolardi va ikkalasi
+  /// bir-biriga mos kelmasdi.
+  ///
+  /// Endi taom ALLAQACHON savatda bo'lsa, har bosish darhol savatga
+  /// yoziladi: menyu, savat va bu panel bir vaqtda yangilanadi.
+  /// Savatda bo'lmasa esa faqat son tanlanadi — mijoz "Qo'shish"
+  /// bosmaguncha savatga hech narsa tushmaydi.
+  /// └─────────────────────────────────────────────────────────────────┘
+  bool get _inCart => widget.initialQty > 0;
+
+  void _changeQty(int delta) {
+    final next = _qty + delta;
+    if (next < 1) return;
+    setState(() => _qty = next);
+    if (_inCart) widget.onConfirm(next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -866,6 +1304,9 @@ class _ProductSheetState extends State<_ProductSheet> {
     final unit = formatWeightUnit((p['weight_unit'] as String?) ?? '');
     final desc = ((p['description'] as String?) ?? '').trim();
     final unitPrice = widget.discount?.discountedPriceTiyin ?? price;
+    // 3D model — restoran paneli orqali yaratilgan bo'lsa keladi.
+    // Bo'lmasa almashtirgich umuman ko'rsatilmaydi.
+    final model3D = ((p['model_3d_url'] as String?) ?? '').trim();
 
     return Container(
       // Veb bilan bir xil: ekran tepasidan sal pastroq boshlanadi.
@@ -887,22 +1328,34 @@ class _ProductSheetState extends State<_ProductSheet> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: image.isEmpty
-                      ? Container(
-                          color: const Color(0xFFF5F5F5),
-                          child: const Icon(Icons.restaurant_menu,
-                              size: 56, color: Color(0xFFBDBDBD)),
-                        )
-                      : Image.network(
-                          fullImageUrl(image),
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: const Color(0xFFF5F5F5),
-                            child: const Icon(Icons.restaurant_menu,
-                                size: 56, color: Color(0xFFBDBDBD)),
-                          ),
-                        ),
+                  child: _show3D && model3D.isNotEmpty
+                      ? Model3DView(modelUrl: model3D)
+                      : image.isEmpty
+                          ? Container(
+                              color: const Color(0xFFF5F5F5),
+                              child: const Icon(Icons.restaurant_menu,
+                                  size: 56, color: Color(0xFFBDBDBD)),
+                            )
+                          : RemoteImage(
+                              url: image,
+                              fit: BoxFit.contain,
+                              placeholder: Container(
+                                color: const Color(0xFFF5F5F5),
+                                child: const Icon(Icons.restaurant_menu,
+                                    size: 56, color: Color(0xFFBDBDBD)),
+                              ),
+                            ),
                 ),
+                // 3D / rasm almashtirgichi — faqat model bor taomda.
+                if (model3D.isNotEmpty)
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: _View3DToggle(
+                      active: _show3D,
+                      onTap: () => setState(() => _show3D = !_show3D),
+                    ),
+                  ),
                 // Tortish chizig'i RASM USTIDA suzadi — alohida qator
                 // bo'lsa tepada ortiqcha yo'lak hosil qilardi.
                 Positioned(
@@ -946,7 +1399,6 @@ class _ProductSheetState extends State<_ProductSheet> {
                   child: FavoriteButton(
                     productId: (p['id'] as String?) ?? '',
                     initialFavorited: widget.favorited,
-                    onChanged: widget.onFavoriteChanged,
                   ),
                 ),
               ],
@@ -1045,9 +1497,7 @@ class _ProductSheetState extends State<_ProductSheet> {
                             children: [
                               _StepButton(
                                 icon: Icons.remove,
-                                onTap: _qty > 1
-                                    ? () => setState(() => _qty--)
-                                    : null,
+                                onTap: _qty > 1 ? () => _changeQty(-1) : null,
                               ),
                               SizedBox(
                                 width: 26,
@@ -1061,7 +1511,7 @@ class _ProductSheetState extends State<_ProductSheet> {
                               ),
                               _StepButton(
                                 icon: Icons.add,
-                                onTap: () => setState(() => _qty++),
+                                onTap: () => _changeQty(1),
                               ),
                             ],
                           ),
@@ -1077,11 +1527,15 @@ class _ProductSheetState extends State<_ProductSheet> {
                                     borderRadius: BorderRadius.circular(16)),
                               ),
                               onPressed: () {
-                                widget.onConfirm(_qty);
+                                // Savatda bo'lsa miqdor allaqachon
+                                // yozilgan — tugma faqat yopadi.
+                                if (!_inCart) widget.onConfirm(_qty);
                                 Navigator.of(context).pop();
                               },
                               child: Text(
-                                'Qo\'shish  ·  ${formatSum(unitPrice * _qty)}',
+                                _inCart
+                                    ? 'Tayyor  ·  ${formatSum(unitPrice * _qty)}'
+                                    : 'Qo\'shish  ·  ${formatSum(unitPrice * _qty)}',
                                 style: const TextStyle(
                                     fontSize: 15.5,
                                     fontWeight: FontWeight.bold),
@@ -1131,29 +1585,3 @@ class _StepButton extends StatelessWidget {
 // OFFLAYN BELGISI
 // ═══════════════════════════════════════════════════════════════════
 
-class _OfflineStrip extends StatelessWidget {
-  const _OfflineStrip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF4E5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFFD9A8)),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.cloud_off, size: 16, color: Color(0xFF9A5B00)),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text('Menyu yangilanmadi — saqlangan nusxa',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFF9A5B00))),
-          ),
-        ],
-      ),
-    );
-  }
-}

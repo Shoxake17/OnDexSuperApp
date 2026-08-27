@@ -5,7 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api.dart';
 import '../session.dart';
 import '../theme.dart';
-import 'waiter_shell.dart';
+import 'waiter_home.dart';
 
 /// Affitsiant kirishi — telefon raqami + tasdiqlash kodi.
 ///
@@ -161,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await tokenStore.write(res['token'] as String);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const WaiterShell()),
+        MaterialPageRoute(builder: (_) => const WaiterHome()),
       );
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -197,7 +197,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text(
                   'OnDex Affitsiant',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: kInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Stol buyurtmalarini kuzating va yetkazing',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: kInkFaint),
                 ),
                 const SizedBox(height: 32),
                 TextField(

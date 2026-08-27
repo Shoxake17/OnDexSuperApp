@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../category_icons.dart';
 import '../data/catalog_repository.dart';
+import '../widgets/app_text_field.dart';
+import '../widgets/common.dart';
+import '../widgets/page_sheet.dart';
+import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
 import 'category_products_screen.dart';
 import 'menu_screen.dart';
@@ -45,17 +49,40 @@ class _CatalogScreenState extends State<CatalogScreen> {
   /// Kalit o'zgarishi `StreamBuilder` ni yangi obunaga majburlaydi.
   int _reloadTick = 0;
 
+  /// Ro'yxat joyidan siljiganmi — sarlavhaning dumaloq burchagi va
+  /// soyasi shunga qarab paydo bo'ladi.
+  bool _scrolled = false;
+
   Future<void> _refresh() async {
     setState(() => _reloadTick++);
   }
 
+  /// `setState` FAQAT chegaradan o'tganda chaqiriladi — har piksel
+  /// uchun emas, aks holda skroll paytida ekran uzluksiz qayta
+  /// chizilardi.
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    final scrolled = n.metrics.pixels > 2;
+    if (scrolled != _scrolled) setState(() => _scrolled = scrolled);
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: RefreshIndicator(
+    // ┌─ BOSH SAHIFADA DUMALOQ BURCHAK YO'Q ────────────────────────┐
+    // Restoranlar ro'yxati — ilovaning "tagi". Uning ostida boshqa
+    // sahifa turmaydi, shuning uchun karta bo'lib ko'rinishi kerak
+    // emas: tarkib tizim panelidan darhol boshlanadi. Tizim panelining
+    // rangini `home_shell.dart` belgilaydi (u butun ekranni qamraydi).
+    // └─────────────────────────────────────────────────────────────┘
+    return Container(
+        color: Colors.white,
+        child: RefreshIndicator(
         color: kBrand,
         onRefresh: _refresh,
+        // Aylanma ko'rsatkich QOTIRILGAN sarlavha ostidan chiqsin —
+        // aks holda u sarlavha orqasida ko'rinmay qolardi.
+        edgeOffset: _kHeaderHeight,
         child: StreamBuilder<Cached<List<dynamic>>>(
           key: ValueKey('restaurants-$_reloadTick'),
           stream: _restaurants.observe(force: _reloadTick > 0),
@@ -69,49 +96,131 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
             final list = (c.value ?? const []).cast<Map<String, dynamic>>();
 
-            return CustomScrollView(
-              // `always` — ro'yxat qisqa bo'lsa ham pastga tortib
-              // yangilash ishlashi kerak.
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _Header(restaurants: list),
-                ),
-                SliverToBoxAdapter(
-                  child: _CategoryRow(repo: _categories, tick: _reloadTick),
-                ),
+            // ┌─ SARLAVHA QOTIRILGAN ─────────────────────────────────┐
+            // Logo, shahar va uchta ikon skroll bilan yuqoriga chiqib
+            // ketmaydi — ular `Stack` ning ustki qatlamida turadi.
+            // Ro'yxat esa ularning OSTIDAN suriladi, shuning uchun
+            // skroll boshlanishi bilan sarlavhaning pastki burchaklari
+            // dumaloqlanadi va soya paydo bo'ladi: tarkib "ostiga
+            // kirib ketayotgani" ko'rinib turadi.
+            // └───────────────────────────────────────────────────────┘
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: _onScroll,
+                    child: CustomScrollView(
+                      // `always` — ro'yxat qisqa bo'lsa ham pastga tortib
+                      // yangilash ishlashi kerak.
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        // Qotirilgan sarlavha egallagan joy.
+                        const SliverToBoxAdapter(
+                            child: SizedBox(height: _kHeaderHeight)),
+                        SliverToBoxAdapter(
+                          child:
+                              _CategoryRow(repo: _categories, tick: _reloadTick),
+                        ),
 
-                // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
-                // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
-                // ataylab: xato uchun mazmunni o'chirish eng yomon
-                // xatti-harakat.
-                if (c.error != null)
-                  const SliverToBoxAdapter(child: _OfflineNotice()),
+                        // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
+                        // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
+                        // ataylab: xato uchun mazmunni o'chirish eng yomon
+                        // xatti-harakat.
+                        if (c.error != null)
+                          const SliverToBoxAdapter(
+                            child: OfflineNotice(
+                              message:
+                                  'Yangilab bo\'lmadi — saqlangan ro\'yxat ko\'rsatilmoqda',
+                            ),
+                          ),
 
-                if (list.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Text('Hozircha restoran yo\'q'),
-                      ),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                    sliver: SliverList.separated(
-                      itemCount: list.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 16),
-                      itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
+                        if (list.isEmpty)
+                          const SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(32),
+                                child: Text('Hozircha restoran yo\'q'),
+                              ),
+                            ),
+                          )
+                        else
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                            sliver: SliverList.separated(
+                              itemCount: list.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 16),
+                              itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: _StickyHeader(
+                    scrolled: _scrolled,
+                    child: _Header(restaurants: list),
+                  ),
+                ),
               ],
             );
           },
         ),
       ),
+    );
+  }
+}
+
+/// Qotirilgan sarlavhaning balandligi.
+///
+/// Aniq son ATAYLAB: ro'yxat aynan shuncha bo'sh joydan boshlanishi
+/// kerak, aks holda birinchi turkumlar sarlavha ostida qolib ketardi.
+/// [_Header] ning ichki balandligi shu songa moslangan.
+const double _kHeaderHeight = 80;
+
+/// Sarlavha qobig'i — skroll boshlangach pastki burchaklari
+/// dumaloqlanadi va soya chiqadi.
+class _StickyHeader extends StatelessWidget {
+  final bool scrolled;
+  final Widget child;
+
+  const _StickyHeader({required this.scrolled, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      height: _kHeaderHeight,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: scrolled
+            ? const BorderRadius.vertical(bottom: Radius.circular(20))
+            : BorderRadius.zero,
+        // Soya skroll paytida sezilarli bo'lishi kerak — sarlavha
+        // tarkibdan ajralib turadi. Ikki qatlam: keng va yumshoq
+        // (chuqurlik) + tor va aniq (chekka chizig'i).
+        boxShadow: scrolled
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.13),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : const [],
+      ),
+      child: child,
     );
   }
 }
@@ -160,9 +269,9 @@ class _HeaderState extends State<_Header> {
   }
 
   Future<void> _push(Widget screen) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    // Hamma sahifa bir xil ochiladi: pastdan suzib chiqadi va pastga
+    // tortib yopiladi (`widgets/sheet_page.dart`).
+    await Navigator.of(context).push(sheetRoute(screen));
     // Bildirishnomalar ochilgan bo'lsa ular o'qilgan deb
     // belgilangan — belgi yangilanishi kerak.
     if (mounted) _loadUnread();
@@ -369,41 +478,18 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
                 ((r['name'] as String?) ?? '').toLowerCase().contains(q))
             .toList();
 
-    return Scaffold(
+    return PageSheet(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.black,
-        elevation: 0,
+      appBar: PageAppBar(
         titleSpacing: 0,
-        title: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F7),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE0E0E0)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.search, size: 20, color: Color(0xFF9E9E9E)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  autofocus: true,
-                  textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: 'Restoran qidirish...',
-                  ),
-                  onChanged: (v) => setState(() => _query = v),
-                ),
-              ),
-            ],
-          ),
+        titleWidget: AppTextField(
+          controller: _controller,
+          hint: 'Restoran qidirish...',
+          icon: Icons.search,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          onChanged: (v) => setState(() => _query = v),
         ),
         actions: [
           IconButton(
@@ -429,7 +515,7 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 16),
               itemBuilder: (_, i) => _RestaurantCard(r: results[i]),
             ),
-    );
+    ));
   }
 }
 
@@ -504,9 +590,7 @@ class _CategoryTile extends StatelessWidget {
         // Turkum bosilsa — o'sha turkumdagi taomlar (vebdagi
         // `/search?category=...`). Avval plitka UMUMAN bosilmasdi.
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => CategoryProductsScreen(category: name),
-          ),
+          sheetRoute(CategoryProductsScreen(category: name)),
         ),
         child: Column(
           children: [
@@ -597,13 +681,9 @@ class _RestaurantCard extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (cover.isNotEmpty)
-            Image.network(
-              fullImageUrl(cover),
-              fit: BoxFit.cover,
-              // Rasm kelmasa karta baribir o'qiladi — matn ostidagi
-              // to'q fon qoladi.
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            )
+            // Rasm kelmasa karta baribir o'qiladi — matn ostidagi
+            // to'q fon qoladi.
+            RemoteImage(url: cover)
           else
             const Center(
               child: Icon(Icons.storefront_outlined,
@@ -735,7 +815,8 @@ class _RestaurantCard extends StatelessWidget {
       // sarlavhani qayta so'ramaydi va internet bo'lmasa ham to'g'ri
       // chizadi (`menu_screen.dart` izohiga qarang).
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => MenuScreen(restaurant: r)),
+        // Menyu pastdan suzib chiqadi (`widgets/sheet_page.dart`).
+        sheetRoute(MenuScreen(restaurant: r)),
       ),
       child: card,
     );
@@ -777,31 +858,3 @@ class _Chip extends StatelessWidget {
 }
 
 /// Yangilash yiqilganda — mazmun ustidagi kichik ogohlantirish.
-class _OfflineNotice extends StatelessWidget {
-  const _OfflineNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF4E5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFFD9A8)),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.cloud_off, size: 16, color: Color(0xFF9A5B00)),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Yangilab bo\'lmadi — saqlangan ro\'yxat ko\'rsatilmoqda',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF9A5B00)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/page_sheet.dart';
+import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'tracking_screen.dart';
 
@@ -57,15 +61,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: const Color(0xFF171717),
-        elevation: 0,
+      appBar: const PageAppBar(
         centerTitle: true,
-        title: const Text('Bildirishnomalar',
+        titleWidget: Text('Bildirishnomalar',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       ),
       body: RefreshIndicator(
@@ -73,28 +74,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         onRefresh: _load,
         child: _buildBody(),
       ),
-    );
+    ));
   }
 
   Widget _buildBody() {
     if (_failed) {
-      return ListView(
-        children: [
-          const SizedBox(height: 100),
-          const Center(
-            child: Text('Bildirishnomalarni yuklab bo\'lmadi.',
-                style: TextStyle(color: Color(0xFF757575))),
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: TextButton(
-              onPressed: _load,
-              child: const Text('Qaytadan urinish',
-                  style: TextStyle(
-                      color: kBrand, fontWeight: FontWeight.w600)),
-            ),
-          ),
-        ],
+      return ErrorViewList(
+        message: 'Bildirishnomalarni yuklab bo\'lmadi.',
+        onRetry: _load,
       );
     }
 
@@ -116,36 +103,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     if (items.isEmpty) {
-      return ListView(
-        children: [
-          const SizedBox(height: 80),
-          Center(
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFF5F5F5),
-              ),
-              child: const Icon(Icons.notifications_off_outlined,
-                  size: 36, color: Color(0xFF9E9E9E)),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Center(
-            child: Text('Bildirishnoma yo\'q',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(48, 8, 48, 0),
-            child: Text(
-              'Buyurtma holati o\'zgarganda va aksiyalar chiqqanda shu yerda ko\'rasiz.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13.5, height: 1.5, color: Color(0xFF757575)),
-            ),
-          ),
-        ],
+      return const EmptyStateList(
+        image: 'assets/empty/notifications.png',
+        title: 'Hozircha bu yer jimjit...',
+        subtitle: 'Xafa bo\'lishga shoshilmang! Tez orada bu yerni ajoyib '
+            'chegirmalar, qaynoq promokodlar va xushxabarlar bilan '
+            'to\'ldiramiz.',
       );
     }
 
@@ -270,7 +233,7 @@ class _NotificationCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => TrackingScreen(orderId: orderId)),
+        sheetRoute(TrackingScreen(orderId: orderId)),
       ),
       child: card,
     );

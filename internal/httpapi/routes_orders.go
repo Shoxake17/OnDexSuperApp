@@ -29,12 +29,14 @@ const maxPartySize = 50
 //   - manzil so'ralmaydi va xizmat hududi tekshirilmaydi (mijoz
 //     restoranning O'ZIDA o'tiribdi);
 //   - kuryer dispatch'i ISHGA TUSHMAYDI;
-//   - to'lov ilovada emas — affitsiantga naqd/karta.
+//   - to'lov NAQD bo'lsa affitsiantga to'lanadi; karta tanlansa
+//     yetkazishdagi bilan bir xil oqim (oldindan to'lov).
 //
 // └───────────────────────────────────────────────────────────────────┘
 func (s *Server) createDineInOrder(
 	w http.ResponseWriter, r *http.Request,
 	items []catalog.ItemRequest, tableToken string, partySize int, idempotencyKey string,
+	paymentMethod orders.PaymentMethod,
 ) {
 	if s.TableSvc == nil {
 		httpError(w, http.StatusServiceUnavailable,
@@ -94,6 +96,7 @@ func (s *Server) createDineInOrder(
 		// DeliveryLat/Lng va DeliveryAddress ATAYLAB bo'sh: stol
 		// buyurtmasida yetkazish manzili degan tushuncha yo'q.
 	}
+	setPaymentMethod(&o, paymentMethod)
 	created, err := s.OrderSvc.Create(r.Context(), &o)
 	if err != nil {
 		httpError(w, http.StatusBadRequest, err)
@@ -118,9 +121,23 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				// ma'lumot (idish-tovoq, non, joy), narxga ta'sir
 				// qilmaydi.
 				PartySize int `json:"party_size"`
+				// PaymentMethod — "cash" (standart) yoki "card".
+				// Kartada buyurtma TO'LOV KUTIB turadi va restoranga
+				// ko'rinmaydi; mijoz `POST /orders/{id}/pay` orqali
+				// to'lov havolasini oladi.
+				PaymentMethod string `json:"payment_method"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
+				return
+			}
+			// Karta tanlangan bo'lsa-yu to'lov tizimi sozlanmagan
+			// bo'lsa — buyurtma YARATILMAYDI. Aks holda u hech qachon
+			// to'lanmaydigan holatda osilib qolardi.
+			paymentMethod := paymentMethodFromRequest(req.PaymentMethod)
+			if paymentMethod.RequiresPrepayment() && s.Payments == nil {
+				httpError(w, http.StatusServiceUnavailable,
+					errors.New("karta orqali to'lov hozircha mavjud emas"))
 				return
 			}
 			if len(req.IdempotencyKey) > 128 {
@@ -129,7 +146,8 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			}
 
 			if strings.TrimSpace(req.TableToken) != "" {
-				s.createDineInOrder(w, r, req.Items, req.TableToken, req.PartySize, req.IdempotencyKey)
+				s.createDineInOrder(w, r, req.Items, req.TableToken,
+					req.PartySize, req.IdempotencyKey, paymentMethod)
 				return
 			}
 
@@ -184,6 +202,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				IdempotencyKey: req.IdempotencyKey,
 			}
 			o.Type = orders.TypeDelivery
+			setPaymentMethod(&o, paymentMethod)
 			created, err := s.OrderSvc.Create(r.Context(), &o)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -256,6 +275,25 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					"status":         o.Status,
 					"courier_id":     o.CourierID,
 					"created_at":     o.CreatedAt,
+					// ┌─ BUYURTMA TURI ─────────────────────────────┐
+					// Bu maydonlar YETISHMAS EDI va "Buyurtmalarim"
+					// ro'yxati stol buyurtmasini yetkazish buyurtmasi
+					// deb ko'rsatardi: `ready` holati uchun "Tayyor —
+					// kuryer kutilmoqda", bosqichlar esa "Yo'lda" va
+					// "Yetkazildi" (kuryer bu buyurtmaga umuman
+					// chaqirilmagan bo'lsa ham).
+					//
+					// Tafsilot ekrani to'g'ri ishlardi, chunki u
+					// `GET /orders/{id}` dan TO'LIQ obyektni oladi —
+					// xato faqat shu qisqartirilgan ro'yxatda edi.
+					//
+					// `Type` bo'sh bo'lsa `delivery` demak
+					// (`Type.Normalized()`), ya'ni eski buyurtmalar va
+					// eski klientlar buzilmaydi.
+					// └─────────────────────────────────────────────┘
+					"type":        o.Type,
+					"table_label": o.TableLabel,
+					"party_size":  o.PartySize,
 				}
 				if rest != nil {
 					entry["restaurant_name"] = rest.Name

@@ -57,7 +57,9 @@ class _MapPickerDialogState extends State<_MapPickerDialog> {
       final addr =
           await api.reverseGeocode(lat, lng).timeout(const Duration(seconds: 10));
       if (!mounted) return;
-      setState(() => _address = addr ?? '');
+      // `reverseGeocode` topilmasa BO'SH satr qaytaradi (`ondex_core`) —
+      // qo'shimcha null tekshiruvi kerak emas.
+      setState(() => _address = addr);
     } catch (_) {
       if (!mounted) return;
       setState(() => _address = ''); // koordinata bilan davom etamiz

@@ -26,6 +26,16 @@ type OrderListEntry = {
   total_tiyin: number;
   status: string;
   created_at: string;
+  /**
+   * "dine_in" — stol (QR) buyurtmasi. Bo'sh/yo'q = yetkazib berish.
+   *
+   * Bu maydonsiz ro'yxat stol buyurtmasini yetkazish buyurtmasi deb
+   * ko'rsatardi: `ready` uchun "Tayyor — kuryer kutilmoqda", holbuki
+   * kuryer bu buyurtmaga umuman chaqirilmaydi
+   * (`internal/httpapi/routes_orders.go` — `if !o.IsDineIn()`).
+   * Server ham uni yubormasdi — ikkala tomon birga tuzatildi.
+   */
+  type?: string;
 };
 
 function formatDate(iso: string): string {
@@ -90,7 +100,7 @@ export default function OrdersPage() {
       ) : (
         <div className="mt-4 flex flex-col gap-3">
           {orders.map((o) => {
-            const s = statusStyleOf(o.status);
+            const s = statusStyleOf(o.status, o.type === "dine_in");
             const itemCount = (o.items ?? []).reduce(
               (n, it) => n + (it.qty || 0),
               0,

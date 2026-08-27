@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+// `SystemUiOverlayStyle` uchun — tizim paneli uslubi shu ekranda
+// belgilanadi (izohga qarang).
+import 'package:flutter/services.dart';
 
 import '../data/cart_store.dart';
 import '../services/push.dart';
+import '../widgets/page_sheet.dart';
 import 'catalog_screen.dart';
 import 'favorites_screen.dart';
 import 'menu_screen.dart';
@@ -81,7 +85,33 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // ┌─ TIZIM PANELI USLUBI SHU YERDA ─────────────────────────────┐
+    // Ilgari uni har ekran o'zi belgilardi, lekin ular `SafeArea`
+    // ICHIDA edi — ya'ni belgilangan hudud ekranning eng tepasiga
+    // YETMASDI va Flutter uslubni umuman qo'llamasdi. Natijada bosh
+    // sahifada soat va Wi-Fi belgilar oq holicha qolib, oq fonda
+    // ko'rinmay ketardi.
+    //
+    // Bu yerda `AnnotatedRegion` butun ekranni qamraydi va menyudan
+    // qaytilganda uslub o'z-o'zidan tiklanadi.
+    // └─────────────────────────────────────────────────────────────┘
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Barcha tab'lar bir xil: OQ tizim paneli, qora belgilar. Ular
+      // dumaloq kartasiz, oq fon bilan boshlanadi. Qora panel faqat
+      // PUSH qilingan sahifalarda (`PageSheet`).
+      value: PageSheet.light,
+      child: Scaffold(
+      // ┌─ FON HAR DOIM OQ ───────────────────────────────────────────┐
+      // Ilgari bu rang tab'ga qarab QORA bo'lardi — u tizim paneli
+      // ostidagi chiziqni bo'yash uchun edi. Lekin Scaffold foni
+      // BUTUN ekranni bo'yaydi, shu jumladan pastki menyuning
+      // ko'tarilgan QR tugmasi uchun qoldirilgan shaffof joyni ham.
+      // Natijada menyu ustida QORA chiziq paydo bo'lgan edi.
+      //
+      // Endi tizim paneli ostidagi chiziq `body` ichida ALOHIDA
+      // chiziladi (pastga qarang) va pastki menyuga tegmaydi.
+      // └─────────────────────────────────────────────────────────────┘
+      backgroundColor: Colors.white,
       // MUHIM (haqiqiy Android qurilmada topilgan bug): IndexedStack
       // WebView (platform view) bilan ishlatilganda — hatto faqat BITTA
       // tab platform view bo'lsa ham — WebView'ga teginish UMUMAN
@@ -102,28 +132,50 @@ class _HomeShellState extends State<HomeShell> {
       // SafeArea'ning pastki paddingi FAQAT `bottomNavigationBar` yo'q
       // holatda (Menyu/Savat/Checkout — _hideBottomBar=true) haqiqiy
       // ishlaydi, ikki marta qo'shilib ketmaydi.
-      body: SafeArea(
-        child: Stack(
-          children: [
-            for (var i = 0; i < _tabs.length; i++)
-              Visibility(
-                visible: i == _index,
-                maintainState: true,
-                child: _tabs[i],
-              ),
-          ],
-        ),
+      body: Column(
+        children: [
+          // Tizim paneli egallagan chiziq — barcha tab'larda OQ.
+          //
+          // `SafeArea` o'rniga aniq balandlik: SafeArea butun `body`ni
+          // qamrab, pastki menyuga ham ta'sir qilardi.
+          Container(
+            height: MediaQuery.of(context).padding.top,
+            color: Colors.white,
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                for (var i = 0; i < _tabs.length; i++)
+                  Visibility(
+                    visible: i == _index,
+                    maintainState: true,
+                    child: _tabs[i],
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
       // Pastki menyu endi HAR DOIM ko'rinadi. "Chuqurlashgan" oqim
       // (menyu, savat, checkout) alohida PUSH qilingan ekranlarda
       // ochiladi — ular bu Scaffold'ni butunlay bosib turadi, ya'ni
       // menyuni qo'lda yashirish kerak emas.
+      // ┌─ QR TUGMASI — SUZUVCHI ─────────────────────────────────────┐
+      // Ilgari u pastki panelning ICHIDA edi va panel uning
+      // ko'tarilishi uchun 28px qo'shimcha balandlik ajratardi. O'sha
+      // bo'sh oq chiziq tarkibni bosib turardi.
+      //
+      // Endi tugma `floatingActionButton` — u panel ustida SUZADI,
+      // hech qanday joy egallamaydi. `centerDocked` uni panelning
+      // yuqori chetiga aniq markazlaydi.
+      // └─────────────────────────────────────────────────────────────┘
+      floatingActionButton: _QrButton(onTap: _scanTableQr),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: _OndexBottomBar(
         currentTab: _index,
         onSelectTab: _selectTab,
-        onScanQr: _scanTableQr,
       ),
-    );
+    ));
   }
 
   /// Markaziy QR tugmasi — stol skanerini ochadi.
@@ -189,19 +241,23 @@ const _kBrand = Color(0xFFF4511E);
 class _OndexBottomBar extends StatelessWidget {
   final int currentTab;
   final ValueChanged<int> onSelectTab;
-  final VoidCallback onScanQr;
 
   const _OndexBottomBar({
     required this.currentTab,
     required this.onSelectTab,
-    required this.onScanQr,
   });
 
+  /// Panelning o'z balandligi (tizim chekinishisiz).
+  static const _barHeight = 64.0;
+
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(BuildContext context) => _bar(Theme.of(context));
+
+  Widget _bar(ThemeData theme) {
     return Material(
-      color: theme.colorScheme.surface,
+      // Panel rangi ATAYLAB qat'iy oq: `colorScheme.surface` mavzuga
+      // bog'liq va qurilma sozlamasiga qarab kulrang tusga kirardi.
+      color: Colors.white,
       elevation: 8,
       // ┌─ SAFEAREA SHART ────────────────────────────────────────────┐
       // Busiz menyu ekranning eng pastiga chizilardi va Android'ning
@@ -219,7 +275,7 @@ class _OndexBottomBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: _barHeight,
           child: Row(
             children: [
               _NavItem(
@@ -236,7 +292,9 @@ class _OndexBottomBar extends StatelessWidget {
                 selected: currentTab == 2,
                 onTap: () => onSelectTab(2),
               ),
-              Expanded(child: Center(child: _QrButton(onTap: onScanQr))),
+              // Markazdagi bo'sh joy — QR tugmasi bu qatorda EMAS,
+              // u Stack orqali tepadan tushib turadi.
+              const Expanded(child: SizedBox.shrink()),
               _NavItem(
                 icon: Icons.favorite_border,
                 activeIcon: Icons.favorite,
@@ -271,26 +329,36 @@ class _QrButton extends StatelessWidget {
       label: 'Stol QR kodi',
       child: InkResponse(
         onTap: onTap,
-        radius: 34,
+        radius: 38,
         child: Container(
-          width: 56,
-          height: 56,
+          width: 64,
+          height: 64,
+          // Oq halqa — tugma panel ustiga "o'yib" qo'yilgandek
+          // ko'rinadi. Busiz u shunchaki panelga yopishgan doira
+          // bo'lib qolardi.
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFF7043), _kBrand],
-            ),
+            color: Colors.white,
             boxShadow: [
               BoxShadow(
                 color: _kBrand.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-          child: const Icon(Icons.qr_code_2, color: Colors.white, size: 30),
+          child: Container(
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFFF7043), _kBrand],
+              ),
+            ),
+            child: const Icon(Icons.qr_code_2, color: Colors.white, size: 30),
+          ),
         ),
       ),
     );

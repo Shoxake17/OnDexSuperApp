@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import '../live.dart';
+import '../pages/books_page.dart';
 import '../pages/couriers_page.dart';
 import '../pages/dashboard_page.dart';
 import '../pages/ondexmap_page.dart';
@@ -47,6 +48,7 @@ class _AdminShellState extends State<AdminShell> {
     CouriersPage(),
     CustomersPage(),
     WaitersPage(),
+    BooksPage(),
     // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
     // ChustApp bazasiga ham, API'siga ham tegmaydi.
     OndexMapPage(),
@@ -116,6 +118,10 @@ class _AdminShellState extends State<AdminShell> {
                   icon: Icon(Icons.room_service_outlined),
                   selectedIcon: Icon(Icons.room_service),
                   label: Text('Affitsiantlar')),
+                NavigationRailDestination(
+                    icon: Icon(Icons.menu_book_outlined),
+                    selectedIcon: Icon(Icons.menu_book),
+                    label: Text('Kutubxona')),
               // Tartib `_pages` bilan AYNAN bir xil bo'lishi shart —
               // ikkalasi uchun bitta `_index` ishlatiladi.
               NavigationRailDestination(

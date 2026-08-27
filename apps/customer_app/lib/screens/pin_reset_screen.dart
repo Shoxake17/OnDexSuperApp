@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
 import '../session.dart';
@@ -87,13 +88,9 @@ class _PinResetScreenState extends State<PinResetScreen>
                 'shu yo\'l bilan tiklab bo\'lmaydi.'
             : null;
       });
-    } on ApiException catch (e) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _loadError = e.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() =>
-          _loadError = 'Serverga ulanib bo\'lmadi — internetni tekshiring');
+      setState(() => _loadError = authErrorText(e));
     }
   }
 
@@ -129,17 +126,8 @@ class _PinResetScreenState extends State<PinResetScreen>
           ticket.channel == OtpChannel.telegram
               ? 'Kod Telegram botga yuborildi'
               : 'Kod yuborildi');
-    } on OtpDeliveryFailure catch (e) {
-      if (mounted) authSnack(context, e.message, error: true);
-    } on PhoneAuthFailure catch (e) {
-      if (mounted) authSnack(context, e.message, error: true);
-    } on ApiException catch (e) {
-      if (mounted) authSnack(context, e.message, error: true);
-    } catch (_) {
-      if (mounted) {
-        authSnack(context, 'Serverga ulanib bo\'lmadi — internetni tekshiring',
-            error: true);
-      }
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -172,13 +160,8 @@ class _PinResetScreenState extends State<PinResetScreen>
       setState(() => _verified = true);
     } on PhoneAuthFailure catch (e) {
       if (mounted) authSnack(context, e.message, error: true);
-    } on ApiException catch (e) {
-      if (mounted) authSnack(context, e.message, error: true);
-    } catch (_) {
-      if (mounted) {
-        authSnack(context, 'Serverga ulanib bo\'lmadi — internetni tekshiring',
-            error: true);
-      }
+    } catch (e) {
+      snack(authErrorText(e), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

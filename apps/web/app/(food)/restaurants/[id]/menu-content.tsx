@@ -169,7 +169,7 @@ export default function MenuContent({
   );
 
   function renderProductCard(p: Product) {
-    const discount = computeProductDiscount(p, promotions);
+    const discount = computeProductDiscount(p, promotions, subtotalTiyin);
     const promoted =
       orderWidePromo ||
       discount !== null ||

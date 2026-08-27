@@ -1,0 +1,16 @@
+﻿<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>3D</title>
+<script type="module" src="/__mv.js"></script>
+<style>body{margin:0;background:#f5f5f5}model-viewer{width:100vw;height:88vh}
+#log{position:fixed;bottom:0;left:0;right:0;height:12vh;background:#111;color:#0f0;font:13px monospace;padding:6px;overflow:auto}</style>
+</head><body>
+<model-viewer id="mv" src="https://pub-4ec5d645c8884863ac4649521a8a7b82.r2.dev/models/4e564c9ce7f0128b-1787530179911731200.glb"
+  camera-controls shadow-intensity="1" exposure="1.1"></model-viewer>
+<div id="log">kutilmoqda...</div>
+<script>
+const mv=document.getElementById('mv'),log=document.getElementById('log');
+const say=m=>{log.textContent+="\n"+m};
+setTimeout(()=>say('lib: '+!!customElements.get('model-viewer')),1500);
+mv.addEventListener('load',()=>say('MODEL YUKLANDI'));
+mv.addEventListener('error',e=>say('XATO: '+JSON.stringify(e.detail||{})));
+</script></body></html>

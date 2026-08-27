@@ -92,6 +92,9 @@ func (s *Service) PriceOrder(ctx context.Context, reqs []ItemRequest) (restauran
 			DiscountPriceTiyin: discountPrice,
 			ImageURL:           p.ImageURL,
 			Category:           p.Category,
+			// 3D model — AR ko'rinishi uchun (buyurtma vaqtidagi
+			// nusxa, `Item.Model3DURL` izohiga qarang).
+			Model3DURL: p.Model3DURL,
 		})
 	}
 

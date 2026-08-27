@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { publicFetch } from "@/lib/api";
+import { safeJsonLdHtml } from "@/lib/json-ld";
 import type { Restaurant } from "@/lib/types";
 import HomeContent from "./home-content";
 
@@ -69,9 +70,11 @@ export default async function HomePage() {
     <>
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger -- JSON-LD, xavfsiz (bizning
-        // o'z serverimizdan, foydalanuvchi kiritmaydigan struktura)
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // eslint-disable-next-line react/no-danger -- JSON-LD; `<` ESCAPE
+        // qilingan (safeJsonLdHtml). Restoran nomi/manzili restoran egasi
+        // kiritadigan matn, shuning uchun xom JSON.stringify unda
+        // `</script>` bo'lsa saqlangan XSS berardi.
+        dangerouslySetInnerHTML={{ __html: safeJsonLdHtml(jsonLd) }}
       />
       <HomeContent restaurants={restaurants} categories={categories} />
     </>

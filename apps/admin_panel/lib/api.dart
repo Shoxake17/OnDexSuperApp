@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import 'package:http/http.dart' as http;
 import 'package:ondex_core/ondex_core.dart';
 
 // Umumiy yadro qayta eksport qilinadi - sahifalar api.dart ni import
@@ -16,104 +12,28 @@ export 'package:ondex_core/ondex_core.dart';
 /// `config/prod.json`). Sozlama berilmasa `http://localhost:8080`.
 const baseUrl = apiBaseUrl;
 
-class AdminApi {
-  String? token;
-
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-        // `ondex_core` dagi bir xil qiymat (`<platforma>/<versiya>`).
-        'X-Ondex-Client': clientHeaderValue,
-      };
-
-  Future<dynamic> _send(String method, String path,
-      [Map<String, dynamic>? body]) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final http.Response r;
-    if (method == 'GET') {
-      r = await http.get(uri, headers: _headers);
-    } else if (method == 'DELETE') {
-      r = await http.delete(uri, headers: _headers);
-    } else {
-      r = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
-    }
-    return _parse(r);
-  }
-
-  dynamic _parse(http.Response r) {
-    final data = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
-    if (r.statusCode >= 400) {
-      throw ApiException(
-          (data is Map && data['error'] != null) ? data['error'] : 'Server xatosi');
-    }
-    return data;
-  }
-
-  /// Telegram bot orqali tasdiqlash kodini so'raydi.
-  ///
-  /// ┌─ KOD BU JAVOBDA YO'Q — ATAYLAB ──────────────────────────────────┐
-  /// Server faqat bir martalik deep link qaytaradi. Kod foydalanuvchi
-  /// botda RAQAMINI ULASHGANDAN va u shu yerda kiritilgan raqam bilan
-  /// MOS KELGANDAN keyingina yaratiladi hamda FAQAT Telegram orqali
-  /// yetkaziladi (`internal/telegram/verifier.go` — mos kelmasa kod
-  /// umuman yuborilmaydi).
-  ///
-  /// Shu sabab havolani begonaga yuborish foyda bermaydi: kod raqam
-  /// egasining Telegramiga tushadi, havolani ochgan odamnikiga emas.
-  /// └──────────────────────────────────────────────────────────────────┘
-  ///
-  /// Avval bu yerda `/auth/request-code` chaqirilardi va kod dev rejimda
-  /// javobda (`dev_code`) qaytardi. Production'da SMS provayderi
-  /// ulanmagani uchun u kodni HECH QAYERGA yetkazmasdi — panelga kirish
-  /// amalda imkonsiz edi.
-  Future<String> telegramStart(String phone) async {
-    final d = await _send('POST', '/auth/telegram/start', {'phone': phone});
-    return d['deep_link'] as String;
-  }
-
-  Future<Map<String, dynamic>> verify(String phone, String code) async {
-    final d = await _send('POST', '/auth/verify', {'phone': phone, 'code': code});
-    token = d['token'] as String;
-    return Map<String, dynamic>.from(d);
-  }
-
-  /// Google Maps kaliti — server .env dan beradi (faqat login qilganlarga).
-  Future<String> mapsApiKey() async {
-    final d = await _send('GET', '/config/maps');
-    return d['maps_api_key'] as String;
-  }
-
-  /// Koordinatani manzil matniga aylantiradi — server orqali (Google
-  /// Geocoding API'ni brauzerdan to'g'ridan-to'g'ri chaqirish CORS
-  /// tomonidan bloklanadi, shuning uchun backend proksi qiladi).
-  Future<String?> reverseGeocode(double lat, double lng) async {
-    final d = await _send('GET', '/geocode/reverse?lat=$lat&lng=$lng');
-    final addr = d['address'] as String?;
-    return (addr == null || addr.isEmpty) ? null : addr;
-  }
-
-  /// WebSocket bileti — jonli kanal uchun (`lib/live.dart`).
-  ///
-  /// Uzoq muddatli token URL'ga HECH QACHON qo'yilmaydi: avval shu
-  /// yerda 30 soniyalik, bir martalik bilet olinadi (sabab
-  /// `internal/ws/tickets.go` da). Superadmin roli ham AYNAN shu
-  /// biletga yoziladi — ma'muriyat kanaliga obuna shundan keladi.
-  Future<String> wsTicket() async {
-    final d = await _send('POST', '/ws/ticket');
-    return d['ticket'] as String;
-  }
+/// Admin paneli endpointlari.
+///
+/// Transport (`send`, timeout, tarmoq xatosi, 401, JSON guard) va
+/// umumiy endpointlar (`telegramStart`/`verify`/`me`/`wsTicket`/
+/// `mapsApiKey`/`reverseGeocode`/`uploadImage`) `ondex_core.ApiClient`
+/// da. Ilgari bu yerda ULARNING NUSXASI turardi va u yomonroq edi:
+/// timeout yo'q, tarmoq xatosi ushlanmaydi, nginx HTML javobi
+/// `FormatException` bilan yiqiladi, 401 ishlanmaydi.
+class AdminApi extends ApiClient {
+  AdminApi() : super(baseUrl: apiBaseUrl);
 
   Future<Map<String, dynamic>> stats() async =>
-      Map<String, dynamic>.from(await _send('GET', '/admin/stats'));
+      Map<String, dynamic>.from(await send('GET', '/admin/stats'));
 
   Future<List<dynamic>> orders() async =>
-      (await _send('GET', '/admin/orders')) as List<dynamic>? ?? [];
+      (await send('GET', '/admin/orders')) as List<dynamic>? ?? [];
 
   Future<List<dynamic>> couriers() async =>
-      (await _send('GET', '/admin/couriers')) as List<dynamic>? ?? [];
+      (await send('GET', '/admin/couriers')) as List<dynamic>? ?? [];
 
   Future<void> approveCourier(String id, bool approved) =>
-      _send('POST', '/admin/couriers/$id/approve', {'approved': approved});
+      send('POST', '/admin/couriers/$id/approve', {'approved': approved});
 
   /// Mijozlar ro'yxati: `{'count': int, 'items': [...]}`.
   ///
@@ -121,12 +41,12 @@ class AdminApi {
   /// kirgani (`tma`, `android`, `ios`, `web`, ...) va ilova versiyasi.
   /// Server buni har so'rovdagi `X-Ondex-Client` sarlavhasidan yig'adi.
   Future<Map<String, dynamic>> customers() async =>
-      Map<String, dynamic>.from(await _send('GET', '/admin/customers'));
+      Map<String, dynamic>.from(await send('GET', '/admin/customers'));
 
   /// Affitsiantlar ro'yxati — mijozlar bilan bir xil shaklda, ustiga
   /// `restaurant_id`/`restaurant_name` qo'shiladi.
   Future<Map<String, dynamic>> waiters() async =>
-      Map<String, dynamic>.from(await _send('GET', '/admin/waiters'));
+      Map<String, dynamic>.from(await send('GET', '/admin/waiters'));
 
   /// Akkauntni o'chiradi.
   ///
@@ -135,10 +55,98 @@ class AdminApi {
   /// WebSocket orqali `account_deleted` yuboradi va shaxsiy
   /// ma'lumotlarni o'chiradi. Yakunlanmagan buyurtmasi bor akkaunt
   /// uchun 409 qaytadi — bu XATO EMAS, ataylab qo'yilgan to'siq.
-  Future<void> deleteUser(String id) => _send('DELETE', '/admin/users/$id');
+  Future<void> deleteUser(String id) => send('DELETE', '/admin/users/$id');
 
+  // ── Kafe kutubxonasi ────────────────────────────────────────────
+  //
+  // Kitob 3D maketdagi javondan olib o'qiladi. Sotilmaydi va savatga
+  // tushmaydi - narx maydoni umuman yo'q, shuning uchun bu yo'nalishda
+  // moliyaviy xavf ham yo'q.
+
+  /// Restoran kitoblari. Matn QAYTMAYDI - ro'yxat uchun kerak emas
+  /// va javobni o'nlab barobar shishirardi.
+  Future<List<dynamic>> books(String restaurantId) async =>
+      (await send('GET', '/restaurants/$restaurantId/books'))
+          as List<dynamic>? ?? [];
+
+  /// Boshqaruv ro'yxati - O'CHIRILGAN kitoblar ham qaytadi.
+  ///
+  /// Panel ilgari ochiq ro'yxatni (`books`) ishlatardi va u o'chirilgan
+  /// kitobni yashirardi: "faol" tugmasi o'chirilgan zahoti kitob
+  /// ro'yxatdan yo'qolib, uni qayta yoqib bo'lmay qolardi.
+  Future<List<dynamic>> booksAll(String restaurantId) async =>
+      (await send('GET', '/restaurants/$restaurantId/books/all'))
+          as List<dynamic>? ?? [];
+
+  /// Bitta kitob, matni bilan.
+  Future<Map<String, dynamic>> book(String id) async =>
+      Map<String, dynamic>.from(await send('GET', '/books/$id') as Map);
+
+  Future<Map<String, dynamic>> createBook({
+    required String restaurantId,
+    required String title,
+    String author = '',
+    String coverUrl = '',
+    String pdfUrl = '',
+    String text = '',
+  }) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/restaurants/$restaurantId/books', {
+        'title': title,
+        'author': author,
+        'cover_url': coverUrl,
+        'pdf_url': pdfUrl,
+        'text': text,
+      }) as Map);
+
+  /// Kitob muqovasini yuklaydi va manzilini qaytaradi.
+  ///
+  /// Server rasmni tik (2:3) muqova nisbatiga kesib, WebP ga o'giradi -
+  /// javondagi muqovalar orasida bo'sh oq chiziqlar qolmasligi uchun.
+  Future<String> uploadBookCover(List<int> bytes, String filename) async {
+    final data = await sendMultipart(
+        'POST', '/uploads/book-cover', bytes, filename);
+    return (data is Map ? data['url'] as String? : null) ?? '';
+  }
+
+  /// Kitob PDF ini yuklaydi.
+  ///
+  /// Javobda R2 dagi manzil BILAN BIRGA ajratilgan matn keladi: maketdagi
+  /// o'quvchi PDF ni ocha olmaydi, shuning uchun matn serverda bir marta
+  /// ajratiladi. `warning` - skanerlangan (matnsiz) kitob belgisi.
+  Future<Map<String, dynamic>> uploadBookPdf(
+      List<int> bytes, String filename) async {
+    final data =
+        await sendMultipart('POST', '/uploads/book-pdf', bytes, filename);
+    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+  }
+
+  /// Kitobni yangilaydi.
+  ///
+  /// FAQAT berilgan maydonlar yuboriladi: server yuborilmagan
+  /// maydonga tegmaydi. Hammasini yuborish yuborilmaganini
+  /// o'chirib yuborardi.
+  Future<void> updateBook(
+    String id, {
+    String? title,
+    String? author,
+    String? coverUrl,
+    String? pdfUrl,
+    String? text,
+    bool? active,
+  }) =>
+      send('PATCH', '/books/$id', {
+        if (title != null) 'title': title,
+        if (author != null) 'author': author,
+        if (coverUrl != null) 'cover_url': coverUrl,
+        if (pdfUrl != null) 'pdf_url': pdfUrl,
+        if (text != null) 'text': text,
+        if (active != null) 'active': active,
+      });
+
+  Future<void> deleteBook(String id) => send('DELETE', '/books/$id');
   Future<List<dynamic>> restaurants() async =>
-      (await _send('GET', '/restaurants')) as List<dynamic>? ?? [];
+      (await send('GET', '/restaurants')) as List<dynamic>? ?? [];
 
   Future<Map<String, dynamic>> createRestaurant({
     required String name,
@@ -148,7 +156,7 @@ class AdminApi {
     double lat = 41.0030,
     double lng = 71.2360,
   }) async =>
-      Map<String, dynamic>.from(await _send('POST', '/admin/restaurants', {
+      Map<String, dynamic>.from(await send('POST', '/admin/restaurants', {
         'name': name,
         'address': address,
         'phone': phone,
@@ -158,10 +166,10 @@ class AdminApi {
       }));
 
   Future<void> setRestaurantOpen(String id, bool open) =>
-      _send('POST', '/admin/restaurants/$id/open', {'open': open});
+      send('POST', '/admin/restaurants/$id/open', {'open': open});
 
   Future<void> deleteRestaurant(String id) =>
-      _send('DELETE', '/admin/restaurants/$id');
+      send('DELETE', '/admin/restaurants/$id');
 
   /// Restoran ma'lumotlarini tahrirlaydi. Har doim TO'LIQ holatni
   /// yuboradi (edit oynasi mavjud qiymatlar bilan oldindan to'ldirilgan).
@@ -188,7 +196,7 @@ class AdminApi {
     String coverUrl = '',
     String tags = '',
   }) async =>
-      Map<String, dynamic>.from(await _send('POST', '/admin/restaurants/$id', {
+      Map<String, dynamic>.from(await send('POST', '/admin/restaurants/$id', {
         'name': name,
         'address': address,
         'lat': lat,
@@ -202,30 +210,14 @@ class AdminApi {
         'eta_max_minutes': etaMaxMinutes,
       }));
 
-  /// Rasm yuklaydi. `type`: 'cover' — restoran banneri (keng, to'ldirib
-  /// kesiladi), 'logo' — restoran logosi (kvadrat, TO'LDIRIB kesiladi,
-  /// oq joysiz), bo'sh — mahsulot rasmi (kvadrat, oq joy bilan).
-  Future<String> uploadImage(Uint8List bytes, String filename,
-      {String type = ''}) async {
-    final uri = Uri.parse(
-        '$baseUrl/uploads${type.isEmpty ? '' : '?type=$type'}');
-    final req = http.MultipartRequest('POST', uri)
-      ..headers['Authorization'] = 'Bearer $token'
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
-    final streamed = await req.send();
-    final resp = await http.Response.fromStream(streamed);
-    final data = _parse(resp);
-    return data['url'] as String;
-  }
+
 }
 
 final api = AdminApi();
 
-/// Server qaytargan rasm manzilini ko'rsatish uchun tayyorlaydi: lokal disk
-/// rejimida nisbiy yo'l ("/uploads/...") keladi — baseUrl qo'shiladi; R2
-/// rejimida to'liq URL keladi — o'zgartirmasdan ishlatiladi.
-String imageUrl(String? path) {
-  if (path == null || path.isEmpty) return '';
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  return '$baseUrl$path';
-}
+/// Rasm manzilini ko'rsatishga tayyorlaydi.
+///
+/// Mantiq `ondex_core` da (`coreFullImageUrl`) — bu yerda faqat shu
+/// ilovaning `baseUrl` i bog'lanadi. Ilgari bu funksiya to'rt ilovada
+/// qo'lda takrorlangan edi.
+String imageUrl(String? path) => coreFullImageUrl(path, baseUrl);

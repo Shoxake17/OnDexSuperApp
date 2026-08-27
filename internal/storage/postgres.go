@@ -127,10 +127,12 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			                    delivery_lat, delivery_lng, items, history, created_at, updated_at,
 			                    preparation_minutes, ready_at, version, idempotency_key,
 			                    subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
+			                    promotion_discount_tiyin,
+			                    payment_method, payment_state,
 			                    delivery_address,
 			                    order_type, table_id, table_label, party_size)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-			        $22,$23,$24,$25)
+			        $22,$23,$24,$25,$26,$27,$28)
 			ON CONFLICT (id) DO UPDATE SET
 				courier_id           = EXCLUDED.courier_id,
 				status               = EXCLUDED.status,
@@ -138,6 +140,11 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 				updated_at           = EXCLUDED.updated_at,
 				preparation_minutes  = EXCLUDED.preparation_minutes,
 				ready_at             = EXCLUDED.ready_at,
+				-- To'lov holati buyurtma hayoti davomida O'ZGARADI
+				-- (kutilmoqda -> bloklandi -> yechildi), shuning uchun u
+				-- yangilanadigan ustunlar ro'yxatida bo'lishi SHART.
+				-- payment_method esa o'zgarmaydi (faqat INSERT'da).
+				payment_state        = EXCLUDED.payment_state,
 				version              = orders.version + 1
 			WHERE orders.version = EXCLUDED.version
 			RETURNING order_number, version`,
@@ -145,6 +152,8 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			o.DeliveryLat, o.DeliveryLng, itemsJSON, historyJSON, o.CreatedAt, o.UpdatedAt,
 			o.PreparationMinutes, o.ReadyAt, o.Version, o.IdempotencyKey,
 			o.SubtotalTiyin, o.DiscountTiyin, o.PromotionID, o.PromotionName,
+			o.PromotionDiscountTiyin,
+			o.PaymentMethod, o.PaymentState,
 			addressJSON,
 			// Stol maydonlari FAQAT INSERT'da yoziladi (order_number va
 			// idempotency_key kabi): buyurtma qaysi stolga tegishli
@@ -216,7 +225,8 @@ func (r *PgOrderRepo) GetActiveByCourier(ctx context.Context, courierID string) 
 const orderColumns = `id, order_number, customer_id, restaurant_id, courier_id, status, total_tiyin,
 		       delivery_lat, delivery_lng, items, history, created_at, updated_at,
 		       preparation_minutes, ready_at, version,
-		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name, delivery_address,
+		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
+		       promotion_discount_tiyin, payment_method, payment_state, delivery_address,
 		       order_type, table_id, table_label, party_size`
 
 // rowScanner — pgx.Row va pgx.Rows ning umumiy qismi. Ikkalasi ham
@@ -238,7 +248,8 @@ func scanOrder(row rowScanner) (*orders.Order, error) {
 		&o.Status, &o.TotalTiyin,
 		&o.DeliveryLat, &o.DeliveryLng, &itemsJSON, &historyJSON, &o.CreatedAt, &o.UpdatedAt,
 		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
-		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName, &addressJSON,
+		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName,
+		&o.PromotionDiscountTiyin, &o.PaymentMethod, &o.PaymentState, &addressJSON,
 		&o.Type, &tableID, &tableLabel, &partySize)
 	if err != nil {
 		return nil, err
@@ -286,9 +297,23 @@ func (r *PgOrderRepo) ListRecent(ctx context.Context, limit int) ([]*orders.Orde
 	return scanOrderRows(rows)
 }
 
+// ListByRestaurant — restoran paneli va affitsiant ilovasi shu
+// ro'yxatni ko'radi.
+//
+// ┌─ TO'LANMAGAN KARTA BUYURTMASI RO'YXATDA KO'RINMAYDI ──────────────┐
+// Mijoz kartani tanlab, to'lov sahifasini yopib yuborishi mumkin.
+// Bunday buyurtma restoranga ko'rinsa, xodim uni "Qabul qilish"ga
+// urinib xato olardi (o'tish `ChangeStatus` da to'siladi) va zalda
+// chalkashlik bo'lardi.
+//
+// Filtr AYNAN SHU YERDA — so'rov qatlamida: yangi handler qo'shilganda
+// ham uni yozishni unutib bo'lmaydi.
+// └───────────────────────────────────────────────────────────────────┘
 func (r *PgOrderRepo) ListByRestaurant(ctx context.Context, restaurantID string, limit int) ([]*orders.Order, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT `+orderColumns+` FROM orders WHERE restaurant_id = $1
+		`SELECT `+orderColumns+` FROM orders
+		 WHERE restaurant_id = $1
+		   AND NOT (payment_method = 'card' AND payment_state NOT IN ('held','paid'))
 		 ORDER BY created_at DESC LIMIT $2`, restaurantID, limit)
 	if err != nil {
 		return nil, err

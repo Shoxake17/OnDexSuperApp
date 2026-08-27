@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	_ "image/jpeg" // kiruvchi JPEG fayllarni dekodlash uchun
-	_ "image/png"  // kiruvchi PNG fayllarni dekodlash uchun
+	"image/jpeg"  // kiruvchi JPEG dekod + `ToJPEG` uchun kodlash
+	_ "image/png" // kiruvchi PNG fayllarni dekodlash uchun
 	"io"
 	"mime"
 
@@ -32,6 +32,17 @@ const (
 	// to'ldirishi kerak (oq joy emas, to'liq kesib-to'ldirish).
 	coverAspectRatio = 2.4 // kenglik : balandlik
 	maxCoverWidth    = 1600
+
+	// Kitob muqovasi — restoran bannerining teskarisi: TIK turadi.
+	// 2:3 bosma kitob muqovasining odatiy nisbati; 3D maketdagi javon
+	// panelida kitoblar aynan shu nisbatda yonma-yon teriladi.
+	bookCoverAspectRatio = 2.0 / 3.0
+	maxBookCoverWidth    = 800
+
+	// Sahifa rasmi telefon ekranining YARMIDA ko'rsatiladi (yoyilmaning
+	// bitta tomoni). 1240 px 150 dpi da A5 sahifa eniga to'g'ri keladi
+	// va eng zich ekranda ham matn silliq chiqadi.
+	maxPageWidth = 1240
 
 	// maxDecodeWidth/maxDecodeHeight/maxDecodePixels — "decompression bomb"
 	// himoyasi: kichik (masalan bir necha yuz KB) fayl ichida ULKAN piksel
@@ -118,6 +129,33 @@ func ProcessProductImage(r io.Reader) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ToJPEG — istalgan qo'llab-quvvatlanadigan rasmni (webp ham) JPEG ga
+// o'giradi, o'lchamini o'zgartirmasdan.
+//
+// ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+// Taom rasmlari WebP formatida saqlanadi (kichik hajm, brauzer va
+// mobil uchun ideal). Lekin tashqi 3D generatsiya xizmati rasm HAVOLASI
+// orqali faqat JPEG/PNG qabul qiladi.
+//
+// Dekodlash `decodeImageSafely` orqali — ya'ni "zip bomb" ga qarshi
+// o'lcham tekshiruvi va format aniqlash mantig'i TAKRORLANMAYDI, bitta
+// joyda qoladi.
+// └───────────────────────────────────────────────────────────────────┘
+func ToJPEG(r io.Reader) ([]byte, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	// Sifat 90: bu rasm foydalanuvchiga KO'RSATILMAYDI, u faqat 3D
+	// generatsiyasiga kiruvchi ma'lumot. Past sifat model aniqligini
+	// pasaytiradi, shuning uchun webp'dagi 82 dan yuqori olinadi.
+	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 90}); err != nil {
+		return nil, fmt.Errorf("jpeg kodlashda xato: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // ProcessLogoImage — restoran LOGOsini qayta ishlaydi. ProcessProductImage
 // bilan bir xil (markazdan kvadratga kesib to'ldirish) — logo alohida
 // funksiya sifatida saqlangan, chunki ikkalasi kelajakda turlicha
@@ -157,6 +195,57 @@ func ProcessCoverImage(r io.Reader) ([]byte, error) {
 	cropped := cropToAspect(src, coverAspectRatio)
 	if cropped.Bounds().Dx() > maxCoverWidth {
 		cropped = scaleToWidth(cropped, maxCoverWidth)
+	}
+
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, cropped, &webp.Options{
+		Compression: webp.CompressionLossy,
+		Quality:     webpQuality,
+	}); err != nil {
+		return nil, fmt.Errorf("webp kodlashda xato: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// ProcessPageImage — kitobning bitta sahifasini qayta ishlaydi.
+//
+// Muqovadan farqi: KESILMAYDI. Sahifa — hujjat, uning cheti kesilsa
+// matn yo'qoladi. Faqat eni chegaralanadi va WebP ga o'giriladi:
+// skanerlangan sahifa PNG holida bir necha barobar kattaroq bo'ladi va
+// 142 sahifali kitobda bu farq sezilarli.
+func ProcessPageImage(r io.Reader) ([]byte, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, err
+	}
+	if src.Bounds().Dx() > maxPageWidth {
+		src = scaleToWidth(src, maxPageWidth)
+	}
+
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, src, &webp.Options{
+		Compression: webp.CompressionLossy,
+		Quality:     webpQuality,
+	}); err != nil {
+		return nil, fmt.Errorf("webp kodlashda xato: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// ProcessBookCoverImage — kitob muqovasini qayta ishlaydi.
+//
+// Restoran banneridan farqi faqat nisbatda: bu TIK (2:3) rasm. Kesish
+// usuli bir xil — markazdan kesib to'ldiriladi, oq joy qo'shilmaydi:
+// javondagi muqovalar orasida bo'sh oq chiziqlar paydo bo'lmasligi kerak.
+func ProcessBookCoverImage(r io.Reader) ([]byte, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, err
+	}
+
+	cropped := cropToAspect(src, bookCoverAspectRatio)
+	if cropped.Bounds().Dx() > maxBookCoverWidth {
+		cropped = scaleToWidth(cropped, maxBookCoverWidth)
 	}
 
 	var buf bytes.Buffer

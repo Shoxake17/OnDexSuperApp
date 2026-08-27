@@ -17,7 +17,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../session.dart';
-import '../widgets/maps_loader.dart';
 import 'login_screen.dart';
 
 /// Kuryerning asosiy ekrani: TO'LIQ XARITA (o'z joylashuvi, restoran/mijoz
@@ -319,7 +318,7 @@ class _CourierShellState extends State<CourierShell>
 
   Future<void> _loadMaps() async {
     try {
-      await ensureGoogleMapsLoaded();
+      await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (mounted) setState(() => _mapsReady = true);
     } catch (_) {
       if (mounted) setState(() => _mapsFailed = true);

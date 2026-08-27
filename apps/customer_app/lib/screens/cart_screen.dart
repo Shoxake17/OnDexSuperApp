@@ -3,10 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/common.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../data/favorites_store.dart';
+import '../data/quote_service.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/page_sheet.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/qty_stepper.dart';
+import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'checkout_screen.dart';
 
@@ -39,32 +45,24 @@ class _CartScreenState extends State<CartScreen> {
 
   List<Map<String, dynamic>> _menu = const [];
   List<Map<String, dynamic>> _promos = const [];
-  Set<String> _favorites = <String>{};
   StreamSubscription<Cached<List<dynamic>>>? _menuSub;
   StreamSubscription<Cached<List<dynamic>>>? _promoSub;
 
-  /// Serverdan kelgan yakuniy summa. `null` — hali olinmagan.
-  int? _quoteTiyin;
+  /// Serverdan kelgan yakuniy hisob (`data/quote_service.dart`).
+  Quote _quote = const Quote(totalTiyin: null);
 
-  /// Hisob tafsilotlari — rasmiylashtirish ekraniga uzatiladi, u
-  /// darhol to'liq hisobni chizsin va qayta so'rov kutmasin.
-  int? _quoteSubtotal;
-  int? _quoteDiscount;
-  String? _quotePromotionName;
+  /// Eskirgan javoblardan himoya shu obyekt ichida.
+  final _quoteFetcher = QuoteFetcher();
 
   bool _quoting = false;
   String? _quoteError;
-
-  /// Eng oxirgi so'rovni belgilash uchun — tez o'zgartirishlarda
-  /// eskirgan javob yangisini bosib ketmasligi kerak.
-  int _quoteSeq = 0;
 
   @override
   void initState() {
     super.initState();
     _cart.addListener(_onCart);
     _subscribe();
-    _loadFavorites();
+    FavoritesStore.instance.load(force: true);
     _refreshQuote();
   }
 
@@ -91,15 +89,6 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
-  Future<void> _loadFavorites() async {
-    try {
-      final ids = await api.favoriteIds();
-      if (mounted) setState(() => _favorites = ids);
-    } catch (_) {
-      // Anonim foydalanuvchida 401 — bu normal holat.
-    }
-  }
-
   void _onCart() {
     if (!mounted) return;
     setState(() {});
@@ -112,91 +101,69 @@ class _CartScreenState extends State<CartScreen> {
   /// `_quoteSeq` bilan filtrlanadi: mijoz tez "+" bosganda javoblar
   /// tartibsiz kelishi mumkin va eskisi yangisini bosib ketardi —
   /// natijada ekranda NOTO'G'RI summa qolardi.
+  /// So'rov ham, javobni o'qish ham, eskirgan javobdan himoya ham
+  /// `data/quote_service.dart` da — uchala ekran uchun bitta joyda.
   Future<void> _refreshQuote() async {
     final rid = _cart.restaurantId;
     if (rid == null || _cart.isEmpty) {
       setState(() {
-        _quoteTiyin = null;
+        _quote = const Quote(totalTiyin: null);
         _quoteError = null;
       });
       return;
     }
 
-    final seq = ++_quoteSeq;
     setState(() {
       _quoting = true;
       _quoteError = null;
     });
 
     try {
-      final res = await api.quote(rid, _itemsPayload());
-      if (!mounted || seq != _quoteSeq) return;
+      final q = await _quoteFetcher.fetch(rid);
+      if (!mounted || q == null) return; // eskirgan javob
       setState(() {
-        _quoteTiyin = (res['total_tiyin'] as num?)?.toInt();
-        _quoteSubtotal = (res['subtotal_tiyin'] as num?)?.toInt();
-        _quoteDiscount = (res['discount_tiyin'] as num?)?.toInt();
-        _quotePromotionName = res['promotion_name'] as String?;
+        _quote = q;
         _quoting = false;
       });
     } catch (e) {
-      if (!mounted || seq != _quoteSeq) return;
+      if (!mounted) return;
       setState(() {
         _quoting = false;
         // Summani KO'RSATMAYMIZ: noto'g'ri raqam ko'rsatgandan ko'ra
         // "hisoblab bo'lmadi" deyish to'g'ri.
-        _quoteTiyin = null;
-        _quoteError =
-            e is ApiException ? e.message : 'Summani hisoblab bo\'lmadi';
+        _quote = const Quote(totalTiyin: null);
+        _quoteError = errorText(e, 'Summani hisoblab bo\'lmadi');
       });
     }
   }
 
-  List<Map<String, dynamic>> _itemsPayload() => [
-        for (final e in _cart.items.entries)
-          {'product_id': e.key, 'qty': e.value}
-      ];
+  Map<String, Map<String, dynamic>> get _byId => productsById(_menu);
 
-  Map<String, Map<String, dynamic>> get _byId =>
-      {for (final p in _menu) (p['id'] as String? ?? ''): p};
-
-  void _onFavoriteChanged(String productId, bool favorited) {
-    setState(() {
-      if (favorited) {
-        _favorites.add(productId);
-      } else {
-        _favorites.remove(productId);
-      }
-    });
-  }
+  /// Savatning CHEGIRMASIZ summasi — serverning `subtotal_tiyin` javobi
+  /// bor bo'lsa AYNAN u ishlatiladi.
+  int get _rawSubtotal => _quote.subtotalTiyin ?? rawSubtotal(_menu);
 
   @override
   Widget build(BuildContext context) {
     final rid = _cart.restaurantId;
 
     if (_cart.isEmpty || rid == null) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
+      return const SheetPage(
+        child: Scaffold(
           backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          title: const Text('Savat'),
+          appBar: PageAppBar(title: 'Savat'),
+          body: _EmptyCart(),
         ),
-        body: const _EmptyCart(),
       );
     }
 
-    return Scaffold(
+    return SheetPage(
+        child: Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.black,
-        elevation: 0,
+      appBar: PageAppBar(
         scrolledUnderElevation: 0.5,
         titleSpacing: 0,
-        title: Column(
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -206,9 +173,9 @@ class _CartScreenState extends State<CartScreen> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            if (_quoteTiyin != null)
+            if (_quote.totalTiyin != null)
               Text(
-                formatSum(_quoteTiyin!),
+                formatSum(_quote.totalTiyin!),
                 style: const TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
@@ -241,6 +208,8 @@ class _CartScreenState extends State<CartScreen> {
               qty: e.value,
               restaurantId: rid,
               promotions: _promos,
+              serverLineTotalTiyin: _quote.lineTotals[e.key],
+              cartSubtotalTiyin: _rawSubtotal,
             ),
 
           // ── Menyuga qaytish ──────────────────────────────────────
@@ -272,15 +241,17 @@ class _CartScreenState extends State<CartScreen> {
         ],
       ),
       bottomNavigationBar: _Bottom(
-        quoteTiyin: _quoteTiyin,
-        subtotalTiyin: _quoteSubtotal,
-        discountTiyin: _quoteDiscount,
-        promotionName: _quotePromotionName,
+        quoteTiyin: _quote.totalTiyin,
+        subtotalTiyin: _quote.subtotalTiyin,
+        discountTiyin: _quote.discountTiyin,
+        promotionName: _quote.promotionName,
+        promotionDiscountTiyin: _quote.promotionDiscountTiyin,
+        lineTotals: _quote.lineTotals,
         quoting: _quoting,
         error: _quoteError,
         onRetry: _refreshQuote,
       ),
-    );
+    ));
   }
 
   List<Widget> _upsellSections(String restaurantId) {
@@ -318,13 +289,14 @@ class _CartScreenState extends State<CartScreen> {
             itemBuilder: (_, i) {
               final p = byCategory[c]![i];
               final id = (p['id'] as String?) ?? '';
-              final discount = computeProductDiscount(p, _promos);
+              final discount = computeProductDiscount(p, _promos,
+                  cartSubtotalTiyin: _rawSubtotal);
               return ProductCard(
                 product: p,
                 qty: _cart.qtyOf(id),
                 discount: discount,
                 promoted: PromotionIndex(_promos).covers(p, discount),
-                favorited: _favorites.contains(id),
+                favorited: FavoritesStore.instance.contains(id),
                 onAdd: () => _cart.increment(
                   restaurantId: restaurantId,
                   productId: id,
@@ -332,7 +304,6 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 onRemove: () => _cart.decrement(
                     restaurantId: restaurantId, productId: id),
-                onFavoriteChanged: (fav) => _onFavoriteChanged(id, fav),
               );
             },
           ),
@@ -382,12 +353,22 @@ class _CartRow extends StatelessWidget {
   final String restaurantId;
   final List<Map<String, dynamic>> promotions;
 
+  /// Serverning shu qator uchun yakuniy summasi (tiyin). `null` —
+  /// javob hali yo'q yoki olinmadi; shunda mahalliy taxmin chiziladi.
+  final int? serverLineTotalTiyin;
+
+  /// Savatning CHEGIRMASIZ summasi — faqat mahalliy taxminda,
+  /// aksiyaning "minimal buyurtma summasi" shartini tekshirish uchun.
+  final int cartSubtotalTiyin;
+
   const _CartRow({
     required this.product,
     required this.productId,
     required this.qty,
     required this.restaurantId,
     required this.promotions,
+    required this.serverLineTotalTiyin,
+    required this.cartSubtotalTiyin,
   });
 
   @override
@@ -403,8 +384,22 @@ class _CartRow extends StatelessWidget {
     final image = (p?['image_url'] as String?) ?? '';
     final weight = (p?['weight'] as num?)?.toDouble() ?? 0;
     final unit = formatWeightUnit((p?['weight_unit'] as String?) ?? '');
-    final discount =
-        p == null ? null : computeProductDiscount(p, promotions);
+
+    // ┌─ QATOR NARXI: AVVAL SERVER, KEYIN TAXMIN ────────────────────┐
+    // Server javobi bo'lsa — AYNAN u chiziladi, chunki checkout'da
+    // olinadigan pul ham o'sha. Javob yo'q bo'lsa (tarmoq uzilgan,
+    // anonim foydalanuvchi) mahalliy taxminga tushamiz — bu holatda
+    // pastdagi JAMI ham "hisoblab bo'lmadi" deb ko'rsatiladi, ya'ni
+    // mijoz taxminni haqiqiy summa deb o'ylab qolmaydi.
+    // └──────────────────────────────────────────────────────────────┘
+    final lineSubtotal = price * qty;
+    final estimate = p == null
+        ? null
+        : computeProductDiscount(p, promotions,
+            cartSubtotalTiyin: cartSubtotalTiyin);
+    final lineTotal = serverLineTotalTiyin ??
+        (estimate != null ? estimate.discountedPriceTiyin * qty : lineSubtotal);
+    final discounted = lineTotal < lineSubtotal;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -421,10 +416,9 @@ class _CartRow extends StatelessWidget {
                       child: const Icon(Icons.restaurant_menu,
                           size: 24, color: Color(0xFFBDBDBD)),
                     )
-                  : Image.network(
-                      fullImageUrl(image),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                  : RemoteImage(
+                      url: image,
+                      placeholder: Container(
                         color: const Color(0xFFF5F5F5),
                         child: const Icon(Icons.restaurant_menu,
                             size: 24, color: Color(0xFFBDBDBD)),
@@ -460,12 +454,12 @@ class _CartRow extends StatelessWidget {
                 // QATOR SUMMASI (miqdor × narx) — birlik narxi emas.
                 // Vebda ham shunday: mijoz uchun "bu taom uchun
                 // qancha to'layman" degan savol muhimroq.
-                if (discount != null)
+                if (discounted)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        formatSum(discount.discountedPriceTiyin * qty),
+                        formatSum(lineTotal),
                         style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Color(0xFFE53935)),
@@ -473,7 +467,7 @@ class _CartRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          formatSum(price * qty),
+                          formatSum(lineSubtotal),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -486,7 +480,7 @@ class _CartRow extends StatelessWidget {
                     ],
                   )
                 else
-                  Text(formatSum(price * qty),
+                  Text(formatSum(lineTotal),
                       style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
@@ -514,7 +508,7 @@ class _TableBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = (label == null || label!.isEmpty)
         ? 'Stoldan buyurtma'
-        : '$label-stol · stoldan buyurtma';
+        : '${tableText(label!)} · stoldan buyurtma';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -547,6 +541,8 @@ class _Bottom extends StatelessWidget {
   final int? subtotalTiyin;
   final int? discountTiyin;
   final String? promotionName;
+  final int promotionDiscountTiyin;
+  final Map<String, int> lineTotals;
   final bool quoting;
   final String? error;
   final VoidCallback onRetry;
@@ -556,6 +552,8 @@ class _Bottom extends StatelessWidget {
     required this.subtotalTiyin,
     required this.discountTiyin,
     required this.promotionName,
+    required this.promotionDiscountTiyin,
+    required this.lineTotals,
     required this.quoting,
     required this.error,
     required this.onRetry,
@@ -611,12 +609,14 @@ class _Bottom extends StatelessWidget {
                 ),
                 onPressed: ready
                     ? () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => CheckoutScreen(
+                          sheetRoute(
+                            CheckoutScreen(
                               quoteTiyin: quoteTiyin!,
                               subtotalTiyin: subtotalTiyin,
                               discountTiyin: discountTiyin,
                               promotionName: promotionName,
+                              promotionDiscountTiyin: promotionDiscountTiyin,
+                              quoteLineTotals: lineTotals,
                             ),
                           ),
                         )
@@ -656,32 +656,13 @@ class _EmptyCart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFF5F5F5),
-              ),
-              child: const Icon(Icons.shopping_bag_outlined,
-                  size: 34, color: Color(0xFF9E9E9E)),
-            ),
-            const SizedBox(height: 18),
-            const Text('Savat bo\'sh',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            const Text(
-              'Buyurtma berish uchun avval restoran menyusidan taom tanlang.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF757575)),
-            ),
-          ],
+    return const Center(
+      child: SingleChildScrollView(
+        child: EmptyState(
+          image: 'assets/empty/cart.png',
+          title: 'Savatchangiz ovqat kutib zerikib qoldi 😔',
+          subtitle: 'Unga yordam bering — menyudan o\'zingizga eng '
+              'yoqqanini tanlang!',
         ),
       ),
     );
