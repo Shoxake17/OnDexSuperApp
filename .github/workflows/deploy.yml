@@ -487,6 +487,21 @@ jobs:
       # JWT_SECRET har ishlashda YANGI va tasodifiy. Workflow'ga qattiq
       # yozilgan sir — hatto test uchun bo'lsa ham — keyin nusxa
       # ko'chirilib production'ga tushib ketadi.
+      #
+      # ┌─ NEGA SOXTA R2 QIYMATLARI ──────────────────────────────────────┐
+      # Server production rejimida R2 siz ISHGA TUSHMAYDI (fail-closed):
+      # media faqat R2 da saqlanishi kerak, lokal disk deploy'da
+      # yo'qoladi. Bu to'g'ri qoida va u yumshatilmaydi.
+      #
+      # Lekin ZAP skaneri uchun haqiqiy bucket kerak emas — u faqat
+      # HTTP endpointlarni tekshiradi. Shuning uchun soxta qiymatlar
+      # beriladi: klient quriladi, hech qanday fayl yuklanmaydi.
+      # Domen ataylab `.invalid` — bu TLD hech qachon yechilmaydi,
+      # ya'ni tasodifan haqiqiy xostga so'rov ketmaydi.
+      #
+      # Busiz konteyner "R2_BUCKET berilmagan" bilan darrov o'chib,
+      # ZAP hech narsa topa olmasdi va deploy to'xtardi (2026-08-27).
+      # └─────────────────────────────────────────────────────────────────┘
       - name: Start API (ZAP skaneri uchun vaqtinchalik konteyner)
         run: |
           docker run -d --name ondex-api --network host \
@@ -498,6 +513,11 @@ jobs:
             -e REDIS_ADDR="localhost:6379" \
             -e MONGODB_URI="mongodb://localhost:27017" \
             -e MONGODB_DB="chustapp" \
+            -e R2_BUCKET="ci-smoke" \
+            -e R2_ACCOUNT_ID="ci0000000000000000000000000000000" \
+            -e R2_ACCESS_KEY_ID="ci" \
+            -e R2_SECRET_ACCESS_KEY="ci" \
+            -e R2_PUBLIC_URL="https://media.invalid" \
             "${{ steps.meta.outputs.image }}:${{ github.sha }}"
 
       - name: Wait for API
