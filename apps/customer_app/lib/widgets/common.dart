@@ -68,6 +68,8 @@ class RoundIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const disabled = Color(0xFFBDBDBD);
+
     final btn = Material(
       color: Colors.white,
       shape: const CircleBorder(),
@@ -81,7 +83,7 @@ class RoundIconButton extends StatelessWidget {
           child: Icon(
             icon,
             size: iconSize ?? size * 0.56,
-            color: onTap == null ? const Color(0xFFBDBDBD) : iconColor,
+            color: onTap == null ? disabled : iconColor,
           ),
         ),
       ),

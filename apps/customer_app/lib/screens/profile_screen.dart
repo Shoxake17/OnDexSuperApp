@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+// `appVersion` shu yerdan keladi: `api.dart` `ondex_core` ni qayta
+// eksport qiladi, ya'ni alohida import ortiqcha.
 import '../api.dart';
+import 'connected_apps_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import '../data/catalog_repository.dart';
 import '../services/app_lock.dart';
@@ -31,11 +34,19 @@ class _InfoRow extends StatelessWidget {
   final String value;
   final VoidCallback? onTap;
 
+  /// Ikona o'rniga chiziladigan rasm (masalan Shaddiy yuzi).
+  ///
+  /// Belgi o'rniga AYNAN yuz turishi Shaddiy'ning butun ilovadagi
+  /// naqshi bilan bir xil (pastki menyudagi tugma ham shunday):
+  /// foydalanuvchi uni bir qarashda taniydi.
+  final String? avatarAsset;
+
   const _InfoRow({
     required this.icon,
     required this.label,
     required this.value,
     this.onTap,
+    this.avatarAsset,
   });
 
   @override
@@ -45,7 +56,13 @@ class _InfoRow extends StatelessWidget {
       decoration: _cardDecoration,
       child: Row(
         children: [
-          Icon(icon, size: 19, color: const Color(0xFF9E9E9E)),
+          if (avatarAsset != null)
+            ClipOval(
+              child: Image.asset(avatarAsset!,
+                  width: 22, height: 22, fit: BoxFit.cover),
+            )
+          else
+            Icon(icon, size: 19, color: const Color(0xFF9E9E9E)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -357,6 +374,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   value: 'PIN kodni o\'zgartirish',
                   onTap: _changePin,
                 ),
+
+                // Shaddiy nimalar qila olishi.
+                //
+                // Bu qator "sozlama" emas, XAVFSIZLIK boshqaruvi: shu
+                // yerdan berilgan ruxsat bilan yordamchi savat tuzadi
+                // va buyurtmani to'lov ekranigacha olib boradi. Faqat
+                // shu yerdan to'xtatiladi.
+                const SizedBox(height: 8),
+                _InfoRow(
+                  icon: Icons.smart_toy_outlined,
+                  // Belgi emas, AYNAN Shaddiy yuzi — ilovaning qolgan
+                  // joylaridagi bilan bir xil.
+                  avatarAsset: 'assets/shaddiy/face_idle.jpg',
+                  label: 'Ruxsat berilgan',
+                  value: 'Shaddiy Ai ruxsatlari',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const ConnectedAppsScreen()),
+                  ),
+                ),
                 // Qulf sozlamasi FAQAT qurilmada himoya bo'lsa
                 // ko'rsatiladi — PIN/barmoq izi umuman qo'yilmagan
                 // telefonda bu tugma hech nima qila olmasdi va
@@ -416,6 +453,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+
+                // ── Versiya ────────────────────────────────────────
+                //
+                // ┌─ NEGA BU YERDA VA NEGA HAR DOIM KO'RINADI ──────┐
+                // Nosozlik xabari kelganda birinchi savol — "qaysi
+                // build?". Foydalanuvchidan buni so'rashning boshqa
+                // yo'li yo'q edi: Android sozlamalaridagi versiya
+                // faqat `versionName` ni ko'rsatadi va u qaysi
+                // serverga qaralayotganini aytmaydi.
+                //
+                // Qiymat `--dart-define=ONDEX_APP_VERSION` dan keladi
+                // (`ondex_core/config.dart`). Berilmasa `dev` bo'lib
+                // qoladi — ya'ni qo'lda yig'ilgan build darhol
+                // ajralib turadi va uni prod build bilan chalkashtirib
+                // bo'lmaydi.
+                //
+                // Android'ning build raqami (`versionCode`) bu yerda
+                // KO'RSATILMAYDI: u faqat tizim uchun kerak va
+                // "0.2.0+2" foydalanuvchiga chalkash ko'rinadi.
+                // └─────────────────────────────────────────────────┘
+                const SizedBox(height: 20),
+                const Center(
+                  child: Text(
+                    'OnDex versiya: $appVersion',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF9CA3AF),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
               ],
             );
           },

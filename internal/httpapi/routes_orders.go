@@ -126,6 +126,13 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				// ko'rinmaydi; mijoz `POST /orders/{id}/pay` orqali
 				// to'lov havolasini oladi.
 				PaymentMethod string `json:"payment_method"`
+				// ExpectedTotalTiyin — mijozga EKRANDA ko'rsatilgan
+				// jami. Berilsa (>0) va hozirgi hisob undan farq
+				// qilsa, buyurtma YARATILMAYDI va 409 qaytadi.
+				//
+				// Ixtiyoriy — eski klientlar buni yubormaydi va ular
+				// uchun hech narsa o'zgarmaydi.
+				ExpectedTotalTiyin int64 `json:"expected_total_tiyin"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -203,8 +210,21 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			}
 			o.Type = orders.TypeDelivery
 			setPaymentMethod(&o, paymentMethod)
-			created, err := s.OrderSvc.Create(r.Context(), &o)
+			created, err := s.OrderSvc.CreateExpecting(r.Context(), &o,
+				req.ExpectedTotalTiyin)
 			if err != nil {
+				// Narx ekranda ko'rsatilgandan keyin o'zgargan —
+				// buyurtma yaratilmadi. 409 (Conflict) va YANGI summa
+				// qaytadi: ilova uni ko'rsatib qayta so'raydi.
+				var changed *orders.TotalChangedError
+				if errors.As(err, &changed) {
+					writeJSON(w, http.StatusConflict, map[string]any{
+						"error":       "narx o'zgardi — yangi summani tasdiqlang",
+						"code":        "total_changed",
+						"total_tiyin": changed.ActualTiyin,
+					})
+					return
+				}
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}

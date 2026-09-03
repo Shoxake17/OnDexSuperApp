@@ -116,6 +116,19 @@ type Hub struct {
 // ilovalar — faqat brauzerlar Origin yuboradi) HAR DOIM qabul qilinadi,
 // aks holda mobil ilovalar butunlay ishlamay qolardi.
 func NewHub(allowedOrigins []string) *Hub {
+	return &Hub{
+		conns:    make(map[string]map[*client]struct{}),
+		upgrader: NewUpgrader(allowedOrigins),
+	}
+}
+
+// NewUpgrader — origin siyosati BIR JOYDA.
+//
+// Hub'dan tashqari ovozli rejim ham (`GET /ai/live`) o'z ulanishini
+// ko'taradi. Ikki joyda ikki nusxa `CheckOrigin` tursa, ulardan biri
+// o'zgarib qolib bitta kanal ochiq, ikkinchisi yopiq bo'lardi — va bu
+// AYNAN xavfsizlik qarori, shuning uchun nusxalanmasligi kerak.
+func NewUpgrader(allowedOrigins []string) websocket.Upgrader {
 	allowedSet := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
 		o = strings.TrimSpace(o)
@@ -126,20 +139,17 @@ func NewHub(allowedOrigins []string) *Hub {
 	if len(allowedSet) == 0 {
 		slog.Warn("ws: ALLOWED_ORIGINS sozlanmagan — istalgan brauzer origin'idan WebSocket ulanishga ruxsat berilyapti (faqat dev uchun, production'dan oldin sozlanishi SHART)")
 	}
-	return &Hub{
-		conns: make(map[string]map[*client]struct{}),
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				origin := r.Header.Get("Origin")
-				if origin == "" {
-					return true // native mobil ilova — Origin yubormaydi, bu me'yor
-				}
-				if len(allowedSet) == 0 {
-					return true // sozlanmagan — dev fallback
-				}
-				_, ok := allowedSet[origin]
-				return ok
-			},
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // native mobil ilova — Origin yubormaydi, bu me'yor
+			}
+			if len(allowedSet) == 0 {
+				return true // sozlanmagan — dev fallback
+			}
+			_, ok := allowedSet[origin]
+			return ok
 		},
 	}
 }

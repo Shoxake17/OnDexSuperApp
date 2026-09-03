@@ -318,6 +318,21 @@ class ProductCard extends StatelessWidget {
   final bool favorited;
 
   final VoidCallback? onAdd;
+
+  /// "+" tugmasining kaliti.
+  ///
+  /// ┌─ NEGA KERAK ────────────────────────────────────────────────────┐
+  /// Shaddiy buyurtmani ko'rsatib berganda "barmoq" AYNAN shu tugma
+  /// ustida turishi kerak. Ilgari u kartochka MARKAZIGA qo'yilardi va
+  /// miqdor raqamining ustiga tushib qolardi — foydalanuvchi noto'g'ri
+  /// tugma bosilyapti deb o'ylardi.
+  ///
+  /// Tugmaning joyi savatdagi miqdorga qarab O'ZGARADI (bo'shda —
+  /// o'ng pastda, qo'shilgach — miqdor qatorining o'ng chetida),
+  /// shuning uchun joy har bosishdan oldin qaytadan o'lchanadi.
+  /// └─────────────────────────────────────────────────────────────────┘
+  final Key? addKey;
+
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
   final ValueChanged<bool>? onFavoriteChanged;
@@ -334,6 +349,7 @@ class ProductCard extends StatelessWidget {
     this.promoted = false,
     this.favorited = false,
     this.onAdd,
+    this.addKey,
     this.onRemove,
     this.onTap,
     this.onFavoriteChanged,
@@ -404,7 +420,11 @@ class ProductCard extends StatelessWidget {
                   Positioned(
                     right: 8,
                     bottom: 8,
-                    child: RoundIconButton(icon: Icons.add, onTap: onAdd, iconSize: 19),
+                    child: RoundIconButton(
+                        key: addKey,
+                        icon: Icons.add,
+                        onTap: onAdd,
+                        iconSize: 19),
                   ),
                 if (available && qty != null && qty! > 0)
                   Positioned(
@@ -435,7 +455,11 @@ class ProductCard extends StatelessWidget {
                                 fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                         ),
-                        RoundIconButton(icon: Icons.add, onTap: onAdd, iconSize: 19),
+                        RoundIconButton(
+                            key: addKey,
+                            icon: Icons.add,
+                            onTap: onAdd,
+                            iconSize: 19),
                       ],
                     ),
                   ),

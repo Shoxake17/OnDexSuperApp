@@ -16,6 +16,17 @@
          Store'da yashirib qo'ymasligi kerak. -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <!-- AI yordamchining OVOZLI rejimi (`assistant_screen.dart`).
+
+         Ruxsat foydalanuvchidan FAQAT mikrofon tugmasi bosilganda
+         so'raladi. Ovoz SERVERGA YUBORILMAYDI: nutq qurilmaning o'z
+         tanish tizimida matnga o'giriladi va bizga faqat matn
+         yetadi. Shuning uchun ilova ovoz YOZUVINI umuman
+         saqlamaydi ham, uzatmaydi ham. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Mikrofoni yo'q qurilmada ham o'rnatilaversin: yordamchining
+         matnli rejimi baribir ishlaydi. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
@@ -69,6 +80,28 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="ondex" android:host="auth"/>
             </intent-filter>
+
+            <!-- Tashqi AI yordamchini ulash (`ondex://agent-link?code=...`).
+
+                 Yordamchi ilova shu havolani ochadi va foydalanuvchi
+                 to'g'ridan-to'g'ri ROZILIK ekranida paydo bo'ladi —
+                 kodni qo'lda ko'chirish shart bo'lmaydi.
+
+                 HAVOLA SIR EMAS va u YOLG'IZ O'ZI hech narsa bermaydi:
+                 ichidagi kod faqat KUTAYOTGAN so'rovni ochadi, ruxsat
+                 esa foydalanuvchi tugmani bosgandagina beriladi. Kod
+                 10 daqiqada o'chadi va uni terish urinishlari IP
+                 bo'yicha cheklangan.
+
+                 Kod qo'lda kiritish yo'li (Profil -> Ulangan ilovalar)
+                 ATAYLAB saqlanadi: deep link boshqa ilova tomonidan
+                 ushlab qolinishi yoki umuman ochilmasligi mumkin. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="ondex" android:host="agent-link"/>
+            </intent-filter>
         </activity>
 
         <!-- Book Cafe 3D sayohati.
@@ -113,6 +146,20 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+
+        <!-- Nutq tanish va matnni ovozga o'girish xizmatlari.
+
+             Android 11 (API 30) dan boshlab ilova boshqa ilovalarni
+             "ko'ra" olmaydi, agar ular shu ro'yxatda bo'lmasa. Busiz
+             `speech_to_text` init'i JIMGINA `false` qaytaradi va
+             mikrofon tugmasi umuman chiqmaydi — sababi esa hech
+             qayerda ko'rinmaydi (Telegram bilan bir xil tuzoq). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
 
         <!-- Telegram O'RNATILGANLIGINI aniqlash uchun.

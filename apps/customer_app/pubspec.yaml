@@ -1,7 +1,7 @@
 name: chust_customer
 description: ChustApp — mijoz ilovasi
 publish_to: "none"
-version: 0.1.0
+version: 0.2.0+11
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -15,6 +15,14 @@ dependencies:
     sdk: flutter
   http: ^1.2.0
   web_socket_channel: ^3.0.0
+
+  # Ovozli rejim (Gemini Live): mikrofondan XOM PCM16 oqimi va
+  # modeldan kelgan PCM16 ni past kechikish bilan chalish.
+  # speech_to_text va flutter_tts OLIB TASHLANDI: ular o'zbek tilini
+  # qo'llamaydi - telefonda tanish ru-RU ga tushardi, javob esa o'zbek
+  # matnini rus ovozi bilan o'qirdi (lib/data/ai_live.dart izohiga qarang).
+  record: ^7.1.1
+  flutter_pcm_sound: ^3.3.3
   shared_preferences: ^2.2.0
   geolocator: ^13.0.1
   google_maps_flutter: ^2.10.0
@@ -83,6 +91,21 @@ flutter:
     - assets/payments/
     - assets/eltago.png
     - assets/ondex_hero.png
+    # Super app bosh sahifasidagi xizmat rasmlari (`image/main.png`
+    # maketidan kesib olingan). Maket 907px kenglikda, ya'ni bu
+    # rasmlar 1x atrofida - yuqori zichlikdagi ekranda biroz yumshoq
+    # ko'rinadi. Haqiqiy fotolar tayyor bo'lganda ularni SHU NOMLAR
+    # bilan almashtirish yetadi, kodga tegish shart emas.
+    - assets/services/
+    # Shaddiy AI yordamchisining yuzi — 4 ta kadr (jim, og'iz katta,
+    # og'iz kichik, ko'z yumiq). Ovozli rejimda ular ustma-ust turib
+    # almashadi va yuz "gapirayotgandek" ko'rinadi.
+    #
+    # ASLI Shaddiy frontendidan (`Shaddiy_App/public/`), lekin u yerda
+    # ular 4.7 MB PNG edi. Bu yerda 512x600 JPEG — 238 KB, ya'ni 20
+    # barobar kichik. Doira ichida kesilgani uchun shaffoflik kerak
+    # emas va JPEG artefaktlari ko'rinmaydi.
+    - assets/shaddiy/
     - assets/google_logo.png
     - assets/uz_flag.png
     - shorebird.yaml

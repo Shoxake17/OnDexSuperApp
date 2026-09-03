@@ -33,6 +33,33 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
 
+// ┌─ EMULYATOR UCHUN x86_64 ───────────────────────────────────────────┐
+// Ilova odatda FAQAT arm64 uchun quriladi (sabab pastdagi `packaging`
+// izohida — Godot dvigateli har bir arxitektura uchun ~70 MB).
+//
+// Lekin Windows/Intel'dagi emulyator x86_64 — arm64 APK unda umuman
+// ishga tushmaydi:
+//
+//   FATAL: Could not find 'libflutter.so'.
+//   Looked for: [x86_64, arm64-v8a], but only found: []
+//
+// Shuning uchun x86_64 ni IXTIYORIY qildik. Standart holat
+// o'zgarmaydi — tarqatiladigan build hamon faqat arm64 va kichik.
+// Emulyator uchun:
+//
+//   flutter build apk --debug --target-platform android-x64 \
+//       -P ondexX86=true
+//
+// `-P` (`--android-project-arg`) qiymatni Gradle'ga uzatadi.
+// `ORG_GRADLE_PROJECT_...` muhit o'zgaruvchisi ISHLAMAYDI — Flutter
+// Gradle'ni o'z jarayonida chaqiradi va daemon eski muhitni ushlab
+// qoladi (sinab ko'rilgan: APK yana arm64 bo'lib chiqqan).
+//
+// APK ~70 MB kattaroq chiqadi — bu faqat lokal sinov uchun, hech
+// qachon tarqatilmaydi.
+// └────────────────────────────────────────────────────────────────────┘
+val includeX86 = (project.findProperty("ondexX86") as String?)?.toBoolean() ?: false
+
 android {
     namespace = "com.ondex.customer"
     compileSdk = flutter.compileSdkVersion
@@ -56,7 +83,8 @@ android {
         // Godot dvigateli faqat arm64 uchun olinadi - sabab
         // yuqoridagi izohda.
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += if (includeX86) listOf("arm64-v8a", "x86_64")
+                          else listOf("arm64-v8a")
         }
     }
 
@@ -106,9 +134,12 @@ android {
         jniLibs {
             excludes += listOf(
                 "**/armeabi-v7a/**",
-                "**/x86/**",
-                "**/x86_64/**"
+                "**/x86/**"
             )
+            // Emulyator uchun build'da x86_64 SAQLANADI (yuqoridagi
+            // `includeX86` izohiga qarang), qolgan hamma holatda
+            // chiqarib tashlanadi.
+            if (!includeX86) excludes += "**/x86_64/**"
         }
     }
 

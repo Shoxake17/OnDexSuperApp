@@ -164,18 +164,32 @@ class CustomerApi extends ApiClient {
     /// restoranga ko'rinmaydi — mijoz `startPayment()` orqali to'lov
     /// havolasini olishi kerak.
     String paymentMethod = 'cash',
+
+    /// Ekranda mijozga KO'RSATILGAN jami (tiyin).
+    ///
+    /// Berilsa, server hisobi bilan solishtiriladi va farq bo'lsa
+    /// buyurtma yaratilmaydi — `ApiException(statusCode: 409)` keladi.
+    /// Ya'ni mijoz ko'rgan raqamdan boshqa summaga hech qachon rozi
+    /// bo'lib qolmaydi (aksiya tugashi, narx tahriri).
+    int? expectedTotalTiyin,
   }) async {
     final body = <String, dynamic>{
       'items': items,
       'idempotency_key': idempotencyKey,
       'payment_method': paymentMethod,
     };
+    if (expectedTotalTiyin != null && expectedTotalTiyin > 0) {
+      body['expected_total_tiyin'] = expectedTotalTiyin;
+    }
     if (tableToken != null && tableToken.isNotEmpty) {
       body['table_token'] = tableToken;
       if (partySize != null && partySize > 0) body['party_size'] = partySize;
     } else {
-      // Yetkazib berishda manzil majburiy — server ham shuni talab
-      // qiladi, lekin bu yerda ham aniq bo'lsin.
+      // MANZIL bu yerdan OLINMAYDI — server uni `/me/address` dan
+      // o'qiydi (routes_orders.go). Bu maydonlar eski klientlar bilan
+      // moslik uchun qoldirilgan va serverga TA'SIR QILMAYDI:
+      // koordinatani so'rov tanasidan qabul qilish xizmat hududi
+      // tekshiruvini chetlab o'tish yo'li edi.
       body['delivery_lat'] = lat;
       body['delivery_lng'] = lng;
     }
@@ -429,6 +443,110 @@ class CustomerApi extends ApiClient {
     });
     return Map<String, dynamic>.from(d);
   }
+
+  // ── Ulangan ilovalar (tashqi AI agentlar) ────────────────────────
+  //
+  // ┌─ NIMA UCHUN BU EKRAN BOR ────────────────────────────────────┐
+  // Tashqi yordamchi (masalan Shaddiy AI) foydalanuvchi nomidan
+  // buyurtma bera oladi. Bunday huquq FAQAT shu yerdan beriladi va
+  // FAQAT shu yerdan uziladi — ya'ni odam nima bo'layotganini
+  // ko'radi va istalgan payt to'xtata oladi.
+  //
+  // Backend: internal/httpapi/routes_me_agent.go
+  // └──────────────────────────────────────────────────────────────┘
+
+  /// Rozilik ekrani uchun: kim so'rayapti va nimaga.
+  Future<Map<String, dynamic>> agentLinkInfo(String code) async =>
+      Map<String, dynamic>.from(await send('GET', '/me/agent/link/$code'));
+
+  /// Ruxsat berish. perOrderLimitTiyin = 0 — HAR BIR buyurtma
+  /// ilovada alohida tasdiqlanadi (eng qattiq rejim, standart).
+  Future<Map<String, dynamic>> agentApprove(
+    String code, {
+    required List<String> scopes,
+    int perOrderLimitTiyin = 0,
+    int dailyLimitTiyin = 0,
+  }) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/me/agent/link/$code/approve', {
+        'scopes': scopes,
+        'per_order_limit_tiyin': perOrderLimitTiyin,
+        'daily_limit_tiyin': dailyLimitTiyin,
+      }));
+
+  Future<void> agentDeny(String code) async =>
+      send('POST', '/me/agent/link/$code/deny');
+
+  /// Ulangan ilovalar ro'yxati.
+  Future<List<dynamic>> agentGrants() async =>
+      (await send('GET', '/me/agent/grants')) as List<dynamic>? ?? [];
+
+  /// Uzish — ta'siri DARHOL (server tokenni har so'rovda tekshiradi).
+  Future<void> agentRevoke(String grantId) async =>
+      send('DELETE', '/me/agent/grants/$grantId');
+
+  /// Agent nima qilgani (audit).
+  Future<List<dynamic>> agentActivity() async =>
+      (await send('GET', '/me/agent/activity')) as List<dynamic>? ?? [];
+
+  /// Tasdiqlashni kutayotgan buyurtmalar (chegaradan oshganlar).
+  Future<List<dynamic>> agentDrafts() async =>
+      (await send('GET', '/me/agent/drafts')) as List<dynamic>? ?? [];
+
+  Future<Map<String, dynamic>> agentApproveDraft(String draftId) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/me/agent/drafts/$draftId/approve'));
+
+  Future<void> agentRejectDraft(String draftId) async =>
+      send('POST', '/me/agent/drafts/$draftId/reject');
+
+  // ── Ilova ichidagi AI yordamchi ──────────────────────────────────
+  //
+  // ┌─ "Ulangan ilovalar" BILAN CHALKASHTIRMANG ───────────────────┐
+  // Yuqoridagi `agent*` metodlari TASHQI ilovaga ruxsat berish
+  // uchun. Bular esa OnDex ilovasining O'Z yordamchisi: oddiy
+  // sessiya bilan ishlaydi va buyurtma YARATMAYDI — u savat
+  // taklifini qaytaradi, tugmani foydalanuvchi bosadi.
+  //
+  // Backend: internal/httpapi/routes_assistant.go
+  // └──────────────────────────────────────────────────────────────┘
+
+  /// Yordamchi serverda yoqilganmi (tugmani ko'rsatish uchun).
+  ///
+  /// `enabled` — matnli chat, `voice` — OVOZLI rejim (Gemini Live).
+  /// Ikkalasi ALOHIDA: `GEMINI_API_KEY` qo'yilmagan serverda chat
+  /// ishlaydi, ovoz esa yo'q. Busiz ilova mikrofon tugmasini chizib,
+  /// bosilganda 404 ko'rsatardi.
+  /// Yordamchi amallari va ularning ruxsat holati.
+  ///
+  /// Ro'yxatni SERVER beradi: ilova nomlarni qo'lda yozsa, backend'da
+  /// yangi amal qo'shilganda u ilovada ko'rinmasdi.
+  Future<List<Map<String, dynamic>>> aiTools() async {
+    final d = await send('GET', '/me/ai-tools');
+    final list = (d is Map ? d['tools'] : null) as List? ?? const [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Yoqilgan amallarni saqlaydi (o'chirilganlarni server hisoblaydi).
+  Future<void> setAiTools(List<String> enabled) async {
+    await send('PUT', '/me/ai-tools', {'enabled': enabled});
+  }
+
+  Future<Map<String, dynamic>> aiStatus() async {
+    final d = await send('GET', '/ai/status');
+    return d is Map<String, dynamic> ? d : const {};
+  }
+
+  /// Bitta savol. `history` — oldingi xabarlar (`{role, content}`),
+  /// ilovada saqlanadi; server sessiya ushlab turmaydi.
+  Future<Map<String, dynamic>> aiChat(
+    String message,
+    List<Map<String, String>> history,
+  ) async =>
+      Map<String, dynamic>.from(await send('POST', '/ai/chat', {
+        'message': message,
+        'history': history,
+      }));
 }
 
 /// Butun ilova uchun bitta umumiy client.

@@ -40,6 +40,16 @@ func (r *fakeUserRepo) GetByTelegramID(_ context.Context, tgID int64) (*User, er
 	return nil, ErrUserNotFound
 }
 
+// Yordamchi amallariga ruxsat — bu paketning testlariga aloqasi yo'q,
+// shuning uchun eng sodda amaldagi holat: hech narsa o'chirilmagan.
+func (r *fakeUserRepo) DisabledAITools(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
+func (r *fakeUserRepo) SetDisabledAITools(_ context.Context, _ string, _ []string) error {
+	return nil
+}
+
 func (r *fakeUserRepo) LinkTelegram(_ context.Context, userID string, tgID int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -11,6 +11,9 @@ import (
 type MemoryUserRepo struct {
 	mu   sync.RWMutex
 	data map[string]users.User // id -> user
+	// aiDisabled — yordamchining O'CHIRILGAN amallari (id -> nomlar).
+	// `users.User` ga qo'shilmaydi: u JSON javoblarga sizib chiqardi.
+	aiDisabled map[string][]string
 }
 
 func NewMemoryUserRepo(seed ...users.User) *MemoryUserRepo {
@@ -163,6 +166,38 @@ func (r *MemoryUserRepo) SetPasswordHash(_ context.Context, id, hash string) err
 	}
 	u.PasswordHash = hash
 	r.data[id] = u
+	return nil
+}
+
+// ── Yordamchi amallariga ruxsat ──
+//
+// Alohida xaritada: `users.User` ga maydon qo'shilsa u JSON javoblarga
+// ham sizib chiqardi (`/me`), bu esa ruxsatlar ro'yxatini kutilmagan
+// joyda ko'rsatib qo'yardi.
+func (r *MemoryUserRepo) DisabledAITools(_ context.Context, id string) ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.aiDisabled == nil {
+		return nil, nil
+	}
+	src := r.aiDisabled[id]
+	if len(src) == 0 {
+		return nil, nil
+	}
+	// Nusxa: chaqiruvchi o'zgartirsa ichki holat buzilmasin.
+	return append([]string(nil), src...), nil
+}
+
+func (r *MemoryUserRepo) SetDisabledAITools(_ context.Context, id string, tools []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.data[id]; !ok {
+		return users.ErrUserNotFound
+	}
+	if r.aiDisabled == nil {
+		r.aiDisabled = map[string][]string{}
+	}
+	r.aiDisabled[id] = append([]string(nil), tools...)
 	return nil
 }
 

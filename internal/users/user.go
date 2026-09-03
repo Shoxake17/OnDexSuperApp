@@ -250,6 +250,25 @@ type Repository interface {
 	// Shu sabab implementatsiya eski bog'lanishni AVVAL uzadi.
 	// └───────────────────────────────────────────────────────────────┘
 	LinkTelegram(ctx context.Context, userID string, telegramID int64) error
+
+	// ── Yordamchi amallariga ruxsat (migration 0040) ──
+	//
+	// ┌─ NEGA SERVERDA SAQLANADI ─────────────────────────────────────┐
+	// Buni qurilmada saqlash mumkin edi, lekin unda u SOZLAMA bo'lardi,
+	// ruxsat emas: ikkinchi telefonda boshqacha bo'lardi va ilova
+	// qayta o'rnatilganda tiklanardi.
+	//
+	// Ruxsat esa foydalanuvchining QARORI — u akkauntga tegishli va
+	// tekshiruv SERVERDA bo'lishi kerak. Mijoz nima yuborishidan
+	// qat'i nazar, o'chirilgan amal modelga UMUMAN e'lon qilinmaydi.
+	// └───────────────────────────────────────────────────────────────┘
+
+	// DisabledAITools — foydalanuvchi O'CHIRGAN amallar ro'yxati.
+	// Bo'sh — hammasi yoqilgan.
+	DisabledAITools(ctx context.Context, id string) ([]string, error)
+
+	// SetDisabledAITools — ro'yxatni to'liq almashtiradi.
+	SetDisabledAITools(ctx context.Context, id string, tools []string) error
 }
 
 // ProfileUpdate — UpdateProfile uchun maydonlar. Ko'rsatkich (pointer)

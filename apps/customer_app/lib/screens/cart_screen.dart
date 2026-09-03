@@ -10,11 +10,13 @@ import '../data/favorites_store.dart';
 import '../data/quote_service.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_sheet.dart';
+import '../widgets/agent_overlay.dart' show AgentCheckoutAnchor;
 import '../widgets/product_grid.dart';
 import '../widgets/qty_stepper.dart';
 import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'checkout_screen.dart';
+import 'menu_screen.dart' show MenuScreen;
 
 /// Savat — NATIVE.
 ///
@@ -34,7 +36,22 @@ import 'checkout_screen.dart';
 /// mijoz bosgan summa va hisobdan yechilgan summa bir xil bo'lishi shart.
 /// └───────────────────────────────────────────────────────────────────┘
 class CartScreen extends StatefulWidget {
-  const CartScreen({super.key});
+  /// Savat `RestaurantShell` ning TAB'i sifatida chizilyaptimi.
+  ///
+  /// ┌─ NEGA KERAK ────────────────────────────────────────────────────┐
+  /// Savat ikki xil ochiladi:
+  ///   * menyudan yoki yordamchidan — PUSH qilinadi, ya'ni o'zining
+  ///     `SheetPage` qobig'i bilan chiziladi (pastga tortib yopiladi);
+  ///   * restoran qobig'ining "Savat" tab'ida — u yerda qobiqni
+  ///     `RestaurantShell` allaqachon bergan.
+  ///
+  /// Tab holatida `SheetPage` takrorlansa: dumaloq burchak ikki marta,
+  /// tizim paneli ostidagi bo'shliq ikki marta qo'shilardi va sahifa
+  /// ekranning o'rtasidan boshlanardi.
+  /// └─────────────────────────────────────────────────────────────────┘
+  final bool embedded;
+
+  const CartScreen({super.key, this.embedded = false});
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -143,26 +160,43 @@ class _CartScreenState extends State<CartScreen> {
   /// bor bo'lsa AYNAN u ishlatiladi.
   int get _rawSubtotal => _quote.subtotalTiyin ?? rawSubtotal(_menu);
 
+  /// Push qilinganda `SheetPage` qobig'ini qo'shadi; tab holatida
+  /// qobiq `RestaurantShell` dan keladi ([CartScreen.embedded]).
+  Widget _shell(Widget child) =>
+      widget.embedded ? child : SheetPage(child: child);
+
+  /// Tab holatida ORQAGA STRELKASI chizilmaydi.
+  ///
+  /// `AppBar` marshrut pop qilinishi mumkin bo'lsa strelkani O'ZI
+  /// qo'shadi. Restoran qobig'i esa push qilingan marshrut — natijada
+  /// "Savat" tab'ida butun restoran bo'limini yopadigan strelka paydo
+  /// bo'lardi, qolgan tab'larda esa yo'q edi.
+  Widget? get _leading => widget.embedded ? const SizedBox.shrink() : null;
+  double? get _leadingWidth => widget.embedded ? 0 : null;
+
   @override
   Widget build(BuildContext context) {
     final rid = _cart.restaurantId;
 
     if (_cart.isEmpty || rid == null) {
-      return const SheetPage(
-        child: Scaffold(
-          backgroundColor: Colors.white,
-          appBar: PageAppBar(title: 'Savat'),
-          body: _EmptyCart(),
+      return _shell(Scaffold(
+        backgroundColor: Colors.white,
+        appBar: PageAppBar(
+          title: 'Savat',
+          leading: _leading,
+          leadingWidth: _leadingWidth,
         ),
-      );
+        body: const _EmptyCart(),
+      ));
     }
 
-    return SheetPage(
-        child: Scaffold(
+    return _shell(Scaffold(
       backgroundColor: Colors.white,
       appBar: PageAppBar(
         scrolledUnderElevation: 0.5,
         titleSpacing: 0,
+        leading: _leading,
+        leadingWidth: _leadingWidth,
         titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -218,7 +252,15 @@ class _CartScreenState extends State<CartScreen> {
             child: SizedBox(
               height: 48,
               child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                // Push qilingan savatda menyu ORTDA turadi — uni
+                // ochish uchun shu sahifani yopish yetarli. Tab
+                // holatida esa ortda menyu emas, restoran ro'yxati
+                // turadi: `pop` butun bo'limdan chiqarib yuborardi,
+                // shuning uchun menyu ANIQ ochiladi.
+                onPressed: () => widget.embedded
+                    ? MenuScreen.open(context, rid,
+                        fallbackName: _cart.restaurantName)
+                    : Navigator.of(context).pop(),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF171717),
                   side: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -226,8 +268,8 @@ class _CartScreenState extends State<CartScreen> {
                       borderRadius: BorderRadius.circular(14)),
                 ),
                 child: const Text('Menyuni ochish',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600)),
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ),
             ),
           ),
@@ -302,8 +344,8 @@ class _CartScreenState extends State<CartScreen> {
                   productId: id,
                   restaurantName: _cart.restaurantName,
                 ),
-                onRemove: () => _cart.decrement(
-                    restaurantId: restaurantId, productId: id),
+                onRemove: () =>
+                    _cart.decrement(restaurantId: restaurantId, productId: id),
               );
             },
           ),
@@ -317,8 +359,8 @@ class _CartScreenState extends State<CartScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Savat tozalansinmi?'),
-        content: const Text(
-            'Barcha tanlangan taomlar savatdan olib tashlanadi.'),
+        content:
+            const Text('Barcha tanlangan taomlar savatdan olib tashlanadi.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -568,6 +610,24 @@ class _Bottom extends StatelessWidget {
     // └─────────────────────────────────────────────────────────────┘
     final ready = quoteTiyin != null && !quoting;
 
+    // Amal ALOHIDA o'zgaruvchida: aynan shu yopilma tugmaga ham,
+    // Shaddiy boshqaruviga ham beriladi. Ikki nusxa yozilsa, ulardan
+    // biri (masalan yangi maydon) e'tibordan chetda qolardi.
+    final VoidCallback? onCheckout = ready
+        ? () => Navigator.of(context).push(
+              sheetRoute(
+                CheckoutScreen(
+                  quoteTiyin: quoteTiyin!,
+                  subtotalTiyin: subtotalTiyin,
+                  discountTiyin: discountTiyin,
+                  promotionName: promotionName,
+                  promotionDiscountTiyin: promotionDiscountTiyin,
+                  quoteLineTotals: lineTotals,
+                ),
+              ),
+            )
+        : null;
+
     return SafeArea(
       child: Container(
         decoration: const BoxDecoration(
@@ -598,7 +658,9 @@ class _Bottom extends StatelessWidget {
                   ],
                 ),
               ),
-            SizedBox(
+            AgentCheckoutAnchor(
+              onTap: onCheckout,
+              child: SizedBox(
               height: 52,
               width: double.infinity,
               child: FilledButton(
@@ -607,20 +669,7 @@ class _Bottom extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                onPressed: ready
-                    ? () => Navigator.of(context).push(
-                          sheetRoute(
-                            CheckoutScreen(
-                              quoteTiyin: quoteTiyin!,
-                              subtotalTiyin: subtotalTiyin,
-                              discountTiyin: discountTiyin,
-                              promotionName: promotionName,
-                              promotionDiscountTiyin: promotionDiscountTiyin,
-                              quoteLineTotals: lineTotals,
-                            ),
-                          ),
-                        )
-                    : null,
+                onPressed: onCheckout,
                 child: quoting
                     ? const SizedBox(
                         width: 20,
@@ -633,8 +682,7 @@ class _Bottom extends StatelessWidget {
                         children: [
                           const Text('Buyurtma rasmiylashtirish',
                               style: TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.bold)),
+                                  fontSize: 15.5, fontWeight: FontWeight.bold)),
                           Text(
                             ready ? formatSum(quoteTiyin!) : 'Summa yo\'q',
                             style: const TextStyle(
@@ -642,6 +690,7 @@ class _Bottom extends StatelessWidget {
                           ),
                         ],
                       ),
+              ),
               ),
             ),
           ],

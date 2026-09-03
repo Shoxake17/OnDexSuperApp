@@ -2,6 +2,7 @@ package orders
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -333,5 +334,68 @@ func TestCreateRejectsZeroTotal(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("jami 0 bo'lgan buyurtma rad etilishi kerak edi")
+	}
+}
+
+// Mijozga ko'rsatilgan summa bilan haqiqiy summa mos kelmasa buyurtma
+// YARATILMASLIGI kerak.
+//
+// Bu AI yordamchisi uchun muhim: u yerda savatni til modeli tuzadi va
+// foydalanuvchi faqat yakuniy raqamga qarab tasdiqlaydi. Taklif
+// ko'rsatilgandan keyin aksiya tugasa yoki restoran narxni tahrirlasa,
+// tekshiruvsiz mijoz BOSHQA summaga rozi bo'lgan buyurtmani olardi.
+func TestCreateExpecting_TotalMismatch_Rejected(t *testing.T) {
+	order := func() *Order {
+		return &Order{
+			CustomerID: "c1", RestaurantID: "r1",
+			Items: []Item{{ProductID: "p1", Name: "Osh", Qty: 2, PriceTiyin: 3000000}},
+		}
+	}
+	// HAR BIR chaqiruvga TOZA xizmat: test yordamchisi barcha
+	// buyurtmalarga bitta ID ("id") beradi, ya'ni bitta bazaga ikkinchi
+	// buyurtma yozilsa optimistik qulf ziddiyati chiqadi — bu tekshirmoqchi
+	// bo'lgan narsamizga aloqasi yo'q.
+	svc := newPricingService()
+
+	// Haqiqiy jami — 2 × 30 000 = 60 000 so'm (6 000 000 tiyin).
+	created, err := svc.Create(context.Background(), order())
+	if err != nil {
+		t.Fatalf("kutilmagan xato: %v", err)
+	}
+	const realTotal = 6000000
+	if created.TotalTiyin != realTotal {
+		t.Fatalf("test sozlamasi noto'g'ri: jami %d, kutilgan %d",
+			created.TotalTiyin, realTotal)
+	}
+
+	// Eski (past) summa bilan tasdiqlash — RAD etiladi.
+	_, err = newPricingService().CreateExpecting(
+		context.Background(), order(), realTotal-100000)
+	if err == nil {
+		t.Fatal("summa mos kelmaganda buyurtma yaratilmasligi kerak edi")
+	}
+	if !errors.Is(err, ErrTotalChanged) {
+		t.Fatalf("ErrTotalChanged kutilgandi, keldi: %v", err)
+	}
+	// Yangi summa xatoning O'ZIDA bo'lishi shart — ilova uni
+	// foydalanuvchiga ko'rsatadi.
+	var changed *TotalChangedError
+	if !errors.As(err, &changed) {
+		t.Fatalf("TotalChangedError kutilgandi, keldi: %T", err)
+	}
+	if changed.ActualTiyin != realTotal {
+		t.Errorf("xatodagi yangi summa %d, kutilgan %d",
+			changed.ActualTiyin, realTotal)
+	}
+
+	// Aynan mos summa — o'tadi.
+	if _, err := newPricingService().CreateExpecting(
+		context.Background(), order(), realTotal); err != nil {
+		t.Fatalf("mos summa bilan buyurtma yaratilishi kerak edi: %v", err)
+	}
+	// 0 — tekshiruv yo'q (eski chaqiruvlar buzilmaydi).
+	if _, err := newPricingService().CreateExpecting(
+		context.Background(), order(), 0); err != nil {
+		t.Fatalf("tekshiruvsiz chaqiruv ishlashi kerak edi: %v", err)
 	}
 }

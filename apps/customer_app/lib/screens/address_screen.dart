@@ -8,6 +8,18 @@ import '../api.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
 import 'address_search_screen.dart';
+import 'catalog_screen.dart' show kBrand;
+
+/// Xaritadagi OnDex pinasi va tugmalari.
+///
+/// ┌─ NEGA `scheme.primary` EMAS ───────────────────────────────────────┐
+/// Ilgari pin va tugmalar mavzudan olingan rangda edi. `ColorScheme`
+/// urug'dan hosil qilinadi, ya'ni chiqqan rang brend rangining AYNAN
+/// o'zi emas — xaritada u pushti-qizg'ish tusga kirardi va ilovaning
+/// qolgan qismidan farq qilardi. Bu yerda brend rangi TO'G'RIDAN-
+/// TO'G'RI olinadi.
+/// └────────────────────────────────────────────────────────────────────┘
+const _mapPin = 'assets/services/map.png';
 
 /// Yetkazib berish manzilini xaritadan tanlash ekrani (Yandex Go uslubi):
 /// xarita tepada, markazda qimirlamas pin turadi (foydalanuvchi xaritani
@@ -235,7 +247,6 @@ class _AddressScreenState extends State<AddressScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
@@ -278,8 +289,18 @@ class _AddressScreenState extends State<AddressScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.location_on,
-                                  size: 44, color: scheme.primary),
+                              // OnDex xarita belgisi — bosh sahifadagi
+                              // "OnDex Xarita" plitkasi bilan AYNAN
+                              // bitta rasm. Foydalanuvchi ikki joyda
+                              // bir xil belgini ko'radi.
+                              Image.asset(_mapPin,
+                                  height: 52,
+                                  // Rasm topilmasa xarita pinsiz
+                                  // qolmasin.
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.location_on,
+                                      size: 44,
+                                      color: kBrand)),
                               Container(
                                 width: 6,
                                 height: 6,
@@ -462,8 +483,8 @@ class _ZoomBlock extends StatelessWidget {
       width: 44,
       child: Material(
         // Qat'iy oq — pastki menyu paneli bilan bir xil. `colorScheme`
-      // qurilma mavzusiga bog'liq va kulrang tusga kirardi.
-      color: Colors.white,
+        // qurilma mavzusiga bog'liq va kulrang tusga kirardi.
+        color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         elevation: 3,
         child: Column(

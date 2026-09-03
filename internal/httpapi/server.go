@@ -23,6 +23,8 @@ import (
 	"net/http"
 	"time"
 
+	"chustapp/internal/agentapi"
+	"chustapp/internal/assistant"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
 	"chustapp/internal/delivery"
@@ -30,12 +32,12 @@ import (
 	"chustapp/internal/firebaseauth"
 	"chustapp/internal/images"
 	"chustapp/internal/model3d"
-	"chustapp/internal/ratelimit"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
@@ -49,10 +51,10 @@ import (
 // yangi bog'liqlik qo'shilganda `New` imzosi o'zgarmaydi va chaqiruv
 // joyida qaysi qiymat qayerga borayotgani nom bilan ko'rinadi.
 type Deps struct {
-	OrderRepo      orders.Repository
-	CourierRepo    couriers.Repository
-	UserRepo       users.Repository
-	CatalogRepo    catalog.Repository
+	OrderRepo   orders.Repository
+	CourierRepo couriers.Repository
+	UserRepo    users.Repository
+	CatalogRepo catalog.Repository
 	// BookRepo — kafe kutubxonasi. IXTIYORIY: faqat Mongo rejimida
 	// ulanadi. `nil` bo'lsa kitob endpointlari xizmat yo'qligini
 	// aytadi, qolgan API esa ishlayveradi.
@@ -163,6 +165,42 @@ type Deps struct {
 	Notifications notify.Store
 	// PushTokens — qurilma push tokenlari (`POST /me/push-token`).
 	PushTokens notify.TokenStore
+	// Notifier — bildirishnomani BIR chaqiruvda saqlaydi, WebSocket
+	// bilan yuboradi va ilova yopiq bo'lsa push qiladi.
+	//
+	// `Notifications`/`PushTokens` dan farqi: ular xom omborlar
+	// (handler'lar ro'yxatni o'qish uchun ishlatadi), bu esa
+	// YUBORISH yo'li. `nil` bo'lsa xabar yuborilmaydi, qolgan
+	// hamma narsa ishlayveradi.
+	Notifier *notify.Service
+
+	// AgentSvc — tashqi AI agentlar integratsiyasi
+	// (`internal/agentapi`). `nil` bo'lsa `/agent/v1/*` va
+	// `/me/agent/*` 503 qaytaradi va qolgan API o'zgarishsiz
+	// ishlaydi — bazasiz (xotira) dev rejimida aynan shunday
+	// bo'ladi.
+	AgentSvc *agentapi.Service
+
+	// Assistant — ILOVA ICHIDAGI AI yordamchi (`internal/assistant`).
+	//
+	// `AgentSvc` bilan chalkashtirmang: u tashqi serverga eshik
+	// ochadi, bu esa OnDex ilovasining o'z chat/ovoz oynasini
+	// ta'minlaydi va buyurtma YARATA OLMAYDI — faqat savat taklifi.
+	//
+	// `SHADDIY_AI_URL` yoki `SHADDIY_API_KEY` bo'lmasa `nil` va
+	// `/ai/*` 503 qaytaradi.
+	Assistant *assistant.Service
+
+	// AssistantLive — OVOZLI rejim sozlamasi (Gemini Live).
+	//
+	// Matnli chatdan MUSTAQIL: `Assistant` bor bo'lib, bu `nil`
+	// bo'lishi mumkin (kalit qo'yilmagan) — bunda ilova chat oynasini
+	// ko'rsatadi, mikrofon tugmasini esa yo'q. Teskarisi bo'lmaydi:
+	// ovoz `Assistant` ning tool'lariga tayanadi.
+	//
+	// `GEMINI_API_KEY` bo'lmasa `nil` va `GET /ai/live` marshruti
+	// UMUMAN ro'yxatga olinmaydi.
+	AssistantLive *assistant.LiveConfig
 }
 
 // Server — HTTP qatlamining holati. Barcha handler'lar shu turning
@@ -232,6 +270,17 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerMapPickerRoutes(mux)
 	s.registerUploadRoutes(mux)
 	s.registerModel3DRoutes(mux)
+	// Tashqi AI agentlar: sherik yuzasi (`/agent/v1/*`) va
+	// foydalanuvchi nazorati (`/me/agent/*`) — ATAYLAB ikki alohida
+	// ro'yxat, chunki ular butunlay boshqa autentifikatsiyaga
+	// tayanadi (sherik kaliti + grant / oddiy foydalanuvchi JWT).
+	s.registerAgentRoutes(mux)
+	s.registerMeAgentRoutes(mux)
+	// Ilova ichidagi AI yordamchi (chat + ovoz). Tashqi agent
+	// yo'lidan MUSTAQIL: oddiy foydalanuvchi JWT'si bilan ishlaydi.
+	s.registerAssistantRoutes(mux)
+	s.registerAssistantLiveRoutes(mux, allowedOrigins)
+	s.registerMeAIToolRoutes(mux)
 
 	return withBodyLimit(withCORS(mux, allowedOrigins, s.DevMode))
 }

@@ -16,7 +16,25 @@ class ApiException implements Exception {
   /// ishlashni to'xtatardi.
   final int statusCode;
 
-  ApiException(this.message, {this.statusCode = 0});
+  /// Xato javobining TO'LIQ tanasi (JSON obyekt bo'lsa).
+  ///
+  /// `message` faqat `error` maydonini oladi, ya'ni server qo'shgan
+  /// qolgan hamma narsa yo'qolardi. Ba'zi xatolar esa davom etish
+  /// uchun ZARUR ma'lumot bilan keladi — masalan `409 total_changed`
+  /// javobidagi YANGI summa (`total_tiyin`): usiz ilova "narx
+  /// o'zgardi" deb ayta oladi-yu, yangi raqamni ko'rsata olmaydi.
+  ///
+  /// Raqamni foydalanuvchiga ko'rsatiladigan matndan ajratib olish
+  /// (regex bilan) mo'rt yo'l: matn tarjima qilinsa yoki qayta
+  /// yozilsa jimgina ishlamay qoladi.
+  ///
+  /// JSON obyekt bo'lmasa `null`.
+  final Map<String, dynamic>? data;
+
+  ApiException(this.message, {this.statusCode = 0, this.data});
+
+  /// Xato kodi (`data['code']`) — matnga emas, shu maydonga qarang.
+  String get code => (data?['code'] ?? '').toString();
 
   /// Sessiya yaroqsiz — chaqiruvchi login ekraniga qaytarishi kerak.
   bool get isUnauthorized => statusCode == 401;
@@ -113,7 +131,9 @@ class ApiClient {
           ? data['error'].toString()
           : 'Server xatosi (${r.statusCode})';
       if (r.statusCode == 401) onUnauthorized?.call();
-      throw ApiException(msg, statusCode: r.statusCode);
+      throw ApiException(msg,
+          statusCode: r.statusCode,
+          data: data is Map ? Map<String, dynamic>.from(data) : null);
     }
     return data;
   }

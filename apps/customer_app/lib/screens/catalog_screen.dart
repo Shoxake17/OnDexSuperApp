@@ -5,6 +5,7 @@ import '../category_icons.dart';
 import '../data/catalog_repository.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
+import '../widgets/header_action.dart';
 import '../widgets/page_sheet.dart';
 import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
@@ -69,108 +70,111 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ┌─ BOSH SAHIFADA DUMALOQ BURCHAK YO'Q ────────────────────────┐
-    // Restoranlar ro'yxati — ilovaning "tagi". Uning ostida boshqa
-    // sahifa turmaydi, shuning uchun karta bo'lib ko'rinishi kerak
-    // emas: tarkib tizim panelidan darhol boshlanadi. Tizim panelining
-    // rangini `home_shell.dart` belgilaydi (u butun ekranni qamraydi).
+    // ┌─ BU EKRAN — TAB, QOBIQ EMAS ────────────────────────────────┐
+    // Katalog `RestaurantShell` ning birinchi tab'i. Dumaloq burchak,
+    // tizim paneli chizig'i va `Scaffold` (ya'ni MATERIAL) o'sha
+    // qobiqdan keladi — bu yerda takrorlanmaydi.
+    //
+    // MUHIM: shu sababdan `CatalogScreen` ni to'g'ridan-to'g'ri
+    // `Navigator.push` QILMANG. Qobiqsiz push qilinganda sarlavhadagi
+    // `HeaderActionButton` lar (`InkResponse`) Material ancestor topolmay,
+    // butun ekran "No Material widget found" bilan qizarib ketadi —
+    // aynan shu xato jonli sinovda topilgan. Restoran bo'limi HAR
+    // DOIM `RestaurantShell` orqali ochiladi.
     // └─────────────────────────────────────────────────────────────┘
-    return Container(
-        color: Colors.white,
-        child: RefreshIndicator(
-        color: kBrand,
-        onRefresh: _refresh,
-        // Aylanma ko'rsatkich QOTIRILGAN sarlavha ostidan chiqsin —
-        // aks holda u sarlavha orqasida ko'rinmay qolardi.
-        edgeOffset: _kHeaderHeight,
-        child: StreamBuilder<Cached<List<dynamic>>>(
-          key: ValueKey('restaurants-$_reloadTick'),
-          stream: _restaurants.observe(force: _reloadTick > 0),
-          builder: (context, snap) {
-            final c = snap.data ?? const Cached<List<dynamic>>(refreshing: true);
+    return RefreshIndicator(
+      color: kBrand,
+      onRefresh: _refresh,
+      // Aylanma ko'rsatkich QOTIRILGAN sarlavha ostidan chiqsin —
+      // aks holda u sarlavha orqasida ko'rinmay qolardi.
+      edgeOffset: _kHeaderHeight,
+      child: StreamBuilder<Cached<List<dynamic>>>(
+        key: ValueKey('restaurants-$_reloadTick'),
+        stream: _restaurants.observe(force: _reloadTick > 0),
+        builder: (context, snap) {
+          final c = snap.data ?? const Cached<List<dynamic>>(refreshing: true);
 
-            // YAGONA spinner holati: hech qachon ko'rilmagan ma'lumot.
-            if (c.showSpinner) {
-              return const Center(child: CircularProgressIndicator());
-            }
+          // YAGONA spinner holati: hech qachon ko'rilmagan ma'lumot.
+          if (c.showSpinner) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            final list = (c.value ?? const []).cast<Map<String, dynamic>>();
+          final list = (c.value ?? const []).cast<Map<String, dynamic>>();
 
-            // ┌─ SARLAVHA QOTIRILGAN ─────────────────────────────────┐
-            // Logo, shahar va uchta ikon skroll bilan yuqoriga chiqib
-            // ketmaydi — ular `Stack` ning ustki qatlamida turadi.
-            // Ro'yxat esa ularning OSTIDAN suriladi, shuning uchun
-            // skroll boshlanishi bilan sarlavhaning pastki burchaklari
-            // dumaloqlanadi va soya paydo bo'ladi: tarkib "ostiga
-            // kirib ketayotgani" ko'rinib turadi.
-            // └───────────────────────────────────────────────────────┘
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _onScroll,
-                    child: CustomScrollView(
-                      // `always` — ro'yxat qisqa bo'lsa ham pastga tortib
-                      // yangilash ishlashi kerak.
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        // Qotirilgan sarlavha egallagan joy.
+          // ┌─ SARLAVHA QOTIRILGAN ─────────────────────────────────┐
+          // Logo, shahar va uchta ikon skroll bilan yuqoriga chiqib
+          // ketmaydi — ular `Stack` ning ustki qatlamida turadi.
+          // Ro'yxat esa ularning OSTIDAN suriladi, shuning uchun
+          // skroll boshlanishi bilan sarlavhaning pastki burchaklari
+          // dumaloqlanadi va soya paydo bo'ladi: tarkib "ostiga
+          // kirib ketayotgani" ko'rinib turadi.
+          // └───────────────────────────────────────────────────────┘
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _onScroll,
+                  child: CustomScrollView(
+                    // `always` — ro'yxat qisqa bo'lsa ham pastga tortib
+                    // yangilash ishlashi kerak.
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      // Qotirilgan sarlavha egallagan joy.
+                      const SliverToBoxAdapter(
+                          child: SizedBox(height: _kHeaderHeight)),
+                      SliverToBoxAdapter(
+                        child:
+                            _CategoryRow(repo: _categories, tick: _reloadTick),
+                      ),
+
+                      // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
+                      // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
+                      // ataylab: xato uchun mazmunni o'chirish eng yomon
+                      // xatti-harakat.
+                      if (c.error != null)
                         const SliverToBoxAdapter(
-                            child: SizedBox(height: _kHeaderHeight)),
-                        SliverToBoxAdapter(
-                          child:
-                              _CategoryRow(repo: _categories, tick: _reloadTick),
+                          child: OfflineNotice(
+                            message:
+                                'Yangilab bo\'lmadi — saqlangan ro\'yxat ko\'rsatilmoqda',
+                          ),
                         ),
 
-                        // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
-                        // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
-                        // ataylab: xato uchun mazmunni o'chirish eng yomon
-                        // xatti-harakat.
-                        if (c.error != null)
-                          const SliverToBoxAdapter(
-                            child: OfflineNotice(
-                              message:
-                                  'Yangilab bo\'lmadi — saqlangan ro\'yxat ko\'rsatilmoqda',
+                      if (list.isEmpty)
+                        const SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Text('Hozircha restoran yo\'q'),
                             ),
                           ),
-
-                        if (list.isEmpty)
-                          const SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(32),
-                                child: Text('Hozircha restoran yo\'q'),
-                              ),
-                            ),
-                          )
-                        else
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                            sliver: SliverList.separated(
-                              itemCount: list.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 16),
-                              itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
-                            ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                          sliver: SliverList.separated(
+                            itemCount: list.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 16),
+                            itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: _StickyHeader(
-                    scrolled: _scrolled,
-                    child: _Header(restaurants: list),
-                  ),
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _StickyHeader(
+                  scrolled: _scrolled,
+                  child: _Header(restaurants: list),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -337,9 +341,21 @@ class _HeaderState extends State<_Header> {
               ],
             ),
           ),
-          // Uchta amal — veb tomonidagi `header-actions.tsx` bilan
-          // bir xil tartibda: qidiruv, hamyon, bildirishnoma.
-          _IconButton(
+          // Amallar: qidiruv, hamyon, bildirishnoma.
+          //
+          // ┌─ YORDAMCHI TUGMASI BU YERDA YO'Q ─────────────────────────┐
+          // Ilgari bu qatorda birinchi bo'lib `Icons.auto_awesome`
+          // (Yordamchi) turardi. Olib tashlandi: Shaddiy'ga kirish
+          // nuqtasi BITTA bo'lishi kerak — pastki menyuning
+          // markazidagi yuz tugmasi (`ShaddiyFab`, `home_shell`).
+          //
+          // Ikki kirish nuqtasi bir-biriga mos kelmasdi: bu tugma
+          // holatdan qat'i nazar chizilardi, FAB esa `AiStatus` ga
+          // qarab kulrang "!" ko'rsatardi — foydalanuvchi bir joyda
+          // ishlaydigan, boshqa joyda ishlamaydigan yordamchini
+          // ko'rardi.
+          // └───────────────────────────────────────────────────────────┘
+          HeaderActionButton(
             icon: Icons.search,
             label: 'Qidirish',
             onTap: () => Navigator.of(context).push(
@@ -350,92 +366,19 @@ class _HeaderState extends State<_Header> {
             ),
           ),
           const SizedBox(width: 8),
-          _IconButton(
+          HeaderActionButton(
             icon: Icons.account_balance_wallet_outlined,
             label: 'Hamyon',
             onTap: () => _push(const WalletScreen()),
           ),
           const SizedBox(width: 8),
-          _IconButton(
+          HeaderActionButton(
             icon: Icons.notifications_none,
             label: 'Bildirishnomalar',
             badge: _unread,
             onTap: () => _push(const NotificationsScreen()),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Dumaloq ikon tugmasi.
-class _IconButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  /// O'qilmaganlar soni. 0 — belgi chizilmaydi.
-  final int badge;
-
-  const _IconButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.badge = 0,
-  });
-
-  /// Belgida ko'rsatiladigan eng katta son — undan yuqorisi "9+".
-  static const _maxBadge = 9;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkResponse(
-        radius: 24,
-        onTap: onTap,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE5E5E5)),
-                color: Colors.white,
-              ),
-              child: Icon(icon, size: 20, color: const Color(0xFF666666)),
-            ),
-            if (badge > 0)
-              Positioned(
-                right: -2,
-                top: -2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  constraints: const BoxConstraints(minWidth: 18),
-                  height: 18,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  // Maketdagi qizil nuqta — lekin raqam bilan:
-                  // "nechta?" degan savol nuqtadan javob olmaydi.
-                  child: Text(
-                    badge > _maxBadge ? '$_maxBadge+' : '$badge',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -474,8 +417,8 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
     final results = q.isEmpty
         ? const <Map<String, dynamic>>[]
         : widget.restaurants
-            .where((r) =>
-                ((r['name'] as String?) ?? '').toLowerCase().contains(q))
+            .where(
+                (r) => ((r['name'] as String?) ?? '').toLowerCase().contains(q))
             .toList();
 
     return PageSheet(
@@ -504,7 +447,9 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(32),
                 child: Text(
-                  q.isEmpty ? 'Restoran nomini yozing' : 'Mos restoran topilmadi',
+                  q.isEmpty
+                      ? 'Restoran nomini yozing'
+                      : 'Mos restoran topilmadi',
                   style: const TextStyle(color: Color(0xFF757575)),
                 ),
               ),
@@ -615,8 +560,8 @@ class _CategoryTile extends StatelessWidget {
                       // tashlardi (vebda esa `object-contain`).
                       fit: BoxFit.contain,
                       // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
-                      errorBuilder: (_, __, ___) => const Icon(
-                          Icons.restaurant, color: Color(0xFF9E9E9E)),
+                      errorBuilder: (_, __, ___) => const Icon(Icons.restaurant,
+                          color: Color(0xFF9E9E9E)),
                     ),
             ),
             const SizedBox(height: 6),
@@ -716,7 +661,8 @@ class _RestaurantCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: open ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                  color:
+                      open ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                 ),
               ),
             ),
@@ -759,7 +705,9 @@ class _RestaurantCard extends StatelessWidget {
                     child: Row(
                       children: [
                         const Icon(Icons.place_outlined,
-                            size: 12, color: Colors.white, shadows: _textShadow),
+                            size: 12,
+                            color: Colors.white,
+                            shadows: _textShadow),
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
@@ -828,7 +776,8 @@ class _Chip extends StatelessWidget {
   final Color iconColor;
   final String text;
 
-  const _Chip({required this.icon, required this.iconColor, required this.text});
+  const _Chip(
+      {required this.icon, required this.iconColor, required this.text});
 
   @override
   Widget build(BuildContext context) {

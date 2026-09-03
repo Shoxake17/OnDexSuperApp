@@ -213,6 +213,53 @@ func (r *PgUserRepo) SetPasswordHash(ctx context.Context, id, hash string) error
 	return nil
 }
 
+// DisabledAITools — foydalanuvchi o'chirgan yordamchi amallari.
+//
+// Foydalanuvchi topilmasa BO'SH ro'yxat qaytadi, xato emas: chaqiruvchi
+// uchun "hech narsa o'chirilmagan" bilan "foydalanuvchi yo'q" bir xil
+// natija beradi (ikkalasida ham amal ro'yxati qisqartirilmaydi), va
+// yordamchi tokeni allaqachon tekshirilgan bo'ladi.
+func (r *PgUserRepo) DisabledAITools(ctx context.Context, id string) ([]string, error) {
+	var raw string
+	err := r.pool.QueryRow(ctx,
+		`SELECT ai_disabled_tools FROM users WHERE id = $1`, id).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return splitTools(raw), nil
+}
+
+func (r *PgUserRepo) SetDisabledAITools(ctx context.Context, id string, tools []string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET ai_disabled_tools = $2 WHERE id = $1`,
+		id, strings.Join(tools, ","))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+// splitTools — bo'sh elementlarsiz ajratish. Bo'sh satr `[""]` emas,
+// `nil` bo'lishi kerak, aks holda "" nomli amal o'chirilgan hisoblanardi.
+func splitTools(raw string) []string {
+	out := make([]string, 0, 4)
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func (r *PgUserRepo) MarkEmailVerified(ctx context.Context, id string) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE users SET email_verified = TRUE WHERE id = $1`, id)

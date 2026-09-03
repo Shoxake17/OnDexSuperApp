@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../api.dart';
+import '../data/agent_driver.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/favorites_store.dart';
@@ -250,6 +251,16 @@ class _MenuScreenState extends State<MenuScreen> {
     super.initState();
     _cart.addListener(_onCart);
     _scroll.addListener(_onScroll);
+    // Shaddiy buyurtmani KO'RSATIB berishi uchun ekran o'zini
+    // ro'yxatdan o'tkazadi: skroll, taomlarning joylari va "+"
+    // amali. Boshqaruvchi ekranning ichiga kirmaydi — u faqat shu
+    // yerda e'lon qilingan narsalardan foydalanadi
+    // (`lib/data/agent_driver.dart`).
+    AgentStage.instance.registerMenu(
+      restaurantId: _id,
+      scroll: _scroll,
+      add: _addById,
+    );
     _subscribe();
     FavoritesStore.instance.load(force: true);
     _refreshQuote();
@@ -433,6 +444,9 @@ class _MenuScreenState extends State<MenuScreen> {
 
   @override
   void dispose() {
+    // Ekran yopilgach registr TOZALANADI: aks holda boshqaruvchi
+    // mavjud bo'lmagan ekrandagi tugmani "bosishga" urinardi.
+    AgentStage.instance.unregisterMenu(_id);
     _cart.removeListener(_onCart);
     _menuSub?.cancel();
     _promoSub?.cancel();
@@ -651,11 +665,19 @@ class _MenuScreenState extends State<MenuScreen> {
 
   // ── Savat ─────────────────────────────────────────────────────────
 
-  void _add(Map<String, dynamic> p) => _cart.increment(
-        restaurantId: _id,
-        productId: (p['id'] as String?) ?? '',
-        restaurantName: _name,
-      );
+  void _add(Map<String, dynamic> p) => _addById((p['id'] as String?) ?? '');
+
+  /// Savatga qo'shish — "+" tugmasi ham, Shaddiy ham AYNAN shuni
+  /// chaqiradi. Ikki xil yo'l bo'lsa, ulardan biri (masalan restoran
+  /// almashtirish tekshiruvi) e'tibordan chetda qolardi.
+  void _addById(String productId) {
+    if (productId.isEmpty) return;
+    _cart.increment(
+      restaurantId: _id,
+      productId: productId,
+      restaurantName: _name,
+    );
+  }
 
   void _remove(Map<String, dynamic> p) => _cart.decrement(
         restaurantId: _id,
@@ -675,6 +697,16 @@ class _MenuScreenState extends State<MenuScreen> {
     final id = (p['id'] as String?) ?? '';
     final discount =
         computeProductDiscount(p, _promos, cartSubtotalTiyin: _rawSubtotal);
+    // Kalit — Shaddiy taomni topib, unga skroll qilib, "barmoq"ni
+    // aynan shu kartochka ustiga qo'yishi uchun.
+    return KeyedSubtree(
+      key: AgentStage.instance.productKey(id),
+      child: _cardBody(p, id, discount),
+    );
+  }
+
+  Widget _cardBody(
+      Map<String, dynamic> p, String id, ProductDiscount? discount) {
     return ProductCard(
       product: p,
       qty: _cart.restaurantId == _id ? _cart.qtyOf(id) : 0,
@@ -684,6 +716,8 @@ class _MenuScreenState extends State<MenuScreen> {
       // saqlanmaydi (`widgets/product_grid.dart`).
       favorited: FavoritesStore.instance.contains(id),
       onAdd: () => _add(p),
+      // Shaddiy "barmog'i" AYNAN shu tugmani topishi uchun.
+      addKey: AgentStage.instance.addKey(id),
       onRemove: () => _remove(p),
       onTap: () => _openDetail(p),
     );

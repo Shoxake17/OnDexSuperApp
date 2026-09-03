@@ -30,6 +30,44 @@ var ErrConflict = errors.New("buyurtma boshqa so'rov tomonidan bir vaqtda o'zgar
 // mustahkamlangan).
 var ErrDuplicateIdempotencyKey = errors.New("bu idempotency-key allaqachon ishlatilgan")
 
+// ErrTotalChanged — mijozga KO'RSATILGAN summa bilan hozirgi haqiqiy
+// summa mos kelmadi, shuning uchun buyurtma yaratilmadi.
+//
+// ┌─ NEGA KERAK ───────────────────────────────────────────────────────┐
+// Ekranda summa ko'rsatilishi bilan tugma bosilishi orasida vaqt
+// o'tadi. O'sha oraliqda aksiya tugashi, restoran narxni tahrirlashi
+// yoki chegirma bekor bo'lishi mumkin. Tekshiruvsiz mijoz BOSHQA
+// summaga rozi bo'lgan buyurtmani olardi va buni faqat chekda
+// ko'rardi.
+//
+// Ayniqsa AI yordamchisi uchun muhim: u yerda savatni odam emas, til
+// modeli tuzadi va foydalanuvchi faqat yakuniy raqamga qarab
+// tasdiqlaydi — o'sha raqam buzilmasligi kerak.
+//
+// Tekshiruv IXTIYORIY: `expectedTotalTiyin <= 0` berilsa o'tkazib
+// yuboriladi (eski chaqiruvlar o'zgarmaydi).
+// └────────────────────────────────────────────────────────────────────┘
+var ErrTotalChanged = errors.New("narx o'zgardi")
+
+// TotalChangedError — `ErrTotalChanged` ning YANGI SUMMA bilan
+// birgalikdagi shakli.
+//
+// Faqat matn qaytarilsa HTTP qatlami yangi raqamni matndan ajratib
+// olishga majbur bo'lardi. Bu tur uni tayyor beradi, ya'ni ilova
+// darhol "yangi summa — shuncha, tasdiqlaysizmi?" deb ko'rsata oladi.
+type TotalChangedError struct {
+	ExpectedTiyin int64
+	ActualTiyin   int64
+}
+
+func (e *TotalChangedError) Error() string {
+	return fmt.Sprintf("narx o'zgardi: ko'rsatilgan %d tiyin, hozirgi %d tiyin",
+		e.ExpectedTiyin, e.ActualTiyin)
+}
+
+// Unwrap — `errors.Is(err, ErrTotalChanged)` ishlashi uchun.
+func (e *TotalChangedError) Unwrap() error { return ErrTotalChanged }
+
 // Repository — saqlash qatlami. Hozir in-memory, keyin PostgreSQL implementatsiyasi
 // shu interface'ni qanoatlantiradi va service kodi o'zgarmaydi.
 type Repository interface {
@@ -264,6 +302,25 @@ func (s *Service) Quote(ctx context.Context, restaurantID string, items []Item, 
 }
 
 func (s *Service) Create(ctx context.Context, o *Order) (*Order, error) {
+	return s.CreateExpecting(ctx, o, 0)
+}
+
+// CreateExpecting — Create, lekin mijozga KO'RSATILGAN summani ham
+// tekshiradi.
+//
+// `expectedTotalTiyin` > 0 bo'lsa va hisoblangan jami undan farq qilsa,
+// buyurtma YARATILMAYDI va `ErrTotalChanged` qaytadi. 0 berilsa
+// tekshiruv yo'q — `Create` aynan shunday chaqiradi.
+//
+// Tekshiruv narx hisoblangandan KEYIN, `Save` dan OLDIN turadi: shu
+// sababli mos kelmagan holatda bazada hech qanday iz qolmaydi.
+//
+// Idempotentlik tekshiruvi bundan OLDIN ishlaydi — ya'ni allaqachon
+// yaratilgan buyurtma narx o'zgargani uchun "yo'qolib qolmaydi",
+// eskisi o'z holicha qaytariladi.
+func (s *Service) CreateExpecting(ctx context.Context, o *Order,
+	expectedTotalTiyin int64) (*Order, error) {
+
 	if o.CustomerID == "" || o.RestaurantID == "" || len(o.Items) == 0 {
 		return nil, errors.New("customer_id, restaurant_id va items majburiy")
 	}
@@ -316,6 +373,16 @@ func (s *Service) Create(ctx context.Context, o *Order) (*Order, error) {
 	// jim o'tkazib yuborilmaydi.
 	if o.TotalTiyin <= 0 {
 		return nil, fmt.Errorf("buyurtma jami noto'g'ri (%d tiyin) — chegirma sozlamalarida xato bo'lishi mumkin, restoran bilan bog'laning", o.TotalTiyin)
+	}
+
+	// Mijoz ko'rgan summa hamon o'z kuchidami. Farq bo'lsa buyurtma
+	// yaratilmaydi — chaqiruvchi yangi summani ko'rsatib qayta
+	// so'raydi (`ErrTotalChanged` matnida ikkala raqam ham bor).
+	if expectedTotalTiyin > 0 && o.TotalTiyin != expectedTotalTiyin {
+		return nil, &TotalChangedError{
+			ExpectedTiyin: expectedTotalTiyin,
+			ActualTiyin:   o.TotalTiyin,
+		}
 	}
 
 	if err := s.repo.Save(ctx, o); err != nil {

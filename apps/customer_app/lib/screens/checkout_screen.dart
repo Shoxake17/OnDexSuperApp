@@ -6,6 +6,7 @@ import '../api.dart';
 import '../widgets/common.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../widgets/agent_overlay.dart' show AgentCheckoutConfirmAnchor;
 import '../widgets/app_text_field.dart';
 import '../widgets/page_sheet.dart';
 import '../data/quote_service.dart';
@@ -731,7 +732,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
+        // ┌─ SHADDIY OG'ZAKI TASDIQNI SHU YERGA OLIB KELADI ─────────┐
+        // Foydalanuvchi "ha" desa, ilova AYNAN shu tugmani bosadi va
+        // AYNAN shu `_submit` chaqiriladi — naqd to'lov bilan.
+        // Yangi buyurtma yo'li yozilmagan: server tekshiruvlari,
+        // narx qayta hisoblanishi, idempotentlik kaliti — hammasi
+        // o'z joyida qoladi.
+        //
+        // Tugma tayyor bo'lmasa (`ready == false`) ro'yxatga
+        // `null` beriladi va Shaddiy hech narsa bosa olmaydi.
+        // └──────────────────────────────────────────────────────────┘
+        child: AgentCheckoutConfirmAnchor(
+          onCashConfirm: ready ? _submitCash : null,
+          child: SizedBox(
           height: 56,
           child: FilledButton(
             style: FilledButton.styleFrom(
@@ -777,8 +790,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
           ),
         ),
+        ),
       ),
     );
+  }
+
+  /// Shaddiy og'zaki tasdiqdan keyin chaqiradigan yo'l.
+  ///
+  /// ┌─ NAQD — YAGONA AVTOMATIK YO'L ─────────────────────────────────┐
+  /// Karta bilan to'lash uchun bank sahifasi ochiladi va u yerda
+  /// SMS kod kiritiladi — buni ovoz bilan bajarib bo'lmaydi va
+  /// bajarilmasligi ham kerak. Shuning uchun og'zaki tasdiq FAQAT
+  /// naqd uchun: pul kuryerga beriladi, ilova hech qanday pul
+  /// yechmaydi.
+  ///
+  /// To'lov usuli MAJBURAN naqdga o'tkaziladi — foydalanuvchi
+  /// ekranda kartani tanlab qo'ygan bo'lsa ham, og'zaki "ha" karta
+  /// to'lovini boshlab yubormasligi kerak.
+  /// └────────────────────────────────────────────────────────────────┘
+  Future<void> _submitCash() async {
+    if (_submitting) return;
+    if (_payMethod != _PayMethod.cash) {
+      setState(() => _payMethod = _PayMethod.cash);
+    }
+    await _submit();
   }
 }
 

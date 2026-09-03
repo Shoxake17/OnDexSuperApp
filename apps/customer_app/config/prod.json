@@ -2,7 +2,7 @@
   "_izoh": "PRODUCTION sozlamalari. Ishlatish: flutter build apk --release --dart-define-from-file=config/prod.json",
   "_domen": "VAQTINCHALIK shoxpro.uz subdomenlari. ondex.uz olingach shu yerni yangilang.",
 
-  "ONDEX_APP_VERSION": "0.1.0",
+  "ONDEX_APP_VERSION": "0.2.0",
   "ONDEX_API_URL": "https://api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://web-ondex.shoxpro.uz"
 }

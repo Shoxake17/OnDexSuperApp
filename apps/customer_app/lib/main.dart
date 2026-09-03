@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 // `SystemChrome` / `SystemUiMode` uchun.
@@ -5,9 +8,12 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'session.dart';
+import 'data/agent_driver.dart';
+import 'screens/connected_apps_screen.dart';
 import 'screens/home_shell.dart';
 import 'screens/lock_gate.dart';
 import 'screens/login_screen.dart';
+import 'widgets/agent_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,9 +64,24 @@ const kBrand = Color(0xFFF4511E);
 // `darkTheme:` va `themeMode:` qo'shiladi. Veb tomonidagi mos
 // almashtirgich — `apps/web/tailwind.config.ts` dagi `darkMode` izohi.
 // └────────────────────────────────────────────────────────────────────┘
+// ┌─ `primary` URUG'DAN EMAS, BREND RANGINING O'ZI ────────────────────┐
+// `ColorScheme.fromSeed` Material 3 qoidasi bo'yicha urug'dan TONAL
+// palitra hosil qiladi va `primary` urug'ning AYNAN o'zi bo'lmaydi.
+// `#F4511E` (to'q sariq) dan chiqqan `primary` jigarrang edi — va
+// `FilledButton` lar (masalan manzil ekranidagi "Tayyor") ilovaning
+// qolgan qismidan butunlay boshqa rangda ko'rinardi.
+//
+// Shuning uchun `primary` va `onPrimary` QO'LDA qo'yiladi. Qolgan
+// tonal ranglar (`primaryContainer`, `surfaceTint` va h.k.) urug'dan
+// hosil bo'lishda davom etadi — ular fon va soyalar uchun, ularda
+// aniq brend rangi talab qilinmaydi.
+// └────────────────────────────────────────────────────────────────────┘
 final _lightScheme = ColorScheme.fromSeed(
   seedColor: kBrand,
   brightness: Brightness.light,
+).copyWith(
+  primary: kBrand,
+  onPrimary: Colors.white,
 );
 
 class ChustApp extends StatelessWidget {
@@ -71,6 +92,15 @@ class ChustApp extends StatelessWidget {
     return MaterialApp(
       title: 'ChustApp',
       debugShowCheckedModeBanner: false,
+      // Shaddiy ilovani boshqarganda ekranlar orasida yurishi kerak —
+      // yordamchi oynasi yopilgach uning `BuildContext` i o'ladi,
+      // shuning uchun ildiz navigatoriga kalit qo'yiladi
+      // (`lib/data/agent_driver.dart`).
+      navigatorKey: appNavigatorKey,
+      // Holat lentasi va "barmoq" BUTUN ilova ustida turadi: boshqaruv
+      // bitta ekranda emas, ekranlar orasida ketadi.
+      builder: (context, child) =>
+          AgentOverlay(child: child ?? const SizedBox.shrink()),
       theme: ThemeData(
         colorScheme: _lightScheme,
         // OQ — WebView ichidagi sahifaning foni bilan AYNAN bir xil
@@ -131,10 +161,58 @@ class _RootState extends State<_Root> {
   bool _loading = true;
   bool _loggedIn = false;
 
+  /// Deep link tinglagichi (`ondex://agent-link?code=...`).
+  ///
+  /// ┌─ NEGA SHU YERDA, EKRAN ICHIDA EMAS ────────────────────────────┐
+  /// Havola ilova YOPIQ bo'lganda ham kelishi mumkin — o'shanda hech
+  /// bir ekran hali qurilmagan bo'ladi. Ildizda tinglash ikkala
+  /// holatni ham qamrab oladi: "sovuq" ishga tushish (`getInitialLink`)
+  /// va ilova ochiq turganda kelgan havola (`uriLinkStream`).
+  ///
+  /// Telegram qaytish havolasi (`ondex://auth`) bu yerda O'QILMAYDI —
+  /// uni `telegram_auth.dart` o'z oqimida kutadi.
+  /// └────────────────────────────────────────────────────────────────┘
+  final _links = AppLinks();
+  StreamSubscription<Uri>? _linkSub;
+
   @override
   void initState() {
     super.initState();
     _restore();
+    _listenLinks();
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _listenLinks() async {
+    _linkSub = _links.uriLinkStream.listen(_handleLink, onError: (_) {});
+    try {
+      final initial = await _links.getInitialLink();
+      if (initial != null) _handleLink(initial);
+    } catch (_) {
+      // Havolani o'qib bo'lmasa ilova odatdagidek ochilaveradi.
+    }
+  }
+
+  void _handleLink(Uri uri) {
+    if (uri.host != 'agent-link') return;
+    final code = uri.queryParameters['code'] ?? '';
+    if (code.trim().isEmpty) return;
+    // Kirmagan foydalanuvchi rozilik BERA OLMAYDI: kimga ruxsat
+    // berilayotgani noma'lum bo'lardi. Havola shunchaki e'tiborsiz
+    // qoldiriladi — kirgandan keyin kodni qo'lda kiritishi mumkin.
+    if (!_loggedIn) return;
+    // Ekran qurilib bo'lgach ochiladi.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ConnectedAppsScreen(initialCode: code),
+      ));
+    });
   }
 
   Future<void> _restore() async {

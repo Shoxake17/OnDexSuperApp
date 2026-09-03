@@ -1,3 +1,4 @@
+// api/main.go
 package main
 
 import (
@@ -16,6 +17,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"chustapp/internal/agentapi"
+	"chustapp/internal/assistant"
 	"chustapp/internal/cache"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
@@ -25,12 +28,12 @@ import (
 	"chustapp/internal/httpapi"
 	"chustapp/internal/images"
 	"chustapp/internal/model3d"
-	"chustapp/internal/ratelimit"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/storage"
 	"chustapp/internal/tables"
@@ -668,6 +671,72 @@ func main() {
 	}
 	tableSvc := tables.NewService(tableRepo)
 
+	// ── Tashqi AI agentlar (integratsiya sheriklari) ──
+	//
+	// ┌─ NEGA XOTIRA REJIMIDA O'CHIQ ────────────────────────────────┐
+	// Grantlar — foydalanuvchi bergan, PUL sarflashga ruxsat
+	// beruvchi yozuvlar. Ular server qayta ishga tushganda
+	// yo'qolsa, sherik "token yaroqsiz" xatosini olib qoladi va
+	// foydalanuvchi sababini tushunmaydi. Bundan ko'ra funksiyani
+	// butunlay o'chirib, ANIQ 503 qaytargan halolroq.
+	//
+	// Stollar/bildirishnomalardan farqi shu: ular yo'qolsa ish
+	// davom etaveradi, bu esa yarim buzilgan holat yaratardi.
+	// └───────────────────────────────────────────────────────────────┘
+	var agentSvc *agentapi.Service
+	if pgPool != nil {
+		agentSvc = agentapi.NewService(
+			storage.NewPgAgentRepo(pgPool), catalogSvc, orderSvc)
+		slog.Info("rejim: AI agent integratsiyasi yoqilgan (/agent/v1)")
+	} else {
+		slog.Warn("AI agent integratsiyasi O'CHIQ (DATABASE_URL yo'q) — /agent/v1 503 qaytaradi")
+	}
+
+	// ── Ilova ichidagi AI yordamchi (chat + ovoz) ──
+	//
+	// ┌─ TASHQI AGENTDAN FARQI ───────────────────────────────────────┐
+	// Yuqoridagi `agentSvc` — BOSHQA server (Shaddiy ilovasi)
+	// foydalanuvchi nomidan ish qilishi uchun. Bu esa OnDex
+	// ilovasining O'Z chat oynasi: Shaddiy bu yerda faqat TIL
+	// MODELI, tool'larni OnDex o'zi bajaradi va yordamchi buyurtma
+	// YARATA OLMAYDI — u savat taklifini qaytaradi, tugmani odam
+	// bosadi.
+	//
+	// Bazaga bog'liq EMAS (holat mijozda saqlanadi), shuning uchun
+	// dev rejimda ham ishlaydi.
+	// └───────────────────────────────────────────────────────────────┘
+	var assistantSvc *assistant.Service
+	if shaddiy, ok := assistant.NewShaddiyFromEnv(); ok {
+		assistantSvc = assistant.NewService(
+			shaddiy, catalogRepo, catalogSvc, orderSvc, orderRepo, orderSvc)
+		slog.Info("rejim: ilova ichidagi AI yordamchi yoqilgan (/ai/chat)")
+	} else {
+		slog.Warn("AI yordamchi O'CHIQ (SHADDIY_AI_URL/SHADDIY_API_KEY yo'q) — /ai/* 503 qaytaradi")
+	}
+
+	// ┌─ OVOZLI REJIM (Gemini Live) ───────────────────────────────────┐
+	// Matnli chatdan MUSTAQIL yoqiladi. Sabab: qurilmadagi nutq
+	// tanish/sintez o'zbek tilini QO'LLAMAYDI (telefonda o'lchandi:
+	// tanish `ru-RU` ga tushardi, javob esa o'zbek matnini rus ovozi
+	// bilan o'qirdi). Gemini Live esa o'zbekcha tabiiy ovoz beradi.
+	//
+	// MAXFIYLIK: bu rejimda mikrofon oqimi serverga va u yerdan
+	// Google'ga ketadi — ilova buni foydalanuvchiga aytadi va
+	// roziligini so'raydi. Matnli chatda audio YO'Q.
+	//
+	// Yordamchining o'zi bo'lmasa ovoz ham yoqilmaydi: ovozli rejim
+	// AYNAN o'sha tool'lar ustida ishlaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	var assistantLive *assistant.LiveConfig
+	if assistantSvc != nil {
+		if cfg, ok := assistant.LiveConfigFromEnv(); ok {
+			assistantLive = &cfg
+			slog.Info("rejim: ovozli yordamchi yoqilgan (/ai/live)", "model", cfg.Model)
+		} else {
+			slog.Warn("Ovozli rejim O'CHIQ (GEMINI_API_KEY yo'q) — ilova mikrofon tugmasini ko'rsatmaydi")
+		}
+	}
+
 	// ── Karta orqali to'lov (Octo) ──
 	//
 	// ┌─ SOZLANMAGAN BO'LSA TIZIM NORMAL ISHLAYDI ────────────────────┐
@@ -811,11 +880,15 @@ func main() {
 		Telegram: tgVerifier,
 		// Mini App `initData` imzosini tekshirish uchun (server.go izohi).
 		TelegramBotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
-		Notifications:  notifStore,
-		PushTokens:     tokenStore,
-		Devices:        deviceStore,
-		Model3D:        model3DSvc,
-		Model3DLimiter: model3DLimiter,
+		Notifications:    notifStore,
+		PushTokens:       tokenStore,
+		Notifier:         notifSvc,
+		AgentSvc:         agentSvc,
+		Assistant:        assistantSvc,
+		AssistantLive:    assistantLive,
+		Devices:          deviceStore,
+		Model3D:          model3DSvc,
+		Model3DLimiter:   model3DLimiter,
 		// Yuklash: xodim uchun daqiqasiga ~6 ta, qisqa muddatda 12
 		// tagacha ketma-ket. Menyuni to'ldirish (bir necha o'nlab rasm)
 		// bemalol sig'adi, 25 MB li PDF larni ketma-ket haydash esa

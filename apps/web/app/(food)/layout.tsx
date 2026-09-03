@@ -1,6 +1,8 @@
 import { CartProvider } from "@/lib/cart-context";
 import { isAppShell } from "@/lib/session";
+import { AgentActivityProvider } from "./agent-activity";
 import BottomNav from "./bottom-nav";
+import WebMcpTools from "./webmcp-tools";
 
 export default async function FoodLayout({
   children,
@@ -19,11 +21,24 @@ export default async function FoodLayout({
 
   return (
     <CartProvider>
-      {children}
-      {/* Pastki menyu O'ZI qaysi sahifada ko'rinishini hal qiladi
-          (`bottom-nav.tsx` izohiga qarang) — shuning uchun uni har bir
-          sahifada alohida chizish shart emas. */}
-      {!inApp && <BottomNav />}
+      <AgentActivityProvider>
+        {/* ┌─ WEBMCP ─────────────────────────────────────────────────┐
+            Sahifaning amallarini brauzer agentiga ochadi. Hech narsa
+            chizmaydi va WebMCP qo'llanmagan brauzerda BUTUNLAY jim
+            turadi (`webmcpAvailable`), ya'ni oddiy foydalanuvchi uchun
+            hech qanday farq yo'q.
+
+            Bu yerda — `CartProvider` ICHIDA: amallar savat holatini
+            o'qiydi va o'zgartiradi, ya'ni odam bosgandagi bilan
+            aynan bir xil yo'ldan.
+            └──────────────────────────────────────────────────────────┘ */}
+        <WebMcpTools />
+        {children}
+        {/* Pastki menyu O'ZI qaysi sahifada ko'rinishini hal qiladi
+            (`bottom-nav.tsx` izohiga qarang) — shuning uchun uni har bir
+            sahifada alohida chizish shart emas. */}
+        {!inApp && <BottomNav />}
+      </AgentActivityProvider>
     </CartProvider>
   );
 }
