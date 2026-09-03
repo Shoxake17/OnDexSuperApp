@@ -9,6 +9,25 @@ const COOKIE_NAME = "chust_session";
 // cookie shu bilan mos keladi.
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
+// ┌─ COOKIE DOMENI (2026-09-03, `eats.ondex.uz` qo'shilgach topildi) ───┐
+// `Domain` yozilmasa cookie HOST-ONLY bo'ladi: brauzer uni FAQAT aynan
+// o'sha hostga bog'laydi, hatto subdomenlarga ham tarqalmaydi. Natija:
+// `ondex.uz`da login qilingan sessiya `eats.ondex.uz`da KO'RINMAYDI —
+// ikkalasi turli host, garchi bitta domenning subdomeni bo'lsa ham.
+// `/api/proxy/*` shu sababli 401 qaytargan ("xarita yuklanmadi" xatosi
+// aslida bu edi, tarmoqqa aloqasi yo'q).
+//
+// `LANDING_HOSTS` (proxy.ts) bilan bir xil andoza: standart qiymat
+// ishlab chiqarish domeni, `.env` orqali almashtiriladi. FAQAT
+// production'da qo'yiladi — dev/tunnel hostlarida (`localhost`,
+// `dev-web-ondex.shoxpro.uz`) `Domain=ondex.uz` yozilsa brauzer
+// mos kelmagani uchun cookie'ni BUTUNLAY rad etardi.
+// └────────────────────────────────────────────────────────────────────┘
+const COOKIE_DOMAIN =
+  process.env.NODE_ENV === "production"
+    ? (process.env.SESSION_COOKIE_DOMAIN ?? "ondex.uz")
+    : undefined;
+
 export async function setSessionToken(token: string) {
   const store = await cookies();
   store.set(COOKIE_NAME, token, {
@@ -16,6 +35,7 @@ export async function setSessionToken(token: string) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    domain: COOKIE_DOMAIN,
     maxAge: COOKIE_MAX_AGE,
   });
 }
@@ -27,8 +47,16 @@ export async function getSessionToken(): Promise<string | null> {
 
 export async function clearSessionToken() {
   const store = await cookies();
-  store.delete(COOKIE_NAME);
-  store.delete(CLIENT_COOKIE);
+  // ┌─ `domain`/`path` ANIQ MOS KELISHI SHART ────────────────────────┐
+  // Cookie'ni o'chirish aslida uni MUDDATI TUGAGAN holda qayta yozish —
+  // brauzer buni faqat `Domain`/`Path` ASL o'rnatilganidek berilsagina
+  // O'SHA cookie deb taniydi. Faqat nom berilsa (`domain` yo'q) yangi,
+  // boshqa (host-only) cookie yaratiladi — asl `Domain=ondex.uz`li
+  // sessiya esa TEGILMAY qoladi va logout'dan keyin ham ishlashda
+  // davom etardi.
+  // └───────────────────────────────────────────────────────────────────┘
+  store.delete({ name: COOKIE_NAME, path: "/", domain: COOKIE_DOMAIN });
+  store.delete({ name: CLIENT_COOKIE, path: "/", domain: COOKIE_DOMAIN });
 }
 
 // ─── Sessiya QAYSI dasturdan ochilgani ──────────────────────────────
@@ -57,6 +85,7 @@ export async function setClientKind(kind: WebClientKind) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    domain: COOKIE_DOMAIN,
     maxAge: COOKIE_MAX_AGE,
   });
 }
@@ -95,6 +124,7 @@ export async function setAppShell() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    domain: COOKIE_DOMAIN,
     maxAge: COOKIE_MAX_AGE,
   });
 }
