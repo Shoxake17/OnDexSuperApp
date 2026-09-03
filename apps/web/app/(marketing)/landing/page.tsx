@@ -215,7 +215,7 @@ function Header() {
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <a
-            href="/"
+            href="/login"
             className="hidden rounded-xl border border-neutral-200 px-4 py-2 text-sm font-semibold transition-colors hover:bg-neutral-50 sm:inline-block"
           >
             Kirish

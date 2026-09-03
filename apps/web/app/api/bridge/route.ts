@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { goFetch } from "@/lib/api";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { setAppShell, setSessionToken } from "@/lib/session";
 
 // POST /api/bridge  (tana: token=...&redirect=/...)
@@ -32,17 +33,6 @@ function originFrom(req: NextRequest): string {
   const host = req.headers.get("host") ?? req.nextUrl.host;
   const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
   return `${proto}://${host}`;
-}
-
-// safeRedirect — faqat SHU ilova ichidagi nisbiy yo'lga ruxsat beriladi.
-// Busiz `redirect=https://evil.example` ochiq qayta yo'naltirish
-// (open redirect) bo'lardi: hujumchi foydalanuvchini o'z saytiga
-// olib chiqib, ilova ichidagidek ko'rsatishi mumkin edi.
-function safeRedirect(raw: string | null): string {
-  if (!raw) return "/";
-  // "//host" ham brauzer uchun mutlaq manzil — shuning uchun rad etiladi.
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
-  return raw;
 }
 
 export async function POST(req: NextRequest) {
