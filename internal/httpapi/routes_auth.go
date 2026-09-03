@@ -465,6 +465,37 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		})
 	})
 
+	// POST /auth/telegram/login/start-web — yuqoridagi bilan AYNAN bir
+	// xil, faqat oddiy brauzer (`apps/web`) uchun: "OnDex'ga qaytish"
+	// tugmasi ilova (`ondex://`) o'rniga BFF'ning o'ziga qaytadi
+	// (`Pending.Web`, `Verifier.StartLoginWeb` izohiga qarang).
+	//
+	// ALOHIDA YO'L ATAYLAB: qaytish manzili mijozdan SO'RALMAYDI —
+	// aks holda u ochiq qayta yo'naltirish (open redirect) bo'lardi va
+	// "Telegram bilan kirish"ning butun fishingga qarshi himoyasini
+	// aylanib o'tish vositasiga aylanardi (`Pending.ConfirmSecret`
+	// izohidagi hujum ssenariysi). Ikkala manzil ham (`PUBLIC_BASE_URL`,
+	// `WEB_PUBLIC_BASE_URL`) FAQAT server sozlamasidan keladi.
+	mux.HandleFunc("POST /auth/telegram/login/start-web", func(w http.ResponseWriter, r *http.Request) {
+		if !s.telegramReady(w) {
+			return
+		}
+		if rateLimited(w, telegramIPLimiter, clientIP(r)) {
+			return
+		}
+		link, token, err := s.Telegram.StartLoginWeb(r.Context())
+		if err != nil {
+			slog.Warn("telegram: web login start xatosi", "err", err)
+			httpError(w, http.StatusBadGateway,
+				errors.New("Telegram bilan bog'lanib bo'lmadi"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"deep_link": link,
+			"token":     token,
+		})
+	})
+
 	// POST /auth/telegram/miniapp  {"init_data": "..."}
 	//
 	// ┌─ TELEGRAM MINI APP KIRISHI ───────────────────────────────────┐

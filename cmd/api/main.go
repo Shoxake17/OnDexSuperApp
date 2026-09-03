@@ -595,6 +595,13 @@ func main() {
 		// Wi-Fi orqali ishlansa LAN IP yozilishi kerak, production'da esa
 		// haqiqiy domen.
 		publicURL := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL"))
+		// WEB_PUBLIC_BASE_URL — `apps/web`ning o'zi (masalan
+		// `https://ondex.uz`), `PUBLIC_BASE_URL` (Go API domeni,
+		// `api.ondex.uz`) bilan ADASHTIRMASLIK KERAK. Faqat oddiy
+		// brauzerdan "Telegram bilan kirish" uchun (`StartLoginWeb`,
+		// `Pending.Web`) — bo'sh bo'lsa o'sha yo'l botning "qaytish"
+		// tugmasisiz qoladi (ilova yo'liga ta'sir qilmaydi).
+		webPublicURL := strings.TrimSpace(os.Getenv("WEB_PUBLIC_BASE_URL"))
 		// ┌─ KALIT QACHON MAJBURIY ────────────────────────────────┐
 		// Avval shart `!devMode` edi, ya'ni dev'da fishing teshigi
 		// HAR DOIM ochiq turardi. Aslida kalitni tushirib qoldirish
@@ -612,6 +619,7 @@ func main() {
 		// └────────────────────────────────────────────────────────┘
 		tgVerifier = tgVerifier.
 			WithPublicURL(publicURL).
+			WithWebPublicURL(webPublicURL).
 			WithConfirmSecretRequired(!devMode || publicURL != "").
 			// ┌─ MINI APP BOG'LANISHI ────────────────────────────────┐
 			// Kontakt ulashilganda telegram_id ↔ telefon saqlanadi
@@ -647,9 +655,16 @@ func main() {
 			slog.Error("PUBLIC_BASE_URL yo'q — \"Telegram bilan kirish\" " +
 				"YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
+		// Ilova yo'lidan MUSTAQIL: apps/web'dagi login sahifasi (`/login`)
+		// SMS ulanmagan paytda ham ishlashi uchun yagona kanal shu.
+		if secretRequired && webPublicURL == "" {
+			slog.Error("WEB_PUBLIC_BASE_URL yo'q — brauzerdan \"Telegram bilan " +
+				"kirish\" YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
+		}
 		go tgVerifier.Run(context.Background())
 		slog.Info("rejim: Telegram bot (OTP yetkazish) yoqilgan",
-			"qaytish_manzili", publicURL, "kalit_majburiy", secretRequired)
+			"qaytish_manzili", publicURL, "web_qaytish_manzili", webPublicURL,
+			"kalit_majburiy", secretRequired)
 	} else {
 		slog.Warn("TELEGRAM_BOT_TOKEN yo'q — /auth/telegram/start o'chirilgan")
 	}

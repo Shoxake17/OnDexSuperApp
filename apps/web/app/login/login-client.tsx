@@ -2,32 +2,45 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Phone, ShieldCheck } from "lucide-react";
+import { ArrowLeft, MessageCircle, Phone, ShieldCheck } from "lucide-react";
 import { getTelegramWebApp } from "@/lib/telegram";
 import { AppButton } from "../(food)/ui";
 
-// Telefon + SMS-kod bilan kirish — mavjud Go endpointlarini ishlatadi
-// (`POST /auth/request-code`, `POST /auth/verify` — `lib/session.ts`
-// izohidagi "web" kirish yo'li). Kod TO'G'RI bo'lsa backend akkauntni
-// avtomatik topadi yoki (birinchi marta bo'lsa) yaratadi — alohida
-// "ro'yxatdan o'tish" qadami YO'Q, xuddi Telegram orqali kirishdagi
-// kabi bitta oqim.
+// Kirish sahifasi — ikki kanal:
 //
-// Bu sahifa FAQAT eng oxirgi chora: Telegram Mini App va mijoz ilovasi
-// (Flutter WebView) o'z avtomatik kirish yo'llaridan foydalanadi va bu
-// yerga umuman kelmaydi (`page.tsx` izohiga qarang). Pastdagi Telegram
-// tekshiruvi shunchaki qo'shimcha himoya qatlami — kutilmagan holatda
-// ham forma ko'rsatilmasin, o'z avtomatik oynasiga qaytarilsin.
+//   1. Telegram bot orqali (STANDART, hozircha YAGONA ISHLAYDIGAN
+//      yo'l — SMS provayder hali ULANMAGAN, `internal/users/service.go`
+//      dagi `s.sms.Send` production'da xato qaytaradi). Foydalanuvchi
+//      hech narsa yozmaydi: bot raqamini so'raydi, tasdiqlangач
+//      "OnDex'ga qaytish" tugmasi bosiladi va
+//      `/api/auth/telegram-return` sessiyani yakunlaydi
+//      (`internal/telegram/verifier.go`dagi `StartLoginWeb`/
+//      `Pending.Web`).
+//   2. Telefon + SMS kod (ZAXIRA — SMS ulangach standart bo'lishi
+//      mumkin). Mavjud `/api/auth/request-code`/`verify`ni ishlatadi.
+//
+// Ikkalasi ham backend'da akkauntni avtomatik topadi/yaratadi —
+// alohida "ro'yxatdan o'tish" qadami yo'q.
 
 const RESEND_COOLDOWN = 60; // users.resendCooldown bilan mos (soniya)
 const CODE_LENGTH = 6; // users.randomCode — "%06d"
 
-type Step = "phone" | "code";
+type Mode = "choose" | "phone" | "code";
 
-export default function LoginClient({ next }: { next: string }) {
+export default function LoginClient({
+  next,
+  initialError = null,
+}: {
+  next: string;
+  initialError?: string | null;
+}) {
   const router = useRouter();
 
-  const [step, setStep] = useState<Step>("phone");
+  const [mode, setMode] = useState<Mode>("choose");
+  const [tgBusy, setTgBusy] = useState(false);
+  const [tgWaiting, setTgWaiting] = useState(false);
+  const [tgError, setTgError] = useState<string | null>(initialError);
+
   const [digits, setDigits] = useState(""); // 998'dan keyingi 9 ta raqam
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,8 +63,35 @@ export default function LoginClient({ next }: { next: string }) {
   }, [cooldown]);
 
   useEffect(() => {
-    if (step === "code") codeInputRef.current?.focus();
-  }, [step]);
+    if (mode === "code") codeInputRef.current?.focus();
+  }, [mode]);
+
+  async function startTelegramLogin() {
+    if (tgBusy) return;
+    setTgBusy(true);
+    setTgError(null);
+    try {
+      const res = await fetch("/api/auth/telegram-login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data?.deep_link !== "string") {
+        setTgError(data?.error ?? "Telegram bilan bog'lanib bo'lmadi.");
+        return;
+      }
+      // YANGI OYNADA: shu sahifa ochiq qoladi va "kutilmoqda" holatini
+      // ko'rsatadi — botdagi "OnDex'ga qaytish" tugmasi qaytadan shu
+      // brauzerni (istalgan oynasini) ochadi va yakunlaydi.
+      window.open(data.deep_link, "_blank", "noopener,noreferrer");
+      setTgWaiting(true);
+    } catch {
+      setTgError("Tarmoq xatosi. Internet aloqasini tekshiring.");
+    } finally {
+      setTgBusy(false);
+    }
+  }
 
   const phone = `+998${digits}`;
   const phoneValid = digits.length === 9;
@@ -68,16 +108,13 @@ export default function LoginClient({ next }: { next: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // 429 uchun serverning o'zi qancha kutish kerakligini beradi —
-        // shu bilan hisoblagichni sinxronlaymiz (masalan sahifa qayta
-        // ochilganda ham to'g'ri qolsin).
         if (typeof data?.retry_after === "number") setCooldown(data.retry_after);
         setError(data?.error ?? "Kod yuborib bo'lmadi. Qaytadan urinib ko'ring.");
         return;
       }
       setDevCode(typeof data?.dev_code === "string" ? data.dev_code : null);
       setCode("");
-      setStep("code");
+      setMode("code");
       setCooldown(RESEND_COOLDOWN);
     } catch {
       setError("Tarmoq xatosi. Internet aloqasini tekshiring.");
@@ -105,9 +142,7 @@ export default function LoginClient({ next }: { next: string }) {
       }
       // TO'LIQ SAHIFA YUKLASH ATAYLAB: server komponentlari (root
       // layout'dagi `signedIn`, himoyalangan sahifalardagi
-      // `requireAuth`) cookie'ni FAQAT yangi so'rovda ko'radi —
-      // `router.push` bilan eski holat saqlanib qolardi
-      // (`telegram-auth.tsx`dagi bir xil naqsh).
+      // `requireAuth`) cookie'ni FAQAT yangi so'rovda ko'radi.
       window.location.replace(next);
     } catch {
       setError("Tarmoq xatosi. Internet aloqasini tekshiring.");
@@ -127,11 +162,11 @@ export default function LoginClient({ next }: { next: string }) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-10">
-      {step === "code" && (
+      {mode !== "choose" && (
         <button
           type="button"
           onClick={() => {
-            setStep("phone");
+            setMode("choose");
             setError(null);
             setCode("");
           }}
@@ -142,16 +177,52 @@ export default function LoginClient({ next }: { next: string }) {
         </button>
       )}
 
-      <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
-        {step === "phone" ? <Phone size={26} /> : <ShieldCheck size={26} />}
-      </div>
-
-      {step === "phone" ? (
+      {mode === "choose" && (
         <>
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <MessageCircle size={26} />
+          </div>
           <h1 className="text-2xl font-bold">Kirish</h1>
           <p className="mt-1.5 text-sm text-neutral-500">
-            Buyurtma berish uchun telefon raqamingizni kiriting — SMS orqali
-            tasdiqlash kodi yuboramiz.
+            Buyurtma berish uchun Telegram orqali tasdiqlang — kod yozish
+            shart emas, bot o'zi so'raydi.
+          </p>
+
+          <div className="mt-6">
+            <AppButton onClick={startTelegramLogin} disabled={tgBusy}>
+              {tgBusy ? "Ochilmoqda…" : "Telegram orqali kirish"}
+            </AppButton>
+          </div>
+
+          {tgWaiting && (
+            <p className="mt-4 text-center text-sm text-neutral-500">
+              Yangi oynada botni tasdiqlang — u yerdagi{" "}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                &quot;OnDex&apos;ga qaytish&quot;
+              </span>{" "}
+              tugmasi bosilgach, shu sahifa avtomatik davom etadi.
+            </p>
+          )}
+          {tgError && <p className="mt-4 text-sm text-red-500">{tgError}</p>}
+
+          <button
+            type="button"
+            onClick={() => setMode("phone")}
+            className="mt-6 text-center text-sm font-semibold text-neutral-500"
+          >
+            yoki telefon raqam bilan
+          </button>
+        </>
+      )}
+
+      {mode === "phone" && (
+        <>
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <Phone size={26} />
+          </div>
+          <h1 className="text-2xl font-bold">Telefon raqam</h1>
+          <p className="mt-1.5 text-sm text-neutral-500">
+            SMS orqali tasdiqlash kodi yuboramiz.
           </p>
 
           <form
@@ -189,8 +260,13 @@ export default function LoginClient({ next }: { next: string }) {
             </div>
           </form>
         </>
-      ) : (
+      )}
+
+      {mode === "code" && (
         <>
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <ShieldCheck size={26} />
+          </div>
           <h1 className="text-2xl font-bold">Kod kiriting</h1>
           <p className="mt-1.5 text-sm text-neutral-500">
             <span className="font-medium text-neutral-700 dark:text-neutral-300">

@@ -23,7 +23,12 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 // `dev-web-ondex.shoxpro.uz`) `Domain=ondex.uz` yozilsa brauzer
 // mos kelmagani uchun cookie'ni BUTUNLAY rad etardi.
 // └────────────────────────────────────────────────────────────────────┘
-const COOKIE_DOMAIN =
+// Eksport qilingan: `/api/auth/telegram-*` marshrutlaridagi VAQTINCHALIK
+// kuzatish cookie'si ham SHU domenni ishlatadi — botning "qaytish"
+// tugmasi doim BITTA belgilangan hostga (`WEB_PUBLIC_BASE_URL`) tushadi,
+// oqim esa boshqa subdomenda (masalan `eats.ondex.uz`) boshlangan
+// bo'lishi mumkin (`telegram-login/start/route.ts` izohiga qarang).
+export const COOKIE_DOMAIN =
   process.env.NODE_ENV === "production"
     ? (process.env.SESSION_COOKIE_DOMAIN ?? "ondex.uz")
     : undefined;

@@ -50,6 +50,13 @@ const returnDeepLink = "ondex://auth"
 // └───────────────────────────────────────────────────────────────────┘
 const returnPath = "/auth/telegram/return?c="
 
+// webReturnPath — brauzerdan boshlangan kirish uchun (`StartLoginWeb`,
+// `Pending.Web`). Go serverning O'ZIGA emas — Next.js BFF'ga ishora
+// qiladi (`WEB_PUBLIC_BASE_URL`), chunki sessiya cookie'si FAQAT shu
+// qatlamda o'rnatiladi (`apps/web/lib/session.ts`). Go tomonda
+// hech qanday cookie/HTML yo'q — u faqat JSON API.
+const webReturnPath = "/api/auth/telegram-return?c="
+
 // Pending — boshlangan, lekin hali tasdiqlanmagan urinish.
 type Pending struct {
 	Token string
@@ -102,6 +109,14 @@ type Pending struct {
 	// keladi.
 	// └───────────────────────────────────────────────────────────────┘
 	ConfirmSecret string
+
+	// Web — bu urinish MIJOZ ILOVASI emas, oddiy brauzer (`apps/web`)
+	// tomonidan boshlangan (`StartLoginWeb`). "OnDex'ga qaytish"
+	// tugmasi shunga qarab ikki xil manzilga ishora qiladi:
+	// `ondex://auth?c=...` (ilova) yoki `<WEB_PUBLIC_BASE_URL>/api/
+	// auth/telegram-return?c=...` (brauzer) — pastdagi kontakt
+	// ishlov beruvchisiga qarang.
+	Web bool
 
 	// Done — Telegram tasdiqlab bo'ldi.
 	Done bool
@@ -400,6 +415,10 @@ type Verifier struct {
 	// publicURL — "OnDex'ga qaytish" tugmasi ishora qiladigan manzil
 	// (`returnPath` izohiga qarang). Bo'sh bo'lsa tugma yuborilmaydi.
 	publicURL string
+	// webPublicURL — xuddi shu, lekin BRAUZERDAN kirish uchun
+	// (`webReturnPath`, `Pending.Web`). Odatda `apps/web`ning o'zi
+	// (masalan `https://ondex.uz`) — Go serverning manzili EMAS.
+	webPublicURL string
 	// onContact — kontakt ulashilganda telegram_id ↔ telefon
 	// bog'lanishini saqlaydi (Mini App uchun). `WithContactHook`.
 	onContact ContactHook
@@ -433,6 +452,14 @@ type Verifier struct {
 // SHART, aks holda "qaytish" tugmasi ochilmaydi.
 func (v *Verifier) WithPublicURL(base string) *Verifier {
 	v.publicURL = strings.TrimRight(strings.TrimSpace(base), "/")
+	return v
+}
+
+// WithWebPublicURL — `apps/web`ning TASHQARIDAN ko'rinadigan manzili
+// (`WEB_PUBLIC_BASE_URL`). `WithPublicURL` bilan bir xil rol, faqat
+// brauzerdan boshlangan kirish uchun (`webReturnPath` izohiga qarang).
+func (v *Verifier) WithWebPublicURL(base string) *Verifier {
+	v.webPublicURL = strings.TrimRight(strings.TrimSpace(base), "/")
 	return v
 }
 
@@ -549,6 +576,36 @@ func (v *Verifier) StartLogin(ctx context.Context) (deepLink, token string, err 
 		Token: token,
 		// Phone bo'sh = kirish rejimi.
 		ConfirmSecret: secret,
+		ExpiresAt:     time.Now().Add(pendingTTL),
+	})
+	return DeepLink(name, token), token, nil
+}
+
+// StartLoginWeb — `StartLogin` bilan AYNAN bir xil, faqat
+// `Pending.Web = true` bilan: "OnDex'ga qaytish" tugmasi ilova
+// (`ondex://`) o'rniga `apps/web`ga (`webPublicURL`) ishora qiladi.
+//
+// Alohida metod sifatida (branch/parametr emas): `StartLogin`ning
+// mavjud chaqiruvchilari (mijoz ilovasi) O'ZGARISHSIZ qoladi — yangi
+// xatti-harakat faqat ANIQ shu yo'lni tanlagan chaqiruvchiga ta'sir
+// qiladi.
+func (v *Verifier) StartLoginWeb(ctx context.Context) (deepLink, token string, err error) {
+	name, err := v.username(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	token, err = randomToken()
+	if err != nil {
+		return "", "", err
+	}
+	secret, err := randomToken()
+	if err != nil {
+		return "", "", err
+	}
+	v.store.put(&Pending{
+		Token:         token,
+		ConfirmSecret: secret,
+		Web:           true,
 		ExpiresAt:     time.Now().Add(pendingTTL),
 	})
 	return DeepLink(name, token), token, nil
@@ -759,6 +816,15 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 		// (`Pending.ConfirmSecret` izohiga qarang).
 		if p.Phone == "" {
 			v.store.markLoggedIn(p.Token, shared)
+
+			// Web va ilova ikki xil manzilga qaytadi (`Pending.Web`
+			// izohiga qarang) — qaysi biri ISHLATILISHI shu yerda
+			// hal qilinadi, qolgani ikkalasi uchun bir xil.
+			base, path, target := v.publicURL, returnPath, "ilova"
+			if p.Web {
+				base, path, target = v.webPublicURL, webReturnPath, "veb"
+			}
+
 			// Avval "raqamni ulashish" klaviaturasini olib tashlaymiz,
 			// keyin qaytish tugmasini yuboramiz — ikkovi bitta xabarda
 			// birga bo'la olmaydi (Telegram cheklovi).
@@ -767,30 +833,27 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 			// va foydalanuvchi hech narsa ko'rmasdi. Ilova natijani
 			// o'zi so'rab oladi, ya'ni foydalanuvchi shunchaki
 			// ilovaga qaytsa yetarli.
-			if !v.requireSecret || v.publicURL == "" {
+			if !v.requireSecret || base == "" {
 				_ = v.client.RemoveKeyboard(ctx, chatID,
 					"Tasdiqlandi ✅\n\nOnDex ilovasiga qayting — "+
 						"kirish avtomatik yakunlanadi.")
 				return
 			}
-			// Avval "raqamni ulashish" klaviaturasini olib tashlaymiz,
-			// keyin qaytish tugmasini yuboramiz — ikkovi bitta xabarda
-			// birga bo'la olmaydi (Telegram cheklovi).
 			_ = v.client.RemoveKeyboard(ctx, chatID, "Tasdiqlandi ✅")
-			link := v.publicURL + returnPath + url.QueryEscape(p.ConfirmSecret)
+			link := base + path + url.QueryEscape(p.ConfirmSecret)
 			if err := v.client.SendReturnLink(ctx, chatID,
-				"OnDex ilovasiga qayting — kirish avtomatik yakunlanadi.",
+				"OnDex'ga qayting — kirish avtomatik yakunlanadi.",
 				link, "OnDex'ga qaytish"); err != nil {
 				// Bu xato AVVAL jimgina yutilardi va tugma ko'rinmasdan
 				// qolardi (`returnPath` izohiga qarang). Kalit talab
 				// qilinadigan rejimda bu KIRISHNI TO'XTATADI, shuning
 				// uchun foydalanuvchiga ham aytiladi.
 				slog.Error("telegram: qaytish tugmasi yuborilmadi",
-					"err", err, "url", link,
-					"maslahat", "PUBLIC_BASE_URL ommaviy domen bo'lishi kerak")
+					"err", err, "url", link, "manba", target,
+					"maslahat", "PUBLIC_BASE_URL/WEB_PUBLIC_BASE_URL ommaviy domen bo'lishi kerak")
 				_ = v.client.SendMessage(ctx, chatID,
 					"Kirishni yakunlab bo'lmadi (server sozlamasi). "+
-						"Ilovada qaytadan urinib ko'ring.")
+						"Qaytadan urinib ko'ring.")
 			}
 			return
 		}

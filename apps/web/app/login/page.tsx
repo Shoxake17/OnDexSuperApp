@@ -23,9 +23,9 @@ export const metadata = { title: "Kirish" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, error } = await searchParams;
   const target = safeRedirect(next);
 
   // Allaqachon kirgan bo'lsa — forma o'rniga darhol maqsadga.
@@ -33,5 +33,15 @@ export default async function LoginPage({
     redirect(target);
   }
 
-  return <LoginClient next={target} />;
+  return (
+    <LoginClient
+      next={target}
+      // `/api/auth/telegram-return` muvaffaqiyatsiz bo'lsa shu bilan
+      // qaytaradi (`?error=telegram`) — sabab UZOQ (kalit eskirgan,
+      // boshqa qurilma, Go bilan bog'lanib bo'lmadi) va foydalanuvchiga
+      // aynan qaysi biri bo'lgani muhim emas: yechim baribir bir xil —
+      // qaytadan urinish.
+      initialError={error === "telegram" ? "Telegram orqali kirish amalga oshmadi. Qaytadan urinib ko'ring." : null}
+    />
+  );
 }
