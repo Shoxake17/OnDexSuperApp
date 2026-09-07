@@ -91,7 +91,15 @@ func (s *Server) sceneViewMany(r *http.Request, list []*catalog.Restaurant) []ca
 // Imzolash yiqilsa maydonlar TOZALANADI — buzuq havola berishdan
 // ko'ra taklifni umuman ko'rsatmaslik to'g'ri.
 func (s *Server) signScene(r *http.Request, rest catalog.Restaurant) catalog.Restaurant {
-	if rest.Scene3DURL == "" || s.Scenes == nil {
+	if rest.Scene3DURL == "" {
+		return rest
+	}
+	// Yopiq bucket berilgan-u, unga kirib bo'lmagan holat: taklifni
+	// ko'rsatmaymiz (`ScenesUnavailable` izohiga qarang).
+	if s.ScenesUnavailable {
+		return rest.PublicView()
+	}
+	if s.Scenes == nil {
 		return rest
 	}
 	key := scenes.ObjectKey(rest.Scene3DURL, s.MediaPublicBaseURL)

@@ -78,6 +78,24 @@ func New(ctx context.Context, accountID, accessKeyID, secretAccessKey, bucket st
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.UsePathStyle = true // R2 uchun tavsiya etilgan rejim
 	})
+	// ┌─ NEGA BU YERDA TEKSHIRUV KERAK ────────────────────────────────┐
+	// Imzolash LOKAL amal: `PresignGetObject` R2 ga UMUMAN murojaat
+	// qilmaydi, u shunchaki URL ni imzolaydi. Ya'ni kalitda bu
+	// bucket'ga ruxsat bo'lmasa ham server "to'g'ri ko'rinadigan"
+	// havola beraveradi va xato faqat MIJOZ yuklab olmoqchi
+	// bo'lganda, 403 bo'lib chiqadi — serverda esa hech qanday iz
+	// qolmaydi.
+	//
+	// Shuning uchun ruxsat ishga tushishda BIR MARTA tekshiriladi.
+	// R2 API tokeni ko'pincha aniq bucket'larga bog'lanadi, ya'ni
+	// yangi bucket ochilganda tokenni ham yangilash kerak bo'ladi —
+	// bu eng ko'p uchraydigan xato.
+	// └────────────────────────────────────────────────────────────────┘
+	if _, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &bucket}); err != nil {
+		return nil, fmt.Errorf("scenes: %q bucket'iga kirib bo'lmadi — "+
+			"R2 API tokenida shu bucket uchun ruxsat bormi? (%w)", bucket, err)
+	}
+
 	return &Signer{
 		presign: s3.NewPresignClient(client),
 		bucket:  bucket,

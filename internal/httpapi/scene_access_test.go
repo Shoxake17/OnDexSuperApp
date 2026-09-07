@@ -105,6 +105,24 @@ func TestSceneFieldsHiddenWithBrokenToken(t *testing.T) {
 	}
 }
 
+// Yopiq bucket berilgan-u, unga kirib bo'lmagan holat: taklif
+// KO'RSATILMASIN.
+//
+// Bu holatda saqlangan ommaviy manzilni qaytarish eng yomon variant
+// bo'lardi: fayl allaqachon yopiq bucket'ga ko'chirilgan bo'lsa mijoz
+// 220 MB ni yuklab bo'lgach 404 ko'rardi.
+func TestSceneHiddenWhenBucketUnavailable(t *testing.T) {
+	s, tok := sceneTestServer(t)
+	s.ScenesUnavailable = true
+
+	r := httptest.NewRequest(http.MethodGet, "/restaurants", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+
+	if got := s.sceneViewOne(r, sceneTestRestaurant()); got.Scene3DURL != "" {
+		t.Errorf("bucket ishlamayotganda maket ko'rsatilmasligi kerak, olindi: %q", got.Scene3DURL)
+	}
+}
+
 // Ro'yxat yo'li ham bir xil qoidaga bo'ysunsin — `GET /restaurants`
 // aynan shu yo'ldan o'tadi va u eng ko'p so'raladigan endpoint.
 func TestSceneFieldsHiddenInListWithoutToken(t *testing.T) {

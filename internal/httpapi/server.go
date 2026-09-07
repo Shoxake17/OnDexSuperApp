@@ -78,6 +78,15 @@ type Deps struct {
 	// MediaPublicBaseURL â€” `R2_PUBLIC_URL`. Saqlangan to'liq manzildan
 	// obyekt kalitini ajratish uchun kerak (`scenes.ObjectKey`).
 	MediaPublicBaseURL string
+	// ScenesUnavailable — `R2_SCENES_BUCKET` BERILGAN, lekin unga
+	// kirib bo'lmadi (ko'pincha R2 tokenida shu bucket uchun ruxsat
+	// yo'q).
+	//
+	// Bunda maket taklifi UMUMAN ko'rsatilmaydi. Saqlangan ommaviy
+	// manzilni qaytarish YARAMAYDI: fayl allaqachon yopiq bucket'ga
+	// ko'chirilgan bo'lsa u yerda 404 bo'lardi va mijoz 220 MB ni
+	// yuklab bo'lgach xato ko'rardi.
+	ScenesUnavailable bool
 
 	AuthSvc    *users.Service
 	OrderSvc   *orders.Service

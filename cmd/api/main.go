@@ -357,6 +357,7 @@ func main() {
 	// 3D maket havolalarini imzolovchi va rasm/maket uchun ommaviy
 	// baza manzil (`scene_access.go` da kalit ajratish uchun).
 	var sceneSigner *scenes.Signer
+	var scenesUnavailable bool
 	var mediaPublicBaseURL string
 	if r2Bucket := os.Getenv("R2_BUCKET"); r2Bucket != "" {
 		accountID := os.Getenv("R2_ACCOUNT_ID")
@@ -393,12 +394,25 @@ func main() {
 			sg, err := scenes.New(sctx, accountID, accessKey, secretKey, sceneBucket, scenes.DefaultTTL)
 			scancel()
 			if err != nil {
-				slog.Error("3D maket bucket'i sozlanmadi", "err", err)
-				os.Exit(1)
+				// ┌─ NEGA TO'XTAMAYMIZ ────────────────────────────────┐
+				// 3D maket — IXTIYORIY funksiya. Uning bucket'i
+				// noto'g'ri sozlangani butun buyurtma tizimini
+				// to'xtatmasligi kerak (MongoDB yoki rasm bucket'idan
+				// farqi shunda).
+				//
+				// Lekin taklif ham KO'RSATILMAYDI: manzil endi yopiq
+				// bucket'ga ishora qiladi va uni ochiq berish mijozni
+				// 404 ga olib borardi. "Yarim ishlaydigan" holat yo'q.
+				// └────────────────────────────────────────────────────┘
+				slog.Error("3D maket bucket'iga kirib bo'lmadi — MAKET TAKLIFI O'CHIRILDI "+
+					"(qolgan hamma narsa ishlaydi). R2 tokenida shu bucket uchun ruxsat bormi?",
+					"bucket", sceneBucket, "err", err)
+				scenesUnavailable = true
+			} else {
+				sceneSigner = sg
+				slog.Info("rejim: 3D maketlar YOPIQ bucket'da (muddatli havola)",
+					"bucket", sceneBucket, "muddat", scenes.DefaultTTL)
 			}
-			sceneSigner = sg
-			slog.Info("rejim: 3D maketlar YOPIQ bucket'da (muddatli havola)",
-				"bucket", sceneBucket, "muddat", scenes.DefaultTTL)
 		} else {
 			slog.Warn("R2_SCENES_BUCKET yo'q â€” 3D maket ommaviy bucket'dan beriladi; " +
 				"havola faqat kirgan foydalanuvchiga ko'rsatiladi, lekin MUDDATSIZ")
@@ -1016,6 +1030,7 @@ func main() {
 		ImageStore:         imageStore,
 		Scenes:             sceneSigner,
 		MediaPublicBaseURL: mediaPublicBaseURL,
+		ScenesUnavailable:  scenesUnavailable,
 		AuthSvc:            authSvc,
 		OrderSvc:           orderSvc,
 		CatalogSvc:         catalogSvc,
