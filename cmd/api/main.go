@@ -390,8 +390,29 @@ func main() {
 		// (`internal/httpapi/scene_access.go`).
 		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 		if sceneBucket := strings.TrimSpace(os.Getenv("R2_SCENES_BUCKET")); sceneBucket != "" {
+			// ┌─ ALOHIDA, FAQAT-O'QISH TOKENI (tavsiya etiladi) ───────┐
+			// Rasmlar tokeni YOZISH huquqiga ega — usiz panel rasm
+			// yuklay olmaydi. Maketga esa faqat O'QISH kerak: fayl
+			// R2 paneli orqali qo'lda qo'yiladi.
+			//
+			// Shuning uchun maketlar uchun alohida, faqat shu
+			// bucket'ga va faqat o'qishga ruxsat berilgan token
+			// ishlatish mumkin. Berilmasa — rasmlar tokeni
+			// ishlatiladi va hammasi avvalgidek ishlaydi.
+			//
+			// Foydasi: bu token FAQAT imzolash uchun serverda turadi.
+			// U oshkor bo'lsa ham u bilan hech narsa YOZIB yoki
+			// O'CHIRIB bo'lmaydi.
+			// └────────────────────────────────────────────────────────┘
+			sceneKey := strings.TrimSpace(os.Getenv("R2_SCENES_ACCESS_KEY_ID"))
+			sceneSecret := os.Getenv("R2_SCENES_SECRET_ACCESS_KEY")
+			if sceneKey == "" || sceneSecret == "" {
+				sceneKey, sceneSecret = accessKey, secretKey
+				slog.Info("3D maket uchun alohida token berilmagan — rasmlar tokeni ishlatiladi " +
+					"(ishlaydi, lekin u YOZISH huquqiga ham ega)")
+			}
 			sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
-			sg, err := scenes.New(sctx, accountID, accessKey, secretKey, sceneBucket, scenes.DefaultTTL)
+			sg, err := scenes.New(sctx, accountID, sceneKey, sceneSecret, sceneBucket, scenes.DefaultTTL)
 			scancel()
 			if err != nil {
 				// ┌─ NEGA TO'XTAMAYMIZ ────────────────────────────────┐

@@ -109,6 +109,11 @@ var Registry = []Var{
 	// bo'lsa maket ommaviy bucket'dan beriladi — havola faqat kirgan
 	// foydalanuvchiga ko'rsatiladi, lekin muddatsiz bo'ladi.
 	{Name: "R2_SCENES_BUCKET", Effect: "3D maket ommaviy bucket'dan, MUDDATSIZ havola bilan beriladi", DeployRequired: true},
+	// Ixtiyoriy: maketlar uchun ALOHIDA, faqat-o'qish tokeni. Berilmasa
+	// rasmlar tokeni ishlatiladi — u ishlaydi, lekin yozish huquqiga
+	// ham ega (eng kam huquq tamoyiliga zid).
+	{Name: "R2_SCENES_ACCESS_KEY_ID", Effect: "maket uchun rasmlar tokeni ishlatiladi (yozish huquqi bilan)", DeployRequired: true},
+	{Name: "R2_SCENES_SECRET_ACCESS_KEY", Effect: "maket uchun rasmlar tokeni ishlatiladi (yozish huquqi bilan)", DeployRequired: true},
 
 	// ---------- Push (FCM) ----------
 	{Name: "FIREBASE_SERVICE_ACCOUNT_FILE", Effect: "push bildirishnomalar o'chadi", DeployRequired: true},
