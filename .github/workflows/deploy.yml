@@ -577,6 +577,24 @@ jobs:
       #
       # Busiz konteyner "R2_BUCKET berilmagan" bilan darrov o'chib,
       # ZAP hech narsa topa olmasdi va deploy to'xtardi (2026-08-27).
+      #
+      # ┌─ SOXTA ESKIZ QIYMATLARI (bug.md 47-band) ───────────────────────┐
+      # AYNAN shu holat 2026-09-07 da TAKRORLANDI. 47-band production'da
+      # SMS sozlanmagan bo'lsa serverni to'xtatadigan qilindi (busiz OTP
+      # kodlar logga ochiq yozilardi) — va shu bilan birga MANA SHU
+      # konteyner ham ishga tushmay qoldi:
+      #
+      #     ERROR "ESKIZ_EMAIL/ESKIZ_PASSWORD berilmagan..."
+      #     Error: API 45 soniyada ko'tarilmadi
+      #
+      # Qoidaning o'zi TO'G'RI va yumshatilmaydi. Faqat ZAP konteyneriga
+      # ham R2 kabi soxta qiymatlar beriladi: klient quriladi, hech
+      # qanday SMS yuborilmaydi (birorta test OTP so'ramaydi, va Eskiz
+      # manzili ataylab `.invalid`).
+      #
+      # SABOQ: `main.go` ga yangi `os.Exit(1)` qo'shilganda SHU RO'YXAT
+      # ham yangilanishi kerak — aks holda quvur "API ko'tarilmadi" deb
+      # to'xtaydi va sabab log oxirida ko'rinadi.
       # └─────────────────────────────────────────────────────────────────┘
       - name: Start API (ZAP skaneri uchun vaqtinchalik konteyner)
         run: |
@@ -594,6 +612,9 @@ jobs:
             -e R2_ACCESS_KEY_ID="ci" \
             -e R2_SECRET_ACCESS_KEY="ci" \
             -e R2_PUBLIC_URL="https://media.invalid" \
+            -e ESKIZ_EMAIL="ci@ondex.invalid" \
+            -e ESKIZ_PASSWORD="ci" \
+            -e ESKIZ_BASE_URL="https://sms.invalid" \
             "${{ steps.meta.outputs.image }}:${{ github.sha }}"
 
       - name: Wait for API
