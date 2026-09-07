@@ -105,6 +105,10 @@ var Registry = []Var{
 	{Name: "R2_ACCESS_KEY_ID", Effect: "R2 sozlanmaydi", DeployRequired: true},
 	{Name: "R2_SECRET_ACCESS_KEY", Effect: "R2 sozlanmaydi", DeployRequired: true},
 	{Name: "R2_PUBLIC_URL", Effect: "R2 sozlanmaydi", DeployRequired: true},
+	// 3D maketlar uchun ALOHIDA, ommaviy BO'LMAGAN bucket. Bo'sh
+	// bo'lsa maket ommaviy bucket'dan beriladi — havola faqat kirgan
+	// foydalanuvchiga ko'rsatiladi, lekin muddatsiz bo'ladi.
+	{Name: "R2_SCENES_BUCKET", Effect: "3D maket ommaviy bucket'dan, MUDDATSIZ havola bilan beriladi", DeployRequired: true},
 
 	// ---------- Push (FCM) ----------
 	{Name: "FIREBASE_SERVICE_ACCOUNT_FILE", Effect: "push bildirishnomalar o'chadi", DeployRequired: true},

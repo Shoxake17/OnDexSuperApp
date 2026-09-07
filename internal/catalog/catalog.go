@@ -61,6 +61,27 @@ type Restaurant struct {
 	Scene3DBytes int64 `json:"scene_3d_bytes,omitempty"`
 }
 
+// PublicView — restoranning AUTENTIFIKATSIYASIZ ko'rsatiladigan nusxasi.
+//
+// ┌─ NEGA MAKET MAYDONLARI OLIB TASHLANADI ────────────────────────────┐
+// `GET /restaurants` ochiq endpoint va u maket manzilini ham
+// qaytarardi. Ya'ni javobni bir marta o'qigan har kim (bot ham)
+// 100-220 MB lik faylni cheksiz yuklab olardi.
+//
+// Maket rasm emas: u restoranning ichki maketi va ichida
+// BAJARILADIGAN kod bor. Shuning uchun u kirgan foydalanuvchiga,
+// muddatli imzolangan havola bilan beriladi (`internal/scenes`).
+//
+// Uchala maydon BIRGA olib tashlanadi: faqat manzilni yashirib,
+// xesh va hajmni qoldirish ma'nosiz va chalkash bo'lardi.
+// └────────────────────────────────────────────────────────────────────┘
+func (r Restaurant) PublicView() Restaurant {
+	r.Scene3DURL = ""
+	r.Scene3DSHA256 = ""
+	r.Scene3DBytes = 0
+	return r
+}
+
 type Product struct {
 	ID           string `json:"id"`
 	RestaurantID string `json:"restaurant_id"`
@@ -218,6 +239,7 @@ type Book struct {
 // Chegara ataylab: matn Mongo yozuviga to'liq sig'ishi va bitta
 // so'rovda uzatilishi kerak. 400 KB ~ 200 sahifalik kitob.
 const MaxBookTextBytes = 400 * 1024
+
 type ProductSearchResult struct {
 	Product
 	RestaurantName    string `json:"restaurant_name"`

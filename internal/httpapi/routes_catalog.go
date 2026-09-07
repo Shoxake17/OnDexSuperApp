@@ -22,7 +22,9 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /restaurants", func(w http.ResponseWriter, r *http.Request) {
 		var list []*catalog.Restaurant
 		if s.Cache.GetJSON(r.Context(), restaurantsCacheKey, &list) {
-			writeJSON(w, http.StatusOK, list)
+			// Maket havolasi kesh ICHIGA tushmaydi — sabab
+			// `sceneViewMany` izohida.
+			writeJSON(w, http.StatusOK, s.sceneViewMany(r, list))
 			return
 		}
 		list, err := s.CatalogRepo.ListRestaurants(r.Context())
@@ -31,7 +33,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			return
 		}
 		s.Cache.SetJSON(r.Context(), restaurantsCacheKey, list, 30*time.Second)
-		writeJSON(w, http.StatusOK, list)
+		writeJSON(w, http.StatusOK, s.sceneViewMany(r, list))
 	})
 
 	// GET /restaurants/{id} â€” bitta restoran ma'lumoti (ochiq)
@@ -41,7 +43,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusNotFound, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, rest)
+		writeJSON(w, http.StatusOK, s.sceneViewOne(r, rest))
 	})
 
 	// GET /restaurants/{id}/orders â€” restoranning o'z buyurtmalari (yoki admin)
