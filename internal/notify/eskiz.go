@@ -203,16 +203,47 @@ func (e *EskizSms) sendOnce(ctx context.Context, token, phone, text string) erro
 	return nil
 }
 
-// multipartForm — Eskiz `multipart/form-data` kutadi. Kichik yordamchi
-// tashqi kutubxonasiz.
+// multipartForm — Eskiz `multipart/form-data` kutadi.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 13-band) ─────────────────────────────┐
+// Chegara (`boundary`) qat'iy satr, qiymatlar esa buferga XOM holda
+// yozilardi: na `\r\n`, na chegara satrining o'zi filtrlanardi.
+// Qiymat ichida `\r\n----ondex-eskiz-boundary\r\n` bo'lsa, so'rovga
+// qo'shimcha maydon kiritish mumkin edi (multipart inyeksiyasi).
+//
+// Amaldagi zarar yo'q edi — `message` serverda yasaladi
+// (`users/service.go`), `mobile_phone` esa normalizatsiyadan o'tgan
+// raqam. Lekin bu LATENT: kelajakda restoran nomi yoki foydalanuvchi
+// kiritgan matn SMS'ga qo'shilsa, teshik darhol ochilardi.
+//
+// Loyihada bu qoida allaqachon bor: `notify/email.go` dagi
+// `guardHeader` aynan shunday ishlaydi va izohida sababi yozilgan —
+// *"Tekshiruv YUBORUVCHI QATLAMDA turadi: chaqiruvchi uni unutsa
+// ham himoya ishlaydi"*. SMS qatlamida shu qoida qo'llanmagandi.
+//
+// Endi qiymatdan CR/LF olib tashlanadi — chegara satri faqat yangi
+// qatordan keyin ma'noga ega, ya'ni CR/LF siz uni yasab bo'lmaydi.
+// Maydon NOMI ham xuddi shunday tozalanadi.
+// └────────────────────────────────────────────────────────────────────┘
 func multipartForm(buf *bytes.Buffer, fields map[string]string) string {
 	const boundary = "----ondex-eskiz-boundary"
 	for k, v := range fields {
 		fmt.Fprintf(buf, "--%s\r\n", boundary)
-		fmt.Fprintf(buf, "Content-Disposition: form-data; name=%q\r\n\r\n", k)
-		buf.WriteString(v)
+		fmt.Fprintf(buf, "Content-Disposition: form-data; name=%q\r\n\r\n",
+			stripCRLF(k))
+		buf.WriteString(stripCRLF(v))
 		buf.WriteString("\r\n")
 	}
 	fmt.Fprintf(buf, "--%s--\r\n", boundary)
 	return "multipart/form-data; boundary=" + boundary
+}
+
+// stripCRLF — satrdan CR va LF ni olib tashlaydi.
+//
+// Multipart tuzilishi FAQAT yangi qatorlar bilan belgilanadi, ya'ni
+// ular bo'lmasa qiymat hech qanday holatda "yangi maydon" bo'lib
+// ketolmaydi. Belgilar o'chiriladi (probel bilan almashtirilmaydi):
+// SMS matnida ular baribir ko'rinmaydi.
+func stripCRLF(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
 }

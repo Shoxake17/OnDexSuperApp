@@ -186,12 +186,33 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 
 func (r *PgOrderRepo) HasActiveByRestaurant(ctx context.Context, restaurantID string) (bool, error) {
 	var exists bool
+	// Terminal holatlar ro'yxati Go'dan keladi — `orders` paketidagi
+	// yagona manba (bug.md 45-band: SQL literalida `served` yo'q edi va
+	// yakunlangan stol buyurtmalari abadiy "faol" bo'lib qolardi).
 	err := r.pool.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM orders
 			WHERE restaurant_id = $1
-			  AND status NOT IN ('delivered', 'rejected', 'cancelled')
-		)`, restaurantID).Scan(&exists)
+			  AND status <> ALL($2)
+		)`, restaurantID, orders.TerminalStatusStrings()).Scan(&exists)
+	return exists, err
+}
+
+// HasActiveByCustomer — mijozning yakunlanmagan buyurtmasi bormi
+// (bug.md 27-band).
+//
+// BUTUN tarix bo'yicha `EXISTS` — avval bu tekshiruv `ListByCustomer`
+// ning oxirgi 20 tasi bilan chegaralangan edi va faol mijozda
+// yakunlanmagan buyurtma o'sha 20 tadan pastda qolib ketishi mumkin
+// edi.
+func (r *PgOrderRepo) HasActiveByCustomer(ctx context.Context, customerID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM orders
+			WHERE customer_id = $1
+			  AND status <> ALL($2)
+		)`, customerID, orders.TerminalStatusStrings()).Scan(&exists)
 	return exists, err
 }
 
@@ -202,8 +223,8 @@ func (r *PgOrderRepo) GetActiveByCourier(ctx context.Context, courierID string) 
 	var id string
 	err := r.pool.QueryRow(ctx, `
 		SELECT id FROM orders
-		WHERE courier_id = $1 AND status NOT IN ('delivered', 'rejected', 'cancelled')
-		ORDER BY created_at DESC LIMIT 1`, courierID,
+		WHERE courier_id = $1 AND status <> ALL($2)
+		ORDER BY created_at DESC LIMIT 1`, courierID, orders.TerminalStatusStrings(),
 	).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, orders.ErrNotFound
@@ -610,17 +631,37 @@ func SeedDemoCouriers(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	// Demo kuryerlarning joylashuvini "yangi" deb belgilaymiz.
+	// Demo kuryerlarning joylashuvini "yangi", tasdig'ini esa qayta
+	// TRUE qilib belgilaymiz.
 	//
-	// NEGA KERAK: dispatch endi joylashuvi `locationMaxAge` dan eski
+	// JOYLASHUV — dispatch endi joylashuvi `locationMaxAge` dan eski
 	// bo'lgan kuryerni nomzod qilmaydi (migration 0029). Seed bir
 	// marta bajarilgani uchun demo kuryerlar bir necha kundan keyin
 	// "eskirgan" bo'lib qolardi va DEV muhitda dispatch hech kimni
 	// topa olmasdi — sabab esa umuman ko'rinmasdi.
 	//
+	// ┌─ TASDIQ NEGA SHU YERDA (bug.md 98-band) ──────────────────────┐
+	// Avval demo kuryerlarni `0004_courier_approval.sql` migratsiyasi
+	// tasdiqlardi — ya'ni PRODUCTION'da ham. Bu xavfsizlik qarorini
+	// migratsiyaga topshirish noto'g'ri edi (tasdiqlangan kuryer
+	// mijoz manzilini va telefonini ko'radi).
+	//
+	// Endi u o'sha migratsiyadan olib tashlandi va
+	// `0041_revoke_demo_courier_approval.sql` mavjud bazalarda
+	// orqaga qaytaradi. Demo yozuvlarning holati esa AYNAN shu
+	// yerga — DEV-ONLY seed'ga ko'chdi (`SeedDemoCouriers` faqat
+	// `APP_ENV=development` da chaqiriladi).
+	//
+	// `INSERT ... DO NOTHING` yetarli emas: mavjud dev bazasida
+	// yozuvlar allaqachon bor va 0041 ularni `FALSE` qilib qo'yadi.
+	// Shuning uchun tasdiq har seed'da QAYTA qo'yiladi.
+	// └───────────────────────────────────────────────────────────────┘
+	//
 	// Faqat DEMO ID'lar (c1..c3) — haqiqiy kuryerlarga tegmaydi.
 	_, err = pool.Exec(ctx, `
-		UPDATE couriers SET location_updated_at = now()
+		UPDATE couriers
+		   SET location_updated_at = now(),
+		       approved = TRUE
 		 WHERE id IN ('c1','c2','c3')`)
 	return err
 }

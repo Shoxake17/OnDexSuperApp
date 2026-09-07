@@ -248,6 +248,88 @@ func TestProtectedRoutesRejectAnonymous(t *testing.T) {
 	}
 }
 
+// ★ IJARA (TENANCY) MATRITSASI — bug.md 101-band.
+//
+// ┌─ NEGA YUQORIDAGI MATRITSA YETARLI EMAS ────────────────────────────┐
+// `TestAuthorizationMatrix` VERTIKAL imtiyozni o'lchaydi: "restoran
+// roli admin endpointiga kira oladimi". GORIZONTALNI — "rest-a
+// REST-B ning resursiga kira oladimi" — u ATAYLAB o'lchamaydi:
+// `concretePath` yo'lga har doim foydalanuvchining O'Z id'sini
+// qo'yadi, aks holda egalik rad etishi rol rad etishi deb o'qilib,
+// test yolg'on o'tardi.
+//
+// Natijada butun bir xavf sinfi matritsadan tashqarida qolgandi va
+// auditdagi TASDIQLANGAN gorizontal xatolarning HAMMASI aynan shu
+// bo'shliqda edi: 19-band (begona taom ID'si), 77-band (to'liq
+// almashtirish), 29-band (WS obunasi). Matritsa yashil, kod ochiq.
+//
+// Bu test o'sha bo'shliqni yopadi: rol TO'G'RI, resurs BEGONA.
+// Endpointlar ro'yxati bir xil manbadan (`discoverProtectedRoutes`)
+// olinadi, ya'ni yangi endpoint qo'shilganda bu test ham O'ZI
+// kengayadi.
+// └────────────────────────────────────────────────────────────────────┘
+func TestTenancyMatrix(t *testing.T) {
+	h, jwt := authzServer(t)
+
+	// `rest-b` va `cour-ent-2` — fiksturada YO'Q (`authzServer` faqat
+	// `rest-a` va `cour-ent-1` yaratadi). Ya'ni ular ham begona, ham
+	// mavjud emas: har ikkala holatda ham javob 401/403/404 bo'lishi
+	// kerak, hech qachon 2xx.
+	cases := []struct {
+		prefix   string     // yo'l prefiksi
+		foreign  string     // begona egalik id'si
+		role     users.Role // shu resursga "yaqin" rol
+		roleName string
+	}{
+		{"/restaurants/{id}", "rest-b", users.RoleRestaurant, "restoran"},
+		{"/restaurants/{id}", "rest-b", users.RoleWaiter, "affitsiant"},
+		{"/couriers/{id}", "cour-ent-2", users.RoleCourier, "kuryer"},
+	}
+
+	var checked int
+	for _, r := range discoverProtectedRoutes(t) {
+		for _, c := range cases {
+			if !strings.HasPrefix(r.pattern, c.prefix) {
+				continue
+			}
+			// Bu rol umuman kira olmasa, bu test uning ishi emas —
+			// uni `TestAuthorizationMatrix` allaqachon o'lchaydi.
+			if !allowsRole(r, c.role) {
+				continue
+			}
+			path := strings.Replace(r.pattern, "{id}", c.foreign, 1)
+			path = regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(path, "x")
+
+			checked++
+			t.Run(c.roleName+"_"+r.method+"_"+r.pattern, func(t *testing.T) {
+				w := do(t, h, r.method, path, jwt[c.role], `{}`)
+				// 403 — egalik rad etildi (kutilgan).
+				// 404 — resurs topilmadi (ham maqbul: ma'lumot chiqmadi).
+				// 401 — token rad etildi (bu yerda bo'lmasligi kerak,
+				//       lekin xavfsiz tomon).
+				// 400 — tana bo'sh/noto'g'ri: handler egalikkacha
+				//       yetmagan, ya'ni hech narsa oshkor bo'lmagan.
+				switch w.Code {
+				case http.StatusForbidden, http.StatusNotFound,
+					http.StatusUnauthorized, http.StatusBadRequest:
+					return
+				}
+				t.Errorf("XAVFSIZLIK (gorizontal): %s (%s) BEGONA %q resursiga %s %s bilan KIRDI — status %d (%s)",
+					c.roleName, c.role, c.foreign, r.method, path, w.Code, r.file)
+			})
+		}
+	}
+
+	// Ro'yxat bo'shab qolmasin: regex yoki prefiks o'zgarsa test
+	// jimgina "hech narsa tekshirmaydigan" holatga tushib qolardi —
+	// bu 102-band bilan bir xil tuzoq.
+	if checked == 0 {
+		t.Fatal("birorta ham egalikka bog'liq endpoint tekshirilmadi — " +
+			"prefikslar yoki `discoverProtectedRoutes` o'zgarganmi?")
+	}
+	t.Logf("egalik bo'yicha tekshirilgan endpointlar: %d ta", checked)
+}
+
 // Begona kalit bilan imzolangan token rad etilishi kerak.
 func TestProtectedRoutesRejectForgedToken(t *testing.T) {
 	h, _ := authzServer(t)

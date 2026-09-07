@@ -435,6 +435,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
 
+                // ── Huquqiy hujjatlar ──────────────────────────────
+                //
+                // ┌─ DO'KON TALABI (bug.md 70-band) ───────────────┐
+                // Google Play ham, App Store ham maxfiylik
+                // siyosatiga ISHLAYDIGAN havola talab qiladi —
+                // do'kon sahifasida ham, ILOVANING O'ZIDA ham.
+                // To'lov provayderi esa ommaviy ofertani so'raydi.
+                //
+                // Manzil `ondex_core.LegalLinks` dan keladi, ya'ni
+                // beshta ilovada bir xil va bir joyda o'zgaradi.
+                // └────────────────────────────────────────────────┘
+                const SizedBox(height: 20),
+                Container(
+                  decoration: _cardDecoration,
+                  clipBehavior: Clip.antiAlias,
+                  child: const LegalSection(iconColor: Color(0xFF9E9E9E)),
+                ),
+
                 // ── Chiqish ────────────────────────────────────────
                 const SizedBox(height: 28),
                 SizedBox(

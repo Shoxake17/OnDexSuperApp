@@ -12,6 +12,15 @@ import (
 	"chustapp/internal/catalog"
 )
 
+// maxSearchResults — `SearchProducts` qaytaradigan eng ko'p natija
+// (bug.md 12-band).
+//
+// Chegara ikki ishni bajaradi: javob hajmini va SKANERLASH ishini
+// chegaralaydi — kursor o'qish shu songa yetgach to'xtaydi. 100 ta
+// natija mijoz ilovasidagi qidiruv ro'yxati uchun ortig'i bilan
+// yetadi (ekranda 10-20 tasi ko'rinadi).
+const maxSearchResults = 100
+
 type mongoRestaurant struct {
 	ID       string  `bson:"_id"`
 	Name     string  `bson:"name"`
@@ -209,48 +218,79 @@ func (r *MongoCatalogRepo) GetProductsByIDs(ctx context.Context, ids []string) (
 // uchun (yuzlab, minglab emas) filtrlashni ilovada Go kodida bajarish
 // oddiy va yetarlicha tez — Mongo regex bilan normalizatsiyani takrorlash
 // o'rniga.
+// SearchProducts — nom/turkum bo'yicha qidiruv.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 12-band) ─────────────────────────────┐
+// Avval bu yerda quyidagi quvur ishlardi:
+//
+//	$match{available} → $lookup(restaurants) → $unwind → $sort
+//
+// ya'ni BUTUN `products` kolleksiyasiga restoran hujjati qo'shilib,
+// keyin hammasi Go tomonga dekodlanardi — filtrlash esa faqat
+// SHUNDAN KEYIN bo'lardi. Natija soni ham cheklanmagandi.
+//
+// Endpoint OCHIQ (`s.auth` yo'q) va hech qanday chelakka tushmasdi,
+// ya'ni bir qatorlik `curl` sikli bazani band qila olardi.
+//
+// Ikki o'zgarish (banddagi (a) va (b) tavsiyalari):
+//
+//  1. `$lookup` FILTRDAN KEYIN. Endi avval faqat mahsulot hujjatlari
+//     o'qiladi (kerakli maydonlar bilan), Go tomonda filtrlanadi, va
+//     restoran ma'lumoti FAQAT mos kelganlar uchun BITTA qo'shimcha
+//     so'rov bilan olinadi. Restoranlar kam, shuning uchun bu so'rov
+//     arzon — `$lookup` esa har bir taom uchun ishlardi.
+//
+//  2. Natijaga CHEGARA (`maxSearchResults`). Chegaraga yetgach
+//     kursor o'qish TO'XTAYDI, ya'ni katalog kattalashganda ham ish
+//     hajmi chegaralangan qoladi.
+//
+// Semantika o'zgarmadi: filtr aynan o'sha `NormalizeForSearch`
+// solishtiruvi (tinish belgilarini e'tiborsiz qoldiradi). Mongo
+// tomonida regex bilan oldindan filtrlash ATAYLAB qilinmadi — u
+// normalizatsiyani takrorlay olmaydi va "coca-cola" so'rovi
+// "Coca Cola" ni topmay qolardi.
+// └────────────────────────────────────────────────────────────────────┘
 func (r *MongoCatalogRepo) SearchProducts(ctx context.Context, query string) ([]*catalog.ProductSearchResult, error) {
 	nq := catalog.NormalizeForSearch(query)
 	if nq == "" {
 		return nil, nil
 	}
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.M{"available": true}}},
-		{{Key: "$lookup", Value: bson.M{
-			"from":         "restaurants",
-			"localField":   "restaurant_id",
-			"foreignField": "_id",
-			"as":           "restaurant",
-		}}},
-		{{Key: "$unwind", Value: "$restaurant"}},
-		{{Key: "$sort", Value: bson.D{{Key: "name", Value: 1}}}},
-	}
-	cur, err := r.products.Aggregate(ctx, pipeline)
+
+	// 1-qadam: faqat mahsulotlar. `$lookup`/`$unwind` YO'Q.
+	cur, err := r.products.Find(ctx,
+		bson.M{"available": true},
+		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
 	defer cur.Close(ctx)
 
-	var list []*catalog.ProductSearchResult
+	var (
+		list    []*catalog.ProductSearchResult
+		restIDs []string
+		seen    = map[string]bool{}
+	)
 	for cur.Next(ctx) {
+		if len(list) >= maxSearchResults {
+			break
+		}
 		// `wholesale_price_tiyin` bu yerda ATAYLAB YO'Q: qidiruv — OCHIQ
 		// endpoint, ulgurji narx esa restoranning ichki ma'lumoti.
 		// O'qilmagan maydon hech qachon sizib chiqa olmaydi.
 		var doc struct {
-			ID                 string          `bson:"_id"`
-			RestaurantID       string          `bson:"restaurant_id"`
-			Name               string          `bson:"name"`
-			Category           string          `bson:"category"`
-			PriceTiyin         int64           `bson:"price_tiyin"`
-			DiscountPriceTiyin int64           `bson:"discount_price_tiyin"`
-			Stock              int             `bson:"stock"`
-			Weight             float64         `bson:"weight"`
-			WeightUnit         string          `bson:"weight_unit"`
-			Description        string          `bson:"description"`
-			PrepTimeText       string          `bson:"prep_time_text"`
-			ImageURL           string          `bson:"image_url"`
-			Available          bool            `bson:"available"`
-			Restaurant         mongoRestaurant `bson:"restaurant"`
+			ID                 string  `bson:"_id"`
+			RestaurantID       string  `bson:"restaurant_id"`
+			Name               string  `bson:"name"`
+			Category           string  `bson:"category"`
+			PriceTiyin         int64   `bson:"price_tiyin"`
+			DiscountPriceTiyin int64   `bson:"discount_price_tiyin"`
+			Stock              int     `bson:"stock"`
+			Weight             float64 `bson:"weight"`
+			WeightUnit         string  `bson:"weight_unit"`
+			Description        string  `bson:"description"`
+			PrepTimeText       string  `bson:"prep_time_text"`
+			ImageURL           string  `bson:"image_url"`
+			Available          bool    `bson:"available"`
 		}
 		if err := cur.Decode(&doc); err != nil {
 			return nil, err
@@ -259,18 +299,60 @@ func (r *MongoCatalogRepo) SearchProducts(ctx context.Context, query string) ([]
 			!strings.Contains(catalog.NormalizeForSearch(doc.Category), nq) {
 			continue
 		}
+		if doc.RestaurantID != "" && !seen[doc.RestaurantID] {
+			seen[doc.RestaurantID] = true
+			restIDs = append(restIDs, doc.RestaurantID)
+		}
 		list = append(list, &catalog.ProductSearchResult{
 			Product: catalog.Product{
 				ID: doc.ID, RestaurantID: doc.RestaurantID, Name: doc.Name, Category: doc.Category,
 				PriceTiyin: doc.PriceTiyin, DiscountPriceTiyin: doc.DiscountPriceTiyin, Stock: doc.Stock, Weight: doc.Weight, WeightUnit: doc.WeightUnit,
 				Description: doc.Description, PrepTimeText: doc.PrepTimeText, ImageURL: doc.ImageURL, Available: doc.Available,
 			},
-			RestaurantName:    doc.Restaurant.Name,
-			RestaurantLogoURL: doc.Restaurant.LogoURL,
-			RestaurantOpen:    doc.Restaurant.Open,
 		})
 	}
-	return list, cur.Err()
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+
+	// 2-qadam: restoran ma'lumoti — FAQAT mos kelganlar uchun, BITTA
+	// so'rov bilan.
+	rests, err := r.restaurantsByIDs(ctx, restIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range list {
+		if rest, ok := rests[it.RestaurantID]; ok {
+			it.RestaurantName = rest.Name
+			it.RestaurantLogoURL = rest.LogoURL
+			it.RestaurantOpen = rest.Open
+		}
+	}
+	return list, nil
+}
+
+// restaurantsByIDs — bir nechta restoranni BITTA so'rov bilan oladi.
+func (r *MongoCatalogRepo) restaurantsByIDs(ctx context.Context, ids []string) (map[string]mongoRestaurant, error) {
+	out := make(map[string]mongoRestaurant, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	cur, err := r.restaurants.Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	for cur.Next(ctx) {
+		var doc mongoRestaurant
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		out[doc.ID] = doc
+	}
+	return out, cur.Err()
 }
 
 func scanMongoProducts(ctx context.Context, cur *mongo.Cursor) ([]*catalog.Product, error) {

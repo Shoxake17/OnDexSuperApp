@@ -380,6 +380,17 @@ class AgentDriver extends ChangeNotifier {
   /// eng yomon variant bo'lardi: model "tasdiqladim" degan, ilova
   /// esa hech narsa qilmagan bo'lardi.
   /// └────────────────────────────────────────────────────────────────┘
+  /// Hozir tasdiqlash MUMKINmi — hech narsa qilmasdan tekshiradi.
+  ///
+  /// Ovozli rejim tasdiq dialogini ochishdan OLDIN shuni so'raydi
+  /// (`assistant_screen.dart`, bug.md 11-band): dialogni ochib, keyin
+  /// "bajarib bo'lmadi" deyish foydalanuvchini bekorga bezovta
+  /// qilardi. Shartlar `confirmCashOrder()` bilan bir xil.
+  bool get canConfirmCashOrder =>
+      !_running &&
+      AiTools.instance.checkoutAllowed &&
+      _stage.cashConfirm != null;
+
   Future<bool> confirmCashOrder() async {
     if (_running) return false;
     if (!AiTools.instance.checkoutAllowed) return false;

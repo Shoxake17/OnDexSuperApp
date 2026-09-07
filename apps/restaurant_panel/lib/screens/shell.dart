@@ -5,6 +5,7 @@ import '../api.dart';
 import '../live.dart';
 import '../pages/coming_soon_page.dart';
 import '../pages/dashboard_page.dart';
+import '../pages/help_page.dart';
 import '../pages/menu_page.dart';
 import '../pages/orders_page.dart';
 import '../pages/promotions_page.dart';
@@ -120,8 +121,15 @@ class _RestaurantShellState extends State<RestaurantShell> {
     // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
     // sessiya uchun qayta ulanishga urinardi (har safar 401).
     await restaurantLive.stop();
+    // Serverdagi sessiyani ham bekor qilamiz (bug.md 93-band) —
+    // avval token 30 kun yaroqli qolib ketardi. `try/catch` SHART:
+    // internet yo'q bo'lsa ham mahalliy chiqish bajarilishi kerak
+    // (bug.md 87-band).
+    try {
+      await api.logout();
+    } catch (_) {}
+    await restTokenStore.clear();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('rest_token');
     await prefs.remove('rest_rid');
     api.token = null;
     api.rid = '';
@@ -212,12 +220,11 @@ class _RestaurantShellState extends State<RestaurantShell> {
           description: 'Barcha o\'tgan bildirishnomalar tarixi — tez orada.',
         );
       case 10:
-        return const ComingSoonPage(
-          title: 'Yordam markazi',
-          icon: Icons.help_rounded,
-          description:
-              'Ko\'p so\'raladigan savollar va qo\'llab-quvvatlash bilan bog\'lanish — tez orada.',
-        );
+        // Endi `ComingSoonPage` emas: huquqiy hujjatlar (ommaviy
+        // oferta, maxfiylik siyosati) shu yerda ko'rsatiladi —
+        // xodim mijozning shaxsiy ma'lumotlariga kirish huquqiga
+        // ega va shartlarni bilishi kerak (bug.md 70-band).
+        return const HelpPage();
       default:
         return const SizedBox.shrink();
     }

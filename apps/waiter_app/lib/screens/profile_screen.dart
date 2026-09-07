@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ondex_core/ondex_core.dart' show LegalSection;
 
 import '../state/waiter_store.dart';
 import '../theme.dart';
@@ -93,6 +94,12 @@ class ProfileScreen extends StatelessWidget {
             ),
           ],
         ),
+
+        // Huquqiy hujjatlar — affitsiant ilovasi ham do'konga chiqadi
+        // (bug.md 70-band). Manzil `ondex_core.LegalLinks` da, ya'ni
+        // beshta ilovada bir xil.
+        const SizedBox(height: 12),
+        const _Section(children: [LegalSection(showDivider: true)]),
 
         const SizedBox(height: 12),
         _Section(

@@ -260,10 +260,16 @@ func (req bookRequest) applyTo(b *catalog.Book) error {
 		}
 		b.Author = a
 	}
+	// URL maydonlarida uzunlikdan tashqari SXEMA ham tekshiriladi
+	// (bug.md 24-band): avval `javascript:`, `data:` va begona domen
+	// bemalol saqlanardi va mijoz ilovasida ishlatilardi.
 	if req.CoverURL != nil {
 		u := strings.TrimSpace(*req.CoverURL)
 		if len(u) > booksMaxURL {
 			return errors.New("muqova manzili juda uzun")
+		}
+		if !isSafeMediaURL(u) {
+			return errors.New("muqova manzili yaroqsiz (faqat https:// yoki ichki yo'l)")
 		}
 		b.CoverURL = u
 	}
@@ -271,6 +277,9 @@ func (req bookRequest) applyTo(b *catalog.Book) error {
 		u := strings.TrimSpace(*req.PDFURL)
 		if len(u) > booksMaxURL {
 			return errors.New("PDF manzili juda uzun")
+		}
+		if !isSafeMediaURL(u) {
+			return errors.New("PDF manzili yaroqsiz (faqat https:// yoki ichki yo'l)")
 		}
 		b.PDFURL = u
 	}
@@ -289,7 +298,11 @@ func (req bookRequest) applyTo(b *catalog.Book) error {
 		pages := make([]string, 0, len(*req.Pages))
 		for _, p := range *req.Pages {
 			p = strings.TrimSpace(p)
-			if p == "" || len(p) > booksMaxURL {
+			// Yaroqsiz sahifa JIMGINA tashlanadi (mavjud xulq):
+			// bitta buzilgan yozuv butun kitobni saqlashni
+			// to'xtatmasligi kerak. Sxema tekshiruvi ham shu
+			// shartga qo'shildi (bug.md 24-band).
+			if p == "" || len(p) > booksMaxURL || !isSafeMediaURL(p) {
 				continue
 			}
 			pages = append(pages, p)

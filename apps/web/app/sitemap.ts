@@ -19,6 +19,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     { url: SITE_URL, changeFrequency: "hourly", priority: 1 },
+    // ┌─ HUQUQIY HUJJATLAR (bug.md 70-band) ──────────────────────────┐
+    // Ular sitemap'da bo'lishi SHART: Play Store va to'lov
+    // provayderi maxfiylik siyosatiga OMMAVIY, indekslanadigan
+    // havola talab qiladi. Kam o'zgaradi — `yearly`.
+    // └───────────────────────────────────────────────────────────────┘
+    {
+      url: `${SITE_URL}/maxfiylik`,
+      changeFrequency: "yearly" as const,
+      priority: 0.5,
+    },
+    {
+      url: `${SITE_URL}/oferta`,
+      changeFrequency: "yearly" as const,
+      priority: 0.5,
+    },
     ...restaurants.map((r) => ({
       url: `${SITE_URL}/restaurants/${r.id}`,
       changeFrequency: "hourly" as const,

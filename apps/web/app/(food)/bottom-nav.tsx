@@ -32,8 +32,21 @@ export default function BottomNav() {
   const pathname = usePathname();
   if (!ROOTS.has(pathname)) return null;
 
+  // ┌─ KATTA EKRANDA UMUMAN CHIZILMAYDI ────────────────────────────────┐
+  // Bu menyu — MOBIL navigatsiya (o'rtasida QR skaner tugmasi bilan).
+  // Kompyuterda uning o'rnini navbar bosadi: qidiruv, manzil, savat va
+  // foydalanuvchi menyusi (buyurtmalar, sevimlilar, bildirishnomalar —
+  // hammasi panel bo'lib ochiladi, `desktop-navbar.tsx`).
+  //
+  // QR skaner esa kompyuterda MA'NOSIZ: u stol ustidagi kodni telefon
+  // kamerasi bilan o'qish uchun.
+  //
+  // Ilgari shart faqat bosh sahifaga tegishli edi (`pathname === "/"`),
+  // chunki qolgan sahifalarda desktop navigatsiya yo'q edi. Endi
+  // navbar hamma joyda mavjud.
+  // └───────────────────────────────────────────────────────────────────┘
   return (
-    <nav className="tg-surface safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white dark:border-neutral-800 dark:bg-[#1A1A1A]">
+    <nav className="tg-surface safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white dark:border-neutral-800 dark:bg-[#1A1A1A] md:hidden">
       {/* `grid-cols-5` — o'rtadagi katak QR tugmasi uchun. Tab'lar
           tartibi maketdagidek: Bosh sahifa, Buyurtmalar, [QR],
           Sevimlilar, Profil. */}

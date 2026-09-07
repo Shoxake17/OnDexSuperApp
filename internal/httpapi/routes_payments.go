@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -191,14 +192,35 @@ func (s *Server) registerPaymentRoutes(mux *http.ServeMux) {
 	})
 }
 
-// paymentMethodFromRequest — so'rovdagi to'lov usulini xavfsiz o'qiydi.
-// Noma'lum qiymat NAQD deb qaraladi: xato yozuv tufayli buyurtma
-// "to'langan" holatga tushib qolmasligi kerak.
-func paymentMethodFromRequest(v string) orders.PaymentMethod {
-	if strings.TrimSpace(strings.ToLower(v)) == string(orders.PaymentCard) {
-		return orders.PaymentCard
+// paymentMethodFromRequest — so'rovdagi to'lov usulini o'qiydi.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 81-band, SERVER TOMONI) ──────────────┐
+// Avval bu funksiya noma'lum qiymatni JIMGINA naqd deb qabul
+// qilardi. Pul tomonidan bu xavfsiz edi (buyurtma "to'langan" bo'lib
+// qolmasdi), lekin u AYNAN 81-bandni yashirardi:
+//
+//	klient `"payme"` yuboradi → server `cash` yozadi → buyurtma
+//	oshxonaga tushadi → kuryer eshik oldida naqd pul so'raydi.
+//
+// Ilova tomonidagi xato server logida ham, javobda ham ko'rinmasdi.
+//
+// Endi noma'lum qiymat XATO bilan rad etiladi: klientdagi nosozlik
+// birinchi so'rovdayoq chiqadi. Bo'sh qiymat esa avvalgidek naqd —
+// eski klientlar `payment_method` ni umuman yubormaydi.
+// └────────────────────────────────────────────────────────────────────┘
+func paymentMethodFromRequest(v string) (orders.PaymentMethod, error) {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "":
+		// Ko'rsatilmagan — naqd (eski klientlar bilan moslik).
+		return orders.PaymentCash, nil
+	case string(orders.PaymentCash):
+		return orders.PaymentCash, nil
+	case string(orders.PaymentCard):
+		return orders.PaymentCard, nil
+	default:
+		return "", fmt.Errorf("to'lov usuli qo'llab-quvvatlanmaydi: %q (faqat %q yoki %q)",
+			v, orders.PaymentCash, orders.PaymentCard)
 	}
-	return orders.PaymentCash
 }
 
 // setPaymentMethod — buyurtmaga to'lov usulini va boshlang'ich holatni

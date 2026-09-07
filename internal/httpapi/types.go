@@ -8,6 +8,19 @@ const restaurantsCacheKey = "cache:restaurants:list"
 
 func menuCacheKey(restaurantID string) string { return "cache:menu:" + restaurantID }
 
+// searchCacheKey — ochiq qidiruv natijasi uchun (bug.md 12-band).
+//
+// `q` NORMALLASHTIRILGAN shaklda beriladi (`NormalizeForSearch`), ya'ni
+// faqat harf va raqamlardan iborat — Redis kalitiga xavfsiz.
+func searchCacheKey(normalizedQuery string) string {
+	return "cache:search:" + normalizedQuery
+}
+
+// maxSearchQueryLength — `GET /products/search` dagi `q` chegarasi.
+// Juda uzun so'rov foydali natija bermaydi, lekin normalizatsiya va
+// solishtirish ishini oshiradi.
+const maxSearchQueryLength = 100
+
 // savePromotionResponse — POST /restaurants/{id}/promotions javobi:
 // saqlangan aksiyaning o'zi (Promotion o'zining json teglari bilan tekis
 // chiqadi) + shu bilan bir vaqtda avtomatik moslashtirilgan (bir xil

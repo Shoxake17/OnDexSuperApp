@@ -69,11 +69,31 @@ class _RootState extends State<_Root> {
         api.token = null;
         _child = const LoginScreen();
       }
+    } on ApiException catch (e) {
+      // ┌─ TUZATILGAN NOSOZLIK (bug.md 60-band) ────────────────────┐
+      // Bu yerda AVVAL `catch (_)` turardi — ya'ni HAMMA narsa:
+      // 401 ham, tarmoq uzilishi ham, timeout ham. Natijada
+      // INTERNET YO'Q paytda ilova ochilsa foydalanuvchi tizimdan
+      // chiqarib yuborilardi va qaytadan OTP olishi kerak bo'lardi.
+      //
+      // Affitsiant ish paytida, zaif tarmoqda ishlaydi — bu unga
+      // eng noqulay joyda tegadigan xato edi.
+      //
+      // Endi tokenni faqat server "bu token yaroqsiz" deganda
+      // (`401`) o'chiramiz. Tarmoq xatosida esa ichkariga
+      // kiritamiz: keshdagi holat bilan ishlashda davom etadi va
+      // birinchi muvaffaqiyatli so'rovda hammasi tiklanadi.
+      // └───────────────────────────────────────────────────────────┘
+      if (e.isUnauthorized) {
+        await tokenStore.clear();
+        api.token = null;
+        _child = const LoginScreen();
+      } else {
+        _child = const WaiterHome();
+      }
     } catch (_) {
-      // Token eskirgan/bekor qilingan — qaytadan login.
-      await tokenStore.clear();
-      api.token = null;
-      _child = const LoginScreen();
+      // Kutilmagan xato — token yaroqsiz deb hisoblamaymiz.
+      _child = const WaiterHome();
     }
     if (mounted) setState(() => _loading = false);
   }

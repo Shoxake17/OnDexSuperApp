@@ -2,6 +2,7 @@ import { CartProvider } from "@/lib/cart-context";
 import { isAppShell } from "@/lib/session";
 import { AgentActivityProvider } from "./agent-activity";
 import BottomNav from "./bottom-nav";
+import { DesktopCheckoutProvider } from "./desktop-checkout-context";
 import WebMcpTools from "./webmcp-tools";
 
 export default async function FoodLayout({
@@ -33,7 +34,10 @@ export default async function FoodLayout({
             aynan bir xil yo'ldan.
             └──────────────────────────────────────────────────────────┘ */}
         <WebMcpTools />
-        {children}
+        {/* Rasmiylashtirish oynasi (kompyuter) — BITTA nusxa, ikki
+            joydan ochiladi (`desktop-checkout-context.tsx`). Mobil
+            ko'rinish bu oynani umuman ishlatmaydi. */}
+        <DesktopCheckoutProvider>{children}</DesktopCheckoutProvider>
         {/* Pastki menyu O'ZI qaysi sahifada ko'rinishini hal qiladi
             (`bottom-nav.tsx` izohiga qarang) — shuning uchun uni har bir
             sahifada alohida chizish shart emas. */}

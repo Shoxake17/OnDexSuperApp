@@ -12,11 +12,11 @@ import (
 )
 
 func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
-	// GET /restaurants — ochiq: mijoz ilovasining bosh sahifasi. Eng ko'p
-	// so'raladigan endpoint (har mijoz ilova ochganda) — shuning uchun
+	// GET /restaurants â€” ochiq: mijoz ilovasining bosh sahifasi. Eng ko'p
+	// so'raladigan endpoint (har mijoz ilova ochganda) â€” shuning uchun
 	// Redis'da qisqa muddatga (30s) keshlanadi. Restoran ma'lumoti
 	// o'zgarganda (yaratish/tahrirlash/ochiq-yopiq) kesh darhol tozalanadi
-	// (restaurantsCacheKey konstantasiga qarang), shuning uchun 30s —
+	// (restaurantsCacheKey konstantasiga qarang), shuning uchun 30s â€”
 	// "eng yomon holatda shuncha eskirishi mumkin" chegarasi, oddiy TTL
 	// emas.
 	mux.HandleFunc("GET /restaurants", func(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +34,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, list)
 	})
 
-	// GET /restaurants/{id} — bitta restoran ma'lumoti (ochiq)
+	// GET /restaurants/{id} â€” bitta restoran ma'lumoti (ochiq)
 	mux.HandleFunc("GET /restaurants/{id}", func(w http.ResponseWriter, r *http.Request) {
 		rest, err := s.CatalogRepo.GetRestaurant(r.Context(), r.PathValue("id"))
 		if err != nil {
@@ -44,7 +44,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, rest)
 	})
 
-	// GET /restaurants/{id}/orders — restoranning o'z buyurtmalari (yoki admin)
+	// GET /restaurants/{id}/orders â€” restoranning o'z buyurtmalari (yoki admin)
 	mux.HandleFunc("GET /restaurants/{id}/orders", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -59,13 +59,13 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				return
 			}
 			// Har bir buyurtmaga mijoz telefon raqami VA (biriktirilgan
-			// bo'lsa) kuryer ismi qo'shiladi — FAQAT shu yerda (restoran
+			// bo'lsa) kuryer ismi qo'shiladi â€” FAQAT shu yerda (restoran
 			// o'z buyurtmalarini ko'rayotganda, egalik tekshiruvi yuqorida
 			// allaqachon bajarilgan), xuddi kuryerga picked_up'dan keyin
 			// ko'rsatilgan customer_phone bilan bir xil xavfsizlik
 			// darajasida (GET /orders/{id}dagi customerPhoneFor'ga
-			// qarang) — ochiq/umumiy endpointda bu maydonlar HECH QACHON
-			// ko'rinmaydi. Kuryer ismi — restoran panelida "Faol
+			// qarang) â€” ochiq/umumiy endpointda bu maydonlar HECH QACHON
+			// ko'rinmaydi. Kuryer ismi â€” restoran panelida "Faol
 			// buyurtmalar" ro'yxatida qaysi kuryer ekanini ko'rsatish
 			// uchun (avval faqat xom ID ko'rinardi).
 			out := make([]map[string]any, 0, len(list))
@@ -81,7 +81,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, out)
 		}))
 
-	// POST /restaurants/{id}/open — restoran o'zini ochiq/yopiq qiladi (yoki admin)
+	// POST /restaurants/{id}/open â€” restoran o'zini ochiq/yopiq qiladi (yoki admin)
 	mux.HandleFunc("POST /restaurants/{id}/open", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -111,17 +111,17 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, rest)
 		}))
 
-	// GET /categories — ochiq. Barcha restoranlar uchun umumiy, standart
-	// taom turkumlari ro'yxati (yagona manba — restoran paneli va mijoz
+	// GET /categories â€” ochiq. Barcha restoranlar uchun umumiy, standart
+	// taom turkumlari ro'yxati (yagona manba â€” restoran paneli va mijoz
 	// ilovasi ikkalasi ham shundan foydalanadi, ular orasida yozilishi
 	// farq qilib ketmasligi uchun).
 	mux.HandleFunc("GET /categories", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, catalog.PredefinedCategories)
 	})
 
-	// publicProducts — OCHIQ javob uchun nusxa: restoranning ichki
+	// publicProducts â€” OCHIQ javob uchun nusxa: restoranning ichki
 	// maydonlari (`catalog.Product.PublicView`) kesiladi. Ro'yxat
-	// nusxalanadi — repo qaytargan obyektlar o'zgartirilmaydi (ular
+	// nusxalanadi â€” repo qaytargan obyektlar o'zgartirilmaydi (ular
 	// kesh/xotira ombori bilan bo'lishilgan bo'lishi mumkin).
 	publicProducts := func(list []*catalog.Product) []*catalog.Product {
 		out := make([]*catalog.Product, 0, len(list))
@@ -135,25 +135,57 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		return out
 	}
 
-	// GET /products/search?q=... — ochiq. Restoranga bog'liq bo'lmagan
+	// GET /products/search?q=... â€” ochiq. Restoranga bog'liq bo'lmagan
 	// holda, turkum yoki nom bo'yicha barcha restoranlardagi mos taomlarni
 	// bitta ro'yxatda qaytaradi (mijoz ilovasining turkum filtri uchun).
-	mux.HandleFunc("GET /products/search", func(w http.ResponseWriter, r *http.Request) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		if q == "" {
-			writeJSON(w, http.StatusOK, []any{})
-			return
-		}
-		list, err := s.CatalogRepo.SearchProducts(r.Context(), q)
-		if err != nil {
-			httpError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, list)
-	})
+	//
+	// ┌─ TUZATILGAN NOSOZLIK (bug.md 12-band) ─────────────────────────┐
+	// Bu endpoint OCHIQ (`s.auth` yo'q) va hech qanday chelakka
+	// tushmasdi, har so'rov esa butun katalogni skanerlardi. Ya'ni bir
+	// qatorlik `curl` sikli bazani band qila olardi.
+	//
+	// Uch qatlam qo'shildi:
+	//   1. `rateLimitedSearch` — IP bo'yicha yumshoq chelak;
+	//   2. Redis kesh (30s) — bir xil so'rov bazaga qayta bormaydi;
+	//   3. so'rov uzunligi chegarasi — juda uzun `q` bekorga
+	//      normalizatsiya qilinmasin.
+	// Ombor qatlamida esa `$lookup` filtrdan keyinga ko'chirildi va
+	// natijaga chegara qo'yildi (`mongo_catalog.go`).
+	// └────────────────────────────────────────────────────────────────┘
+	mux.HandleFunc("GET /products/search", rateLimitedSearch(
+		func(w http.ResponseWriter, r *http.Request) {
+			q := strings.TrimSpace(r.URL.Query().Get("q"))
+			if q == "" {
+				writeJSON(w, http.StatusOK, []any{})
+				return
+			}
+			if len(q) > maxSearchQueryLength {
+				httpError(w, http.StatusBadRequest,
+					errors.New("qidiruv so'rovi juda uzun"))
+				return
+			}
+			// Kesh kaliti so'rovning NORMALLASHTIRILGAN shakli bo'yicha:
+			// "Osh", "osh " va "OSH!" bir xil natija beradi, ya'ni ular
+			// bitta yozuvni baham ko'rishi kerak.
+			cacheKey := searchCacheKey(catalog.NormalizeForSearch(q))
+			var cached []*catalog.ProductSearchResult
+			if s.Cache.GetJSON(r.Context(), cacheKey, &cached) {
+				writeJSON(w, http.StatusOK, cached)
+				return
+			}
+			list, err := s.CatalogRepo.SearchProducts(r.Context(), q)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			// TTL menyu keshi bilan bir xil (30s): yangi taom qidiruvda
+			// eng ko'pi bilan shuncha kechikib ko'rinadi.
+			s.Cache.SetJSON(r.Context(), cacheKey, list, 30*time.Second)
+			writeJSON(w, http.StatusOK, list)
+		}))
 
-	// GET /restaurants/{id}/menu — ochiq. Har mijoz restoran menyusini
-	// ochganda so'raladi — Redis'da 30s keshlanadi, mahsulot
+	// GET /restaurants/{id}/menu â€” ochiq. Har mijoz restoran menyusini
+	// ochganda so'raladi â€” Redis'da 30s keshlanadi, mahsulot
 	// qo'shilganda/tahrirlanganda/o'chirilganda kesh darhol tozalanadi.
 	mux.HandleFunc("GET /restaurants/{id}/menu", func(w http.ResponseWriter, r *http.Request) {
 		restaurantID := r.PathValue("id")
@@ -172,18 +204,18 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			return
 		}
 		// Ichki maydonlar (ulgurji narx) KESHGA YOZILISHDAN OLDIN
-		// olib tashlanadi — shunda ommaviy kesh ularni umuman
+		// olib tashlanadi â€” shunda ommaviy kesh ularni umuman
 		// saqlamaydi va keyingi so'rovlarda ham sizib chiqmaydi.
 		list = publicProducts(list)
 		s.Cache.SetJSON(r.Context(), menuCacheKey(restaurantID), list, 30*time.Second)
 		writeJSON(w, http.StatusOK, list)
 	})
 
-	// GET /restaurants/{id}/products — restoran panelining TO'LIQ ro'yxati.
+	// GET /restaurants/{id}/products â€” restoran panelining TO'LIQ ro'yxati.
 	//
 	// Ochiq `/menu` dan farqi: bu yerda restoranning ichki maydonlari ham
 	// (ulgurji narx) qaytadi, shuning uchun endpoint avtorizatsiya va
-	// EGALIK tekshiruvidan o'tadi. Kesh ishlatilmaydi — panel har doim
+	// EGALIK tekshiruvidan o'tadi. Kesh ishlatilmaydi â€” panel har doim
 	// eng so'nggi holatni ko'rishi kerak.
 	mux.HandleFunc("GET /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +236,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			}
 			writeJSON(w, http.StatusOK, list)
 		}))
-	// POST /restaurants/{id}/products — restoran o'z menyusini boshqaradi (yoki admin)
+	// POST /restaurants/{id}/products â€” restoran o'z menyusini boshqaradi (yoki admin)
 	mux.HandleFunc("POST /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -234,9 +266,9 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("discount_price_tiyin asosiy narxdan kichik bo'lishi kerak"))
 				return
 			}
-			// Ulgurji narx — ixtiyoriy ichki maydon. ASOSIY NARX BILAN
+			// Ulgurji narx â€” ixtiyoriy ichki maydon. ASOSIY NARX BILAN
 			// TAQQOSLANMAYDI: u sotuv narxidan yuqori ham bo'lishi mumkin
-			// (masalan aksiya davrida zarariga sotish) — bu restoranning
+			// (masalan aksiya davrida zarariga sotish) â€” bu restoranning
 			// o'z biznes qarori, tizim unga aralashmaydi.
 			if p.WholesalePriceTiyin < 0 {
 				httpError(w, http.StatusBadRequest, errors.New("wholesale_price_tiyin manfiy bo'lishi mumkin emas"))
@@ -273,17 +305,62 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			p.RestaurantID = restaurantID
 			if p.ID == "" {
 				p.ID = NewID()
+			} else {
+				// ┌─ TUZATILGAN NOSOZLIK (bug.md 19 va 77-bandlar) ────────┐
+				// `id` tanadan keladi (panel mavjud taomni AYNAN shu
+				// maydon bilan yangilaydi), lekin avval u hech qanday
+				// tekshiruvdan o'tmasdi:
+				//
+				//  19-band — EGALIK. Restoran o'z yo'liga (`{id}`) o'z
+				//  ID sini yozib, tanada BOSHQA restoranning taom ID sini
+				//  yuborsa, o'sha taom butunlay bosib yozilardi (raqibning
+				//  menyusini o'chirish yoki narxini buzish mumkin edi).
+				//  Aksiyalarda bu tekshiruv bor edi, taomda yo'q
+				//  (31-band aynan shu ziddiyatni ko'rsatgan).
+				//
+				//  77-band — SERVER BOSHQARADIGAN MAYDONLAR. Bu endpoint
+				//  yozuvni TO'LIQ almashtiradi, panel esa `model_3d_*`
+				//  maydonlarini yubormaydi — natijada har saqlashda
+				//  (hatto "Faol/Nofaol" tugmasida ham) tayyor 3D model
+				//  jimgina o'chardi. Model pullik tashqi xizmatda
+				//  yaratilgani uchun panel keyin uni QAYTA yaratishni
+				//  taklif qilardi: tahrir → model o'chdi → taklif →
+				//  yangi to'lov.
+				//
+				// Ikkalasining yechimi bitta: saqlashdan OLDIN mavjud
+				// yozuvni o'qish.
+				// └────────────────────────────────────────────────────────┘
+				existing, err := s.CatalogRepo.GetProductsByIDs(r.Context(), []string{p.ID})
+				if err != nil {
+					httpError(w, http.StatusInternalServerError, err)
+					return
+				}
+				if len(existing) > 0 {
+					cur := existing[0]
+					if cur.RestaurantID != restaurantID {
+						httpError(w, http.StatusForbidden,
+							errors.New("bu taom sizning restoraningizga tegishli emas"))
+						return
+					}
+					// Server boshqaradigan maydonlar klientdan KELMAYDI —
+					// ular mavjud yozuvdan ko'chiriladi. Klient yuborgan
+					// qiymat ataylab e'tiborga olinmaydi: 3D model holati
+					// `internal/model3d` ning ishi, panelniki emas.
+					p.Model3DURL = cur.Model3DURL
+					p.Model3DStatus = cur.Model3DStatus
+					p.Model3DTaskID = cur.Model3DTaskID
+				}
 			}
 			if err := s.CatalogRepo.SaveProduct(r.Context(), &p); err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
 			s.Cache.Del(r.Context(), menuCacheKey(restaurantID))
-			s.Hub.Send(restaurantTopic(restaurantID), map[string]any{"type": "menu_updated"})
+			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "menu_updated"})
 			writeJSON(w, http.StatusCreated, p)
 		}))
 
-	// DELETE /restaurants/{id}/products/{productId} — taomni menyudan o'chirish.
+	// DELETE /restaurants/{id}/products/{productId} â€” taomni menyudan o'chirish.
 	// Eski buyurtmalarga ta'sir qilmaydi (nom/narx buyurtma vaqtida nusxalanadi).
 	mux.HandleFunc("DELETE /restaurants/{id}/products/{productId}", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
@@ -312,18 +389,18 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				return
 			}
 			s.Cache.Del(r.Context(), menuCacheKey(restaurantID))
-			s.Hub.Send(restaurantTopic(restaurantID), map[string]any{"type": "menu_updated"})
+			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "menu_updated"})
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 		}))
 
 	// ---------- Aksiyalar (promotions) ----------
-	// checkout'ga ULANGAN (orders.Service.priceCart + promotions.ApplyBest) —
+	// checkout'ga ULANGAN (orders.Service.priceCart + promotions.ApplyBest) â€”
 	// "foydalanish/savdo" ko'rsatkichlari endi HAQIQIY, checkout'da shu
 	// aksiya haqiqatan tanlanganda oshadi (orders.Service.Create'ga qarang).
 
-	// GET /restaurants/{id}/active-promotions — OCHIQ (mijoz ilovasi uchun):
+	// GET /restaurants/{id}/active-promotions â€” OCHIQ (mijoz ilovasi uchun):
 	// faqat HOZIR FAOL (ComputeStatus==active) aksiyalarni, faqat
-	// mijozga tegishli/xavfsiz maydonlar bilan qaytaradi — restoranning
+	// mijozga tegishli/xavfsiz maydonlar bilan qaytaradi â€” restoranning
 	// ichki biznes ko'rsatkichlari (UsageCount/SalesTotalTiyin) BU YERDA
 	// HECH QACHON chiqarilmaydi.
 }

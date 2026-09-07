@@ -69,6 +69,9 @@ func (r *fakeOCCRepo) ListRecent(context.Context, int) ([]*Order, error) { retur
 func (r *fakeOCCRepo) HasActiveByRestaurant(context.Context, string) (bool, error) {
 	return false, nil
 }
+func (r *fakeOCCRepo) HasActiveByCustomer(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (r *fakeOCCRepo) GetActiveByCourier(context.Context, string) (*Order, error) {
 	return nil, ErrNotFound
 }

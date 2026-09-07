@@ -230,14 +230,12 @@ func New(d Deps) *Server {
 			if s.Cache != nil {
 				s.Cache.Del(ctx, menuCacheKey(p.RestaurantID))
 			}
-			if s.Hub != nil {
-				s.Hub.Send(restaurantTopic(p.RestaurantID), map[string]any{
-					"type":       "model3d_updated",
-					"product_id": p.ID,
-					"status":     p.Model3DStatus,
-					"model_url":  p.Model3DURL,
-				})
-			}
+			s.sendPublicRestaurantEvent(p.RestaurantID, map[string]any{
+				"type":       "model3d_updated",
+				"product_id": p.ID,
+				"status":     p.Model3DStatus,
+				"model_url":  p.Model3DURL,
+			})
 		})
 	}
 	return s

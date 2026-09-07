@@ -53,6 +53,38 @@ func Entity(module, entityID string) string {
 	return "e:" + module + ":" + entityID
 }
 
+// PublicEntity — tashkilotning OCHIQ kanali: shu tashkilot sahifasini
+// ochib turgan HAR QANDAY mijoz obuna bo'la oladi.
+//
+// ┌─ NEGA `Entity` dan ALOHIDA ────────────────────────────────────────┐
+// Avval menyu yangilanishi ham, YANGI BUYURTMA ham bitta
+// `Entity(food, restaurantID)` kanaliga borardi va `GET /ws` da
+// `?restaurant_id=` parametri hech qanday tekshiruvsiz o'sha kanalga
+// obuna qilardi. Restoran ID'lari `GET /restaurants` da ochiq
+// berilgani uchun istalgan mijoz raqib restoranning butun buyurtma
+// oqimini (summa, stol, kuryer) real vaqtda kuzata olardi. Kuryer
+// ID'si ham shu fazoda bo'lgani uchun kuryerning taklif oqimi
+// (restoran manzili va KOORDINATASI) ham ochiq edi.
+//
+// Endi ikki kanal bor:
+//
+//   - `Entity(...)`       — XODIM kanali: buyurtmalar, taklif, dispatch.
+//     Unga faqat o'sha tashkilotning `EntityID` si bilan
+//     kelgan token obuna bo'ladi.
+//   - `PublicEntity(...)` — OCHIQ kanal: menyu/aksiya/3D yangilandi
+//     signali. Bu ma'lumot GET endpointlarida
+//     allaqachon ochiq, shuning uchun tekshiruv shart emas.
+//
+// Ochiq signallar IKKALA kanalga ham yuboriladi — xodim paneli ham
+// menyu o'zgarganini eshitishi kerak.
+// └────────────────────────────────────────────────────────────────────┘
+func PublicEntity(module, entityID string) string {
+	if module == "" || entityID == "" {
+		return ""
+	}
+	return "pub:" + module + ":" + entityID
+}
+
 // Admin — platforma ma'muriyati kanali (superadmin paneli).
 //
 // ┌─ NEGA ALOHIDA KANAL ──────────────────────────────────────────────┐

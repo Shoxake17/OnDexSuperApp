@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+// `isTerminalStatus` — `ondex_core` dan, `api.dart` orqali
+// (u butun paketni qayta eksport qiladi).
 import '../api.dart';
 import '../live.dart';
 import '../sound.dart';
@@ -10,7 +12,26 @@ import '../widgets/page_header.dart';
 import '../theme.dart';
 
 const _preparingStatuses = {'accepted', 'preparing'};
-const _terminalStatuses = {'delivered', 'rejected', 'cancelled'};
+
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 78-band) ─────────────────────────────┐
+// Bu yerda AVVAL o'z nusxasi turardi:
+//
+//	const _terminalStatuses = {'delivered', 'rejected', 'cancelled'};
+//
+// `served` — STOL buyurtmasining yakuniy holati — ro'yxatda YO'Q edi.
+// Natijada berilgan stol buyurtmasi:
+//   1. "faol" deb hisoblanardi va "Jami N ta buyurtma" ga qo'shilardi;
+//   2. hech qaysi ustunga tushmasdi (`_byStatus` ning to'rt to'plamiga
+//      mos kelmaydi);
+//   3. tarixga ham tushmasdi.
+// Ya'ni hisoblagich har stol buyurtmasidan keyin ekrandagi kartalar
+// sonidan uzoqlashib borardi va restoran zal savdosini tarixdan
+// umuman topa olmasdi.
+//
+// Endi ro'yxat `packages/ondex_core` dagi YAGONA manbadan
+// (`isTerminalStatus`) olinadi — u backend'ning
+// `orders.TerminalStatusStrings()` ro'yxatiga mos.
+// └────────────────────────────────────────────────────────────────────┘
 
 enum _TabFilter { all, yangi, tayyorlanmoqda, tayyor, kuryerda }
 
@@ -245,11 +266,12 @@ class _OrdersPageState extends State<OrdersPage> {
   // ham "joriy" (masalan kecha qabul qilingan-u hali yetkazilmagan
   // buyurtma bo'lishi mumkin), sana filtri esa faqat TARIX ko'rinishida
   // mantiqiy (yakunlangan buyurtmalarni kunma-kun ko'rish uchun).
-  List<Map<String, dynamic>> get _activeOrders =>
-      _orders.where((o) => !_terminalStatuses.contains(o['status'])).toList();
+  List<Map<String, dynamic>> get _activeOrders => _orders
+      .where((o) => !isTerminalStatus((o['status'] ?? '').toString()))
+      .toList();
 
   List<Map<String, dynamic>> get _historyOrders => _orders
-      .where((o) => _terminalStatuses.contains(o['status']))
+      .where((o) => isTerminalStatus((o['status'] ?? '').toString()))
       .where(_matchesDate)
       .where(_matchesSearch)
       .toList()

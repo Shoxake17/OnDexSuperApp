@@ -81,6 +81,48 @@ body {
   display: none;
 }
 
+/* ┌─ TO'Q YUZALAR UCHUN SKROLL POLOSASI ───────────────────────────────┐
+   Kompyuter ko'rinishidagi to'q bloklar (restoran menyusi, savat
+   paneli) ichida brauzerning STANDART polosasi qo'pol ko'rinadi: u
+   tizim rangida — och kulrang yo'lak va to'rtburchak "tutqich" — va
+   to'q fonda yamoqdek ajralib turadi.
+
+   `.no-scrollbar` bu yerda TO'G'RI KELMAYDI: u polosani butunlay
+   yashiradi va uzun menyuda foydalanuvchi qayerda turganini bilmay
+   qoladi (turkumlar qatorida buni allaqachon boshdan kechirdik).
+
+   Shuning uchun polosa QOLADI, lekin ingichka, dumaloq va yarim
+   shaffof — faqat kerak bo'lganda ko'zga tashlanadi.
+
+   `background-clip: content-box` + shaffof ramka — tutqich atrofida
+   bo'shliq hosil qiladi; busiz u yo'lakni to'ldirib, qalin ko'rinardi.
+   └────────────────────────────────────────────────────────────────────┘ */
+.ondex-scroll {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.ondex-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.ondex-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ondex-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.ondex-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: content-box;
+}
+
 /* ┌─ TELEGRAM MINI APP MAVZUSI ─────────────────────────────────────┐
    Bu blok FAQAT `<html data-tg="1">` bo'lganda ishlaydi. Bu belgini
    `lib/telegram.ts` dagi `applyTelegramTheme` qo'yadi va u FAQAT
@@ -132,4 +174,35 @@ html[data-tg="1"] .tg-muted {
 html[data-tg="1"] .tg-accent {
   background: var(--ondex-tg-button, #f4511e) !important;
   color: var(--ondex-tg-button-text, #ffffff) !important;
+}
+
+/* ┌─ HUQUQIY HUJJATLAR: CHOP ETISH (bug.md 70-band) ───────────────────┐
+   Maxfiylik siyosati va ommaviy oferta nizoli holatda QOG'OZDA
+   so'raladi — ular chop etishga yaroqli bo'lishi kerak.
+
+   Chop etishda kerak bo'lmagan narsalar olib tashlanadi (navigatsiya,
+   ranglar), matn esa qora-oqda va o'qiladigan o'lchamda qoladi.
+
+   `break-inside: avoid` — bo'lim sarlavhasi bir sahifada, matni
+   boshqasida qolib ketmasin.
+   └────────────────────────────────────────────────────────────────────┘ */
+@media print {
+  .legal a[href^="#"] {
+    /* Ichki anchor havolalari qog'ozda ma'nosiz. */
+    color: inherit;
+    text-decoration: none;
+  }
+  .legal a[href^="http"]::after,
+  .legal a[href^="mailto"]::after {
+    /* Tashqi havola manzili qog'ozda ko'rinsin. */
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #555;
+  }
+  .legal section {
+    break-inside: avoid;
+  }
+  .legal table {
+    font-size: 10pt;
+  }
 }

@@ -81,8 +81,9 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
           return;
         }
         api.rid = user['entity_id'] as String;
+        // Token — shifrlangan omborga (bug.md 2-band).
+        await restTokenStore.write(api.token!);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('rest_token', api.token!);
         await prefs.setString('rest_rid', api.rid);
         if (!mounted) return;
         Navigator.of(context).pushReplacement(

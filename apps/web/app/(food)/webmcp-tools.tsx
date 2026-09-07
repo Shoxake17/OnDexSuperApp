@@ -195,10 +195,12 @@ export default function WebMcpTools() {
           }
           if (!dish.available) return `"${dish.name}" is not available now.`;
 
+          // Savatlar restoran bo'yicha ALOHIDA (`lib/cart-context.tsx`):
+          // boshqa restorandan qo'shish eskisini o'chirmaydi, faqat
+          // faol savatni almashtiradi.
           const switched =
             cart.restaurantId !== null && cart.restaurantId !== restaurantId;
-          const current =
-            cart.restaurantId === restaurantId ? (cart.items[dishId] ?? 0) : 0;
+          const current = cart.carts[restaurantId]?.[dishId] ?? 0;
 
           cart.setQty(restaurantId, dishId, current + qty);
           say(`"${dish.name}" savatga qo'shildi (${qty} ta)`);
@@ -206,7 +208,7 @@ export default function WebMcpTools() {
 
           return lines(
             switched &&
-              "Note: the cart contained dishes from another restaurant, so it was cleared (one order = one restaurant).",
+              "Note: this restaurant now has its own cart and is the active one. Carts from other restaurants are kept (one order = one restaurant, but carts are separate).",
             `Added ${qty} x ${dish.name}. Cart now has ${current + qty} of this dish.`,
           );
         },

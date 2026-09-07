@@ -42,15 +42,64 @@ class _RootState extends State<_Root> {
   }
 
   Future<void> _restore() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('rest_token');
-    final rid = prefs.getString('rest_rid');
-    if (token != null && token.isNotEmpty && rid != null && rid.isNotEmpty) {
-      api.token = token;
-      api.rid = rid;
-      _loggedIn = true;
+    // Token — shifrlangan ombordan (bug.md 2-band). `rest_rid` sir
+    // emas (oddiy restoran ID'si) va `SharedPreferences` da qoladi —
+    // lekin u endi FAQAT zaxira: haqiqiy manba `me()` javobi.
+    final token = await restTokenStore.read();
+    if (token == null || token.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
     }
+    api.token = token;
+    // ┌─ TUZATILGAN NOSOZLIK (bug.md 63-band) ────────────────────────┐
+    // Panel AVVAL tokenni ham, `rid` ni ham tekshirmasdan ichkariga
+    // kiritardi (sabab admin panelidagi bir xil izohda).
+    //
+    // `rid` endi `me()` javobidagi `entity_id` dan olinadi — YAGONA
+    // HAQIQAT MANBAI. Avval u `SharedPreferences` dan kelardi va
+    // Windows'da o'sha fayl tahrirlanishi mumkin edi: xavfsizlik
+    // xavfi yo'q (server `claims.EntityID` ni tekshiradi va 403
+    // beradi), lekin panel tushunarsiz xatolar bilan to'lardi.
+    // └───────────────────────────────────────────────────────────────┘
+    try {
+      final user = await api.me();
+      final role = user['role'] as String? ?? '';
+      final entityId = user['entity_id'] as String? ?? '';
+      if (role == 'restaurant' && entityId.isNotEmpty) {
+        api.rid = entityId;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('rest_rid', entityId);
+        _loggedIn = true;
+      } else {
+        await restTokenStore.clear();
+        api.token = null;
+      }
+    } on ApiException catch (e) {
+      // Faqat 401 da chiqaramiz — tarmoq xatosida emas (60-band):
+      // restoran zaif tarmoqda ham panelni ocha olishi kerak.
+      if (e.isUnauthorized) {
+        await restTokenStore.clear();
+        api.token = null;
+        _loggedIn = false;
+      } else {
+        _loggedIn = await _resumeFromCache();
+      }
+    } catch (_) {
+      _loggedIn = await _resumeFromCache();
+    }
+    if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  /// Server javob bermaganda — keshdagi `rid` bilan davom etish.
+  /// `rid` bo'lmasa ichkariga kirishning ma'nosi yo'q: panelning
+  /// deyarli har bir so'rovi unga tayanadi.
+  Future<bool> _resumeFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rid = prefs.getString('rest_rid') ?? '';
+    if (rid.isEmpty) return false;
+    api.rid = rid;
+    return true;
   }
 
   @override

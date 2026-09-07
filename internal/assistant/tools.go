@@ -57,12 +57,15 @@ QOIDALAR:
   SO'RA: restoran nomini va jami summani takrorlab, "naqd to'lov bilan buyurtma
   beraymi?" deb so'ra.
   * "Ha" desa — confirm_order chaqir. Bu NAQD to'lov: pul kuryerga beriladi.
+    DIQQAT: confirm_order buyurtma BERMAYDI. U ilovada TASDIQ OYNASINI
+    ochadi, oxirgi tugmani esa ODAM bosadi. Shuning uchun uni chaqirgach
+    "ekranda tasdiq oynasi chiqdi, 'Tasdiqlash' tugmasini bosing" deb ayt.
   * "Yo'q" desa yoki karta bilan to'lamoqchi bo'lsa — confirm_order CHAQIRMA.
     "Ekranda o'zingiz tasdiqlang, karta bilan ham to'lash mumkin" deb ayt.
   * Javob noaniq bo'lsa — QAYTA so'ra. Shubhali holatda hech qachon chaqirma:
-    noto'g'ri tanilgan bitta so'z odamning pulini sarflashi mumkin.
-- "Buyurtma berdim", "to'lov qildim" deb HECH QACHON aytma. Buyurtma berilganini
-  faqat EKRAN tasdiqlaydi.
+    noto'g'ri tanilgan bitta so'z odamni keraksiz oynaga duch qiladi.
+- "Buyurtma berdim", "to'lov qildim", "tasdiqladim" deb HECH QACHON aytma.
+  Buyurtmani faqat ODAM beradi va uni faqat EKRAN tasdiqlaydi.
 - Barcha taomlar BITTA restorandan bo'lishi shart. Boshqa restorandan so'ralsa, buni aytib, alohida buyurtma kerakligini tushuntir.
 - "Buyurtmam qayerda?" kabi savolda my_orders chaqir. Javobda RESTORAN NOMINI va
   taomni ayt ("Avigo'dan ikkita osh — yo'lda"). Faqat raqamni aytish yaramaydi:
@@ -157,11 +160,22 @@ var toolDefs = []Tool{
 		Type: "function",
 		Function: ToolFunction{
 			Name: "confirm_order",
+			// ┌─ TAVSIF O'ZGARTIRILDI (bug.md 11-band) ────────────────┐
+			// Avval bu yerda "buyurtmani tasdiqlaydi" deb yozilgan edi
+			// va ilova haqiqatan ham checkout tugmasini O'ZI bosardi —
+			// ya'ni buyurtmani model berardi, odamning barmog'i
+			// ekranga tegmasdi. Endi ilova TASDIQ OYNASINI ochadi va
+			// oxirgi bosishni odam qiladi. Tavsif shu yangi xulqni
+			// aytishi SHART: aks holda model "tasdiqladim" deb
+			// hisoblab, foydalanuvchini adashtiradi.
+			// └────────────────────────────────────────────────────────┘
 			Description: "Foydalanuvchi OG'ZAKI rozilik bergandan keyin " +
-				"buyurtmani NAQD to'lov bilan tasdiqlaydi. Faqat " +
-				"propose_order dan keyin va foydalanuvchi aniq \"ha\" " +
-				"deganda chaqiriladi. KARTA to'lovi uchun ISHLATILMAYDI — " +
-				"karta bo'lsa foydalanuvchi o'zi ekrandan to'laydi.",
+				"ilovada NAQD to'lov uchun TASDIQ OYNASINI ochadi. " +
+				"Buyurtmani O'ZI BERMAYDI — oxirgi tugmani foydalanuvchi " +
+				"ekranda bosadi. Faqat propose_order dan keyin va " +
+				"foydalanuvchi aniq \"ha\" deganda chaqiriladi. KARTA " +
+				"to'lovi uchun ISHLATILMAYDI — karta bo'lsa foydalanuvchi " +
+				"o'zi ekrandan to'laydi.",
 			Parameters: map[string]any{
 				"type":                 "object",
 				"properties":           map[string]any{},
@@ -375,13 +389,24 @@ func (s *Service) runTool(ctx context.Context, userID, name string,
 		// pulini sarflardi. Endi esa zanjir uzun va har bo'g'ini
 		// ko'rinadi: og'zaki "ha" -> ilova -> checkout ekrani ->
 		// haqiqiy tugma -> server tekshiruvlari.
+		//
+		// ┌─ ILOVA TOMONI HAM TUZATILDI (bug.md 11-band) ─────────────┐
+		// Server invarianti to'g'ri edi, LEKIN ilova uni buzardi:
+		// `assistant_screen.dart` bu signalni olib, checkout
+		// tugmasini DASTUR bilan bosardi (`AgentDriver._tapAt`).
+		// Ya'ni "haqiqiy tugma" bo'g'ini zanjirdan tushib qolgandi va
+		// buyurtmani amalda MODEL berardi.
+		//
+		// Endi ilova TASDIQ OYNASINI ochadi, tugmani ODAM bosadi.
+		// Pastdagi `note` shu yangi xulqni aytadi.
 		// └───────────────────────────────────────────────────────────┘
 		return map[string]any{
 			"ok": true,
-			"note": "Ilova buyurtmani naqd to'lov bilan tasdiqlayapti. " +
-				"Foydalanuvchiga \"tasdiqlayapman\" deb ayt; natijani " +
-				"ekran ko'rsatadi. \"Buyurtma berildi\" deb AYTMA — " +
-				"buni ekran tasdiqlaydi.",
+			"note": "Ilova ekranda TASDIQ OYNASINI ochdi. Buyurtma HALI " +
+				"berilmagan — oxirgi tugmani foydalanuvchi bosishi kerak. " +
+				"Unga \"ekranda tasdiq oynasi chiqdi, 'Tasdiqlash' " +
+				"tugmasini bosing\" deb ayt. \"Buyurtma berildi\" yoki " +
+				"\"tasdiqladim\" deb AYTMA.",
 		}, nil
 	case "my_orders":
 		return s.toolMyOrders(ctx, userID), nil

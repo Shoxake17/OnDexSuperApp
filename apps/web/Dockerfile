@@ -39,9 +39,21 @@ ARG NEXT_PUBLIC_SITE_URL
 # sababdan buziladi: `localhost` telefonning O'ZI, va HTTPS sahifada
 # cleartext `ws://` aralash kontent sifatida bloklanadi.
 ARG NEXT_PUBLIC_WS_URL
+# ┌─ MEDIA ORIGIN (bug.md 67-band) ────────────────────────────────────┐
+# R2 ning ochiq domeni. U `next.config.ts` da CSP ning `connect-src`
+# ro'yxatiga qo'shiladi: 3D model (GLB) `<model-viewer>` tomonidan
+# `fetch` orqali olinadi, ya'ni `img-src` emas, AYNAN `connect-src`.
+#
+# Bu yerda `ARG` UMUMAN YO'Q edi (ikkinchi ikkisidan farqli) — ya'ni
+# qiymat build'ga hech qanday yo'l bilan yetib bora olmasdi va
+# `mediaOrigin` doim bo'sh qolardi. Natijada web'da 3D model
+# BLOKLANARDI, xato esa konsolda ham jimgina qolardi.
+# └────────────────────────────────────────────────────────────────────┘
+ARG NEXT_PUBLIC_MEDIA_ORIGIN
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+ENV NEXT_PUBLIC_MEDIA_ORIGIN=${NEXT_PUBLIC_MEDIA_ORIGIN}
 
 RUN npm run build
 

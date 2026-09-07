@@ -1,4 +1,27 @@
 ALTER TABLE couriers ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Demo kuryerlar avvaldan ishlayotgan edi — tasdiqlangan deb belgilaymiz
-UPDATE couriers SET approved = TRUE WHERE id IN ('c1', 'c2', 'c3');
+-- ┌─ OLIB TASHLANGAN QATOR (bug.md 98-band) ──────────────────────────┐
+-- Bu yerda AVVAL quyidagi qator turgan edi:
+--
+--     UPDATE couriers SET approved = TRUE WHERE id IN ('c1','c2','c3');
+--
+-- U MA'LUMOTNI o'zgartirardi va migratsiya HAR BIR muhitda, jumladan
+-- PRODUCTION'da ham bajariladi. Kuryerni tasdiqlash esa xavfsizlik
+-- qarori: tasdiqlangan kuryer buyurtma takliflarini oladi, mijozning
+-- manzilini va telefon raqamini ko'radi (`authz.go` redaksiyasi
+-- faqat `picked_up` gacha yashiradi). Bu qarorni superadmin QO'LDA
+-- qabul qilishi kerak (`couriers_page.dart` — "siz tasdiqlamaguningizcha
+-- ishlay olmaydi").
+--
+-- UMUMIY QOIDA: migratsiya SXEMANI o'zgartiradi, MA'LUMOTNI emas.
+-- Ma'lumot ko'chirish kerak bo'lsa — alohida, bir martalik skript
+-- (`scripts/` papkasi) yoki dev-only seed (`SeedDemoCouriers`).
+--
+-- Demo kuryerlar dev'da baribir tasdiqlangan holda yaratiladi
+-- (`storage.SeedDemoCouriers` — u FAQAT `APP_ENV=development` da
+-- chaqiriladi), ya'ni bu qatorning yo'qolishi dev oqimini buzmaydi.
+--
+-- Bu migratsiya allaqachon qo'llangan bazalarda (production ham)
+-- yuqoridagi `UPDATE` o'z ishini qilib bo'lgan. Uni ORQAGA qaytarish
+-- alohida migratsiyada: `0041_revoke_demo_courier_approval.sql`.
+-- └───────────────────────────────────────────────────────────────────┘

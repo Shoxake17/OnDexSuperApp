@@ -10,9 +10,22 @@ import { loadGoogleMaps } from "@/lib/gmaps";
 export default function CourierMap({
   courier,
   destination,
+  heightClassName = "h-[200px]",
 }: {
-  courier: { lat: number; lng: number };
+  /**
+   * Kuryer koordinatasi. `null` — kuryer hali yo'lga chiqmagan: xarita
+   * baribir chiziladi, lekin FAQAT yetkazish manzili belgisi bilan.
+   *
+   * Avval bu maydon majburiy edi va xarita faqat kuryer paydo
+   * bo'lgandagina ko'rsatilardi. Kompyuter ko'rinishida esa manzil
+   * xaritasi buyurtma holatining bir qismi sifatida DOIM kerak —
+   * mijoz "qayerga yetkaziladi" ni birinchi daqiqadanoq ko'rishi
+   * kerak.
+   */
+  courier: { lat: number; lng: number } | null;
   destination: { lat: number; lng: number } | null;
+  /** Kompyuterda xarita balandroq bo'ladi. */
+  heightClassName?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -36,26 +49,37 @@ export default function CourierMap({
 
   useEffect(() => {
     if (!ready || !containerRef.current) return;
+
+    // Markaz: kuryer bo'lsa u, aks holda yetkazish manzili. Ikkalasi
+    // ham bo'lmasa xarita yaratilmaydi — markazsiz xarita okean
+    // o'rtasini ko'rsatardi.
+    const center = courier ?? destination;
+    if (!center) return;
+
     if (!mapRef.current) {
       mapRef.current = new google.maps.Map(containerRef.current, {
-        center: courier,
+        center,
         zoom: 15,
         zoomControl: false,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
       });
+    }
+
+    if (!courier) return;
+    if (!courierMarkerRef.current) {
       courierMarkerRef.current = new google.maps.Marker({
         position: courier,
         map: mapRef.current,
         icon: "http://maps.google.com/mapfiles/ms/icons/orange-dot.png",
       });
     } else {
-      courierMarkerRef.current?.setPosition(courier);
-      mapRef.current.panTo(courier);
+      courierMarkerRef.current.setPosition(courier);
     }
+    mapRef.current.panTo(courier);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, courier.lat, courier.lng]);
+  }, [ready, courier?.lat, courier?.lng, destination?.lat, destination?.lng]);
 
   // Yetkazish manzili belgisi — ALOHIDA effekt.
   //
@@ -85,7 +109,7 @@ export default function CourierMap({
   return (
     <div
       ref={containerRef}
-      className="h-[200px] w-full overflow-hidden rounded-2xl bg-neutral-100 dark:bg-neutral-800"
+      className={`${heightClassName} w-full overflow-hidden rounded-2xl bg-neutral-100 dark:bg-neutral-800`}
     />
   );
 }

@@ -37,10 +37,15 @@ export default function MenuContent({
     [menu],
   );
 
-  // Bu restoranga tegishli savat miqdorlari (boshqa restoran savati bo'lsa
-  // — cart-context.tsx'dagi qoidaga ko'ra — bo'sh ko'rinadi).
-  const cartItems =
-    cart.restaurantId === restaurant.id ? cart.items : ({} as Record<string, number>);
+  // ANIQ shu restoran savati — faol savat qaysi bo'lishidan QAT'I NAZAR.
+  //
+  // Avval bu yerda `cart.restaurantId === restaurant.id ? cart.items : {}`
+  // turardi. Savatlar restoran bo'yicha ajratilgach (2026-09-04) bu xato
+  // bo'lib qoldi: mijoz A da savat yig'ib, B ga o'tsa (faol savat B
+  // bo'ladi), A menyusiga qaytganda hamma miqdor 0 ko'rinardi — savat
+  // esa joyida turardi va pastdagi "Savatga o'tish" paneli ham
+  // yo'qolardi.
+  const cartItems = cart.itemsFor(restaurant.id);
 
   // _applyPromotions bilan bir xil: order-wide/turkum darajasidagi
   // aksiyalarni oldindan hisoblab qo'yamiz (har bir kartochkada qayta
@@ -262,6 +267,11 @@ export default function MenuContent({
       {totalItems > 0 && (
         <Link
           href="/cart"
+          // Savat sahifasi FAOL savatni ko'rsatadi — shuning uchun
+          // o'tishdan oldin faol savat aynan shu restoranga o'tkaziladi.
+          // Busiz mijoz A menyusidan savatga kirib, B restorani
+          // taomlarini ko'rardi (savatlar ajratilgandan keyingi holat).
+          onClick={() => cart.setActive(restaurant.id)}
           // Balandligi umumiy tugmalar bilan bir xil (52px), lekin shakli
           // ATAYLAB dumaloq/suzuvchi — bu to'liq kenglikdagi asosiy
           // tugma emas, shuning uchun AppButton ishlatilmaydi.

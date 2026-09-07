@@ -230,12 +230,52 @@ type Order struct {
 	Version int `json:"version"`
 }
 
+// terminalStatuses — buyurtma YAKUNLANGAN deb hisoblanadigan holatlar.
+//
+// ┌─ YAGONA MANBA (bug.md 45-band) ────────────────────────────────────┐
+// Bu ro'yxat avval uch joyda alohida yozilgan edi: shu yerda (Go),
+// `storage/memory.go` da (`IsTerminal` orqali — to'g'ri) va
+// `storage/postgres.go` dagi SQL literalida:
+//
+//	AND status NOT IN ('delivered', 'rejected', 'cancelled')
+//
+// SQL ro'yxatida `served` YO'Q edi — ya'ni yakunlangan har bir STOL
+// buyurtmasi bazada abadiy "faol" bo'lib qolardi va
+// `DELETE /admin/restaurants/{id}` har doim "faol buyurtmalari bor"
+// deb 409 qaytarardi. Bu yolg'on edi va restoranni o'chirishning
+// yagona yo'li bazaga qo'lda kirish bo'lib qolgandi.
+//
+// Xato dev'da KO'RINMASDI: xotiradagi repo `IsTerminal()` ni
+// chaqiradi, ya'ni to'g'ri ishlaydi. Faqat Postgres'da — ya'ni
+// production'da — chiqardi.
+//
+// Endi SQL ham shu ro'yxatdan parametr sifatida oziqlanadi
+// (`TerminalStatusStrings()`), ya'ni ro'yxat bir joyda o'zgaradi.
+// └────────────────────────────────────────────────────────────────────┘
+var terminalStatuses = []Status{
+	StatusDelivered, // yetkazib berildi (delivery)
+	StatusServed,    // affitsiant stolga olib bordi (dine_in)
+	StatusRejected,  // restoran rad etdi
+	StatusCancelled, // bekor qilindi
+}
+
 func (o *Order) IsTerminal() bool {
-	switch o.Status {
-	case StatusDelivered, StatusServed, StatusRejected, StatusCancelled:
-		return true
+	for _, s := range terminalStatuses {
+		if o.Status == s {
+			return true
+		}
 	}
 	return false
+}
+
+// TerminalStatusStrings — SQL parametri uchun ro'yxatning satrli
+// ko'rinishi (`status <> ALL($n)`).
+func TerminalStatusStrings() []string {
+	out := make([]string, len(terminalStatuses))
+	for i, s := range terminalStatuses {
+		out[i] = string(s)
+	}
+	return out
 }
 
 // IsDineIn — stolda ovqatlanish buyurtmasimi.

@@ -35,13 +35,70 @@ func TestClientIPHonoursForwardedFromTrustedProxy(t *testing.T) {
 	SetTrustedProxies([]string{"10.0.0.0/8"})
 	t.Cleanup(func() { SetTrustedProxies(nil) })
 
-	// Ishonchli proksidan kelgan zanjirning BIRINCHI qiymati — asl mijoz.
-	if got := clientIP(reqWith("10.1.2.3:9999", "1.2.3.4, 10.1.2.3")); got != "1.2.3.4" {
+	// Ishonchli proksi zanjirning OXIRIGA o'zi ko'rgan manzilni
+	// qo'shadi. Bizga kerakli qiymat — ishonchli proksilar ro'yxatiga
+	// kirmaydigan ENG O'NGDAGI manzil.
+	if got := clientIP(reqWith("10.1.2.3:9999", "203.0.113.7, 10.1.2.3")); got != "203.0.113.7" {
 		t.Fatalf("ishonchli proksi XFF'si o'qilmadi: %q", got)
 	}
 	// Ishonchsiz manbadan kelgan XFF esa baribir e'tiborga olinmaydi.
 	if got := clientIP(reqWith("203.0.113.9:51234", "1.2.3.4")); got != "203.0.113.9" {
 		t.Fatalf("ishonchsiz manbadan XFF qabul qilindi: %q", got)
+	}
+}
+
+// ★★ 18-BAND REGRESSIYASI — SOXTA PREFIKS QABUL QILINMASIN.
+//
+// Mijoz o'z so'roviga `X-Forwarded-For: 1.2.3.4` yozadi. Proksi uni
+// O'CHIRMASDAN oxiriga haqiqiy manzilni qo'shadi:
+//
+//	"1.2.3.4, 203.0.113.7, 10.1.2.3"
+//	  ^soxta    ^haqiqiy     ^proksi
+//
+// Eski kod eng CHAPDAGINI olardi — ya'ni hujumchi yozgan qiymatni.
+// Har so'rovda uni o'zgartirib, IP bo'yicha barcha cheklovlarni
+// (SMS byudjeti, login brute-force, pullik geokodlash) aylanib
+// o'tish mumkin edi.
+func TestClientIPIgnoresSpoofedPrefix(t *testing.T) {
+	SetTrustedProxies([]string{"10.0.0.0/8"})
+	t.Cleanup(func() { SetTrustedProxies(nil) })
+
+	cases := map[string]string{
+		// mijoz yozgani + haqiqiy + proksi
+		"1.2.3.4, 203.0.113.7, 10.1.2.3": "203.0.113.7",
+		// bir nechta soxta qiymat ham yordam bermaydi
+		"1.1.1.1, 2.2.2.2, 203.0.113.7, 10.1.2.3": "203.0.113.7",
+		// mijoz o'zini ishonchli proksi qilib ko'rsatmoqchi
+		"10.9.9.9, 203.0.113.7, 10.1.2.3": "203.0.113.7",
+	}
+	for xff, want := range cases {
+		if got := clientIP(reqWith("10.1.2.3:9999", xff)); got != want {
+			t.Errorf("XFF %q -> %q, kutilgan %q — SOXTA qiymat qabul qilindi",
+				xff, got, want)
+		}
+	}
+}
+
+// Butun zanjir ishonchli bo'lsa (faqat bizning proksilarimiz),
+// ulanish manziliga qaytiladi — cheklov qattiqroq bo'ladi.
+func TestClientIPFallsBackWhenChainAllTrusted(t *testing.T) {
+	SetTrustedProxies([]string{"10.0.0.0/8"})
+	t.Cleanup(func() { SetTrustedProxies(nil) })
+
+	if got := clientIP(reqWith("10.1.2.3:9999", "10.0.0.5, 10.1.2.3")); got != "10.1.2.3" {
+		t.Fatalf("hammasi ishonchli bo'lganda zaxira manzil ishlatilmadi: %q", got)
+	}
+}
+
+// Buzilgan qiymat zanjirni to'xtatadi — undan chapdagilarga
+// ishonib bo'lmaydi.
+func TestClientIPStopsAtGarbage(t *testing.T) {
+	SetTrustedProxies([]string{"10.0.0.0/8"})
+	t.Cleanup(func() { SetTrustedProxies(nil) })
+
+	// "axlat" o'qib bo'lmaydi -> to'xtaymiz -> zaxira manzil.
+	if got := clientIP(reqWith("10.1.2.3:9999", "1.2.3.4, axlat, 10.1.2.3")); got != "10.1.2.3" {
+		t.Fatalf("buzilgan zanjirdan keyin soxta qiymat olindi: %q", got)
 	}
 }
 

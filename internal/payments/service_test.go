@@ -222,6 +222,11 @@ func TestCallbackWithBadSignatureRejected(t *testing.T) {
 }
 
 // To'g'ri imzo — tasdiqlanadi (provayder API'si kerak emas).
+//
+// `ProviderPaymentID` ATAYLAB berilgan: imzo AYNAN shu qiymat ustidan
+// hisoblanadi, ya'ni haqiqiy callback'da u HAR DOIM bo'ladi. Usiz imzo
+// dalil sifatida qabul qilinmaydi (`callbackIsBound` ga qarang) —
+// buni quyidagi `TestSignatureIsBoundToPayment` tekshiradi.
 func TestCallbackWithValidSignatureAccepted(t *testing.T) {
 	prov := &fakeProvider{statusErr: errors.New("status API buzuq")}
 	ord := &fakeOrders{amount: 1200000}
@@ -229,7 +234,8 @@ func TestCallbackWithValidSignatureAccepted(t *testing.T) {
 	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
 
 	if err := svc.HandleCallback(context.Background(), CallbackData{
-		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1200000,
+		PaymentID: p.ID, ProviderPaymentID: p.ProviderPaymentID,
+		Status: StatusHeld, AmountTiyin: 1200000,
 		SignatureChecked: true, SignatureValid: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -240,6 +246,98 @@ func TestCallbackWithValidSignatureAccepted(t *testing.T) {
 	}
 	if ord.held != 1 {
 		t.Errorf("buyurtma bir marta oshxonaga yuborilishi kerak edi: %d", ord.held)
+	}
+}
+
+// ★★ 32-BAND REGRESSIYASI — IMZO BOSHQA TO'LOVGA ISHLATILMASIN.
+//
+// ┌─ HUJUM ────────────────────────────────────────────────────────────┐
+// Imzo `octo_payment_UUID` + `status` ustidan hisoblanadi va BIZNING
+// qaysi to'lovimiz haqida ekanini aytmaydi. To'lov esa
+// `shop_transaction_id` bo'yicha topiladi.
+//
+//  1. hujumchi O'ZINING kichik to'lovini haqiqatan qiladi va yaroqli
+//     (UUID, status, signature) uchligini oladi;
+//  2. katta buyurtma yaratadi va o'z `payment_id` sini oladi;
+//  3. callback'ni qo'lda yuboradi: yangi `shop_transaction_id`, ESKI
+//     UUID va ESKI imzo bilan.
+//
+// Tuzatishdan OLDIN imzo to'g'ri deb hisoblanardi va katta buyurtma
+// "to'langan" bo'lib restoranga ketardi.
+// └────────────────────────────────────────────────────────────────────┘
+func TestSignatureIsBoundToPayment(t *testing.T) {
+	// Status API ATAYLAB o'lik: yagona dalil imzo bo'lsin, ya'ni
+	// bog'lanish tekshiruvi ishlamasa hujum o'tib ketadi.
+	prov := &fakeProvider{statusErr: errors.New("status API o'lik")}
+	ord := &fakeOrders{amount: 1000}
+	svc, repo := newTestService(t, prov, ord, Options{})
+	ctx := context.Background()
+
+	// Hujumchining haqiqiy (kichik) to'lovi.
+	victimPay, err := svc.StartForOrder(ctx, "order-attacker", "c", "r", "d", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Nishon — boshqa buyurtmaning to'lovi.
+	target, err := svc.StartForOrder(ctx, "order-target", "c", "r", "d", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if victimPay.ProviderPaymentID == target.ProviderPaymentID {
+		t.Fatal("test sozlamasi buzuq: ikki to'lov bir xil provayder ID oldi")
+	}
+
+	// ★ HUJUM: nishonning ID'si + hujumchining UUID va imzosi.
+	err = svc.HandleCallback(ctx, CallbackData{
+		PaymentID:         target.ID,
+		ProviderPaymentID: victimPay.ProviderPaymentID, // ← BEGONA
+		Status:            StatusPaid,
+		AmountTiyin:       1000,
+		SignatureChecked:  true,
+		SignatureValid:    true, // imzo O'ZI to'g'ri — begona to'lovniki
+	})
+	if !errors.Is(err, ErrCallbackMismatch) {
+		t.Fatalf("ErrCallbackMismatch kutilgan edi, olindi: %v", err)
+	}
+
+	got, _ := repo.GetByID(ctx, target.ID)
+	if got.Status == StatusPaid || got.Status == StatusHeld {
+		t.Fatalf("BEGONA IMZO BILAN TO'LOV TASDIQLANDI: %s", got.Status)
+	}
+	if ord.held != 0 {
+		t.Fatalf("buyurtma oshxonaga yuborildi (%d) — pul to'lanmagan", ord.held)
+	}
+}
+
+// To'lov hali provayder ID'siga BOG'LANMAGAN bo'lsa (Create va Update
+// orasidagi oyna), imzo dalil sifatida QABUL QILINMAYDI — bu oynada
+// biz imzoning kimga tegishli ekanini tekshira olmaymiz.
+func TestUnboundPaymentDoesNotTrustSignature(t *testing.T) {
+	prov := &fakeProvider{statusErr: errors.New("status API o'lik")}
+	ord := &fakeOrders{amount: 1000}
+	svc, repo := newTestService(t, prov, ord, Options{})
+	ctx := context.Background()
+
+	p, _ := svc.StartForOrder(ctx, "order-1", "c", "r", "d", false)
+	// Bog'lanishni sun'iy ravishda uzamiz (Update ulgurmagan holat).
+	p.ProviderPaymentID = ""
+	if err := repo.Update(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.HandleCallback(ctx, CallbackData{
+		PaymentID: p.ID, ProviderPaymentID: "begona-uuid",
+		Status: StatusPaid, AmountTiyin: 1000,
+		SignatureChecked: true, SignatureValid: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.GetByID(ctx, p.ID)
+	if got.Status == StatusPaid || got.Status == StatusHeld {
+		t.Fatalf("bog'lanmagan to'lov imzo bilan tasdiqlandi: %s", got.Status)
+	}
+	if !got.NeedsReview {
+		t.Error("tasdiqlanmagan to'lov `needs_review` bo'lishi kerak")
 	}
 }
 
@@ -347,6 +445,65 @@ func TestNotifyURLRequired(t *testing.T) {
 		func() string { return "id" }, Options{})
 	if err == nil {
 		t.Error("notify_url'siz xizmat yaratilmasligi kerak")
+	}
+}
+
+// 42-BANDNING REGRESSIYASI.
+//
+// ┌─ NEGA BU TEST ─────────────────────────────────────────────────────┐
+// `PUBLIC_API_URL` prod compose'ida sanab chiqilmagani uchun kod
+// callback manzilini shunday qurardi:
+//
+//	"" + "/payments/octo/callback"  →  "/payments/octo/callback"
+//
+// Eski tekshiruv faqat BO'SH satrni rad etardi, ya'ni bu NISBIY yo'l
+// bemalol o'tib ketardi. Octo bunday manzilga callback yubora
+// olmaydi: karta to'lovi hech qachon tasdiqlanmasdi va buyurtma 30
+// daqiqadan keyin bekor bo'lardi — mijozning puli olingan holda.
+// Hech qanday log ogohlantirmasdi.
+//
+// Endi manzil MUTLAQ bo'lishi shart, production'da esa `https://`.
+// └────────────────────────────────────────────────────────────────────┘
+func TestValidateNotifyURL(t *testing.T) {
+	cases := []struct {
+		name       string
+		url        string
+		production bool
+		wantErr    bool
+	}{
+		// AYNAN production'da yuz bergan holat.
+		{"nisbiy yo'l (PUBLIC_API_URL yo'q)", "/payments/octo/callback", true, true},
+		{"nisbiy yo'l dev'da ham rad etiladi", "/payments/octo/callback", false, true},
+		{"bo'sh", "", true, true},
+		{"faqat probel", "   ", true, true},
+		{"sxemasiz host", "api.ondex.uz/payments/octo/callback", true, true},
+		{"noma'lum sxema", "ftp://api.ondex.uz/cb", true, true},
+		{"http production'da rad etiladi", "http://api.ondex.uz/cb", true, true},
+
+		{"to'g'ri https", "https://api.ondex.uz/payments/octo/callback", true, false},
+		{"http dev'da mumkin (tunnel/emulyator)", "http://192.168.1.5:8080/cb", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateNotifyURL(tc.url, tc.production)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateNotifyURL(%q, production=%v) = %v, xato kutilgan: %v",
+					tc.url, tc.production, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// Xuddi shu shart `NewService` orqali ham qo'llanishi kerak — aks
+// holda tekshiruv yozilgan-u, ulanmagan bo'lardi.
+func TestNewServiceRejectsRelativeNotifyURL(t *testing.T) {
+	_, err := NewService(newMemRepo(), &fakeProvider{}, &fakeOrders{},
+		func() string { return "id" }, Options{
+			NotifyURL:  "/payments/octo/callback",
+			Production: true,
+		})
+	if err == nil {
+		t.Fatal("nisbiy notify_url bilan xizmat yaratildi — karta to'lovi jimgina o'ladi")
 	}
 }
 

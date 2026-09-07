@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -54,15 +53,10 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 				"?latlng=" + strconv.FormatFloat(lat, 'f', -1, 64) +
 				"," + strconv.FormatFloat(lng, 'f', -1, 64) +
 				"&language=uz&key=" + key
-			req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, geoURL, nil)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				httpError(w, http.StatusBadGateway, err)
-				return
-			}
-			defer resp.Body.Close()
+			// `fetchGeoJSON` — timeout, xato tekshiruvi va hajm
+			// chegarasi bir joyda (`geoclient.go`, bug.md 21-band).
 			var data geocodeResponse
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			if err := fetchGeoJSON(r.Context(), geoURL, &data); err != nil {
 				httpError(w, http.StatusBadGateway, err)
 				return
 			}
@@ -107,13 +101,6 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 			acURL := "https://maps.googleapis.com/maps/api/place/autocomplete/json" +
 				"?input=" + url.QueryEscape(input) +
 				"&language=uz&location=41.0030,71.2360&radius=15000&key=" + key
-			req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, acURL, nil)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				httpError(w, http.StatusBadGateway, err)
-				return
-			}
-			defer resp.Body.Close()
 			var data struct {
 				Status      string `json:"status"`
 				Predictions []struct {
@@ -121,7 +108,7 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 					PlaceID     string `json:"place_id"`
 				} `json:"predictions"`
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			if err := fetchGeoJSON(r.Context(), acURL, &data); err != nil {
 				httpError(w, http.StatusBadGateway, err)
 				return
 			}
@@ -160,13 +147,6 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 			detURL := "https://maps.googleapis.com/maps/api/place/details/json" +
 				"?place_id=" + url.QueryEscape(placeID) +
 				"&fields=geometry,formatted_address&language=uz&key=" + key
-			req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, detURL, nil)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				httpError(w, http.StatusBadGateway, err)
-				return
-			}
-			defer resp.Body.Close()
 			var data struct {
 				Status string `json:"status"`
 				Result struct {
@@ -179,7 +159,7 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 					} `json:"geometry"`
 				} `json:"result"`
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			if err := fetchGeoJSON(r.Context(), detURL, &data); err != nil {
 				httpError(w, http.StatusBadGateway, err)
 				return
 			}
@@ -233,15 +213,8 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 				"?origin=" + strconv.FormatFloat(originLat, 'f', -1, 64) + "," + strconv.FormatFloat(originLng, 'f', -1, 64) +
 				"&destination=" + strconv.FormatFloat(destLat, 'f', -1, 64) + "," + strconv.FormatFloat(destLng, 'f', -1, 64) +
 				"&mode=" + mode + "&language=uz&key=" + key
-			req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, dirURL, nil)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				httpError(w, http.StatusBadGateway, err)
-				return
-			}
-			defer resp.Body.Close()
 			var data directionsResponse
-			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			if err := fetchGeoJSON(r.Context(), dirURL, &data); err != nil {
 				httpError(w, http.StatusBadGateway, err)
 				return
 			}

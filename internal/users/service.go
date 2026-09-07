@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -79,7 +80,7 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 	}
 	if err := s.codes.Save(ctx, &Code{
 		Target:    phone,
-		CodeHash:  hashCode(code),
+		CodeHash:  s.hashCode(phone, code),
 		ExpiresAt: s.now().Add(codeTTL),
 		CreatedAt: s.now(),
 	}); err != nil {
@@ -121,7 +122,7 @@ func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *U
 		s.codes.Delete(ctx, phone)
 		return "", nil, ErrTooManyAttempts
 	}
-	if !sameCode(code, c.CodeHash) {
+	if !s.sameCode(phone, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
 	s.codes.Delete(ctx, phone)
@@ -473,7 +474,7 @@ func (s *Service) RequestEmailCode(ctx context.Context, rawEmail string) (email,
 	}
 	if err := s.codes.Save(ctx, &Code{
 		Target:    email,
-		CodeHash:  hashCode(code),
+		CodeHash:  s.hashCode(email, code),
 		ExpiresAt: s.now().Add(codeTTL),
 		CreatedAt: s.now(),
 	}); err != nil {
@@ -517,7 +518,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		s.codes.Delete(ctx, email)
 		return "", nil, ErrTooManyAttempts
 	}
-	if !sameCode(code, c.CodeHash) {
+	if !s.sameCode(email, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
 	s.codes.Delete(ctx, email)
@@ -573,9 +574,39 @@ func randomCode() (string, error) {
 	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
-func hashCode(code string) string {
-	sum := sha256.Sum256([]byte(code))
-	return hex.EncodeToString(sum[:])
+// hashCode — OTP kodining saqlanadigan shakli.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 48-band) ─────────────────────────────┐
+// Avval bu oddiy, TUZSIZ SHA-256 edi:
+//
+//	sum := sha256.Sum256([]byte(code))
+//
+// Kod maydoni — 10⁶ (`%06d`). Tuz yo'q, pepper yo'q, kalit cho'zish
+// yo'q: bir million qiymatning oldindan hisoblangan jadvali (bir
+// necha soniyalik ish) BARCHA hashlarni bir zumda ochardi. Ya'ni
+// kodlar ombori (Redis yoki Postgres) o'qilgan holatda hujumchi
+// istalgan raqamning kodini bilardi.
+//
+// Endi ikki qatlam:
+//
+//  1. `target` (telefon/email) hashga KIRADI — u har yozuvda boshqa,
+//     ya'ni TUZ vazifasini bajaradi. Bitta jadval endi faqat BITTA
+//     nishonga yaraydi, hammasiga emas.
+//  2. HMAC + server tomonidagi PEPPER (`TokenIssuer.codePepper()`).
+//     Pepper bazada YO'Q — u faqat serverning xotirasida. Ya'ni
+//     bazani o'qish yolg'iz o'zi yetarli emas.
+//
+// Kalit cho'zish (Argon2) ATAYLAB qo'llanmadi: kod 5 daqiqa yashaydi
+// va 5 urinish chegarasi bor, hashlash esa har `request-code` va har
+// `verify` da bajariladi — sekin funksiya bu yerda DoS yuzasi
+// bo'lardi. Pepper bir xil himoyani narxsiz beradi.
+// └────────────────────────────────────────────────────────────────────┘
+func (s *Service) hashCode(target, code string) string {
+	mac := hmac.New(sha256.New, s.tokens.codePepper())
+	mac.Write([]byte(target))
+	mac.Write([]byte{0}) // ajratgich: "a"+"bc" va "ab"+"c" bir xil bo'lmasin
+	mac.Write([]byte(code))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // sameCode — kiritilgan kodni saqlangan hash bilan solishtiradi.
@@ -586,7 +617,7 @@ func hashCode(code string) string {
 // 5 urinishga ega), lekin bu qoidaga har joyda amal qilish arzon va
 // keyinchalik kod uzayganda/urinishlar chegarasi yumshaganda o'zi
 // ishlab turadi.
-func sameCode(input, storedHash string) bool {
-	got := hashCode(strings.TrimSpace(input))
+func (s *Service) sameCode(target, input, storedHash string) bool {
+	got := s.hashCode(target, strings.TrimSpace(input))
 	return subtle.ConstantTimeCompare([]byte(got), []byte(storedHash)) == 1
 }

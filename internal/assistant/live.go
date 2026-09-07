@@ -42,6 +42,8 @@ import (
 	"sync"
 
 	"google.golang.org/genai"
+
+	"chustapp/internal/safego"
 )
 
 // Audio formatlari — Gemini Live qat'iy belgilaydi, tanlash yo'q.
@@ -381,7 +383,11 @@ func (s *Service) StartLive(ctx context.Context, cfg LiveConfig,
 		// audioni to'plab turishning ma'nosi yo'q, u eskirgan gap.
 		events: make(chan LiveEvent, 64),
 	}
-	go l.receive(ctx)
+	// `safego.Go` — recover bilan (bug.md 44-band). Bu sikl TASHQI
+	// xizmatdan (Gemini Live) kelgan ma'lumotni tahlil qiladi, ya'ni
+	// kutilmagan format panic keltirib chiqarishi mumkin — u esa
+	// butun API'ni yiqitardi.
+	safego.Go("assistant.live.receive", func() { l.receive(ctx) })
 	return l, nil
 }
 

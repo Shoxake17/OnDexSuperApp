@@ -28,9 +28,37 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 // tugmasi doim BITTA belgilangan hostga (`WEB_PUBLIC_BASE_URL`) tushadi,
 // oqim esa boshqa subdomenda (masalan `eats.ondex.uz`) boshlangan
 // bo'lishi mumkin (`telegram-login/start/route.ts` izohiga qarang).
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 53-band) ─────────────────────────────┐
+// Bu yerda AVVAL qattiq yozilgan zaxira qiymat turardi:
+//
+//	process.env.SESSION_COOKIE_DOMAIN ?? "ondex.uz"
+//
+// `SESSION_COOKIE_DOMAIN` esa hech qaysi deploy konfiguratsiyasida
+// berilmagan edi, ya'ni production'da HAR DOIM `"ondex.uz"` ishlatilardi.
+// Ikki oqibat:
+//
+//  1. Sayt `ondex.uz` ostida BO'LMASA (jonli deploy'ning standart
+//     qiymati aynan `web-ondex.shoxpro.uz`) brauzer `Domain=ondex.uz`
+//     li `Set-Cookie` ni RAD ETADI. Server xato bermaydi, log toza —
+//     foydalanuvchi kodni kiritadi, "muvaffaqiyat" javobini oladi va
+//     KIRMAGAN holicha qoladi.
+//  2. To'g'ri domenda ham cookie `*.ondex.uz` ning HAMMASIGA
+//     tarqalardi: 30 kunlik to'liq JWT blog, status sahifasi yoki
+//     sinov subdomeniga ham yuborilardi.
+//
+// Endi zaxira qiymat YO'Q: o'zgaruvchi berilmasa cookie HOST-ONLY
+// bo'ladi (`domain` umuman yozilmaydi) — bu har qanday domenda
+// ishlaydigan xavfsiz standart.
+//
+// Subdomenlar orasida baham ko'rish (yuqoridagi Telegram oqimi) hali
+// ham mumkin, lekin endi u ATAYLAB yoqiladi: `SESSION_COOKIE_DOMAIN`
+// ni deploy konfiguratsiyasida ANIQ berish kerak. Ya'ni bu qaror
+// endi ko'rinadigan bo'ldi.
+// └────────────────────────────────────────────────────────────────────┘
 export const COOKIE_DOMAIN =
   process.env.NODE_ENV === "production"
-    ? (process.env.SESSION_COOKIE_DOMAIN ?? "ondex.uz")
+    ? (process.env.SESSION_COOKIE_DOMAIN?.trim() || undefined)
     : undefined;
 
 export async function setSessionToken(token: string) {

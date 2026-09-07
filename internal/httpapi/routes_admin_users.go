@@ -231,16 +231,24 @@ func (s *Server) blockIfBusy(ctx context.Context, u *users.User) error {
 			return err
 		}
 	case users.RoleCustomer:
-		// `ListByCustomer` eng yangilaridan beradi; faol buyurtma
-		// har doim shular orasida bo'ladi.
-		list, err := s.OrderRepo.ListByCustomer(ctx, u.ID, 20)
+		// ┌─ TUZATILGAN NOSOZLIK (bug.md 27-band) ────────────────┐
+		// Avval bu yerda `ListByCustomer(ctx, u.ID, 20)` turardi
+		// va izohda "faol buyurtma har doim shular orasida
+		// bo'ladi" deb yozilgandi. Bu NOTO'G'RI: faol mijozda
+		// yakunlanmagan buyurtma eng yangi 20 tadan pastda qolib
+		// ketishi mumkin — o'shanda akkaunt o'chirilardi va
+		// buyurtma EGASIZ qolardi.
+		//
+		// Endi savol bazaga TO'G'RIDAN-TO'G'RI beriladi (butun
+		// tarix bo'yicha `EXISTS`) — kuryer uchun allaqachon
+		// ishlatilgan naqsh.
+		// └────────────────────────────────────────────────────────┘
+		active, err := s.OrderRepo.HasActiveByCustomer(ctx, u.ID)
 		if err != nil {
 			return err
 		}
-		for _, o := range list {
-			if !orders.IsTerminal(o.Status) {
-				return errors.New("bu mijozning yakunlanmagan buyurtmasi bor — avval u yopilsin")
-			}
+		if active {
+			return errors.New("bu mijozning yakunlanmagan buyurtmasi bor — avval u yopilsin")
 		}
 	}
 	return nil

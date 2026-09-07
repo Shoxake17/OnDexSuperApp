@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowRight,
   Briefcase,
@@ -143,29 +144,52 @@ const SOCIALS = [
   { icon: YoutubeIcon, label: "YouTube", href: "https://youtube.com/@ondex_uz" },
 ];
 
-const FOOTER_COLUMNS = [
+/**
+ * Footer ustunlari.
+ *
+ * ┌─ `href` NEGA IXTIYORIY ────────────────────────────────────────────┐
+ * Avval barcha havolalar `href="#"` edi — ya'ni HECH QAYERGA olib
+ * bormasdi. Huquqiy hujjatlar uchun bu yaramaydi: Play Store ham,
+ * to'lov provayderi ham maxfiylik siyosatiga ISHLAYDIGAN havola
+ * talab qiladi (bug.md 70-band).
+ *
+ * Shu sabab endi `href` bo'lgan yozuv haqiqiy havola, bo'lmagani esa
+ * hali tayyor bo'lmagan bo'lim — u KO'RINADI, lekin bosilmaydi.
+ * "Bosildi-yu hech narsa bo'lmadi" — eng yomon variant.
+ * └────────────────────────────────────────────────────────────────────┘
+ */
+const FOOTER_COLUMNS: {
+  title: string;
+  links: { label: string; href?: string }[];
+}[] = [
   {
     title: "Xizmatlar",
     links: [
-      "Restoranlar",
-      "Do'konlar",
-      "Xizmatlar",
-      "Uy-joy",
-      "Ish joylari",
-      "OnDex Xarita",
+      { label: "Restoranlar" },
+      { label: "Do'konlar" },
+      { label: "Xizmatlar" },
+      { label: "Uy-joy" },
+      { label: "Ish joylari" },
+      { label: "OnDex Xarita" },
     ],
   },
   {
     title: "Kompaniya",
-    links: ["Biz haqimizda", "Hujjatlar", "Tariflar", "Yangiliklar", "Karyera"],
+    links: [
+      { label: "Biz haqimizda" },
+      { label: "Ommaviy oferta", href: "/oferta" },
+      { label: "Maxfiylik siyosati", href: "/maxfiylik" },
+      { label: "Tariflar" },
+      { label: "Karyera" },
+    ],
   },
   {
     title: "Yordam",
     links: [
-      "Yordam markazi",
-      "Savol-javob",
-      "Foydalanish shartlari",
-      "Maxfiylik siyosati",
+      { label: "Yordam markazi" },
+      { label: "Savol-javob" },
+      { label: "Foydalanish shartlari", href: "/oferta" },
+      { label: "Maxfiylik siyosati", href: "/maxfiylik" },
     ],
   },
 ];
@@ -418,13 +442,23 @@ function Footer() {
             <h3 className="text-sm font-bold">{col.title}</h3>
             <ul className="mt-4 space-y-2.5">
               {col.links.map((l) => (
-                <li key={l}>
-                  <a
-                    href="#"
-                    className="text-[13px] text-neutral-500 transition-colors hover:text-brand"
-                  >
-                    {l}
-                  </a>
+                <li key={l.label}>
+                  {l.href ? (
+                    <Link
+                      href={l.href}
+                      className="text-[13px] text-neutral-500 transition-colors hover:text-brand"
+                    >
+                      {l.label}
+                    </Link>
+                  ) : (
+                    // Havolasiz yozuv — hali tayyor bo'lmagan bo'lim.
+                    // `<a href="#">` ATAYLAB emas: u bosiladi-yu hech
+                    // narsa qilmaydi va buzuq havola taassurotini
+                    // qoldiradi.
+                    <span className="text-[13px] text-neutral-400">
+                      {l.label}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

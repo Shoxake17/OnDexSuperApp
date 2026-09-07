@@ -22,10 +22,21 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     expect(find.text('OnDex Affitsiant'), findsOneWidget);
-    expect(find.text('Kod olish'), findsOneWidget);
+    // ┌─ ESKIRGAN KUTILMA TUZATILDI (2026-09-06) ────────────────────┐
+    // Bu yerda `'Kod olish'` turardi. Ekran SMS'dan Telegram'ga
+    // ko'chirilganda tugma matni `'Telegram orqali kod olish'` ga
+    // o'zgargan, test esa yangilanmagan — ya'ni butun `waiter_app`
+    // sinov to'plami YIQILGAN holda turgan edi.
+    //
+    // (Bu topilma bug.md ro'yxatida yo'q edi: sinov auditi Go
+    // testlariga qaratilgan bo'lib, Dart testlari ishga
+    // tushirilmagan.)
+    // └──────────────────────────────────────────────────────────────┘
+    expect(find.text('Telegram orqali kod olish'), findsOneWidget);
     // Kod maydoni HALI ko'rinmasligi kerak — u faqat raqam
     // yuborilgandan keyin chiqadi.
     expect(find.text('SMS kod'), findsNothing);
+    expect(find.text('Kirish'), findsNothing);
   });
 
   testWidgets('telefon maydoni +998 bilan boshlanadi',

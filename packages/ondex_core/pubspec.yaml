@@ -13,6 +13,10 @@ dependencies:
   web_socket_channel: ^3.0.0
   flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.2.0
+  # Huquqiy hujjatlarni TIZIM brauzerida ochish uchun (`src/legal.dart`,
+  # bug.md 70-band). Beshta ilovaning HAMMASIDA allaqachon bor edi —
+  # bu yerga ko'chirilishi ularda ortiqcha bog'liqlik yaratmaydi.
+  url_launcher: ^6.3.0
   # Google Maps JS skriptini yuklash uchun (faqat veb build'da
   # kompilyatsiya qilinadi — `src/maps/` dagi shartli eksportga qarang).
   web: ^1.1.0

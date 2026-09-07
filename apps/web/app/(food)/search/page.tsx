@@ -31,13 +31,35 @@ export default async function SearchPage({
   const { category } = await searchParams;
   const q = (category ?? "").trim();
 
+  // ┌─ NEGA `try/catch` ─────────────────────────────────────────────┐
+  // `fetch` tarmoq darajasida yiqilsa (API o'chgan, konteyner qayta
+  // ishga tushmoqda, DNS javob bermadi) u XATO TASHLAYDI — `res.ok`
+  // gacha yetib ham bormaydi. Bu yerda ushlanmagani uchun butun
+  // server komponenti qulab, foydalanuvchi Next.js'ning xato ekranini
+  // ko'rardi (2026-09-04 da aynan shu holat topildi).
+  //
+  // Bosh sahifa (`(food)/page.tsx`) va menyu sahifasi buni allaqachon
+  // himoyalagan — qidiruv esa e'tibordan chetda qolgan edi.
+  //
+  // "Topilmadi" va "yuklab bo'lmadi" ATAYLAB ajratiladi: birinchisi
+  // normal natija, ikkinchisi vaqtinchalik nosozlik va foydalanuvchi
+  // qaytadan urinib ko'rishi kerak. Ikkalasini bir xil ko'rsatish
+  // mijozni "bunday taom yo'q ekan" degan noto'g'ri xulosaga olib
+  // kelardi.
+  // └────────────────────────────────────────────────────────────────┘
   let results: ProductSearchResult[] = [];
+  let failed = false;
   if (q) {
-    const res = await publicFetch(
-      `/products/search?q=${encodeURIComponent(q)}`,
-      30,
-    );
-    if (res.ok) results = (await res.json()) ?? [];
+    try {
+      const res = await publicFetch(
+        `/products/search?q=${encodeURIComponent(q)}`,
+        30,
+      );
+      if (res.ok) results = (await res.json()) ?? [];
+      else failed = true;
+    } catch {
+      failed = true;
+    }
   }
 
   return (
@@ -47,7 +69,16 @@ export default async function SearchPage({
         <h1 className="truncate text-xl font-bold">{q || "Qidiruv"}</h1>
       </div>
 
-      {results.length === 0 ? (
+      {failed ? (
+        <div className="py-10 text-center">
+          <p className="text-neutral-500">
+            Hozir ro&apos;yxatni yuklab bo&apos;lmadi.
+          </p>
+          <p className="mt-1 text-sm text-neutral-400">
+            Internet aloqasini tekshirib, sahifani yangilang.
+          </p>
+        </div>
+      ) : results.length === 0 ? (
         <p className="py-10 text-center text-neutral-500">
           Bu turkumda taom topilmadi
         </p>

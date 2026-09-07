@@ -131,6 +131,14 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}
+			// Matn maydonlarining uzunligi (bug.md 26-band): avval
+			// chegara umuman yo'q edi va profilga ~1 MB matn saqlash
+			// mumkin edi — u keyin panelga, kuryerga va chekka
+			// chiqardi.
+			if err := addr.Validate(); err != nil {
+				httpError(w, http.StatusBadRequest, err)
+				return
+			}
 			// Koordinata tekshiruvi + hudud tekshiruvi bitta chaqiruvda
 			// (`CheckPoint`). Hudud tekshiruvi buyurtma bosqichiga
 			// yetmasdan, manzil saqlanayotgan paytdayoq aytilgani ma'qul.

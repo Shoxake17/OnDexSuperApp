@@ -35,8 +35,59 @@ function originFrom(req: NextRequest): string {
   return `${proto}://${host}`;
 }
 
+// isSameSiteRequest — so'rov BEGONA saytdan kelmaganini tekshiradi.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 51-band) ─────────────────────────────┐
+// Bu endpoint tokenning HAQIQIYligini tekshirardi, lekin uni KIM
+// yuborganini tekshirmasdi. `multipart/form-data` bilan POST — brauzer
+// uchun "oddiy" so'rov (preflight yo'q), ya'ni ISTALGAN sayt avtomatik
+// forma yuborishi mumkin edi:
+//
+//	<form action="https://<domen>/api/bridge" method="POST"
+//	      enctype="multipart/form-data">
+//	  <input name="token" value="<HUJUMCHINING TOKENI>">
+//	</form><script>document.forms[0].submit()</script>
+//
+// Qurbonning brauzeri hujumchining tokenini httpOnly sessiya
+// cookie'si sifatida SAQLARDI. `SameSite=lax` bu yerda yordam
+// bermaydi: u cookie YUBORISHNI boshqaradi, O'RNATISHNI emas.
+//
+// Oqibati — login CSRF / sessiya fiksatsiyasi: qurbon o'zining
+// akkauntida ishlayapman deb o'ylab, aslida HUJUMCHINING akkauntida
+// ishlaydi. Uning yetkazish manzili, telefon raqami va buyurtmalari
+// hujumchiga ko'rinadi.
+//
+// Qabul qilinadigan holatlar:
+//   * `Sec-Fetch-Site: same-origin` / `same-site` — o'z saytimiz;
+//   * `Sec-Fetch-Site: none` — foydalanuvchi/ilova BOSHLAGAN yuqori
+//     darajali navigatsiya (WebView `loadRequest` bilan POST qilgan
+//     holat aynan shu);
+//   * ikkala sarlavha ham yo'q — eski native WebView'lar
+//     `Sec-Fetch-*` yubormaydi va `Origin` ham qo'ymaydi. Begona
+//     saytdan kelgan forma esa `Origin` ni HAR DOIM yuboradi, ya'ni
+//     bu shox hujum yo'lini ochmaydi.
+//
+// Rad etiladi: `Sec-Fetch-Site: cross-site` yoki `Origin` bor va u
+// so'rov host'iga mos kelmasa.
+// └────────────────────────────────────────────────────────────────────┘
+function isSameSiteRequest(req: NextRequest, origin: string): boolean {
+  const site = req.headers.get("sec-fetch-site");
+  if (site === "cross-site") return false;
+
+  const reqOrigin = req.headers.get("origin");
+  if (reqOrigin && reqOrigin !== origin) return false;
+
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   const origin = originFrom(req);
+
+  if (!isSameSiteRequest(req, origin)) {
+    // Sessiya O'RNATILMAYDI. Redirect ham begona saytga qaytmaydi —
+    // faqat o'z bosh sahifamizga.
+    return NextResponse.redirect(new URL("/?auth_error=1", origin), 303);
+  }
 
   let form: FormData;
   try {

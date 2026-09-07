@@ -360,7 +360,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         lng: _isDineIn ? null : (_address!['lng'] as num).toDouble(),
         tableToken: _isDineIn ? _cart.tableToken : null,
         partySize: _isDineIn ? _partySize : null,
-        paymentMethod: _payMethod == _PayMethod.card ? 'card' : 'cash',
+        // `apiValue` — enum'ning O'ZIDA, to'liq `switch` bilan
+        // (bug.md 81-band). Avval bu yerda `== card ? 'card' : 'cash'`
+        // turardi va Payme/Click jimgina NAQD ga aylanardi.
+        paymentMethod: _payMethod.apiValue,
       );
 
       if (!mounted) return;
@@ -621,8 +624,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             _PayMethodRow(
               method: _PayMethod.values[i],
               selected: _payMethod == _PayMethod.values[i],
-              onTap: () =>
-                  setState(() => _payMethod = _PayMethod.values[i]),
+              // Ishlamaydigan usul TANLANMAYDI (bug.md 81-band):
+              // `onTap: null` bo'lsa `InkWell` bosishga javob
+              // bermaydi va qator xiralashadi.
+              onTap: _PayMethod.values[i].available
+                  ? () => setState(() => _payMethod = _PayMethod.values[i])
+                  : null,
             ),
           ],
         ],
@@ -982,22 +989,66 @@ enum _PayMethod {
   /// Payme va Click uchun ikon O'RNIGA brend logotipi turadi — ular
   /// tanilgan belgilar va umumiy ikonka ularni tanib olishni
   /// qiyinlashtirardi.
+  ///
+  /// ┌─ TUZATILGAN NOSOZLIK (bug.md 81-band) ──────────────────────────┐
+  /// Bu ikkalasi TANLANARDI, lekin buyurtma yuborishda
+  ///
+  ///	paymentMethod: _payMethod == _PayMethod.card ? 'card' : 'cash'
+  ///
+  /// degan shart ularni NAQD ga aylantirardi. Ya'ni mijoz "Payme"
+  /// tanlab, "to'ladim" deb o'ylardi; kuryer esa eshik oldida naqd
+  /// pul so'rardi. Bu — mijozning ishonchini yo'qotadigan xato.
+  ///
+  /// Payme/Click uchun ALOHIDA oqim UMUMAN yozilmagan: Octo'ning
+  /// `prepare_payment` so'rovi to'lov usulini qabul qilmaydi
+  /// (`internal/payments/octo/octo.go`), u faqat o'z sahifasiga
+  /// havola qaytaradi.
+  ///
+  /// Shuning uchun ular endi KO'RINADI, lekin TANLANMAYDI —
+  /// `available: false`. Ro'yxatdan butunlay olib tashlamadik:
+  /// mijoz ularni izlaydi va "yo'q ekan" degan javob "umuman
+  /// ko'rinmaydi" dan aniqroq.
+  /// └──────────────────────────────────────────────────────────────────┘
   payme(
     title: 'Payme',
-    subtitle: 'Ilova orqali to\'lov',
+    subtitle: 'Tez orada',
     icon: Icons.account_balance_wallet_outlined,
     tile: Colors.white,
     iconColor: Color(0xFF00838F),
     logo: _kPayme,
+    available: false,
   ),
   click(
     title: 'Click',
-    subtitle: 'Ilova orqali to\'lov',
+    subtitle: 'Tez orada',
     icon: Icons.bolt,
     tile: Colors.white,
     iconColor: Color(0xFFC62828),
     logo: _kClick,
+    available: false,
   );
+
+  /// Serverga yuboriladigan qiymat (`POST /orders` dagi
+  /// `payment_method`).
+  ///
+  /// ┌─ NEGA `switch`, TERNARY EMAS ───────────────────────────────────┐
+  /// Avval bu joyda `== card ? 'card' : 'cash'` turardi va AYNAN shu
+  /// naqsh xatoni tug'dirgan: yangi usul qo'shilganda u jimgina
+  /// "naqd" ga tushardi.
+  ///
+  /// Dart `switch` ifodasi enum uchun TO'LIQLIKNI talab qiladi —
+  /// yangi qiymat qo'shilsa kod KOMPILYATSIYA BO'LMAYDI va muallif
+  /// qaror qabul qilishga majbur bo'ladi.
+  /// └──────────────────────────────────────────────────────────────────┘
+  String get apiValue => switch (this) {
+        _PayMethod.card => 'card',
+        _PayMethod.cash => 'cash',
+        // Bular tanlana olmaydi (`available: false`), lekin qiymat
+        // baribir to'g'ri bo'lishi kerak — ular ulanganda bu yer
+        // yangilanadi.
+        _PayMethod.payme => 'payme',
+        _PayMethod.click => 'click',
+      };
 
   final String title;
   final String subtitle;
@@ -1013,6 +1064,10 @@ enum _PayMethod {
   /// Qator oxirida chiziladigan logotiplar.
   final List<String> trailingLogos;
 
+  /// Usul HOZIR ishlaydimi. `false` bo'lsa qator ko'rinadi, lekin
+  /// tanlanmaydi (bug.md 81-band).
+  final bool available;
+
   const _PayMethod({
     required this.title,
     required this.subtitle,
@@ -1021,13 +1076,17 @@ enum _PayMethod {
     required this.iconColor,
     this.logo,
     this.trailingLogos = const [],
+    this.available = true,
   });
 }
 
 class _PayMethodRow extends StatelessWidget {
   final _PayMethod method;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// `null` — usul hozir ishlamaydi (bug.md 81-band): qator
+  /// ko'rinadi, lekin bosilmaydi va xiralashgan holda chiziladi.
+  final VoidCallback? onTap;
 
   const _PayMethodRow({
     required this.method,
@@ -1037,6 +1096,16 @@ class _PayMethodRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Opacity(
+      // Xiralashish — "bu yerda nimadir bor, lekin hozir emas"
+      // degan yagona ko'rinish signali.
+      opacity: enabled ? 1 : 0.45,
+      child: _buildRow(context, enabled),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, bool enabled) {
     return InkWell(
       onTap: onTap,
       child: Padding(

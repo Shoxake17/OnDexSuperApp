@@ -116,6 +116,52 @@ jobs:
     name: Go - Test & Vulnerabilities
     runs-on: ubuntu-latest
     needs: gitleaks_scan
+
+    # ┌─ PRODUCTION OMBOR QATLAMINI CI'GA ULASH (bug.md 102-band) ──────┐
+    # Bu blok bo'lmaganda `go test ./...` yashil bo'lsa ham u
+    # PRODUCTION'DA ISHLAYDIGAN KODDAN BOSHQA kodni tasdiqlardi:
+    # `internal/storage` dagi 12 ta production implementatsiyasining
+    # BIRORTASI ham ishga tushmasdi, barcha testlar `NewMemory*`
+    # nusxasida ishlardi.
+    #
+    # Yozilgan integratsiya testlari (342 qator) `t.Skip` bilan
+    # JIMGINA o'tkazib yuborilardi — ya'ni ular faqat o'zgaruvchini
+    # qo'lda bergan ishlab chiquvchining mashinasida ishlardi.
+    # Eng qimmatlisi `TestProximityPostgres`: u PostGIS so'rovining
+    # O'ZINI sinaydi (`ST_MakePoint(lng, lat)` tartibi almashsa
+    # nuqta Hindiston okeaniga tushadi va HECH KIM topilmaydi) —
+    # bunday xatoni xotiradagi repo printsipial jihatdan tuta olmaydi.
+    #
+    # `postgis/postgis` obrazi ATAYLAB: oddiy `postgres` obrazida
+    # PostGIS kengaytmasi yo'q va migratsiya `CREATE EXTENSION` da
+    # yiqilardi.
+    # └─────────────────────────────────────────────────────────────────┘
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: chust
+          POSTGRES_PASSWORD: chust
+          POSTGRES_DB: chustapp_test
+        ports: [ '5432:5432' ]
+        # Testlar baza TAYYOR bo'lgandan keyin boshlansin — aks holda
+        # ular "connection refused" bilan yiqilardi va sabab
+        # tushunarsiz bo'lardi.
+        options: >-
+          --health-cmd "pg_isready -U chust"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -152,6 +198,22 @@ jobs:
       # Linux runner'da gcc bor — shuning uchun bu YAGONA joy.
       # └───────────────────────────────────────────────────────────────┘
       - name: Test (race detector)
+        # ┌─ O'ZGARUVCHILAR SHU YERDA (bug.md 102-band) ──────────────┐
+        # Ular berilmasa integratsiya testlari `t.Skip` qiladi va
+        # quvur yashil bo'lib qolaveradi — aynan shu holat oylab
+        # davom etgan edi. Nomlar testlar kutgani bilan AYNAN bir
+        # xil bo'lishi shart:
+        #   TEST_DATABASE_URL → internal/storage/courier_geo_test.go
+        #   REDIS_ADDR        → internal/telegram/pending_persist_test.go
+        #
+        # `CI` — GitHub Actions uni o'zi qo'yadi. Testlar unga qarab
+        # "o'tkazib yuborish" o'rniga YIQILADI: kelajakda kimdir
+        # yuqoridagi `services:` blokini olib tashlasa, xato jim
+        # qolmasin.
+        # └───────────────────────────────────────────────────────────┘
+        env:
+          TEST_DATABASE_URL: postgres://chust:chust@localhost:5432/chustapp_test?sslmode=disable
+          REDIS_ADDR: localhost:6379
         run: go test -race -count=1 ./...
 
       # Rasmiy Go zaiflik bazasi. Trivy'dan farqi: u faqat siz
@@ -377,9 +439,23 @@ jobs:
           context: ./apps/web
           load: true
           tags: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          # ┌─ UCHTA JOY BIR VAQTDA (bug.md 52, 66, 67-bandlar) ──────┐
+          # Har bir `NEXT_PUBLIC_*` o'zgaruvchisi UCH joyda bo'lishi
+          # SHART: kod, `apps/web/Dockerfile` (`ARG`+`ENV`) va shu
+          # ro'yxat. Bittasi unutilsa xato JIMGINA bo'ladi — zaxira
+          # qiymat ishlatiladi va hech qanday ogohlantirish chiqmaydi.
+          #
+          # Aynan shu sababdan `NEXT_PUBLIC_WS_URL` (Dockerfile'da
+          # `ARG` bor edi, bu ro'yxatda yo'q) paketga
+          # `ws://localhost:8080` bo'lib singib qolgandi va prod'da
+          # kuryerning jonli joylashuvi HECH QACHON ko'rinmasdi.
+          # `NEXT_PUBLIC_MEDIA_ORIGIN` esa ikkala joyda ham yo'q edi.
+          # └─────────────────────────────────────────────────────────┘
           build-args: |
             NEXT_PUBLIC_API_URL=https://${{ vars.API_DOMAIN || 'api-ondex.shoxpro.uz' }}
             NEXT_PUBLIC_SITE_URL=https://${{ vars.WEB_DOMAIN || 'web-ondex.shoxpro.uz' }}
+            NEXT_PUBLIC_WS_URL=wss://${{ vars.API_DOMAIN || 'api-ondex.shoxpro.uz' }}
+            NEXT_PUBLIC_MEDIA_ORIGIN=${{ vars.MEDIA_ORIGIN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -177,6 +177,19 @@ func TestStaleLocationSkipped(t *testing.T) {
 func TestProximityPostgres(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
+		// ┌─ CI'DA O'TKAZIB YUBORISH TAQIQLANGAN (bug.md 102-band) ───┐
+		// `t.Skip` JIM: quvur yashil bo'lardi, bu esa "eng qimmatli
+		// test" (PostGIS so'rovining O'ZI) hech qachon ishlamaganini
+		// yashirardi. Endi CI'da Postgres+PostGIS servis sifatida
+		// ko'tariladi va u yetib kelmasa test YIQILADI.
+		//
+		// Lokal mashinada `t.Skip` o'z joyida: ishlab chiquvchida
+		// baza bo'lmasligi mumkin.
+		// └───────────────────────────────────────────────────────────┘
+		if os.Getenv("CI") != "" {
+			t.Fatal("CI'da TEST_DATABASE_URL BO'LISHI SHART — " +
+				"deploy.yml dagi `go_quality.services.postgres` ishlayaptimi?")
+		}
 		t.Skip("TEST_DATABASE_URL berilmagan — Postgres testi o'tkazib yuborildi")
 	}
 	ctx := context.Background()

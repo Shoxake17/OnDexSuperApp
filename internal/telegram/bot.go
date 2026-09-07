@@ -97,6 +97,27 @@ func NewClient(token string) *Client {
 
 func (c *Client) Configured() bool { return c.token != "" }
 
+// redactToken — xato matnidan bot tokenini olib tashlaydi.
+//
+// Nega satr almashtirish, `*url.Error` ni ochish emas: xato zanjiri
+// o'ralgan bo'lishi mumkin (`fmt.Errorf("%w")`, retry qatlamlari) va
+// token ular ichida ham qolib ketardi. Satr bo'yicha tozalash esa
+// zanjir shaklidan QAT'I NAZAR ishlaydi.
+//
+// Natija oddiy `errors.New`: chaqiruvchi uni faqat logga yozadi,
+// `errors.Is/As` bilan tekshirmaydi (bu tarmoq xatosi shoxi).
+func (c *Client) redactToken(err error) error {
+	if err == nil || c.token == "" {
+		return err
+	}
+	msg := err.Error()
+	clean := strings.ReplaceAll(msg, c.token, "<token>")
+	if clean == msg {
+		return err // token uchramadi — asl xatoni saqlaymiz
+	}
+	return errors.New(clean)
+}
+
 func (c *Client) call(ctx context.Context, method string, payload any, out any) error {
 	if !c.Configured() {
 		return errors.New("telegram: bot token sozlanmagan")
@@ -113,7 +134,24 @@ func (c *Client) call(ctx context.Context, method string, payload any, out any) 
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		// ┌─ TUZATILGAN NOSOZLIK (bug.md 46-band) ────────────────┐
+		// Telegram API tokenni URL YO'LIDA kutadi. `http.Client.Do`
+		// xato qaytarganda Go ning `*url.Error` xabari BUTUN URL ni
+		// o'z ichiga oladi:
+		//
+		//	Post "https://api.telegram.org/bot7123:AAF.../getUpdates":
+		//	    dial tcp: i/o timeout
+		//
+		// Bu xato to'g'ridan-to'g'ri `slog.Warn` ga uzatilardi.
+		// Polling sikli UZLUKSIZ ishlaydi, ya'ni har qanday tarmoq
+		// uzilishida token ochiq matnda log oqimiga tushardi va
+		// Docker uni diskda 50 MB gacha saqlaydi.
+		//
+		// Token bilan botning barcha xabarlarini o'qish, uning
+		// nomidan yozish va webhook qo'yish mumkin — ya'ni butun
+		// Telegram kirish oqimini egallash.
+		// └───────────────────────────────────────────────────────┘
+		return c.redactToken(err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

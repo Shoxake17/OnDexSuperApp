@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"chustapp/internal/safego"
 )
 
 // ┌─ VAQT CHEGARALARI ────────────────────────────────────────────────┐
@@ -54,19 +56,48 @@ const (
 type client struct {
 	conn *websocket.Conn
 	out  chan []byte
-	// closeOnce — `close(out)` faqat bir marta bajarilsin.
+	// done — ulanish yopilganini bildiruvchi signal.
+	//
+	// ┌─ TUZATILGAN NOSOZLIK (bug.md 34-band) ─────────────────────────┐
+	// Avval `stop()` `out` kanalining O'ZINI yopardi. Bitta klient bir
+	// necha kalitga obuna bo'lgani uchun (`u:<id>`, `e:food:<id>`,
+	// `o:<id>`) ikki goroutine unga BIR VAQTDA `Send` qilishi mumkin:
+	//
+	//	A: Send("e:food:r1") → navbat to'ldi → stop() → close(out)
+	//	B: Send("u:u1")      → out <- msg    → PANIC
+	//
+	// Go'da yopilgan kanalga yozish HAR DOIM panic beradi va
+	// `select` dagi `default` bundan saqlamaydi. `notify` qatlami
+	// `Send` ni recover'siz goroutine'dan chaqirgani uchun bu panic
+	// BUTUN jarayonni yiqitardi (barcha foydalanuvchilar uziladi).
+	//
+	// Endi `out` HECH QACHON yopilmaydi — yopilish alohida `done`
+	// kanali orqali bildiriladi, unga esa faqat `close` qilinadi
+	// (yozilmaydi), ya'ni poyga printsipial jihatdan mumkin emas.
+	// └────────────────────────────────────────────────────────────────┘
+	done chan struct{}
+	// closeOnce — `close(done)` faqat bir marta bajarilsin.
 	closeOnce sync.Once
 }
 
 func (c *client) stop() {
-	c.closeOnce.Do(func() { close(c.out) })
+	c.closeOnce.Do(func() { close(c.done) })
 }
 
 // enqueue — xabarni navbatga qo'yadi. Navbat to'lgan bo'lsa `false`
-// qaytaradi (chaqiruvchi ulanishni yopadi).
+// qaytaradi (chaqiruvchi ulanishni yopadi). Ulanish allaqachon
+// yopilgan bo'lsa `true` qaytaradi: xabar tashlanadi, lekin bu xato
+// emas va qayta `stop()` chaqirishga hojat yo'q.
 func (c *client) enqueue(msg []byte) bool {
 	select {
+	case <-c.done:
+		return true
+	default:
+	}
+	select {
 	case c.out <- msg:
+		return true
+	case <-c.done:
 		return true
 	default:
 		return false
@@ -82,14 +113,13 @@ func (c *client) writeLoop() {
 	}()
 	for {
 		select {
-		case msg, ok := <-c.out:
-			if !ok {
-				// Navbat yopildi — ulanishni odob bilan yopamiz.
-				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-				_ = c.conn.WriteMessage(websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-				return
-			}
+		case <-c.done:
+			// Ulanish yopildi — odob bilan xayrlashamiz.
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			return
+		case msg := <-c.out:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				return
@@ -182,7 +212,11 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, keys ...string) {
 	if err != nil {
 		return
 	}
-	c := &client{conn: conn, out: make(chan []byte, outBuffer)}
+	c := &client{
+		conn: conn,
+		out:  make(chan []byte, outBuffer),
+		done: make(chan struct{}),
+	}
 
 	h.mu.Lock()
 	for _, k := range clean {
@@ -194,7 +228,10 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, keys ...string) {
 	h.mu.Unlock()
 	slog.Info("ws: ulandi", "keys", clean)
 
-	go c.writeLoop()
+	// `safego.Go` — recover bilan (bug.md 44-band): bu goroutine
+	// HTTP handlerining panic tutuvchisidan tashqarida ishlaydi.
+	// 34-band aynan shu yo'lda haqiqiy panic topgan edi.
+	safego.Go("ws.writeLoop", c.writeLoop)
 
 	defer func() {
 		h.mu.Lock()

@@ -22,6 +22,11 @@ class _OrdersPageState extends State<OrdersPage> {
     'ready': Colors.amber,
     'picked_up': Colors.teal,
     'delivered': Colors.green,
+    // `served` — STOL buyurtmasining yakuniy holati. Bu yerda yo'q
+    // edi va zal buyurtmalari rangsiz chizilardi (bug.md 78-band).
+    // Rangi `delivered` bilan bir xil: ikkalasi ham "mijoz taomni
+    // oldi" degani, faqat yo'li boshqa.
+    'served': Colors.green,
     'cancelled': Colors.grey,
     'rejected': Colors.red,
   };

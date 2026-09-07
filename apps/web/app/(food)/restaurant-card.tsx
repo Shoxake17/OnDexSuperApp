@@ -37,18 +37,31 @@ export default function RestaurantCard({
         cover ? "bg-neutral-800" : "bg-neutral-800 dark:bg-neutral-700"
       } ${r.open ? "" : "pointer-events-none opacity-60"}`}
     >
+      {/* ┌─ COVER TO'LIQ KO'RINADI, KESILMAYDI ────────────────────────┐
+          Avval rasm `absolute ... h-full w-full object-cover` edi:
+          brauzer uni kartaning o'lchamiga MAJBURAN sig'dirib, ortiqcha
+          chetlarini KESIB tashlardi. Cover'lar esa brend banneri —
+          kesilgan joyda logotip yoki nomning yarmi yo'qolardi
+          (2026-09-04 da shu sezilgan).
+          Endi rasm OQIMDA turadi (`h-auto`) va kartaning balandligini
+          O'ZI belgilaydi, ya'ni asl nisbatida, to'liq ko'rinadi.
+          └─────────────────────────────────────────────────────────────┘ */}
+      {/* Nisbat desktop kartasi bilan AYNAN bir xil: `267/133` (= 2:1).
+          Sabab va tarixi — `desktop-restaurant-card.tsx`dagi izohda.
+          Ikkala ko'rinishda bir xil bo'lishi muhim: bitta restoran
+          telefonda va kompyuterda boshqacha qirqilgan ko'rinmasin. */}
       {cover ? (
-        // eslint-disable-next-line @next/next/no-img-element -- rasm manzili
-        // muhitga qarab dinamik (R2/lokal disk), next/image uchun oldindan
-        // domen ro'yxati (remotePatterns) belgilab bo'lmaydi.
-        <img
-          src={fullImageUrl(cover)}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 -z-10 h-full w-full object-cover"
-        />
+        <div className="aspect-[267/133] w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element -- manzil muhitga qarab dinamik (R2/lokal disk), next/image uchun `remotePatterns` oldindan belgilab bo'lmaydi */}
+          <img
+            src={fullImageUrl(cover)}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
+        </div>
       ) : (
-        <div className="absolute inset-0 -z-10 flex items-center justify-center text-white/25">
+        <div className="flex aspect-[267/133] w-full items-center justify-center text-white/25">
           <Store size={64} />
         </div>
       )}
@@ -77,7 +90,11 @@ export default function RestaurantCard({
           takrorlab, kartani qalashtirib yuborardi — haqiqiy qurilmada
           aynan shu sezilgan. `r.logo_url` ma'lumotda qoladi va boshqa
           joylarda (menyu sahifasi sarlavhasi) ishlatiladi. */}
-      <div className="flex min-h-[200px] flex-col justify-end gap-1 p-4 pr-24 [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]">
+      {/* Matn endi rasm USTIDA suzadi (`absolute`): rasm oqimda turgani
+          uchun u kartaning balandligini belgilaydi, matn esa pastki
+          chetiga yopishadi — avvalgi ko'rinish saqlanadi, lekin rasm
+          kesilmaydi. */}
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-4 pr-24 [text-shadow:0_1px_4px_rgba(0,0,0,0.75)]">
         <h3 className="text-xl font-bold leading-tight text-white">{r.name}</h3>
 
         {tags && <p className="text-sm text-white/90">{tags}</p>}

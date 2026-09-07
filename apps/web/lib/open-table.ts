@@ -1,6 +1,6 @@
 "use client";
 
-import { clearStoredCartIfOtherRestaurant } from "@/lib/cart-context";
+import { setStoredActiveRestaurant } from "@/lib/cart-context";
 import { writeTableSession, type TableSession } from "@/lib/table-session";
 
 // Stol QR kodi bo'yicha "shu stolning menyusini och" amali — YAGONA
@@ -68,9 +68,10 @@ export function extractTableToken(raw: string): string | null {
  */
 export function applyTableSession(session: TableSession): void {
   writeTableSession(session);
-  // Savat BOSHQA restoranniki bo'lsa tozalanadi — QR skanerlash aniq
-  // niyat: "men SHU restoranning SHU stolidaman".
-  clearStoredCartIfOtherRestaurant(session.restaurantId);
+  // QR skanerlash aniq niyat: "men SHU restoranning SHU stolidaman" —
+  // shuning uchun faol savat o'shanga o'tadi. Boshqa restoran savatlari
+  // O'CHIRILMAYDI (ular alohida saqlanadi, `lib/cart-context.tsx`).
+  setStoredActiveRestaurant(session.restaurantId);
   window.location.replace(`/restaurants/${session.restaurantId}`);
 }
 

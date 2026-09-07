@@ -3,7 +3,10 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Role string
@@ -79,6 +82,28 @@ type User struct {
 	Address AddressDetails `json:"address"`
 }
 
+// Manzil matn maydonlarining uzunlik chegaralari.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 26-band) ─────────────────────────────┐
+// Bu maydonlarning HECH BIRIDA chegara yo'q edi: `AddressDetails`
+// to'g'ridan-to'g'ri dekodlanardi va yagona to'siq umumiy 1 MB tana
+// chegarasi bo'lardi. Ya'ni foydalanuvchi profiliga ~1 MB matn
+// saqlashi mumkin edi va u keyin restoran paneliga, kuryer ilovasiga
+// va CHEKKA chiqardi.
+//
+// Loyihada bu qoida boshqa joylarda bor: ism/familiya
+// (`MaxNameLength = 50`), taom tavsifi (`catalog.MaxDescriptionLength`),
+// aksiya nomi. Manzilda qo'llanmagandi.
+//
+// Qiymatlar amaliy: manzil matni bir qatorga sig'adi, podyezd/qavat/
+// kvartira — bir necha belgi, izoh esa kuryer o'qiydigan qisqa matn.
+// └────────────────────────────────────────────────────────────────────┘
+const (
+	MaxAddressTextLength    = 200
+	MaxAddressPartLength    = 32  // podyezd, qavat, kvartira, domofon
+	MaxAddressCommentLength = 300 // kuryer uchun izoh
+)
+
 // AddressDetails — mijoz xaritadan tanlagan yetkazib berish nuqtasi va
 // kuryer uchun qo'shimcha tafsilotlar (Yandex Go uslubidagi manzil shakli).
 type AddressDetails struct {
@@ -90,6 +115,40 @@ type AddressDetails struct {
 	Apartment string  `json:"apartment,omitempty"` // kvartira
 	Intercom  string  `json:"intercom,omitempty"`  // domofon kodi
 	Comment   string  `json:"comment,omitempty"`   // kuryer uchun izoh
+}
+
+// Validate — matn maydonlarini tozalaydi va uzunlikni tekshiradi.
+//
+// Ko'rsatkich orqali ishlaydi: bo'sh joylar KESILADI, ya'ni tekshiruv
+// saqlanadigan qiymatning O'ZIGA qo'llanadi (chaqiruvchi keyin boshqa
+// nusxani saqlab qo'ymasin).
+//
+// Koordinata bu yerda TEKSHIRILMAYDI: unda hudud shartlari ham bor va
+// u `delivery.CheckPoint` ning ishi (`routes_me.go`).
+func (a *AddressDetails) Validate() error {
+	fields := []struct {
+		name  string
+		value *string
+		max   int
+	}{
+		{"text", &a.Text, MaxAddressTextLength},
+		{"entrance", &a.Entrance, MaxAddressPartLength},
+		{"floor", &a.Floor, MaxAddressPartLength},
+		{"apartment", &a.Apartment, MaxAddressPartLength},
+		{"intercom", &a.Intercom, MaxAddressPartLength},
+		{"comment", &a.Comment, MaxAddressCommentLength},
+	}
+	for _, f := range fields {
+		*f.value = strings.TrimSpace(*f.value)
+		// Belgilar bo'yicha (bayt emas): o'zbekcha/kirill matnda bitta
+		// harf bir necha bayt egallaydi va bayt chegarasi haqiqiy
+		// matnni asossiz kesib qo'yardi.
+		if utf8.RuneCountInString(*f.value) > f.max {
+			return fmt.Errorf("manzilning %q maydoni juda uzun (eng ko'pi %d belgi)",
+				f.name, f.max)
+		}
+	}
+	return nil
 }
 
 var (

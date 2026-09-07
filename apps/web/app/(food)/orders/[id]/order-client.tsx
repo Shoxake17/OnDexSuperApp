@@ -2,7 +2,8 @@
 
 import { MapPin, UtensilsCrossed } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useRef, useState } from "react";
+import { use } from "react";
+import { useOrderTracking } from "@/lib/use-order-tracking";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
 import { goBack } from "@/lib/nav";
@@ -12,43 +13,6 @@ import CourierMap from "./courier-map";
 import MobileSheet from "../../mobile-sheet";
 import { AppButtonLink, BackButton } from "../../ui";
 
-type OrderItem = {
-  product_id: string;
-  name: string;
-  qty: number;
-  price_tiyin: number;
-  image_url?: string;
-};
-
-type HistoryEntry = { to?: string; at?: string };
-
-type Order = {
-  id: string;
-  order_number: string;
-  restaurant_id: string;
-  courier_id?: string;
-  items: OrderItem[];
-  subtotal_tiyin: number;
-  discount_tiyin: number;
-  total_tiyin: number;
-  promotion_name?: string;
-  // Chegirmaning AYNAN shu aksiya bergan qismi — chekda nom faqat u
-  // butun chegirmaga teng bo'lganda ko'rsatiladi (savatda bir nechta
-  // aksiya va mahsulot chegirmasi aralashishi mumkin).
-  promotion_discount_tiyin?: number;
-  // Karta to'lovi: `payment_state` faqat karta buyurtmasida to'ladi.
-  payment_method?: string;
-  payment_state?: string;
-  status: string;
-  history?: HistoryEntry[];
-  delivery_lat?: number;
-  delivery_lng?: number;
-  created_at: string;
-  /** "dine_in" — stol buyurtmasi. Bo'sh/yo'q = yetkazib berish. */
-  type?: string;
-  table_label?: string;
-  party_size?: number;
-};
 
 // tracking_screen.dart bilan parity: avval GET bilan hozirgi holat, keyin
 // WebSocket orqali jonli yangilanish (order_status/courier_assigned/
@@ -61,114 +25,12 @@ export default function OrderTrackingPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  // Karta to'lovi holati (to'lov sahifasi yopilib qolgan holat uchun).
-  const [paying, setPaying] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
-  const [address, setAddress] = useState<string | null>(null);
-  const [courierLatLng, setCourierLatLng] = useState<{ lat: number; lng: number } | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  async function load() {
-    try {
-      const res = await fetch(`/api/proxy/orders/${id}`);
-      if (!res.ok) return;
-      const o: Order = await res.json();
-      setOrder(o);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    const poll = setInterval(load, 15000);
-
-    let cancelled = false;
-    async function connect() {
-      try {
-        const res = await fetch("/api/ws-ticket", { method: "POST" });
-        if (!res.ok) throw new Error();
-        const { ticket } = await res.json();
-        if (cancelled) return;
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
-        const ws = new WebSocket(`${wsUrl}/ws?ticket=${ticket}&order_id=${id}`);
-        wsRef.current = ws;
-        ws.onmessage = (evt) => {
-          const e = JSON.parse(evt.data);
-          if (e.order_id !== id) return;
-          if (e.type === "order_status" || e.type === "courier_assigned") {
-            load();
-          } else if (e.type === "courier_location" && typeof e.lat === "number" && typeof e.lng === "number") {
-            setCourierLatLng({ lat: e.lat, lng: e.lng });
-          }
-        };
-        const reconnect = () => {
-          if (cancelled) return;
-          reconnectTimer.current = setTimeout(connect, 2000);
-        };
-        ws.onerror = reconnect;
-        ws.onclose = reconnect;
-      } catch {
-        if (!cancelled) reconnectTimer.current = setTimeout(connect, 2000);
-      }
-    }
-    connect();
-
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  useEffect(() => {
-    if (!order?.delivery_lat || !order?.delivery_lng || address) return;
-    fetch(`/api/proxy/geocode/reverse?lat=${order.delivery_lat}&lng=${order.delivery_lng}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.address) setAddress(d.address);
-      })
-      .catch(() => {});
-  }, [order?.delivery_lat, order?.delivery_lng, address]);
-
-  // To'lov sahifasini QAYTA ochish: mijoz oynani yopib yuborgan yoki
-  // to'lov bank tomonda uzilib qolgan bo'lishi mumkin (masalan
-  // "takroriy SMS xabarlarining maksimal soni"). `retry=1` bilan
-  // server eski urinishni yopib YANGI tranzaksiya ochadi — o'sha o'lik
-  // havolani qayta ochish yordam bermaydi.
-  async function payAgain() {
-    if (paying) return;
-    setPaying(true);
-    setPayError(null);
-    try {
-      const res = await fetch(`/api/proxy/orders/${id}/pay?retry=1`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      // `pay_url` — Octo to'lov sahifasi, HAR DOIM tashqi `https://`
-      // manzil. Sxemani qat'iy tekshiramiz — `javascript:` yoki boshqa
-      // sxema `location.href` ga tushib XSS/qayta yo'naltirish bermasin
-      // (notifications sahifasidagi "server URL'iga ishonmaslik" tamoyili).
-      if (
-        !res.ok ||
-        typeof data.pay_url !== "string" ||
-        !/^https:\/\//i.test(data.pay_url)
-      ) {
-        throw new Error(data.error || "To'lov sahifasini ochib bo'lmadi");
-      }
-      window.location.href = data.pay_url;
-    } catch (e) {
-      setPayError(
-        e instanceof Error ? e.message : "To'lov sahifasini ochib bo'lmadi",
-      );
-      setPaying(false);
-    }
-  }
+  // Jonli kuzatuv mantiqi (GET + WebSocket + zaxira polling + karta
+  // to'lovini qayta ochish) `lib/use-order-tracking.ts` da — kompyuter
+  // ko'rinishi ham AYNAN shu hook'dan foydalanadi, ya'ni bir joyda
+  // tuzatilgan nosozlik ikkalasida ham tuzaladi.
+  const { order, loading, address, courierLatLng, paying, payError, payAgain } =
+    useOrderTracking(id);
 
   if (loading) {
     return (

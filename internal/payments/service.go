@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -116,8 +118,28 @@ func NewService(repo Repository, provider Provider, orders OrderSink,
 	if repo == nil || provider == nil || orders == nil || idgen == nil {
 		return nil, errors.New("payments: bog'liqliklar to'liq emas")
 	}
-	if opts.NotifyURL == "" {
-		return nil, errors.New("payments: notify_url majburiy (callback shu manzilga keladi)")
+	// ┌─ TUZATILGAN NOSOZLIK (bug.md 42-band) ────────────────────────┐
+	// Avval bu yerda faqat `opts.NotifyURL == ""` tekshirilardi.
+	// `PUBLIC_API_URL` prod compose'ida sanab chiqilmagani uchun
+	// `os.Getenv` bo'sh satr qaytarardi va manzil shunday quriladi:
+	//
+	//	"" + "/payments/octo/callback"  →  "/payments/octo/callback"
+	//
+	// Bu NISBIY yo'l — bo'sh emas, ya'ni tekshiruvdan bemalol o'tib
+	// ketardi. Octo bunday manzilga callback yubora olmaydi:
+	// karta to'lovi hech qachon tasdiqlanmasdi, buyurtma `awaiting`
+	// da qolib restoranga ko'rinmasdi va 30 daqiqadan keyin bekor
+	// bo'lardi — mijozning puli olingan holda. Hech qanday xato
+	// yoki log bu haqda ogohlantirmasdi.
+	//
+	// Endi manzil MUTLAQ va `https://` bilan boshlanishi shart:
+	// sozlama yo'qolsa server ISHGA TUSHMAYDI, ya'ni xato deploy
+	// paytida ko'rinadi, birinchi to'lovda emas.
+	//
+	// Dev'da `http://` ga ruxsat beriladi (lokal tunnel/emulyator).
+	// └────────────────────────────────────────────────────────────────┘
+	if err := validateNotifyURL(opts.NotifyURL, opts.Production); err != nil {
+		return nil, err
 	}
 	// ┌─ XAVFSIZ BO'LMAGAN SOZLAMA PRODUCTION'GA O'TMAYDI ────────────┐
 	// `TrustCallbackWithoutProof` — callback'ga dalilsiz ishonish
@@ -142,8 +164,68 @@ func NewService(repo Repository, provider Provider, orders OrderSink,
 	}, nil
 }
 
+// validateNotifyURL — callback manzili provayder murojaat qila
+// oladigan MUTLAQ manzil ekanini tekshiradi.
+//
+// Nega alohida funksiya: bu shart pul oqimida turadi va uni sinash
+// uchun butun `Service` ni qurish shart emas
+// (`service_test.go: TestValidateNotifyURL`).
+func validateNotifyURL(raw string, production bool) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return errors.New("payments: notify_url majburiy (callback shu manzilga keladi) — " +
+			"PUBLIC_API_URL o'zgaruvchisi berilganmi?")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("payments: notify_url noto'g'ri: %w", err)
+	}
+	// Host bo'sh bo'lsa manzil nisbiy ("/payments/octo/callback") —
+	// aynan shu holat production'da oylab sezilmay turgan edi.
+	if u.Host == "" {
+		return fmt.Errorf("payments: notify_url MUTLAQ manzil bo'lishi kerak "+
+			"(host yo'q: %q) — PUBLIC_API_URL to'liq berilganmi?", raw)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if production {
+			return fmt.Errorf("payments: notify_url production'da https bo'lishi SHART (berilgan: %q)", raw)
+		}
+		return nil
+	default:
+		return fmt.Errorf("payments: notify_url sxemasi qo'llab-quvvatlanmaydi: %q", raw)
+	}
+}
+
 // ErrAlreadyPaid — buyurtma allaqachon to'langan.
 var ErrAlreadyPaid = errors.New("buyurtma allaqachon to'langan")
+
+// ErrCallbackMismatch — callback ichidagi ikki identifikator BOSHQA-BOSHQA
+// to'lovga ishora qilyapti.
+//
+// ┌─ NEGA BU ALOHIDA XATO ────────────────────────────────────────────┐
+// Octo callback'ida ikkita identifikator keladi:
+//
+//	shop_transaction_id — BIZNING to'lov ID'imiz
+//	octo_payment_UUID   — OCTO tomondagi ID
+//
+// Imzo esa FAQAT `octo_payment_UUID` + `status` ustidan hisoblanadi
+// (`octo.VerifyCallbackSignature`). Ya'ni yaroqli imzo "shu UUID shu
+// holatda" degan faktni isbotlaydi va BIZNING qaysi to'lovimiz haqida
+// ekanini UMUMAN aytmaydi.
+//
+// Ikkalasi bir to'lovga tegishli ekani tekshirilmasa, hujum juda oson
+// bo'lardi: hujumchi o'zining 1 000 so'mlik to'lovini haqiqatan qilib,
+// undan yaroqli (UUID, status, signature) uchligini oladi, so'ng katta
+// buyurtma yaratib callback'ni QO'LDA yuboradi — o'z UUID/imzosi bilan,
+// lekin BOSHQA `shop_transaction_id` bilan. Imzo to'g'ri, to'lov esa
+// butunlay boshqasi.
+//
+// Shuning uchun bog'lanish buzilganda xabar butunlay rad etiladi.
+// └───────────────────────────────────────────────────────────────────┘
+var ErrCallbackMismatch = errors.New("callback identifikatorlari bir-biriga mos emas")
 
 // ReturnURL — to'lov tugagach provayder mijozni qaytaradigan manzil.
 //
@@ -306,8 +388,17 @@ func (s *Service) HandleCallback(ctx context.Context, cb CallbackData) error {
 	amount := cb.AmountTiyin
 	proof := ""
 
+	// Imzo FAQAT u aynan shu to'lovga bog'langan bo'lsa dalil bo'ladi
+	// (`callbackIsBound` izohiga qarang). Bog'lanmagan bo'lsa quyidagi
+	// `default` shoxiga tushadi va dalil provayder API'sidan so'raladi.
+	if cb.SignatureChecked && cb.SignatureValid && !callbackIsBound(p, cb) {
+		slog.Warn("to'lov: imzo to'g'ri, lekin to'lov provayder ID'siga bog'lanmagan — API so'raladi",
+			"payment", p.ID, "order", p.OrderID,
+			"callbackdagi_uuid", cb.ProviderPaymentID)
+	}
+
 	switch {
-	case cb.SignatureChecked && cb.SignatureValid:
+	case cb.SignatureChecked && cb.SignatureValid && callbackIsBound(p, cb):
 		proof = "imzo"
 	case cb.SignatureChecked && !cb.SignatureValid:
 		// Imzo tekshirildi va NOTO'G'RI — bu soxta xabar. Boshqa
@@ -365,6 +456,17 @@ func (s *Service) HandleCallback(ctx context.Context, cb CallbackData) error {
 func (s *Service) findPayment(ctx context.Context, cb CallbackData) (*Payment, error) {
 	if cb.PaymentID != "" {
 		if p, err := s.repo.GetByID(ctx, cb.PaymentID); err == nil {
+			// ★ BOG'LANISH TEKSHIRUVI (ErrCallbackMismatch izohiga qarang).
+			// Ikkala identifikator ham ma'lum bo'lsa, ular AYNAN bir
+			// to'lovni ko'rsatishi shart.
+			if cb.ProviderPaymentID != "" && p.ProviderPaymentID != "" &&
+				!strings.EqualFold(p.ProviderPaymentID, cb.ProviderPaymentID) {
+				slog.Error("to'lov: callback IDENTIFIKATORLARI MOS EMAS — rad etildi",
+					"payment", p.ID, "order", p.OrderID,
+					"bizdagi_uuid", p.ProviderPaymentID,
+					"callbackdagi_uuid", cb.ProviderPaymentID)
+				return nil, ErrCallbackMismatch
+			}
 			return p, nil
 		}
 	}
@@ -372,6 +474,26 @@ func (s *Service) findPayment(ctx context.Context, cb CallbackData) (*Payment, e
 		return s.repo.GetByProviderID(ctx, s.provider.Name(), cb.ProviderPaymentID)
 	}
 	return nil, ErrNotFound
+}
+
+// callbackIsBound — callback'dagi imzo AYNAN shu to'lovga tegishlimi.
+//
+// Imzo `octo_payment_UUID` ustidan hisoblanadi, shuning uchun u faqat
+// yozuvimiz o'sha UUID'ga BOG'LANGAN bo'lsa dalil bo'la oladi.
+//
+// `p.ProviderPaymentID` bo'sh bo'lishi mumkin: `StartForOrder` avval
+// yozuvni yaratadi, provayder javobini olgach esa UUID'ni yozadi
+// (`repo.Create` va `repo.Update` orasidagi qisqa oyna). Aynan o'sha
+// oynada kelgan callback uchun imzoga TAYANIB BO'LMAYDI — u boshqa
+// to'lovning imzosi bo'lishi mumkin va biz buni tekshira olmaymiz.
+// Bunday holatda dalil provayderning O'Z API'sidan so'raladi (u bizning
+// `p.ID` bo'yicha javob beradi, ya'ni chalkashish imkoni yo'q).
+func callbackIsBound(p *Payment, cb CallbackData) bool {
+	if cb.ProviderPaymentID == "" {
+		// Provayder ID umuman berilmagan — imzo ham bo'lishi mumkin emas.
+		return false
+	}
+	return strings.EqualFold(p.ProviderPaymentID, cb.ProviderPaymentID)
 }
 
 // applyStatus — holatni saqlaydi va buyurtmaga xabar beradi.

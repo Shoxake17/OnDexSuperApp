@@ -83,7 +83,9 @@ func (s *Server) recordDevice(r *http.Request, userID string) {
 	if !shouldTouch(userID, platform) {
 		return
 	}
-	go func() {
+	// `safeGo` — recover bilan (bug.md 44-band): bu goroutine
+	// `net/http` ning panic tutuvchisidan tashqarida ishlaydi.
+	safeGo("devices.touch", func() {
 		// So'rov konteksti javob yozilishi bilan bekor qilinadi —
 		// shuning uchun BOG'LIQ BO'LMAGAN kontekst va o'z muddati.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -92,5 +94,5 @@ func (s *Server) recordDevice(r *http.Request, userID string) {
 			slog.Debug("qurilma yozuvini yangilab bo'lmadi",
 				"user", userID, "platform", platform, "err", err)
 		}
-	}()
+	})
 }

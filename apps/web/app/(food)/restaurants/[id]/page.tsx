@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publicFetch } from "@/lib/api";
 import { safeJsonLdHtml } from "@/lib/json-ld";
+import { getSessionToken } from "@/lib/session";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
-import MenuContent from "./menu-content";
+import MenuShell from "./menu-shell";
 
 const REVALIDATE_SECONDS = 30;
 
@@ -44,7 +45,10 @@ export default async function MenuPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const data = await getMenuData(id).catch(() => null);
+  const [data, signedIn] = await Promise.all([
+    getMenuData(id).catch(() => null),
+    getSessionToken().then(Boolean),
+  ]);
   if (!data) notFound();
   const { restaurant, menu, promotions } = data;
 
@@ -65,10 +69,11 @@ export default async function MenuPage({
         // kiritadigan matn, xom JSON.stringify saqlangan XSS berardi.
         dangerouslySetInnerHTML={{ __html: safeJsonLdHtml(jsonLd) }}
       />
-      <MenuContent
+      <MenuShell
         restaurant={restaurant}
         menu={menu}
         promotions={promotions}
+        signedIn={signedIn}
       />
     </>
   );

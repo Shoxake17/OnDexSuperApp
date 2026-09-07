@@ -130,6 +130,12 @@ class _AssistantScreenState extends State<AssistantScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _lines = <_ChatLine>[];
+
+  // Og'zaki tasdiq dialogida ko'rsatiladigan summa va restoran
+  // (`onCheckoutReady` dan keladi — bug.md 11-band). Model og'zaki
+  // boshqa raqam aytgan bo'lsa, farq odamning ko'ziga tashlanadi.
+  int _pendingTotalTiyin = 0;
+  String _pendingRestaurant = '';
   bool _busy = false;
 
   // ── Ovoz ──
@@ -159,13 +165,97 @@ class _AssistantScreenState extends State<AssistantScreen> {
     onConfirmOrder: _onLiveConfirmOrder,
   );
 
-  /// Og'zaki tasdiq — buyurtmani naqd to'lov bilan beramiz.
+  /// Og'zaki tasdiq — buyurtmani ODAM tasdiqlaydi.
   ///
-  /// Bajarib bo'lmasa SABAB aytiladi: model "tasdiqlayapman" degan,
-  /// ilova esa hech narsa qilmagan bo'lsa — bu aldash bo'lardi.
+  /// ┌─ TUZATILGAN NOSOZLIK (bug.md 11-band) ────────────────────────┐
+  /// Bu yerda AVVAL to'g'ridan-to'g'ri `confirmCashOrder()` chaqirilardi
+  /// va u checkout ekranidagi "naqd to'lov" tugmasini DASTUR bilan
+  /// bosardi (`agent_driver.dart` — `_tapAt(key)` + `fresh()`). Ya'ni
+  /// buyurtma modelning tool chaqiruvi natijasida berilardi;
+  /// foydalanuvchining barmog'i ekranga umuman tegmasdi.
+  ///
+  /// Nega bu jiddiy: 9-band restoran yozgan matn model kontekstiga
+  /// tushishini ko'rsatgan (`toolSearch`/`toolMenu`). Model esa
+  /// `add_to_cart` → `checkout_flow` → `confirm_order` zanjirini o'zi
+  /// yurita olardi va oxirgi bo'g'in PUL SARFLARDI. Loyihaning o'z
+  /// invarianti ("buyurtmani odam tugma bilan beradi") matnli chat va
+  /// web agent uchun to'g'ri, ovozli rejim uchun buzilgan edi.
+  ///
+  /// Endi banddagi 1-variant: hodisa TASDIQ DIALOGINI ochadi. Bir
+  /// bosish qoladi, lekin u ODAMNIKI. Model dialogni yopa olmaydi,
+  /// "ha" deb javob bera olmaydi va vaqt o'tishi bilan o'zi
+  /// tasdiqlanmaydi — tasdiq faqat ekranga tegish bilan bo'ladi.
+  ///
+  /// Summa dialogda AYNAN ko'rsatiladi (`_pendingTotalTiyin`): model
+  /// og'zaki boshqa raqam aytgan bo'lsa, farq ko'zga tashlanadi.
+  /// └───────────────────────────────────────────────────────────────┘
   Future<void> _onLiveConfirmOrder() async {
+    if (!mounted) return;
+
+    // Oldindan tekshiramiz: dialog ochib, keyin "bajarib bo'lmadi"
+    // deyish foydalanuvchini bekorga bezovta qilardi.
+    if (!AgentDriver.instance.canConfirmCashOrder) {
+      _sayCannotConfirm();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      // Tashqariga bosish — BEKOR QILISH. Tasdiq faqat tugma bilan.
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Buyurtmani tasdiqlaysizmi?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_pendingRestaurant.isNotEmpty) Text(_pendingRestaurant),
+            const SizedBox(height: 8),
+            Text(
+              '${formatSum(_pendingTotalTiyin)} — naqd to\'lov',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Buyurtma restoranga yuboriladi.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Bekor qilish'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Tasdiqlash'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (confirmed != true) {
+      setState(() {
+        _lines.add(_ChatLine(
+          'assistant',
+          'Buyurtma tasdiqlanmadi.',
+        ));
+      });
+      _scrollToEnd();
+      return;
+    }
+
+    // Odam tasdiqladi — endi tugmani bosish mumkin.
     final ok = await AgentDriver.instance.confirmCashOrder();
     if (ok || !mounted) return;
+    _sayCannotConfirm();
+  }
+
+  /// Bajarib bo'lmadi — SABAB aytiladi: model "tasdiqlayapman" degan,
+  /// ilova esa hech narsa qilmagan bo'lsa, bu aldash bo'lardi.
+  void _sayCannotConfirm() {
     setState(() {
       _lines.add(_ChatLine(
         'assistant',
@@ -237,6 +327,10 @@ class _AssistantScreenState extends State<AssistantScreen> {
     // `checkoutReady` seans faol bo'lmasa jimgina qaytadi. Bunda
     // foydalanuvchi ekrandan o'zi tasdiqlaydi.
     AgentDriver.instance.onCheckoutReady = (restaurant, total) {
+      // Summani eslab qolamiz — og'zaki tasdiq so'ralganda odamga
+      // AYNAN shu raqam ko'rsatiladi (`_onLiveConfirmOrder`).
+      _pendingTotalTiyin = total;
+      _pendingRestaurant = restaurant;
       _live.checkoutReady(restaurant: restaurant, totalTiyin: total);
     };
     _loadAddress();

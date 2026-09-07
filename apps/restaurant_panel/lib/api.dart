@@ -242,6 +242,14 @@ class RestaurantApi extends ApiClient {
 
 final api = RestaurantApi();
 
+/// Sessiya tokeni SAQLANADIGAN joy — shifrlangan ombor.
+///
+/// Sabab va migratsiya tafsiloti `admin_panel/lib/api.dart` dagi bir
+/// xil izohda (bug.md 2-band): panel tokenni avval shifrlanmagan
+/// `SharedPreferences` ga yozardi, mijoz/kuryer/affitsiant ilovalari
+/// esa allaqachon `TokenStore` ni ishlatardi.
+const restTokenStore = TokenStore('rest_token');
+
 /// Server qaytargan rasm manzilini ko'rsatish uchun tayyorlaydi.
 /// Ikki holat bor: lokal disk rejimida server nisbiy yo'l qaytaradi
 /// ("/uploads/..." — baseUrl qo'shilishi kerak); R2 rejimida esa to'liq,

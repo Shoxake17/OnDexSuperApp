@@ -4,6 +4,7 @@ import { ChevronDown, MapPin, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import CategoryTile from "./category-tile";
+import DesktopHome from "./desktop-home";
 import HeaderActions from "./header-actions";
 import RestaurantCard from "./restaurant-card";
 import { categoryIconFor } from "@/lib/categoryIcons";
@@ -13,9 +14,11 @@ import MobileSheet from "./mobile-sheet";
 export default function HomeContent({
   restaurants,
   categories,
+  signedIn,
 }: {
   restaurants: Restaurant[];
   categories: string[];
+  signedIn: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -26,6 +29,51 @@ export default function HomeContent({
     return restaurants.filter((r) => r.name.toLowerCase().includes(q));
   }, [restaurants, query]);
 
+  return (
+    <>
+      {/* Kompyuter brauzeri — alohida, to'q fonli ko'rinish
+          (`desktop-home.tsx`). Mobil/WebView/Telegram'da HECH QACHON
+          render bo'lmaydi (`hidden` — CSS bilan yashirilgan bo'lsa ham
+          DOM'da bor, lekin ichidagi effektlar/so'rovlar shu tufayli
+          foydasiz ishlamasin desa React'ning shart operatoriga qarab
+          quyida bo'lingan: ikkalasi ham DOM'da, faqat CSS ko'rsatadi —
+          soddaligi uchun shunday, ikkalasi ham YENGIL). */}
+      <div className="hidden md:block">
+        <DesktopHome restaurants={restaurants} categories={categories} signedIn={signedIn} />
+      </div>
+
+      <div className="md:hidden">
+        <MobileHome
+          restaurants={restaurants}
+          categories={categories}
+          query={query}
+          setQuery={setQuery}
+          searchOpen={searchOpen}
+          setSearchOpen={setSearchOpen}
+          filtered={filtered}
+        />
+      </div>
+    </>
+  );
+}
+
+function MobileHome({
+  restaurants,
+  categories,
+  query,
+  setQuery,
+  searchOpen,
+  setSearchOpen,
+  filtered,
+}: {
+  restaurants: Restaurant[];
+  categories: string[];
+  query: string;
+  setQuery: (v: string) => void;
+  searchOpen: boolean;
+  setSearchOpen: (v: boolean) => void;
+  filtered: Restaurant[];
+}) {
   return (
     // `pb-28` — pastki menyu (`bottom-nav.tsx`) kontentning oxirini
     // bosib qolmasin.

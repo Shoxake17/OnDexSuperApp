@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"chustapp/internal/agentapi"
+	"chustapp/internal/appenv"
 	"chustapp/internal/assistant"
 	"chustapp/internal/cache"
 	"chustapp/internal/catalog"
@@ -35,6 +36,7 @@ import (
 	"chustapp/internal/promotions"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
+	"chustapp/internal/safego"
 	"chustapp/internal/storage"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
@@ -136,6 +138,18 @@ func main() {
 	} else {
 		slog.Info("production rejim", "app_env", appEnv)
 	}
+
+	// ┌─ MUHIT INVENTARIZATSIYASI (bug.md 42, 99-bandlar) ─────────────┐
+	// Yo'q o'zgaruvchilarni ULAR NIMANI O'CHIRISHI bilan birga logga
+	// chiqaradi. Sabab: bu loyihada bir xil xato to'rt marta
+	// takrorlangan — kod o'zgaruvchini o'qiydi, prod compose'ida esa
+	// u sanab chiqilmagan, va funksiya JIMGINA o'chadi (karta to'lovi,
+	// AI, ovoz, email login — beshtasi bir vaqtda o'lik turgan edi).
+	//
+	// Ro'yxatning o'zi `internal/appenv` da va u ikki tomondan
+	// test bilan qulflangan (manba kodi + prod compose).
+	// └────────────────────────────────────────────────────────────────┘
+	appenv.Report(devMode)
 
 	var orderRepo orders.Repository
 	var courierRepo couriers.Repository
@@ -557,8 +571,28 @@ func main() {
 	if eskiz, ok := notify.NewEskizFromEnv(); ok {
 		smsSender = eskiz
 		slog.Info("rejim: Eskiz.uz (SMS)")
+	} else if devMode {
+		slog.Warn("Eskiz sozlanmagan — SMS kodlar faqat logga yoziladi (FAQAT dev)")
 	} else {
-		slog.Warn("Eskiz sozlanmagan — SMS kodlar faqat logga yoziladi")
+		// ┌─ FAIL-CLOSED: PRODUCTION'DA SMS MAJBURIY (bug.md 47-band) ─┐
+		// Avval bu yerda faqat `slog.Warn` bor edi va server `LogSms`
+		// bilan ishlashda davom etardi. Ikki oqibat:
+		//
+		//  1. KIRISH JIMGINA BUZILADI — foydalanuvchi SMS olmaydi,
+		//     lekin API "sent: true" qaytaradi;
+		//  2. BARCHA OTP KODLAR log faylida ochiq turadi. Logga
+		//     kirish huquqi bo'lgan har kim istalgan raqamga kirish
+		//     oqimini boshlab, kodni logdan o'qib oladi — parolsiz
+		//     to'liq akkaunt egallash.
+		//
+		// `MONGODB_URI` va `R2_BUCKET` uchun bu fayl allaqachon
+		// `os.Exit(1)` qiladi. SMS — KIRISH oqimining o'zagi, ya'ni
+		// undan ham muhimroq; fail-open qoldirish nomuvofiq edi.
+		// └────────────────────────────────────────────────────────────┘
+		slog.Error("ESKIZ_EMAIL/ESKIZ_PASSWORD berilmagan — SMS yuborilmaydi. " +
+			"Production'da bu MAJBURIY: aks holda kirish jimgina buziladi va " +
+			"OTP kodlar log faylida ochiq qoladi.")
+		os.Exit(1)
 	}
 
 	authSvc := users.NewService(userRepo, codeStore, smsSender, tokens, httpapi.NewID)
@@ -661,7 +695,10 @@ func main() {
 			slog.Error("WEB_PUBLIC_BASE_URL yo'q — brauzerdan \"Telegram bilan " +
 				"kirish\" YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
-		go tgVerifier.Run(context.Background())
+		// `safego` — recover bilan (bug.md 44-band). Bot polling
+		// sikli soatlab ishlaydi va tashqi (Telegram) ma'lumot bilan
+		// oziqlanadi: u yerdagi panic butun API'ni yiqitardi.
+		safego.Go("telegram.verifier", func() { tgVerifier.Run(context.Background()) })
 		slog.Info("rejim: Telegram bot (OTP yetkazish) yoqilgan",
 			"qaytish_manzili", publicURL, "web_qaytish_manzili", webPublicURL,
 			"kalit_majburiy", secretRequired)
@@ -816,6 +853,28 @@ func main() {
 		// Buyurtma qabul qilinganda pulni yechish / rad etilganda
 		// bo'shatish shu bog'lanish orqali ishlaydi.
 		orderSvc.WithPayments(paymentSvc)
+		// ┌─ TUZATILGAN NOSOZLIK (bug.md 43-band) ─────────────────────┐
+		// `OCTO_TEST` ning standarti — `true` (kodda ham, compose'da
+		// ham). Fail-safe tanlov mantiqiy: tasodifan haqiqiy pul
+		// olinmasin. LEKIN production'da bu holat hech qanday
+		// ogohlantirish bermasdi — log faqat `"test", true` deb
+		// yozardi, xato darajasida emas.
+		//
+		// Sinov rejimida karta HAQIQATDA yechilmaydi, lekin oqim
+		// to'liq o'tadi: `status: succeeded` keladi, buyurtma
+		// "to'langan" bo'ladi va restoranga yuboriladi. Ya'ni PUL
+		// OLINMASDAN buyurtma bajariladi.
+		//
+		// `os.Exit(1)` EMAS — ataylab: yangi do'kon Octo bilan aynan
+		// sinov rejimida integratsiyani boshlaydi va serverni
+		// to'xtatish o'sha ishni imkonsiz qilardi. `slog.Error` esa
+		// monitoring/alertga tushadi va ko'zdan qochmaydi.
+		// └────────────────────────────────────────────────────────────┘
+		if !devMode && octoClient.TestMode() {
+			slog.Error("DIQQAT: karta to'lovi SINOV rejimida, lekin muhit PRODUCTION. " +
+				"Pul YECHILMAYDI, buyurtma esa \"to'langan\" bo'lib restoranga ketadi. " +
+				"Haqiqiy pul uchun `.env` da ANIQ `OCTO_TEST=false` yozing.")
+		}
 		slog.Info("rejim: karta orqali to'lov (Octo) yoqilgan",
 			"shop_id", id, "test", octoClient.TestMode(), "callback", notifyURL)
 	} else {
@@ -916,11 +975,11 @@ func main() {
 	// "tayyorlanmoqda" holatida qolardi (`ResumePending` izohiga
 	// qarang). Fon rejimida — ishga tushishni sekinlashtirmasin.
 	if model3DSvc != nil {
-		go func() {
+		safego.Go("model3d.resumePending", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			model3DSvc.ResumePending(ctx)
-		}()
+		})
 	}
 
 	// Dispatch tiklash (crash-recovery) — dispatch holati FAQAT xotirada
@@ -981,16 +1040,22 @@ func main() {
 	// darhol o'lardi va so'rovlar yarim yo'lda uzilardi).
 	shutdownDone := make(chan struct{})
 	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-		slog.Info("to'xtatish signali qabul qilindi — so'rovlar yakunlanmoqda")
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			slog.Error("graceful shutdown xatosi", "err", err)
-		}
-		close(shutdownDone)
+		// `close(shutdownDone)` ATAYLAB `defer` da va `safego.Run` dan
+		// TASHQARIDA (bug.md 44-band): shu goroutine'da panic bo'lsa
+		// ham `main` `<-shutdownDone` da abadiy osilib qolmasligi
+		// kerak — aks holda konteyner SIGKILL kutgan bo'lardi.
+		defer close(shutdownDone)
+		safego.Run("api.shutdown", func() {
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			<-sigCh
+			slog.Info("to'xtatish signali qabul qilindi — so'rovlar yakunlanmoqda")
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(ctx); err != nil {
+				slog.Error("graceful shutdown xatosi", "err", err)
+			}
+		})
 	}()
 
 	slog.Info("ChustApp API ishga tushdi", "addr", addr, "dev_mode", devMode)

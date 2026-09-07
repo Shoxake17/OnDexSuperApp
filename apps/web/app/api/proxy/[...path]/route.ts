@@ -19,6 +19,23 @@ import { goFetch } from "@/lib/api";
 // Endi ruxsat etilgan ro'yxat (allowlist) — chuqurlashtirilgan himoya.
 const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   { method: "GET", pattern: "me" },
+  // POST /me — FAQAT ism/familiya (`internal/httpapi/routes_me.go`).
+  //
+  // ┌─ NEGA ENDI OCHIQ (avval ataylab yopiq edi) ─────────────────────┐
+  // Ilgari profil sahifasi faqat KO'RSATARDI va bu yerda izoh turardi:
+  // "tahrirlash ataylab yo'q, `POST /me` allowlist'da yo'q". Sabab
+  // asosli edi — nima tahrirlanishi mumkinligi hal qilinmagan edi.
+  //
+  // Endi hal qilindi: Go tomondagi handler `first_name`/`last_name`
+  // dan BOSHQA hech narsani qabul qilmaydi va faqat SO'ROV EGASINING
+  // yozuviga tegadi (`claimsFrom(r).Subject`). Ya'ni bu yo'l orqali
+  // na telefon, na email, na rol o'zgartirib bo'lmaydi — sirt tor va
+  // imtiyoz oshirish imkoni yo'q.
+  //
+  // Telefon ATAYLAB o'zgartirilmaydi: u kimlikning o'zi va Telegram
+  // tomonidan tasdiqlangan (`/auth/telegram/start` oqimi).
+  // └─────────────────────────────────────────────────────────────────┘
+  { method: "POST", pattern: "me" },
   { method: "GET", pattern: "me/address" },
   { method: "POST", pattern: "me/address" },
   { method: "GET", pattern: "me/orders" },

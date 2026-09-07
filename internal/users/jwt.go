@@ -1,6 +1,7 @@
 package users
 
 import (
+	"crypto/sha256"
 	"errors"
 	"time"
 
@@ -46,6 +47,21 @@ type TokenIssuer struct {
 
 func NewTokenIssuer(secret string, ttl time.Duration) *TokenIssuer {
 	return &TokenIssuer{secret: []byte(secret), ttl: ttl}
+}
+
+// codePepper — OTP kodlarini hashlash uchun SERVER TOMONIDAGI kalit
+// (bug.md 48-band).
+//
+// JWT sirining O'ZI emas, undan HKDF-ga o'xshash yo'l bilan olingan
+// ALOHIDA kalit: bitta sir ikki maqsadda ishlatilsa, birining oqishi
+// ikkinchisini ham ochadi.
+//
+// Alohida `.env` o'zgaruvchisi qo'shilmadi ATAYLAB: u yana bir
+// "unutilsa jimgina zaiflashadi" nuqtasi bo'lardi (42/99-bandlar
+// aynan shu sinf). JWT siri esa production'da allaqachon MAJBURIY.
+func (t *TokenIssuer) codePepper() []byte {
+	sum := sha256.Sum256(append([]byte("ondex-otp-pepper-v1:"), t.secret...))
+	return sum[:]
 }
 
 // Issue — oddiy kirish tokeni (parol bilan kirish, admin amallari).

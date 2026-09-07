@@ -1535,6 +1535,11 @@ class _ProfileTab extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Divider(height: 1),
+            // Huquqiy hujjatlar — kuryer ilovasi ham do'konga chiqadi,
+            // ya'ni maxfiylik siyosatiga havola MAJBURIY
+            // (bug.md 70-band). Manzil `ondex_core` da.
+            const LegalSection(),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text('Chiqish', style: TextStyle(color: Colors.red)),

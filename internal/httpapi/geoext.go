@@ -8,9 +8,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"net/http"
 	"os"
 	"regexp"
 	"slices"
@@ -59,45 +57,69 @@ type routePoint struct {
 // Dekodlash SERVERDA bajariladi — shu tufayli Flutter ilovalariga polyline
 // dekodlash kutubxonasi qo'shish shart emas, ular tayyor {lat,lng} nuqtalar
 // ro'yxatini oladi.
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 22-band) ─────────────────────────────┐
+// Ichki sikllarda `index < len(encoded)` tekshiruvi YO'Q edi. Tashqi
+// sikl uni tekshirardi, ichkilari esa `b < 0x20` bo'lguncha o'qishda
+// davom etardi. Polilinia KESILGAN bo'lsa (oxirgi bayt `>= 0x20`)
+// `index` chegaradan chiqib, `index out of range` panic'i tug'ilardi.
+//
+// Kirish TASHQI xizmatdan keladi (Google Directions javobi), ya'ni
+// biz uni nazorat qilmaymiz: qisman javob, buzilgan uzatish yoki
+// xizmatning o'zgargan formati serverni yiqitishi mumkin edi.
+//
+// Endi ichki sikl `decodeValue` yordamchisiga chiqarildi va u
+// chegaradan chiqmaydi: ma'lumot tugab qolsa, `ok=false` qaytaradi
+// va dekodlash O'SHA YERDA to'xtaydi — shu paytgacha yig'ilgan
+// nuqtalar saqlanadi (qisman marshrut bo'shdan yaxshiroq).
+// └────────────────────────────────────────────────────────────────────┘
 func decodePolyline(encoded string) []routePoint {
 	var points []routePoint
 	index, lat, lng := 0, 0, 0
 	for index < len(encoded) {
-		shift, result := 0, 0
-		for {
-			b := int(encoded[index]) - 63
-			index++
-			result |= (b & 0x1f) << shift
-			shift += 5
-			if b < 0x20 {
-				break
-			}
+		dlat, next, ok := decodeValue(encoded, index)
+		if !ok {
+			break
 		}
-		dlat := result >> 1
-		if result&1 != 0 {
-			dlat = ^dlat
-		}
+		index = next
 		lat += dlat
 
-		shift, result = 0, 0
-		for {
-			b := int(encoded[index]) - 63
-			index++
-			result |= (b & 0x1f) << shift
-			shift += 5
-			if b < 0x20 {
-				break
-			}
+		dlng, next, ok := decodeValue(encoded, index)
+		if !ok {
+			break
 		}
-		dlng := result >> 1
-		if result&1 != 0 {
-			dlng = ^dlng
-		}
+		index = next
 		lng += dlng
 
 		points = append(points, routePoint{Lat: float64(lat) / 1e5, Lng: float64(lng) / 1e5})
 	}
 	return points
+}
+
+// decodeValue — polilinia formatidagi bitta qiymatni o'qiydi.
+//
+// Qaytaradi: qiymat, keyingi indeks va ma'lumot TO'LIQ bo'lganini
+// bildiruvchi bayroq. Kesilgan kirishda `false` — chaqiruvchi
+// to'xtaydi, panic bo'lmaydi.
+func decodeValue(encoded string, index int) (value, next int, ok bool) {
+	shift, result := 0, 0
+	for {
+		if index >= len(encoded) {
+			// Kesilgan ma'lumot: oxirgi bayt "davomi bor" deb
+			// belgilangan, lekin davomi yo'q.
+			return 0, index, false
+		}
+		b := int(encoded[index]) - 63
+		index++
+		result |= (b & 0x1f) << shift
+		shift += 5
+		if b < 0x20 {
+			break
+		}
+	}
+	if result&1 != 0 {
+		return ^(result >> 1), index, true
+	}
+	return result >> 1, index, true
 }
 
 // yandexReverseGeocode — Google aniq ko'cha topa olmaganda ikkinchi manba
@@ -121,13 +143,6 @@ func yandexReverseGeocode(ctx context.Context, lat, lng float64) (string, bool) 
 	geoURL := "https://geocode-maps.yandex.ru/v1/?apikey=" + key +
 		"&format=json&kind=house&results=1&lang=uz_UZ&geocode=" +
 		strconv.FormatFloat(lng, 'f', -1, 64) + "," + strconv.FormatFloat(lat, 'f', -1, 64)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, geoURL, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		slog.Warn("Yandex Geocoder so'roviga xato", "err", err)
-		return "", false
-	}
-	defer resp.Body.Close()
 	var data struct {
 		Response struct {
 			GeoObjectCollection struct {
@@ -145,8 +160,9 @@ func yandexReverseGeocode(ctx context.Context, lat, lng float64) (string, bool) 
 			} `json:"GeoObjectCollection"`
 		} `json:"response"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		slog.Warn("Yandex Geocoder javobini o'qib bo'lmadi", "err", err)
+	// Timeout + hajm chegarasi `geoclient.go` da (bug.md 21-band).
+	if err := fetchGeoJSON(ctx, geoURL, &data); err != nil {
+		slog.Warn("Yandex Geocoder so'roviga xato", "err", err)
 		return "", false
 	}
 	members := data.Response.GeoObjectCollection.FeatureMember
@@ -185,13 +201,6 @@ func dgisReverseGeocode(ctx context.Context, lat, lng float64) (string, bool) {
 		"?lon=" + strconv.FormatFloat(lng, 'f', -1, 64) +
 		"&lat=" + strconv.FormatFloat(lat, 'f', -1, 64) +
 		"&radius=500&fields=items.full_name,items.address_name&locale=uz_UZ&key=" + key
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, geoURL, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		slog.Warn("2GIS Geocoder so'roviga xato", "err", err)
-		return "", false
-	}
-	defer resp.Body.Close()
 	// 404 "itemNotFound" — hech narsa topilmadi, bu XATO emas, oddiy
 	// bo'sh natija (JSON decode xato bermaydi, Result.Items shunchaki
 	// bo'sh qoladi, quyidagi len()==0 tekshiruvi to'g'ri ishlaydi).
@@ -205,8 +214,9 @@ func dgisReverseGeocode(ctx context.Context, lat, lng float64) (string, bool) {
 			} `json:"items"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		slog.Warn("2GIS Geocoder javobini o'qib bo'lmadi", "err", err)
+	// Timeout + hajm chegarasi `geoclient.go` da (bug.md 21-band).
+	if err := fetchGeoJSON(ctx, geoURL, &data); err != nil {
+		slog.Warn("2GIS Geocoder so'roviga xato", "err", err)
 		return "", false
 	}
 	for _, item := range data.Result.Items {

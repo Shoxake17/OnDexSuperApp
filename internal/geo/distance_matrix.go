@@ -50,6 +50,13 @@ var (
 	ErrNoAPIKey = errors.New("google maps api kaliti berilmagan")
 )
 
+// maxResponseBytes — tashqi javobning eng katta hajmi (1 MiB).
+//
+// Loyihadagi barcha tashqi HTTP javoblari uchun bir xil chegara
+// (`notify/eskiz.go`, `notify/fcm.go`, `httpapi/geoclient.go`).
+// Haqiqiy Distance Matrix javobi bir necha KB.
+const maxResponseBytes = 1 << 20
+
 type Client struct {
 	apiKey     string
 	baseURL    string // testlarda httptest.Server bilan almashtiriladi
@@ -121,7 +128,17 @@ func (c *Client) fetchGroup(ctx context.Context, dest LatLng, mode Mode, group [
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	// ┌─ TUZATILGAN NOSOZLIK (bug.md 14-band) ────────────────────────┐
+	// Bu yerda AVVAL chegarasiz `io.ReadAll(resp.Body)` turardi.
+	// Loyihadagi BOSHQA barcha tashqi HTTP javoblari
+	// `io.LimitReader(resp.Body, 1<<20)` bilan o'qiladi
+	// (`notify/eskiz.go`, `notify/fcm.go`) — bu yagona istisno edi.
+	//
+	// Google javob bergani uchun amaldagi xavf past, lekin DNS yoki
+	// proksi buzilgan holatda cheksiz javob xotiraga to'liq
+	// yuklanardi. Bir qatorlik nomuvofiqlik.
+	// └───────────────────────────────────────────────────────────────┘
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, err
 	}

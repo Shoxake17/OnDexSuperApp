@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -77,8 +76,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           setState(() => _error = 'Bu panel faqat superadmin uchun');
           return;
         }
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('admin_token', api.token!);
+        await adminTokenStore.write(api.token!);
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdminShell()),

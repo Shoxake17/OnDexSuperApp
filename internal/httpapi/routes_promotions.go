@@ -28,19 +28,19 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			if p.ComputeStatus(now) != promotions.StatusActive {
 				continue
 			}
-			// ┌─ NEGA HAMMA CHEKLOV MAYDONI KERAK ────────────────────┐
+			// â”Œâ”€ NEGA HAMMA CHEKLOV MAYDONI KERAK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 			// Klient (menyu kartochkasi) shu ma'lumot asosida
 			// chegirmali narxni CHIZADI. Maydon yuborilmasa, u
 			// cheklovni bilmay to'liq chegirmani ko'rsatadi va
-			// checkout'dagi HAQIQIY summa boshqacha chiqadi —
+			// checkout'dagi HAQIQIY summa boshqacha chiqadi â€”
 			// `max_discount_amount_tiyin` aynan shu sababdan
 			// yetishmasdi ("30%, lekin ko'pi bilan 50 000 so'm"
 			// aksiyasida menyu to'liq 30% ni ko'rsatardi).
 			//
-			// `discount_unit` — EffectiveUnit(), ya'ni turga zid
+			// `discount_unit` â€” EffectiveUnit(), ya'ni turga zid
 			// bo'lgan eski yozuv ham klientga to'g'ri birlikda
 			// boradi.
-			// └───────────────────────────────────────────────────────┘
+			// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 			out = append(out, map[string]any{
 				"id":                        p.ID,
 				"name":                      p.Name,
@@ -78,17 +78,17 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, list)
 		}))
 
-	// resolvePromotionConflicts — `incoming` bilan BIR XIL mahsulot/turkumga
+	// resolvePromotionConflicts â€” `incoming` bilan BIR XIL mahsulot/turkumga
 	// tegishli, HOZIR faol boshqa aksiyalarni avtomatik moslashtiradi (ikkita
 	// aksiya bir xil mahsulotga sababsiz "yashirincha" tortishmasin degan
 	// qat'iy qoida). Ikki xil holat farqlanadi:
 	//   - TO'LIQ to'qnashuv (masalan eskisi ham xuddi shu mahsulotlarga, yoki
-	//     biri "Buyurtmalar" — butun savat) — eskisi BUTUNLAY to'xtatiladi.
+	//     biri "Buyurtmalar" â€” butun savat) â€” eskisi BUTUNLAY to'xtatiladi.
 	//   - QISMAN to'qnashuv (eskisi N ta mahsulotga, yangisi shulardan
-	//     ba'zilariga tegishli) — FAQAT to'qnashgan mahsulot/turkumlar
+	//     ba'zilariga tegishli) â€” FAQAT to'qnashgan mahsulot/turkumlar
 	//     eskisining ro'yxatidan olib tashlanadi, qolganlariga eskisi davom
 	//     etadi (ma'lumot yo'qolmaydi). Aralash mahsulot<->turkum holati
-	//     ATAYLAB hisobga olinmaydi — kamdan-kam uchraydi.
+	//     ATAYLAB hisobga olinmaydi â€” kamdan-kam uchraydi.
 	// Qaytadi: to'liq to'xtatilgan va qisman moslashtirilgan aksiya nomlari.
 	resolvePromotionConflicts := func(ctx context.Context, restaurantID string, incoming *promotions.Promotion) (stopped, adjusted []string) {
 		if !incoming.Active {
@@ -162,8 +162,8 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 		return stopped, adjusted
 	}
 
-	// POST /restaurants/{id}/promotions — yaratish yoki tahrirlash (id
-	// berilsa yangilaydi, aks holda yangi yaratadi — products bilan bir xil naqsh).
+	// POST /restaurants/{id}/promotions â€” yaratish yoki tahrirlash (id
+	// berilsa yangilaydi, aks holda yangi yaratadi â€” products bilan bir xil naqsh).
 	mux.HandleFunc("POST /restaurants/{id}/promotions", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -221,7 +221,7 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("discount_unit noto'g'ri (percent yoki amount)"))
 				return
 			}
-			// ┌─ TUR VA BIRLIK ZID BO'LMASLIGI KERAK ─────────────────┐
+			// â”Œâ”€ TUR VA BIRLIK ZID BO'LMASLIGI KERAK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 			// "Foiz orqali chegirma" turi + `amount` birligi kabi
 			// juftlik AVVAL ruxsat etilardi va server bilan klient uni
 			// BOSHQACHA o'qirdi: menyuda "-20%" ko'rinib, haqiqatda 20
@@ -229,10 +229,10 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			// yaratilmaydi (mavjud eskilarini `EffectiveUnit()`
 			// xavfsiz o'qiydi).
 			//
-			// Jimgina TO'G'RILAB qo'yilmaydi — kiritilgan raqamning
+			// Jimgina TO'G'RILAB qo'yilmaydi â€” kiritilgan raqamning
 			// MA'NOSI o'zgarib ketardi (20% mi, 20 tiyinmi?), shuning
 			// uchun restoran o'zi hal qilishi uchun xato qaytariladi.
-			// └───────────────────────────────────────────────────────┘
+			// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 			if typ == promotions.TypePercent && unit != promotions.DiscountUnitPercent {
 				httpError(w, http.StatusBadRequest, errors.New("foiz orqali chegirma uchun birlik % bo'lishi kerak"))
 				return
@@ -293,7 +293,7 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 				req.TargetProductIDs = nil
 			} else {
 				// Tanlangan mahsulotlar HAQIQATDA shu restoranga tegishli
-				// ekanini tekshiramiz — boshqa restoran mahsulot ID'sini
+				// ekanini tekshiramiz â€” boshqa restoran mahsulot ID'sini
 				// qo'yish orqali chetlab o'tishning oldini olish uchun.
 				products, err := s.CatalogRepo.GetProductsByIDs(r.Context(), req.TargetProductIDs)
 				if err != nil {
@@ -318,14 +318,14 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 				// (`catalog.PredefinedCategories`) bo'lishi shart.
 				//
 				// Avval bu ro'yxat UMUMAN tekshirilmasdi (faqat bo'sh
-				// emasligi): turkum — oddiy matn, shuning uchun
+				// emasligi): turkum â€” oddiy matn, shuning uchun
 				// restoran paneli (yoki to'g'ridan-to'g'ri API
 				// chaqiruvi) istalgan qatorni, istalgan miqdorda
 				// yuborishi mumkin edi. Natijada (a) hech qachon
-				// qo'llanmaydigan "o'lik" aksiya yaratilardi —
+				// qo'llanmaydigan "o'lik" aksiya yaratilardi â€”
 				// mahsulotning `Category` maydoni shu ro'yxatdan
 				// bo'lgani uchun erkin matn hech qachon mos kelmasdi
-				// — va restoran nega ishlamayotganini tushunmasdi,
+				// â€” va restoran nega ishlamayotganini tushunmasdi,
 				// (b) chegarasiz massiv bazaga bemalol yozilardi.
 				//
 				// Menyudagi MAVJUD turkumlarga qarab tekshirmaymiz:
@@ -400,13 +400,13 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 				return
 			}
 			// Yangi aksiya bilan bir xil mahsulot/turkumga qarab turgan
-			// boshqa faol aksiyalar avtomatik moslashtiriladi — ikkita
+			// boshqa faol aksiyalar avtomatik moslashtiriladi â€” ikkita
 			// aksiya bir xil mahsulotga sababsiz "yashirincha" tortishmasin
 			// (avval ApplyBest ENG KO'P chegirma beruvchisini jimgina
 			// tanlardi, lekin eskisi "faol" bo'lib ro'yxatda qolib,
 			// chalkashtirar edi). resolvePromotionConflicts()ga qarang.
 			stoppedNames, adjustedNames := resolvePromotionConflicts(r.Context(), restaurantID, p)
-			s.Hub.Send(restaurantTopic(restaurantID), map[string]any{"type": "promotions_updated"})
+			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "promotions_updated"})
 			writeJSON(w, http.StatusCreated, savePromotionResponse{
 				Promotion:              p,
 				StoppedPromotionNames:  stoppedNames,
@@ -437,7 +437,7 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Hub.Send(restaurantTopic(restaurantID), map[string]any{"type": "promotions_updated"})
+			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "promotions_updated"})
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 		}))
 

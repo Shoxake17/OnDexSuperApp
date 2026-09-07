@@ -39,6 +39,19 @@ var (
 	// Qo'shimcha IP cheklovi — bitta hujumchi ko'p akkaunt yaratsa ham.
 	geoIPLimiter = ratelimit.New(1, 60)
 
+	// ┌─ OCHIQ QIDIRUV (bug.md 12-band) ──────────────────────────────┐
+	// `GET /products/search` — autentifikatsiyasiz endpoint va u
+	// hech qanday chelakka tushmasdi. Har so'rov butun katalogni
+	// skanerlagani uchun bir qatorlik `curl` sikli bazani band qila
+	// olardi.
+	//
+	// Chegara YUMSHOQ ataylab: qidiruv — halol foydalanuvchining
+	// odatiy amali (har harf yozilganda so'rov ketishi mumkin).
+	// Sekundiga ~3, portlash 60 — odam bunga hech qachon yetmaydi,
+	// sikl esa darhol to'xtaydi.
+	// └───────────────────────────────────────────────────────────────┘
+	searchIPLimiter = ratelimit.New(3, 60)
+
 	// OTP/SMS: IP bo'yicha soatiga ~12 (portlash 5), global esa
 	// daqiqasiga ~30 — bitta skript butun SMS byudjetini yoqa olmaydi.
 	otpIPLimiter     = ratelimit.New(0.0033, 5)
@@ -163,14 +176,45 @@ func clientIP(r *http.Request) string {
 		func(p netip.Prefix) bool { return p.Contains(addr) }) {
 		return direct
 	}
-	// Ishonchli proksi: zanjirning BIRINCHI qiymati — asl mijoz.
+	// ┌─ O'NGDAN CHAPGA — ENG O'NGDAGI ISHONCHSIZ MANZIL ─────────────┐
+	// Avval bu yerda zanjirning BIRINCHI (eng chapdagi) qiymati
+	// olinardi va bu XATO edi: `X-Forwarded-For` ga har bir proksi
+	// o'zi ko'rgan manzilni OXIRIGA qo'shadi, ya'ni chapdagi qiymatni
+	// MIJOZNING O'ZI yozgan bo'lishi mumkin.
+	//
+	// Hujum: `X-Forwarded-For: 1.2.3.4` yuboriladi, proksi uni
+	// `1.2.3.4, <haqiqiy>` qilib uzatadi, biz esa `1.2.3.4` ni
+	// "asl mijoz" deb olardik. Har so'rovda yangi soxta qiymat yozib,
+	// SMS byudjeti (Eskiz — haqiqiy pul), login brute-force va pullik
+	// geokodlash cheklovlarini butunlay aylanib o'tish mumkin edi.
+	//
+	// TO'G'RI QOIDA: o'ngdan chapga yuriladi va ishonchli proksilar
+	// ro'yxatiga KIRMAYDIGAN birinchi manzil olinadi. Undan chapdagi
+	// hamma narsa — mijoz yozgan, ya'ni ishonchsiz.
+	//
+	// Hammasi ishonchli chiqsa (butun zanjir bizning proksilarimiz)
+	// ulanish manzilining o'ziga qaytiladi — cheklov QATTIQROQ
+	// bo'ladi, bu xavfsiz zaxira holat.
+	// └───────────────────────────────────────────────────────────────┘
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first := xff
-		if i := strings.IndexByte(xff, ','); i > 0 {
-			first = xff[:i]
-		}
-		if first = strings.TrimSpace(first); first != "" {
-			return first
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			hop := strings.TrimSpace(parts[i])
+			if hop == "" {
+				continue
+			}
+			// IPv6 ba'zi proksilarda qavs ichida keladi: "[::1]".
+			hop = strings.Trim(hop, "[]")
+			a, err := netip.ParseAddr(hop)
+			if err != nil {
+				// Tushunarsiz qiymat — zanjir buzilgan. Undan
+				// chapdagilarga ishonib bo'lmaydi, to'xtaymiz.
+				break
+			}
+			if !slices.ContainsFunc(trustedProxies,
+				func(p netip.Prefix) bool { return p.Contains(a) }) {
+				return a.String()
+			}
 		}
 	}
 	return direct
@@ -202,6 +246,19 @@ func allowBoth(a *ratelimit.Limiter, ka string, b *ratelimit.Limiter, kb string)
 
 // rateLimitedGeo — pullik geokodlash endpointlari uchun o'ram:
 // akkaunt VA IP bo'yicha cheklaydi.
+// rateLimitedSearch — ochiq qidiruv endpointi uchun IP chelagi
+// (bug.md 12-band). Kalit — FAQAT IP: endpoint autentifikatsiyasiz,
+// ya'ni foydalanuvchi identifikatori yo'q.
+func rateLimitedSearch(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ok, wait := searchIPLimiter.AllowWithWait(clientIP(r)); !ok {
+			tooManyRequests(w, wait)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func rateLimitedGeo(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := clientIP(r)
@@ -229,10 +286,39 @@ func rateLimitedGeo(next http.HandlerFunc) http.HandlerFunc {
 // serverni xotira buferlashga majburlash mumkin edi.
 //
 // `/uploads` ISTISNO — u o'z (kattaroq, 5MB+) chegarasini qo'yadi.
+// allowedCORSMethods — brauzer klientlariga ochiq HTTP metodlari.
+//
+// Ro'yxat haqiqiy marshrutlarga MOS bo'lishi shart: yo'q metod
+// preflight (OPTIONS) bosqichida rad etiladi va so'rov brauzerdan
+// umuman chiqmaydi — server esa hech qanday xato ko'rmaydi
+// (bug.md 23-band).
+const allowedCORSMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+
+// isUploadsPath — yo'l `/uploads` endpointiga tegishlimi.
+//
+// AYNAN moslik yoki `/uploads/` prefiksi. Shunchaki
+// `HasPrefix(path, "/uploads")` YETARLI EMAS: u `/uploadsfoo` ga ham
+// mos keladi (bug.md 28-band).
+func isUploadsPath(path string) bool {
+	return path == "/uploads" || strings.HasPrefix(path, "/uploads/")
+}
+
 func withBodyLimit(next http.Handler) http.Handler {
 	const maxJSONBody = 1 << 20 // 1 MB — JSON so'rovlar uchun yetarlicha katta
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil && !strings.HasPrefix(r.URL.Path, "/uploads") {
+		// ┌─ TUZATILGAN NOSOZLIK (bug.md 28-band) ────────────────┐
+		// Avval shart `strings.HasPrefix(r.URL.Path, "/uploads")`
+		// edi, ya'ni chegara `/uploadsfoo` va `/uploads-test`
+		// kabi yo'llarda ham O'CHARDI.
+		//
+		// Hozir bunday marshrut yo'q — ya'ni amaldagi zarar yo'q.
+		// Lekin yangi `/uploads*` marshruti qo'shilgan kunda u
+		// JIMGINA chegarasiz qolardi va sababi ko'rinmasdi.
+		//
+		// Endi FAQAT aynan `/uploads` va uning ostidagi yo'llar
+		// istisno (`/uploads/...`).
+		// └────────────────────────────────────────────────────────┘
+		if r.Body != nil && !isUploadsPath(r.URL.Path) {
 			r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 		}
 		next.ServeHTTP(w, r)
@@ -268,7 +354,21 @@ func withCORS(next http.Handler, allowedOrigins []string, devMode bool) http.Han
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 			}
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		// ┌─ TUZATILGAN NOSOZLIK (bug.md 23-band) ────────────────┐
+		// `PATCH` va `PUT` ro'yxatda YO'Q edi, lekin marshrutlar
+		// bor: `PATCH /books/{id}`, `PUT /me/ai-tools`. Brauzer
+		// klienti (`apps/web`, panellarning veb versiyasi) ularga
+		// chiqa olmasdi — preflight rad etilardi.
+		//
+		// Hozir sezilmaydi, chunki bu marshrutlarni faqat Flutter
+		// panellari (desktop, CORS'siz) chaqiradi. Web tomonga
+		// ko'chirilganda JIMGINA buzilardi.
+		//
+		// Ro'yxat marshrutlar bilan bir joyda saqlanishi kerak:
+		// yangi metod qo'shilsa shu qator ham yangilanadi
+		// (`middleware_test.go` buni qulflaydi).
+		// └────────────────────────────────────────────────────────┘
+		w.Header().Set("Access-Control-Allow-Methods", allowedCORSMethods)
 		// `X-Ondex-Client` — mijoz dasturini bildiruvchi sarlavha
 		// (`devices.go`). Bu ro'yxatda BO'LMASA brauzerdagi panellar
 		// va mini-app umuman so'rov yubora olmaydi: preflight (OPTIONS)

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import '../live.dart';
@@ -58,8 +57,27 @@ class _AdminShellState extends State<AdminShell> {
     // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
     // sessiya uchun qayta ulanishga urinib, har safar 401 olardi.
     await adminLive.stop();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('admin_token');
+    // ┌─ TUZATILGAN NOSOZLIK (bug.md 93-band) ────────────────────────┐
+    // "Chiqish" AVVAL faqat mahalliy nusxani o'chirardi — token esa
+    // serverda 30 KUN yaroqli qolaverardi. Uchala mobil ilova
+    // (`customer`, `courier`, `waiter`) `api.logout()` ni chaqiradi,
+    // panellar — yo'q edi.
+    //
+    // Aynan panellarda bu eng yomon: admin tokeni butun platformaga
+    // kirish beradi, va agar u bir marta olingan bo'lsa (fayldan yoki
+    // WebView'dan) uni to'xtatishning BOSHQA yo'li yo'q — bekor
+    // qilish faqat `/auth/logout` orqali bo'ladi.
+    //
+    // `try/catch` SHART: internet yo'q bo'lsa ham foydalanuvchi
+    // mahalliy sessiyadan chiqishi kerak (bug.md 87-band).
+    // └───────────────────────────────────────────────────────────────┘
+    try {
+      await api.logout();
+    } catch (_) {
+      // Server bilan bog'lanib bo'lmadi — mahalliy chiqish baribir
+      // bajariladi (pastda).
+    }
+    await adminTokenStore.clear();
     api.token = null;
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -85,10 +103,30 @@ class _AdminShellState extends State<AdminShell> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: IconButton(
-                    tooltip: 'Chiqish',
-                    icon: const Icon(Icons.logout),
-                    onPressed: _logout,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Huquqiy hujjatlar — superadmin ham ular bilan
+                      // ishlaydi va foydalanuvchilarga havola bera
+                      // olishi kerak (bug.md 70-band). Tor panelda
+                      // ro'yxat sig'maydi, shuning uchun ikkita ikonka.
+                      IconButton(
+                        tooltip: 'Ommaviy oferta',
+                        icon: const Icon(Icons.description_outlined),
+                        onPressed: () => openLegalUrl(LegalLinks.offerUrl),
+                      ),
+                      IconButton(
+                        tooltip: 'Maxfiylik siyosati',
+                        icon: const Icon(Icons.privacy_tip_outlined),
+                        onPressed: () => openLegalUrl(LegalLinks.privacyUrl),
+                      ),
+                      const Divider(indent: 16, endIndent: 16),
+                      IconButton(
+                        tooltip: 'Chiqish',
+                        icon: const Icon(Icons.logout),
+                        onPressed: _logout,
+                      ),
+                    ],
                   ),
                 ),
               ),

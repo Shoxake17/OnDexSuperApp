@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"chustapp/internal/safego"
 	"chustapp/internal/ws"
 )
 
@@ -81,8 +82,16 @@ func (s *Service) Notify(ctx context.Context, userID string, e Event) {
 	// `context.WithoutCancel` EMAS, yangi kontekst: chaqiruvchi HTTP
 	// so'rovi tugaganda uning konteksti bekor qilinadi va push
 	// yuborilmay qolardi.
-	go s.deliver(userID, topic, online, n)
+	//
+	// `safeGo` — recover BILAN: bu goroutine `net/http` ning panic
+	// tutuvchisidan TASHQARIDA ishlaydi, ya'ni bu yerdagi har qanday
+	// tutilmagan panic BUTUN jarayonni yiqitadi (bug.md 34-band).
+	safeGo("notify.deliver", func() { s.deliver(userID, topic, online, n) })
 }
+
+// safeGo — `internal/safego` ustidagi qisqa yorliq. Qo'lda ochilgan
+// goroutine'dagi panic butun serverni tugatadi (bug.md 34, 44-bandlar).
+func safeGo(name string, fn func()) { safego.Go(name, fn) }
 
 func (s *Service) deliver(userID, topic string, online bool, n *Notification) {
 	if s.hub != nil {

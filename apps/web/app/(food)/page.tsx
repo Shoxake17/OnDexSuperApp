@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { publicFetch } from "@/lib/api";
 import { safeJsonLdHtml } from "@/lib/json-ld";
+import { getSessionToken } from "@/lib/session";
 import type { Restaurant } from "@/lib/types";
 import HomeContent from "./home-content";
 
@@ -47,7 +48,10 @@ async function getHomeData(): Promise<{
 }
 
 export default async function HomePage() {
-  const { restaurants, categories } = await getHomeData();
+  const [{ restaurants, categories }, signedIn] = await Promise.all([
+    getHomeData(),
+    getSessionToken().then(Boolean),
+  ]);
 
   // JSON-LD (schema.org) — qidiruv tizimlariga restoranlar ro'yxatini
   // strukturaviy ma'lumot sifatida taqdim etadi (rich results imkoniyati).
@@ -76,7 +80,7 @@ export default async function HomePage() {
         // `</script>` bo'lsa saqlangan XSS berardi.
         dangerouslySetInnerHTML={{ __html: safeJsonLdHtml(jsonLd) }}
       />
-      <HomeContent restaurants={restaurants} categories={categories} />
+      <HomeContent restaurants={restaurants} categories={categories} signedIn={signedIn} />
     </>
   );
 }

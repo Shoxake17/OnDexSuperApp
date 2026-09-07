@@ -9,84 +9,160 @@ import {
   useState,
 } from "react";
 
-// Bitta buyurtma = bitta restoran (internal/orders'dagi ErrMixedRestaurants
-// bilan mos). Flutter'da savat MenuScreen'ning LOKAL widget state'i edi —
-// boshqa restoran menyusiga o'tilganda avtomatik "toza" boshlanardi. Bu
-// yerda global Context + localStorage ishlatiladi (WebView/brauzer sahifa
-// almashtirsa ham — Next.js'ning o'z client-side router'i — savat
-// yo'qolmasin uchun), lekin xatti-harakat bir xil: boshqa restoran uchun
-// miqdor o'rnatilsa, ESKI restoran savati jimgina TOZALANADI (Flutter'da
-// bu allaqachon "bepul" — endi ANIQ shu yerda takrorlanadi).
-const STORAGE_KEY = "chust_cart_v1";
+// ┌─ HAR RESTORAN UCHUN ALOHIDA SAVAT (2026-09-04) ─────────────────────┐
+// AVVAL bitta savat bor edi va boshqa restorandan mahsulot qo'shilsa
+// eskisi JIMGINA o'chirilardi:
+//
+//     const items = prev.restaurantId === id ? {...prev.items} : {};
+//
+// Qoidaning o'zi to'g'ri: bitta BUYURTMA = bitta restoran
+// (`internal/orders` dagi `ErrMixedRestaurants`). Lekin undan
+// "boshqa restoranga qarasang, yig'ganingni yo'qotasan" degan xulosa
+// KELIB CHIQMAYDI — mijoz ikkinchi kafeda bitta narsani ko'rib qo'shsa,
+// birinchi savati butunlay yo'qolardi va bu haqda ogohlantirish ham
+// yo'q edi.
+//
+// Endi savatlar restoran bo'yicha alohida saqlanadi; "faol" savat —
+// oxirgi tegilgani. Buyurtma baribir bittasidan rasmiylashtiriladi,
+// ya'ni server qoidasi buzilmaydi — shunchaki qolganlari o'chmaydi
+// (namuna: image/savat.png — Yandex Eats'da ham savatlar ro'yxati).
+// └────────────────────────────────────────────────────────────────────┘
+const STORAGE_KEY = "chust_cart_v2";
+// Eski (bitta savatli) format — birinchi ochilishda ko'chiriladi.
+const LEGACY_KEY = "chust_cart_v1";
 
-/**
- * clearStoredCartIfOtherRestaurant — saqlangan savat BOSHQA restoranga
- * tegishli bo'lsa uni o'chiradi.
- *
- * ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
- * Mijoz "B" restorani savatini yig'ib qo'ygan bo'lishi, keyin "A"
- * restoranida stolga o'tirib QR skanerlashi mumkin. O'shanda savat
- * hamon B'niki bo'lib qolardi va mijoz savatga kirsa BEGONA
- * restoran taomlarini ko'rardi.
- *
- * `setQty` allaqachon boshqa restoran uchun savatni tozalaydi, lekin
- * u FAQAT mijoz biror taom qo'shganda ishlaydi — menyuga kirib,
- * to'g'ridan savatga o'tsa eski holat ko'rinardi.
- *
- * React holatiga emas, `localStorage` ga to'g'ridan-to'g'ri tegamiz:
- * bu funksiya `CartProvider` dan TASHQARIDA (`app/table-init.tsx`,
- * root layout'da) chaqiriladi va undan keyin sahifa TO'LIQ qayta
- * yuklanadi, ya'ni provider yangi holatni o'qiydi.
- * └───────────────────────────────────────────────────────────────────┘
- */
-export function clearStoredCartIfOtherRestaurant(restaurantId: string): void {
+/** restoran id -> (mahsulot id -> soni) */
+type Carts = Record<string, Record<string, number>>;
+
+type CartState = {
+  activeRestaurantId: string | null;
+  carts: Carts;
+};
+
+const EMPTY: CartState = { activeRestaurantId: null, carts: {} };
+
+function readStored(): CartState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Partial<CartState>;
-    if (parsed?.restaurantId && parsed.restaurantId !== restaurantId) {
-      localStorage.removeItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CartState>;
+      if (parsed && typeof parsed === "object" && parsed.carts) {
+        return {
+          activeRestaurantId: parsed.activeRestaurantId ?? null,
+          carts: parsed.carts,
+        };
+      }
+    }
+    // ── Eski formatdan ko'chirish ──
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const old = JSON.parse(legacy) as {
+        restaurantId?: string | null;
+        items?: Record<string, number>;
+      };
+      localStorage.removeItem(LEGACY_KEY);
+      if (old?.restaurantId && old.items && Object.keys(old.items).length > 0) {
+        return {
+          activeRestaurantId: old.restaurantId,
+          carts: { [old.restaurantId]: old.items },
+        };
+      }
     }
   } catch {
-    // Buzilgan yozuv — o'chirib yuborish eng xavfsizi.
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // e'tiborsiz
-    }
+    // Buzilgan yozuv — bo'sh savat bilan davom etamiz.
+  }
+  return EMPTY;
+}
+
+/**
+ * setStoredActiveRestaurant — saqlangan savatlar ichidan SHU restoranni
+ * faol qiladi (boshqalarini O'CHIRMAYDI).
+ *
+ * ┌─ NEGA BOR ─────────────────────────────────────────────────────────┐
+ * Stol QR kodi skanerlanganda niyat aniq: "men SHU restoranning SHU
+ * stolidaman". Shuning uchun faol savat o'shanga o'tishi kerak, aks
+ * holda mijoz savatga kirib BEGONA restoran taomlarini ko'rardi.
+ *
+ * Avval bu funksiya boshqa restoran savatini O'CHIRARDI
+ * (`clearStoredCartIfOtherRestaurant`) — endi buning hojati yo'q,
+ * savatlar yonma-yon yashaydi.
+ *
+ * React holatiga emas, `localStorage` ga to'g'ridan-to'g'ri tegamiz: bu
+ * funksiya `CartProvider` dan TASHQARIDA chaqiriladi va undan keyin
+ * sahifa TO'LIQ qayta yuklanadi (`lib/open-table.ts`).
+ * └────────────────────────────────────────────────────────────────────┘
+ */
+export function setStoredActiveRestaurant(restaurantId: string): void {
+  try {
+    const state = readStored();
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...state, activeRestaurantId: restaurantId }),
+    );
+  } catch {
+    // Saqlash imkoni bo'lmasa oqim to'xtamaydi — savat shunchaki
+    // shu sahifada bo'sh ko'rinadi.
   }
 }
 
-type CartState = {
-  restaurantId: string | null;
-  items: Record<string, number>;
-};
-
 type CartContextValue = {
+  /** Faol savat — oxirgi tegilgan restoran. */
   restaurantId: string | null;
+  /** Faol savatdagi mahsulotlar. */
   items: Record<string, number>;
+  /** Faol savatdagi mahsulotlar soni. */
   totalItems: number;
   hydrated: boolean;
+  /** Barcha savatlar (bo'shlari saqlanmaydi). */
+  carts: Carts;
+  /** Nechta restoranda savat bor. */
+  cartCount: number;
+  /**
+   * ANIQ shu restoran savati (faol bo'lishi shart emas).
+   *
+   * ┌─ NEGA KERAK ─────────────────────────────────────────────────┐
+   * Menyu sahifasi miqdorlarni ko'rsatishda avval `restaurantId ===
+   * active ? items : {}` deb tekshirardi. Savat bitta bo'lganda bu
+   * to'g'ri edi, ko'p savatda esa XATO: mijoz A restoranida savat
+   * yig'ib, B ga o'tsa (faol savat B bo'ladi), keyin A menyusiga
+   * qaytganda hamma miqdor 0 ko'rinardi — savat esa joyida turardi.
+   * └──────────────────────────────────────────────────────────────┘
+   */
+  itemsFor: (restaurantId: string) => Record<string, number>;
   setQty: (restaurantId: string, productId: string, qty: number) => void;
+  /** Faol savatni bo'shatadi. */
   clear: () => void;
+  /** Bitta restoran savatini butunlay o'chiradi. */
+  removeCart: (restaurantId: string) => void;
+  /** Faol savatni almashtiradi. */
+  setActive: (restaurantId: string) => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
 
+/** Bo'sh savatlarni tashlab, faol savatni tirik qiymatga tenglashtiradi. */
+function normalize(state: CartState): CartState {
+  const carts: Carts = {};
+  for (const [id, items] of Object.entries(state.carts)) {
+    const kept: Record<string, number> = {};
+    for (const [productId, qty] of Object.entries(items)) {
+      if (qty > 0) kept[productId] = qty;
+    }
+    if (Object.keys(kept).length > 0) carts[id] = kept;
+  }
+  const active =
+    state.activeRestaurantId && carts[state.activeRestaurantId]
+      ? state.activeRestaurantId
+      : (Object.keys(carts)[0] ?? null);
+  return { activeRestaurantId: active, carts };
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<CartState>({
-    restaurantId: null,
-    items: {},
-  });
+  const [state, setState] = useState<CartState>(EMPTY);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setState(JSON.parse(raw));
-    } catch {
-      // buzilgan/eski format — bo'sh savat bilan davom etamiz.
-    }
+    setState(normalize(readStored()));
     setHydrated(true);
   }, []);
 
@@ -98,39 +174,85 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const setQty = useCallback(
     (restaurantId: string, productId: string, qty: number) => {
       setState((prev) => {
-        const items =
-          prev.restaurantId === restaurantId ? { ...prev.items } : {};
-        if (qty <= 0) {
-          delete items[productId];
-        } else {
-          items[productId] = qty;
-        }
-        return { restaurantId, items };
+        // Faqat SHU restoran savati o'zgaradi — qolganlariga tegilmaydi.
+        const items = { ...(prev.carts[restaurantId] ?? {}) };
+        if (qty <= 0) delete items[productId];
+        else items[productId] = qty;
+
+        const carts = { ...prev.carts };
+        if (Object.keys(items).length > 0) carts[restaurantId] = items;
+        else delete carts[restaurantId];
+
+        return normalize({ activeRestaurantId: restaurantId, carts });
       });
     },
     [],
   );
 
-  const clear = useCallback(
-    () => setState({ restaurantId: null, items: {} }),
-    [],
+  const removeCart = useCallback((restaurantId: string) => {
+    setState((prev) => {
+      const carts = { ...prev.carts };
+      delete carts[restaurantId];
+      return normalize({ activeRestaurantId: prev.activeRestaurantId, carts });
+    });
+  }, []);
+
+  const clear = useCallback(() => {
+    setState((prev) => {
+      if (!prev.activeRestaurantId) return prev;
+      const carts = { ...prev.carts };
+      delete carts[prev.activeRestaurantId];
+      return normalize({ activeRestaurantId: null, carts });
+    });
+  }, []);
+
+  const setActive = useCallback((restaurantId: string) => {
+    setState((prev) => normalize({ ...prev, activeRestaurantId: restaurantId }));
+  }, []);
+
+  const items = useMemo(
+    () =>
+      state.activeRestaurantId
+        ? (state.carts[state.activeRestaurantId] ?? {})
+        : {},
+    [state],
   );
 
   const totalItems = useMemo(
-    () => Object.values(state.items).reduce((a, b) => a + b, 0),
-    [state.items],
+    () => Object.values(items).reduce((a, b) => a + b, 0),
+    [items],
+  );
+
+  const itemsFor = useCallback(
+    (restaurantId: string) => state.carts[restaurantId] ?? {},
+    [state.carts],
   );
 
   const value = useMemo(
     () => ({
-      restaurantId: state.restaurantId,
-      items: state.items,
+      restaurantId: state.activeRestaurantId,
+      items,
       totalItems,
       hydrated,
+      carts: state.carts,
+      cartCount: Object.keys(state.carts).length,
+      itemsFor,
       setQty,
       clear,
+      removeCart,
+      setActive,
     }),
-    [state, totalItems, hydrated, setQty, clear],
+    [
+      state,
+      items,
+      totalItems,
+      hydrated,
+      itemsFor,
+      setQty,
+      clear,
+      removeCart,
+      setActive,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

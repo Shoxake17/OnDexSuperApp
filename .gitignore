@@ -241,3 +241,12 @@ apps/web/test-results/
 
 # Book Cafe: oxirgi ishlagan qurilma manzili (mahalliy)
 scripts/.bookcafe_device
+
+# ┌─ WebMCP hakatoni materiallari (466 MB) ────────────────────────────┐
+# Rasm, video va audio — taqdimot uchun yig'ilgan, backend kodiga
+# aloqasi yo'q. Git'ga tushsa repo abadiy shishadi: binar fayllarni
+# tarixdan olib tashlash butun tarixni qayta yozishni talab qiladi.
+#
+# Kerak bo'lsa alohida repo yoki Git LFS.
+# └────────────────────────────────────────────────────────────────────┘
+WebMCP/

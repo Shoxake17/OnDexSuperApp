@@ -119,6 +119,20 @@ func (r *MemoryOrderRepo) HasActiveByRestaurant(_ context.Context, restaurantID 
 	return false, nil
 }
 
+// HasActiveByCustomer — mijozning yakunlanmagan buyurtmasi bormi
+// (bug.md 27-band). Postgres versiyasi bilan bir xil mantiq: BUTUN
+// tarix bo'yicha, oxirgi N ta emas.
+func (r *MemoryOrderRepo) HasActiveByCustomer(_ context.Context, customerID string) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, o := range r.data {
+		if o.CustomerID == customerID && !o.IsTerminal() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // GetActiveByCourier — postgres.go'dagi PgOrderRepo bilan bir xil mantiq
 // (eng so'nggi yakunlanmagan buyurtma).
 func (r *MemoryOrderRepo) GetActiveByCourier(_ context.Context, courierID string) (*orders.Order, error) {

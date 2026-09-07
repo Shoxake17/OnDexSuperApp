@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	"chustapp/internal/couriers"
 	"chustapp/internal/geo"
+	"chustapp/internal/safego"
 )
 
 // RecoverDispatch — server ishga tushganda topilgan "accepted, lekin
@@ -108,14 +108,8 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 // MUHIM: `net/http` FAQAT so'rov goroutine'idagi panikani ushlaydi.
 // Qo'lda ochilgan `go ...` ichidagi panic (masalan nil-pointer) BUTUN
 // jarayonni tugatadi — bitta buyurtma butun API'ni yiqitishi mumkin edi.
-func safeGo(name string, fn func()) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("fon vazifasida panic (server ishlashda davom etadi)",
-					"vazifa", name, "panic", r, "stack", string(debug.Stack()))
-			}
-		}()
-		fn()
-	}()
-}
+//
+// Amalga oshirilishi `internal/safego` da (bug.md 44-band): avval bu
+// naqsh loyihada FAQAT shu faylda bor edi va qolgan beshta yalang'och
+// `go ...` himoyasiz qolgandi. Endi hamma joy bitta nusxadan oladi.
+func safeGo(name string, fn func()) { safego.Go(name, fn) }

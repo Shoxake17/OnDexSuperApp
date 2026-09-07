@@ -141,7 +141,14 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			// Karta tanlangan bo'lsa-yu to'lov tizimi sozlanmagan
 			// bo'lsa — buyurtma YARATILMAYDI. Aks holda u hech qachon
 			// to'lanmaydigan holatda osilib qolardi.
-			paymentMethod := paymentMethodFromRequest(req.PaymentMethod)
+			// Noma'lum to'lov usuli RAD ETILADI (bug.md 81-band):
+			// avval u jimgina naqdga aylanardi va klientdagi xato
+			// hech qayerda ko'rinmasdi.
+			paymentMethod, err := paymentMethodFromRequest(req.PaymentMethod)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, err)
+				return
+			}
 			if paymentMethod.RequiresPrepayment() && s.Payments == nil {
 				httpError(w, http.StatusServiceUnavailable,
 					errors.New("karta orqali to'lov hozircha mavjud emas"))

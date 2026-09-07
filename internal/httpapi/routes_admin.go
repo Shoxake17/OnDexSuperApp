@@ -11,6 +11,7 @@ import (
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
+	"chustapp/internal/delivery"
 	"chustapp/internal/orders"
 	"chustapp/internal/users"
 )
@@ -94,6 +95,16 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusConflict, errors.New("bu telefon raqam allaqachon ro'yxatda"))
 				return
 			}
+			// Koordinata tekshiruvi (bug.md 25-band, 1-qism): avval
+			// umuman tekshirilmasdi va `(0,0)` yoki `(999,999)`
+			// restoran yaratish mumkin edi — bunday restoranga kuryer
+			// hech qachon topilmasdi (`distanceKM` ma'nosiz qiymat
+			// beradi) va dispatch JIMGINA ishlamay qolardi.
+			if !delivery.ValidCoords(req.Lat, req.Lng) {
+				httpError(w, http.StatusBadRequest,
+					errors.New("lat/lng noto'g'ri — xaritadan nuqta tanlang"))
+				return
+			}
 			rest := catalog.Restaurant{
 				ID: NewID(), Name: req.Name, Address: req.Address,
 				Lat: req.Lat, Lng: req.Lng, Open: true,
@@ -108,6 +119,28 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				Role: users.RoleRestaurant, EntityID: rest.ID, CreatedAt: time.Now(),
 			}
 			if err := s.UserRepo.Create(r.Context(), &account); err != nil {
+				// ┌─ KOMPENSATSIYA (bug.md 25-band, 2-qism) ───────────┐
+				// Avval bu yerda faqat 500 qaytarilardi va restoran
+				// XODIMSIZ qolib ketardi — unga kirishning yo'li yo'q
+				// va uni faqat bazadan qo'lda tozalash mumkin edi.
+				//
+				// Haqiqiy tranzaksiya MUMKIN EMAS: restoran Mongo'da,
+				// akkaunt Postgres'da (`single-source-of-truth`
+				// arxitekturasi). Shuning uchun kompensatsiya —
+				// yaratilgan restoranni orqaga o'chirish.
+				//
+				// O'chirish ham yiqilsa, ID logga yoziladi: superadmin
+				// uni qo'lda topa oladi. Jimgina qoldirish eng yomon
+				// variant bo'lardi.
+				// └────────────────────────────────────────────────────┘
+				if delErr := s.CatalogRepo.DeleteRestaurant(r.Context(), rest.ID); delErr != nil {
+					slog.Error("restoran yaratildi, lekin akkaunt yaratilmadi VA orqaga o'chirib ham bo'lmadi — QO'LDA tozalash kerak",
+						"restaurant", rest.ID, "akkaunt_xatosi", err, "ochirish_xatosi", delErr)
+				} else {
+					slog.Warn("akkaunt yaratilmadi — restoran orqaga o'chirildi",
+						"restaurant", rest.ID, "err", err)
+				}
+				s.Cache.Del(r.Context(), restaurantsCacheKey)
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
@@ -232,6 +265,37 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			if req.ETAMaxMinutes < req.ETAMinMinutes {
 				httpError(w, http.StatusBadRequest,
 					errors.New("yetkazishning eng ko'p vaqti eng kamidan kichik bo'lmasin"))
+				return
+			}
+			// ┌─ URL SXEMASI (bug.md 24-band) ─────────────────────────┐
+			// Avval bu maydonlar UMUMAN tekshirilmasdi: `javascript:`,
+			// `data:` yoki begona domen bemalol saqlanardi va mijoz
+			// ilovasida rasm/havola sifatida ishlatilardi.
+			// └────────────────────────────────────────────────────────┘
+			if !isSafeMediaURL(req.LogoURL) || !isSafeMediaURL(req.CoverURL) {
+				httpError(w, http.StatusBadRequest,
+					errors.New("logo/muqova manzili yaroqsiz (faqat https:// yoki ichki yo'l)"))
+				return
+			}
+			// ┌─ KOORDINATA TEKSHIRUVI (bug.md 25-band) ───────────────┐
+			// `Lat`/`Lng` umuman tekshirilmasdi: `(0,0)` yoki
+			// `(999,999)` restoran yaratish mumkin edi. Bunday restoran
+			// kuryer taqsimotini buzadi — `distanceKM` ma'nosiz qiymat
+			// beradi va hech bir kuryer mos kelmaydi, dispatch esa
+			// JIMGINA ishlamay qoladi.
+			//
+			// `POST /me/address` va `POST /couriers/{id}/location`
+			// ikkalasi ham allaqachon tekshiradi; bu yerda
+			// qo'llanmagandi.
+			//
+			// `CheckPoint` EMAS, `ValidCoords`: restoran xizmat
+			// hududidan tashqarida bo'lishi MUMKIN (masalan yangi
+			// shahar ochilayotganda) — bu admin qarori. Tekshiriladigan
+			// narsa faqat koordinataning o'zi ma'noli ekani.
+			// └────────────────────────────────────────────────────────┘
+			if !delivery.ValidCoords(req.Lat, req.Lng) {
+				httpError(w, http.StatusBadRequest,
+					errors.New("lat/lng noto'g'ri — xaritadan nuqta tanlang"))
 				return
 			}
 			rest.Name = req.Name

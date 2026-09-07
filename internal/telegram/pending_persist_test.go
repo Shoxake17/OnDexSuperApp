@@ -47,10 +47,24 @@ func TestWithRedisNilIsNoop(t *testing.T) {
 	}
 }
 
-// testRedis — lokal Redis bo'lsa ulanadi, bo'lmasa testni o'tkazib
-// yuboradi. CI'da `go test` uchun Redis ko'tarilmaydi, shuning uchun
-// bu test u yerda JIMGINA o'tkaziladi — lekin ishlab chiqish
-// mashinasida (`ondex run`) haqiqiy tekshiruv beradi.
+// testRedis — Redis'ga ulanadi.
+//
+// ┌─ CI'DA O'TKAZIB YUBORISH TAQIQLANGAN (bug.md 102-band) ────────────┐
+// Bu yerda AVVAL shunday yozilgan edi: *"CI'da `go test` uchun Redis
+// ko'tarilmaydi, shuning uchun bu test u yerda JIMGINA o'tkaziladi"*.
+// Aynan shu "jimgina" muammoning o'zi edi: quvur yashil bo'lardi,
+// production ombor qatlami esa hech qachon ishga tushmasdi.
+//
+// Endi CI'da Redis SERVIS sifatida ko'tariladi
+// (`.github/workflows/deploy.yml` — `go_quality.services`). Agar u
+// yetib kelmasa, test O'TKAZIB YUBORILMAYDI — YIQILADI. Aks holda
+// kelajakda kimdir `services:` blokini olib tashlasa, xato yana
+// jimgina qaytardi.
+//
+// Lokal mashinada esa `t.Skip` o'z joyida qoladi: ishlab chiquvchida
+// Redis ko'tarilmagan bo'lishi mumkin va butun to'plam shu sababli
+// qizil bo'lmasligi kerak.
+// └────────────────────────────────────────────────────────────────────┘
 func testRedis(t *testing.T) *redis.Client {
 	t.Helper()
 	addr := os.Getenv("REDIS_ADDR")
@@ -62,6 +76,10 @@ func testRedis(t *testing.T) *redis.Client {
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		rdb.Close()
+		if os.Getenv("CI") != "" {
+			t.Fatalf("CI'da Redis BO'LISHI SHART (%s): %v — "+
+				"deploy.yml dagi `go_quality.services.redis` ishlayaptimi?", addr, err)
+		}
 		t.Skipf("Redis yo'q (%s) — integratsiya testi o'tkazib yuborildi", addr)
 	}
 	return rdb

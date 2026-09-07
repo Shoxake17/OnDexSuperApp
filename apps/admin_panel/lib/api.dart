@@ -215,6 +215,29 @@ class AdminApi extends ApiClient {
 
 final api = AdminApi();
 
+/// Sessiya tokeni SAQLANADIGAN joy.
+///
+/// ┌─ TUZATILGAN NOSOZLIK (bug.md 2-band) ──────────────────────────────┐
+/// Panel tokenni AVVAL to'g'ridan-to'g'ri `SharedPreferences` ga
+/// yozardi — shifrlanmagan faylga. Windows'da bu `%APPDATA%` ichidagi
+/// oddiy JSON: foydalanuvchi nomidan ishlayotgan istalgan jarayon,
+/// zaxira nusxa yoki fayl menejeri uni o'qiy oladi.
+///
+/// Bu eng imtiyozli kalit edi: admin tokeni butun platformaga kirish
+/// beradi (restoran yaratish/o'chirish, kuryer tasdiqlash, mijozlar
+/// ro'yxati) va 30 kun amal qiladi. Mijoz, kuryer va affitsiant
+/// ilovalari esa allaqachon shifrlangan omborni ishlatardi.
+///
+/// `TokenStore` `ondex_core` da va u `flutter_secure_storage` ga
+/// bog'liq — ya'ni paket panelga TRANZITIV ravishda allaqachon
+/// yetib kelgan, `pubspec.yaml` ga hech narsa qo'shish shart emas.
+///
+/// Eski `SharedPreferences` yozuvi birinchi o'qishda avtomatik
+/// ko'chiriladi va shifrlanmagan nusxa O'CHIRILADI — foydalanuvchi
+/// qayta login qilmaydi (`TokenStore.read()` izohiga qarang).
+/// └────────────────────────────────────────────────────────────────────┘
+const adminTokenStore = TokenStore('admin_token');
+
 /// Rasm manzilini ko'rsatishga tayyorlaydi.
 ///
 /// Mantiq `ondex_core` da (`coreFullImageUrl`) — bu yerda faqat shu

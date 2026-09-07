@@ -848,8 +848,24 @@ func (v *Verifier) handle(ctx context.Context, u Update) {
 				// qolardi (`returnPath` izohiga qarang). Kalit talab
 				// qilinadigan rejimda bu KIRISHNI TO'XTATADI, shuning
 				// uchun foydalanuvchiga ham aytiladi.
+				// ┌─ TUZATILGAN NOSOZLIK (bug.md 17-band) ────────────┐
+				// Bu yerda AVVAL `"url", link` turardi. `link` esa
+				// `base + path + url.QueryEscape(p.ConfirmSecret)` —
+				// ya'ni `ConfirmSecret` NING O'ZI log qatoriga to'liq
+				// yozilardi.
+				//
+				// `ConfirmSecret` — fishingga qarshi yagona to'siq va
+				// u ATAYLAB "faqat tasdiqlagan odamning qurilmasiga
+				// tushadi" deb loyihalangan. Log esa boshqa joy:
+				// loglar yig'iladi, uzatiladi va boshqa odamlar
+				// ko'radi.
+				//
+				// Nosozlikni topish uchun domen + yo'l YETARLI —
+				// bu xato "manzil ommaviy domen emas" holatida
+				// chiqadi, ya'ni muammo aynan `base` da.
+				// └───────────────────────────────────────────────────┘
 				slog.Error("telegram: qaytish tugmasi yuborilmadi",
-					"err", err, "url", link, "manba", target,
+					"err", err, "url", base+path, "manba", target,
 					"maslahat", "PUBLIC_BASE_URL/WEB_PUBLIC_BASE_URL ommaviy domen bo'lishi kerak")
 				_ = v.client.SendMessage(ctx, chatID,
 					"Kirishni yakunlab bo'lmadi (server sozlamasi). "+

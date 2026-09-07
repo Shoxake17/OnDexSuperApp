@@ -38,16 +38,43 @@ const isProd = process.env.NODE_ENV === "production";
 /// Media (rasm/3D model) ombori domeni — R2 ning ochiq manzili.
 /// Faqat origin qismi olinadi va faqat https qabul qilinadi: CSP ga
 /// yo'l yoki noto'g'ri sxema tushib qolmasin.
-const mediaOrigin = (() => {
-  const raw = (process.env.NEXT_PUBLIC_MEDIA_ORIGIN ?? "").trim();
-  if (!raw) return "";
+const mediaOrigin = originFromEnv(process.env.NEXT_PUBLIC_MEDIA_ORIGIN, ["https:"]);
+
+/// WebSocket serveri origin'i — jonli buyurtma kuzatuvi
+/// (`lib/use-order-tracking.ts`) shu manzilga ulanadi.
+///
+/// ┌─ TUZATILGAN NOSOZLIK (bug.md 66-band) ────────────────────────────┐
+/// `connect-src` da AVVAL faqat dev uchun `ws: wss:` bor edi, ya'ni
+/// production'da WebSocket ulanishi CSP tomonidan bloklanardi.
+/// `'self'` bu yerda yordam bermaydi: sahifa `web-ondex...` da,
+/// WebSocket esa `wss://api-ondex...` da — BOSHQA origin.
+///
+/// Bu 52-banddan (manzil build'da berilmagani) ALOHIDA nosozlik:
+/// manzilni tuzatsak ham CSP baribir bloklardi. Ikkalasi ham kerak.
+/// └───────────────────────────────────────────────────────────────────┘
+const wsOrigin = originFromEnv(process.env.NEXT_PUBLIC_WS_URL, ["wss:", "ws:"]);
+
+/// API origin'i — `fetch` so'rovlari Go serveriga to'g'ridan-to'g'ri
+/// ketganda kerak (proksi orqali ketsa `'self'` yetarli, lekin ikkala
+/// yo'l ham ishlatiladi).
+const apiOrigin = originFromEnv(process.env.NEXT_PUBLIC_API_URL, ["https:"]);
+
+/// originFromEnv — muhit qiymatidan FAQAT origin qismini oladi va
+/// faqat ruxsat etilgan sxemani qabul qiladi.
+///
+/// Nega qat'iy: CSP ro'yxatiga yo'l (`/path`) yoki noto'g'ri sxema
+/// tushib qolsa, butun direktiva jimgina yaroqsiz bo'lib qoladi —
+/// brauzer xato bermaydi, shunchaki qoidani qo'llamaydi.
+function originFromEnv(raw: string | undefined, schemes: string[]): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "";
   try {
-    const u = new URL(raw);
-    return u.protocol === "https:" ? u.origin : "";
+    const u = new URL(value);
+    return schemes.includes(u.protocol) ? u.origin : "";
   } catch {
     return "";
   }
-})();
+}
 
 function contentSecurityPolicy(): string {
   return [
@@ -89,6 +116,8 @@ function contentSecurityPolicy(): string {
     // └────────────────────────────────────────────────────────────┘
     `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${
       mediaOrigin ? ` ${mediaOrigin}` : ""
+    }${apiOrigin ? ` ${apiOrigin}` : ""}${
+      wsOrigin ? ` ${wsOrigin}` : ""
     }${isProd ? "" : " ws: wss:"}`,
 
     "font-src 'self' data:",

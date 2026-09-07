@@ -90,6 +90,22 @@ type Repository interface {
 	// HasActiveByRestaurant — restoranning yakunlanmagan buyurtmasi bormi
 	// (restoranni o'chirishdan oldin tekshiriladi).
 	HasActiveByRestaurant(ctx context.Context, restaurantID string) (bool, error)
+	// HasActiveByCustomer — mijozning yakunlanmagan buyurtmasi bormi
+	// (akkauntni o'chirishdan oldin tekshiriladi).
+	//
+	// ┌─ NEGA ALOHIDA METOD (bug.md 27-band) ─────────────────────────┐
+	// Avval bu tekshiruv `ListByCustomer(ctx, id, 20)` bilan
+	// bajarilardi va izohda "faol buyurtma har doim shular orasida
+	// bo'ladi" deb yozilgandi. Bu NOTO'G'RI: faol mijozda
+	// yakunlanmagan buyurtma eng yangi 20 tadan pastda qolishi
+	// mumkin — o'shanda akkaunt o'chiriladi va buyurtma EGASIZ
+	// qoladi.
+	//
+	// Kuryer uchun to'g'ri naqsh allaqachon bor
+	// (`GetActiveByCourier` — bazadan aynan shu savol), mijoz uchun
+	// qo'llanmagandi.
+	// └───────────────────────────────────────────────────────────────┘
+	HasActiveByCustomer(ctx context.Context, customerID string) (bool, error)
 	// GetActiveByCourier — kuryerning HOZIR yetkazib berayotgan (yakunlanmagan)
 	// buyurtmasi (bo'lsa) — kuryer GPS joylashuvini YANGILAGANDA, buni
 	// mijozga (WebSocket orqali) jonli yuborish uchun kerak. Topilmasa
@@ -581,10 +597,9 @@ func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
 			slog.Error("to'lovni yechib bo'lmadi", "order", o.ID, "error", err)
 			return
 		}
-		o.PaymentState = PaymentPaid
-		if err := s.repo.Save(ctx, o); err != nil {
-			slog.Error("to'lov holatini saqlab bo'lmadi", "order", o.ID, "error", err)
-		}
+		// PUL ALLAQACHON YECHILGAN — holat SAQLANISHI shart
+		// (bug.md 35-band).
+		s.persistPaymentState(ctx, o, PaymentPaid)
 	case StatusRejected, StatusCancelled:
 		if !o.PaymentState.Settled() {
 			return
@@ -593,15 +608,67 @@ func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
 			slog.Error("to'lovni bo'shatib bo'lmadi", "order", o.ID, "error", err)
 			return
 		}
+		next := PaymentFailed
 		if o.PaymentState == PaymentPaid {
-			o.PaymentState = PaymentRefunded
-		} else {
-			o.PaymentState = PaymentFailed
+			next = PaymentRefunded
 		}
-		if err := s.repo.Save(ctx, o); err != nil {
-			slog.Error("to'lov holatini saqlab bo'lmadi", "order", o.ID, "error", err)
-		}
+		s.persistPaymentState(ctx, o, next)
 	}
+}
+
+// persistPaymentState — to'lov holatini QAT'IY saqlaydi.
+//
+// ┌─ TUZATILGAN NOSOZLIK (bug.md 35-band) ─────────────────────────────┐
+// Avval bu joyda oddiy `s.repo.Save(ctx, o)` turardi va xato FAQAT
+// logga yozilardi. `Save` esa optimistik qulf bilan ishlaydi, ya'ni
+// boshqa so'rov bizdan oldin yozib ulgursa `ErrConflict` qaytaradi —
+// qayta urinish esa YO'Q edi.
+//
+// Natija: PROVAYDERDA PUL YECHILGAN, bazada esa `PaymentState`
+// `held` bo'lib qolardi. Buyurtma keyin bekor qilinsa,
+// `ReleaseForOrder` `StatusPaid` emas, `StatusHeld` yo'lidan borib
+// ALLAQACHON YECHILGAN to'lovni "bo'shatishga" urinardi.
+//
+// Endi konfliktda buyurtma QAYTA O'QILADI va holat yangi versiyaga
+// qo'yiladi (loyihaning boshqa joylaridagi `maxOptimisticRetries`
+// naqshi). Hamma urinish yiqilsa — `slog.Error` "QO'LDA tekshirish
+// kerak" izohi bilan: bu pul masalasi, jimgina qolishi mumkin emas.
+//
+// Kontekst ATAYLAB yangi: chaqiruvchi HTTP so'rovi tugagan bo'lishi
+// mumkin, holat esa baribir yozilishi shart.
+// └────────────────────────────────────────────────────────────────────┘
+func (s *Service) persistPaymentState(ctx context.Context, o *Order, state PaymentState) {
+	if err := ctx.Err(); err != nil {
+		// So'rov konteksti allaqachon bekor qilingan — o'z muddatimiz.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+	}
+
+	o.PaymentState = state
+	for attempt := 0; attempt < maxOptimisticRetries; attempt++ {
+		err := s.repo.Save(ctx, o)
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, ErrConflict) {
+			slog.Error("to'lov holatini saqlab bo'lmadi (qayta urinilmaydi)",
+				"order", o.ID, "holat", state, "error", err)
+			return
+		}
+		// Konflikt — boshqa so'rov yozib ulgurdi. Yangi versiyani
+		// o'qib, holatni QAYTA qo'yamiz.
+		fresh, getErr := s.repo.GetByID(ctx, o.ID)
+		if getErr != nil {
+			slog.Error("to'lov holatini saqlash uchun buyurtma qayta o'qilmadi",
+				"order", o.ID, "holat", state, "error", getErr)
+			return
+		}
+		fresh.PaymentState = state
+		*o = *fresh
+	}
+	slog.Error("PUL HARAKATLANDI, LEKIN HOLAT SAQLANMADI — QO'LDA tekshirish kerak",
+		"order", o.ID, "kutilgan_holat", state, "urinishlar", maxOptimisticRetries)
 }
 
 // SetPreparationTime — restoran "Qabul qilindi" bosgan payt kiritgan
