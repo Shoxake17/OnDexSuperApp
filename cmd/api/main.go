@@ -109,6 +109,25 @@ func loadDotEnv() {
 // Ikkalasi ham berilsa INLINE ustun turadi (konteynerlarda odatda
 // muhit o'zgaruvchisi ishlatiladi).
 // └───────────────────────────────────────────────────────────────────┘
+
+// parseEnvBool — env o'zgaruvchisini bool qilib o'qiydi.
+// Qaytarilgan 2-qiymat (set) — bu o'zgaruvchi aniq belgilanganmi yoki yo'qmi
+// (default dan farqlanish uchun). Qabul qilinadigan qiymatlar (case insensitive):
+// true/1/yes/on → true; false/0/no/off → false.
+func parseEnvBool(key string) (value, set bool) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return false, false
+	}
+	v, err := strconv.ParseBool(strings.TrimSpace(strings.ToLower(raw)))
+	if err != nil {
+		slog.Warn("muhit o'zgaruvchisi bool emas — false deb qabul qilinadi",
+			"nom", key, "qiymat", raw)
+		return false, true
+	}
+	return v, true
+}
+
 func firebaseServiceAccount() string {
 	if v := strings.TrimSpace(os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")); v != "" {
 		return v
@@ -567,35 +586,59 @@ func main() {
 	// yoziladi va `POST /auth/verify` bilan tekshiriladi (Firebase
 	// bundan mustasno — u o'z tokenini beradi). Shu sabab yangi
 	// tasdiqlash mantiqi yozilmadi.
+	eskizEnabled, eskizEnabledSet := parseEnvBool("ESKIZ_ENABLED")
+
+	// ┌─ "O'CHIRILGAN" NIMANI ANGLATADI ───────────────────────────────┐
+	// `ESKIZ_ENABLED=false` SMS kanalini o'chiradi. Lekin standart
+	// qiymat `LogSms` va u ikki ish qiladi: kodni logga OCHIQ yozadi
+	// va `nil` qaytaradi. Ya'ni oddiygina "o'chirdim" deb qo'yish
+	// production'da 47-banddagi teshikni QAYTA OCHADI — logga kira
+	// olgan har kim istalgan raqamga kirish oqimini boshlab, kodni
+	// logdan o'qib, akkauntni parolsiz egallaydi.
+	//
+	// Shuning uchun o'chirish production'da `DisabledSms` ga tushadi:
+	// kod hech qayerga yozilmaydi va SMS yo'li ANIQ xato qaytaradi
+	// (jimgina "yuborildi" bo'lmaydi). Dev'da esa `LogSms` qoladi —
+	// u yerda kod aynan logdan olinadi va provayder bo'lmaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	smsDisabled := false
+	smsOff := func(sabab string) users.SmsSender {
+		if devMode {
+			slog.Warn("SMS o'chirildi — dev rejim: kodlar LOGGA yoziladi", "sabab", sabab)
+			return notify.LogSms{}
+		}
+		smsDisabled = true
+		slog.Warn("rejim: SMS O'CHIQ — kod FAQAT Telegram bot / Firebase orqali yetkaziladi; "+
+			"/auth/request-code va SMS'ga tayanadigan oqimlar xato qaytaradi", "sabab", sabab)
+		return notify.DisabledSms{}
+	}
+
 	var smsSender users.SmsSender = notify.LogSms{}
 	if eskiz, ok := notify.NewEskizFromEnv(); ok {
-		smsSender = eskiz
-		slog.Info("rejim: Eskiz.uz (SMS)")
+		if eskizEnabledSet && !eskizEnabled {
+			smsSender = smsOff("ESKIZ_ENABLED=false")
+		} else {
+			smsSender = eskiz
+			slog.Info("rejim: Eskiz.uz (SMS)")
+		}
+	} else if eskizEnabledSet && !eskizEnabled {
+		smsSender = smsOff("ESKIZ_ENABLED=false va ESKIZ_* sozlanmagan")
 	} else if devMode {
 		slog.Warn("Eskiz sozlanmagan — SMS kodlar faqat logga yoziladi (FAQAT dev)")
 	} else {
-		// ┌─ FAIL-CLOSED: PRODUCTION'DA SMS MAJBURIY (bug.md 47-band) ─┐
-		// Avval bu yerda faqat `slog.Warn` bor edi va server `LogSms`
-		// bilan ishlashda davom etardi. Ikki oqibat:
-		//
-		//  1. KIRISH JIMGINA BUZILADI — foydalanuvchi SMS olmaydi,
-		//     lekin API "sent: true" qaytaradi;
-		//  2. BARCHA OTP KODLAR log faylida ochiq turadi. Logga
-		//     kirish huquqi bo'lgan har kim istalgan raqamga kirish
-		//     oqimini boshlab, kodni logdan o'qib oladi — parolsiz
-		//     to'liq akkaunt egallash.
-		//
-		// `MONGODB_URI` va `R2_BUCKET` uchun bu fayl allaqachon
-		// `os.Exit(1)` qiladi. SMS — KIRISH oqimining o'zagi, ya'ni
-		// undan ham muhimroq; fail-open qoldirish nomuvofiq edi.
-		// └────────────────────────────────────────────────────────────┘
 		slog.Error("ESKIZ_EMAIL/ESKIZ_PASSWORD berilmagan — SMS yuborilmaydi. " +
-			"Production'da bu MAJBURIY: aks holda kirish jimgina buziladi va " +
-			"OTP kodlar log faylida ochiq qoladi.")
+			"Agar SMS kerak bo'lmasa (faqat Telegram/Firebase bilan kifoyalasangiz), " +
+			".env ga `ESKIZ_ENABLED=false` qo'shib, serverni qayta ishga tushiring.")
 		os.Exit(1)
 	}
 
 	authSvc := users.NewService(userRepo, codeStore, smsSender, tokens, httpapi.NewID)
+	if smsDisabled {
+		// `/auth/request-code` endi kod yaratmasdan ANIQ xato beradi
+		// ("Telegram bot orqali davom eting") — 500 emas. Izoh:
+		// `users.WithoutSms`.
+		authSvc = authSvc.WithoutSms()
+	}
 	// Dev rejimda SMTP bo'lmasa ham email oqimini SINASH mumkin bo'lsin:
 	// kod logga chiqadi va `dev_code` javobda qaytadi. Production'da
 	// esa haqiqiy SMTP shart.

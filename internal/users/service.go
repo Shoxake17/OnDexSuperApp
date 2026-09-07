@@ -36,6 +36,14 @@ type Service struct {
 	// oqimlari ANIQ xato bilan rad etiladi (`ErrEmailSendUnavailable`),
 	// jimgina "yuborildi" deyilmaydi.
 	emailConfigured bool
+	// smsDisabled — SMS kanali ATAYLAB o'chirilgan (`ESKIZ_ENABLED=false`).
+	//
+	// Nomi ataylab INKOR shaklida: nolinchi qiymat (`false`) "yoqilgan"
+	// degani, ya'ni `NewService` o'zgarmaydi va mavjud chaqiruvchilar
+	// (testlar ham) avvalgidek ishlaydi. `smsEnabled` bo'lganda esa
+	// konstruktorni unutgan har bir joy SMS'ni jimgina o'chirib
+	// qo'yardi.
+	smsDisabled bool
 }
 
 func NewService(users Repository, codes CodeStore, sms SmsSender, tokens *TokenIssuer, idgen func() string) *Service {
@@ -47,6 +55,20 @@ func NewService(users Repository, codes CodeStore, sms SmsSender, tokens *TokenI
 func (s *Service) WithEmail(sender EmailSender, configured bool) *Service {
 	s.email = sender
 	s.emailConfigured = configured
+	return s
+}
+
+// WithoutSms — SMS kanalini o'chiradi (`ESKIZ_ENABLED=false`).
+//
+// Shundan keyin `RequestCode` KOD YARATMASDAN `ErrSmsSendUnavailable`
+// qaytaradi. Nega kod yaratilmaydi: aks holda har bir urinish do'konga
+// yozilib, 60 soniyalik cooldown'ni behuda yoqar va foydalanuvchi
+// ISHLAYDIGAN Telegram yo'liga o'tganda "juda tez" xatosini olardi.
+//
+// Telegram yo'liga (`IssueCode`) ta'sir qilmaydi — u SMS'ga umuman
+// tegmaydi.
+func (s *Service) WithoutSms() *Service {
+	s.smsDisabled = true
 	return s
 }
 
@@ -110,6 +132,14 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 // SMS KERAK BO'LMAGAN kanallar (Telegram boti) `IssueCode` ni
 // chaqirsin — izohiga qarang.
 func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code string, err error) {
+	// SMS o'chirilgan bo'lsa KOD YARATILMAYDI — sabab `WithoutSms`
+	// izohida (behuda cooldown). Bu tekshiruv `DisabledSms` ni
+	// ortiqcha qilmaydi: u ikkinchi qatlam bo'lib, `WithoutSms`
+	// chaqirilmay qolgan holatda ham kodning logga tushishiga
+	// yo'l qo'ymaydi.
+	if s.smsDisabled {
+		return "", "", ErrSmsSendUnavailable
+	}
 	phone, code, err = s.IssueCode(ctx, rawPhone)
 	if err != nil {
 		return "", "", err
@@ -118,6 +148,17 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 	// bilan AYNAN bir xil bo'lishi shart. Tasdiqlanmagan matnni Eskiz
 	// rad etadi va foydalanuvchi kodni umuman olmaydi. Matnni
 	// o'zgartirsangiz — avval Eskiz'da yangi shablonni tasdiqlating.
+	//
+	// ESKIZ ni o'chirib qo'yish (faqat Telegram/Firebase bilan ishlash)
+	// uchun: `.env` ga `ESKIZ_ENABLED=false`. O'sha holatda `s.sms`
+	// production'da `notify.DisabledSms` bo'ladi — u kodni HECH QAYERGA
+	// yozmaydi va shu yerda XATO qaytaradi, ya'ni bu funksiya ham xato
+	// beradi. Bu ataylab: SMS ketmagan bo'lsa "yuborildi" deyilmasin.
+	// Dev'da esa `LogSms` qoladi va kod logdan olinadi.
+	//
+	// Amaliy yetkazish Telegram boti orqali boradi va u bu funksiyani
+	// EMAS, `IssueCode` ni chaqiradi — shuning uchun bu yerdagi xato
+	// Telegram kirishiga ta'sir qilmaydi.
 	if err := s.sms.Send(phone, fmt.Sprintf("OnDex tasdiqlash kodi: %s", code)); err != nil {
 		return "", "", err
 	}

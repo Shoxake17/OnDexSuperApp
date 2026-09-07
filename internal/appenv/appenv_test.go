@@ -27,7 +27,14 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-var getenvRe = regexp.MustCompile(`os\.Getenv\("([A-Z0-9_]+)"\)`)
+// Muhitni O'QIYDIGAN barcha usullar. `os.Getenv` dan tashqari
+// yordamchilar ham bo'lishi mumkin: `parseEnvBool("X")` aynan shunday
+// va u qo'shilganda bu skaner uni KO'RMAY qolgan edi — ya'ni yangi
+// o'zgaruvchi reyestrsiz va compose'siz o'tib ketardi (aynan
+// `ESKIZ_ENABLED` bilan shunday bo'ldi).
+//
+// Yangi shunday yordamchi yozsangiz uni SHU RO'YXATGA qo'shing.
+var getenvRe = regexp.MustCompile(`(?:os\.Getenv|parseEnvBool)\("([A-Z0-9_]+)"\)`)
 
 // stripLineComments — `//` dan keyingi matnni olib tashlaydi.
 //
@@ -48,7 +55,7 @@ func stripLineComments(src string) string {
 }
 
 // sourceEnvNames — `internal/` va `cmd/` dagi ishlab chiqarish
-// kodida `os.Getenv("NOM")` bilan o'qilgan barcha nomlar.
+// kodida muhitdan o'qilgan barcha nomlar (`getenvRe` ga qarang).
 func sourceEnvNames(t *testing.T) map[string][]string {
 	t.Helper()
 	root := repoRoot(t)

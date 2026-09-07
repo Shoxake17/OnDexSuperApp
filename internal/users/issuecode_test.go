@@ -87,6 +87,38 @@ func TestRequestCodeSendsSmsWhenHealthy(t *testing.T) {
 	}
 }
 
+// SMS ATAYLAB o'chirilganda (`ESKIZ_ENABLED=false`):
+//   - RequestCode kod YARATMAYDI va aniq, mijozga ko'rsatiladigan
+//     xato qaytaradi;
+//   - Telegram yo'li (IssueCode) avvalgidek ishlaydi.
+func TestWithoutSmsRejectsSmsPathButKeepsTelegram(t *testing.T) {
+	sms := &countingSms{}
+	s := newServiceWithSms(sms).WithoutSms()
+	ctx := context.Background()
+
+	_, _, err := s.RequestCode(ctx, "+998901234567")
+	if !errors.Is(err, ErrSmsSendUnavailable) {
+		t.Fatalf("ErrSmsSendUnavailable kutilgandi, olindi: %v", err)
+	}
+	if !IsUserFacing(err) {
+		t.Error("xato mijozga ko'rsatiladigan bo'lishi kerak, aks holda 500 bo'lib matni yashiriladi")
+	}
+	if got := sms.calls.Load(); got != 0 {
+		t.Errorf("SMS yuborishga urinilmasligi kerak, chaqiruvlar: %d", got)
+	}
+
+	// Eng muhimi: kod YARATILMAGAN bo'lishi kerak. Aks holda 60
+	// soniyalik cooldown behuda yonadi va foydalanuvchi ishlaydigan
+	// Telegram yo'liga o'tganda "juda tez" xatosini olardi.
+	phone, code, err := s.IssueCode(ctx, "+998901234567")
+	if err != nil {
+		t.Fatalf("Telegram yo'li ishlashi kerak edi (cooldown yonmagan): %v", err)
+	}
+	if _, _, err := s.Verify(ctx, phone, code); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+}
+
 type countingSms struct{ calls atomic.Int64 }
 
 func (c *countingSms) Send(phone, text string) error {

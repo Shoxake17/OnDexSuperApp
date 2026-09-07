@@ -175,6 +175,11 @@ var (
 	// ErrEmailSendUnavailable — SMTP sozlanmagan. Mijozga ANIQ
 	// ko'rsatiladi; jimgina "yuborildi" deyilmaydi.
 	ErrEmailSendUnavailable = errors.New("email yuborish hali ulanmagan — telefon raqami orqali davom eting")
+	// ErrSmsSendUnavailable — SMS kanali ATAYLAB o'chirilgan
+	// (`ESKIZ_ENABLED=false`). `ErrEmailSendUnavailable` bilan bir xil
+	// mantiq: mijozga ANIQ aytiladi va ISHLAYDIGAN muqobil ko'rsatiladi,
+	// jimgina "yuborildi" deyilmaydi.
+	ErrSmsSendUnavailable = errors.New("SMS yuborish hozir ulanmagan — Telegram bot orqali davom eting")
 	// ErrCurrentPasswordWrong — parolni O'ZGARTIRISHDA joriy parol
 	// noto'g'ri. Bu yerda enumeration xavfi YO'Q: foydalanuvchi
 	// allaqachon o'z tokeni bilan kirgan, ya'ni akkauntning mavjudligi
@@ -211,7 +216,7 @@ var userFacing = []error{
 	ErrPhoneNotVerified, ErrInvalidEmail, ErrCurrentPasswordWrong,
 	ErrPasswordTooShort, ErrPasswordTooLong, ErrPasswordTooCommon,
 	ErrPasswordMismatch, ErrEmailNotVerified, ErrEmailSendUnavailable,
-	ErrServerBusy,
+	ErrServerBusy, ErrSmsSendUnavailable,
 }
 
 // IsUserFacing — xatoni mijozga o'zgarishsiz ko'rsatish mumkinmi.

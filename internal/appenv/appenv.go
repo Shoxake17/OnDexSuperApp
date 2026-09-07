@@ -137,6 +137,12 @@ var Registry = []Var{
 	{Name: "ESKIZ_EMAIL", Effect: "SMS yuborilmaydi — OTP kodlar LOGGA tushadi (bug.md 47-band)", DeployRequired: true},
 	{Name: "ESKIZ_PASSWORD", Effect: "SMS yuborilmaydi", DeployRequired: true},
 	{Name: "ESKIZ_FROM", Effect: "SMS sinov jo'natuvchisidan ketadi", DeployRequired: true},
+	// `ESKIZ_ENABLED=false` — SMS kanalini ATAYLAB o'chirish. Busiz
+	// production'da `ESKIZ_*` sozlanmagan bo'lsa server to'xtaydi
+	// (47-band). Diqqat: bu o'zgaruvchi `parseEnvBool` orqali
+	// o'qiladi, ya'ni manba skaneri (`appenv_test.go`) uni `os.Getenv`
+	// literali sifatida TOPMAYDI — qo'lda qo'shildi.
+	{Name: "ESKIZ_ENABLED", Effect: "SMS kanali yoqiq; `false` bo'lsa kod faqat Telegram/Firebase orqali ketadi", DeployRequired: true},
 	{Name: "ESKIZ_BASE_URL", Effect: "standart Eskiz manzili ishlatiladi", DeployRequired: true},
 
 	// ---------- To'lov (Octo) ----------
