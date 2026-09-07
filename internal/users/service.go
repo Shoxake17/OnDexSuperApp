@@ -62,9 +62,23 @@ func NormalizePhone(raw string) (string, error) {
 	return p, nil
 }
 
-// RequestCode — telefonga 6 xonali kod yuboradi. Kodni qaytaradi, lekin handler
-// uni faqat dev rejimda javobga qo'shadi (production'da faqat SMS orqali boradi).
-func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code string, err error) {
+// IssueCode — 6 xonali kodni yaratadi va saqlaydi, LEKIN HECH QAYERGA
+// YUBORMAYDI. Yetkazish chaqiruvchining zimmasida.
+//
+// ┌─ NEGA YARATISH VA YETKAZISH AJRATILGAN ───────────────────────────┐
+// Telegram boti kodni CHATNING O'ZIDA yetkazadi (`telegram.Verifier`),
+// ya'ni unga SMS umuman kerak emas. Ilgari bot ham `RequestCode` ni
+// chaqirardi, u esa majburan SMS yuborardi. Ikki oqibati bor edi:
+//
+//  1. Eskiz yiqilsa (masalan jo'natuvchi nomi ro'yxatdan o'tmagan
+//     bo'lsa) `RequestCode` xato qaytarardi va BOT ham "Hozir kod
+//     yuborib bo'lmadi" deb javob berardi — kod allaqachon saqlangan
+//     bo'lsa ham. Mustaqil kanal begona kanalning nosozligidan o'lardi.
+//  2. Har bir Telegram kirishi ustiga keraksiz SMS yozilardi (pul).
+//
+// Endi bitta kanalning nosozligi ikkinchisini to'xtatmaydi.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code string, err error) {
 	phone, err = NormalizePhone(rawPhone)
 	if err != nil {
 		return "", "", err
@@ -84,6 +98,20 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 		ExpiresAt: s.now().Add(codeTTL),
 		CreatedAt: s.now(),
 	}); err != nil {
+		return "", "", err
+	}
+	return phone, code, nil
+}
+
+// RequestCode — kod yaratadi va uni SMS orqali yetkazadi. Kodni
+// qaytaradi, lekin handler uni faqat dev rejimda javobga qo'shadi
+// (production'da faqat SMS orqali boradi).
+//
+// SMS KERAK BO'LMAGAN kanallar (Telegram boti) `IssueCode` ni
+// chaqirsin — izohiga qarang.
+func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code string, err error) {
+	phone, code, err = s.IssueCode(ctx, rawPhone)
+	if err != nil {
 		return "", "", err
 	}
 	// DIQQAT: bu matn Eskiz kabinetida MODERATSIYADAN o'tgan shablon

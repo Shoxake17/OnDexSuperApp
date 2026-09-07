@@ -603,15 +603,20 @@ func main() {
 
 	// Telegram bot — birinchi pog'ona.
 	//
-	// Kod bot tomonida YARATILMAYDI: raqam tasdiqlangach `RequestCode`
+	// Kod bot tomonida YARATILMAYDI: raqam tasdiqlangach `IssueCode`
 	// chaqiriladi va kod odatdagi do'konga tushadi. Ya'ni bot faqat
 	// YETKAZISH kanali, tasdiqlash mantiqi bitta joyda qoladi.
+	//
+	// `RequestCode` EMAS, aynan `IssueCode`: bot kodni chatning o'zida
+	// yetkazadi, SMS kerak emas. `RequestCode` bo'lsa Eskiz nosozligi
+	// Telegram orqali kirishni ham o'ldirardi (`IssueCode` izohiga
+	// qarang).
 	tgClient := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	var tgVerifier *telegram.Verifier
 	if tgClient.Configured() {
 		tgVerifier = telegram.NewVerifier(tgClient,
 			func(ctx context.Context, phone string) (string, error) {
-				_, code, err := authSvc.RequestCode(ctx, phone)
+				_, code, err := authSvc.IssueCode(ctx, phone)
 				return code, err
 			},
 			users.NormalizePhone,
