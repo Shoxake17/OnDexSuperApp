@@ -90,7 +90,7 @@ func (s *Server) createDineInOrder(
 		Items:          priced,
 		Type:           orders.TypeDineIn,
 		TableID:        table.ID,
-		TableLabel:     table.Label,
+		TableLabel:     table.DisplayLabel(),
 		PartySize:      partySize,
 		IdempotencyKey: idempotencyKey,
 		// DeliveryLat/Lng va DeliveryAddress ATAYLAB bo'sh: stol

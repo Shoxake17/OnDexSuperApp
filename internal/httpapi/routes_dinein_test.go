@@ -99,7 +99,7 @@ func TestDineInOrderCreatedWithoutAddress(t *testing.T) {
 	if o.Type != orders.TypeDineIn {
 		t.Errorf("tur `dine_in` bo'lishi kerak, keldi: %q", o.Type)
 	}
-	if o.TableLabel != "5" {
+	if o.TableLabel != "Asosiy zal · 5" {
 		t.Errorf("stol nomi nusxalanmadi: %q", o.TableLabel)
 	}
 	if o.PartySize != 3 {

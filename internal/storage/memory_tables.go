@@ -41,11 +41,17 @@ func (r *MemoryTableRepo) Create(_ context.Context, t *tables.Table) error {
 	// ham BIR XIL xatoni qaytarishi shart, aks holda xotirada
 	// ishlaydigan test Postgres'da yiqilardi).
 	for _, x := range r.byID {
-		if x.RestaurantID == t.RestaurantID && strings.EqualFold(x.Label, t.Label) {
+		if x.RestaurantID == t.RestaurantID &&
+			strings.EqualFold(zoneOf(x), zoneOf(*t)) &&
+			strings.EqualFold(x.Label, t.Label) {
 			return tables.ErrDuplicate
 		}
 	}
-	r.byID[t.ID] = *t
+	stored := *t
+	if strings.TrimSpace(stored.Zone) == "" {
+		stored.Zone = tables.DefaultZone
+	}
+	r.byID[t.ID] = stored
 	r.byToken[t.QRToken] = t.ID
 	return nil
 }
@@ -88,7 +94,13 @@ func (r *MemoryTableRepo) ListByRestaurant(_ context.Context, restaurantID strin
 	}
 	// Barqaror tartib: xarita bo'ylab yurish Go'da TASODIFIY va
 	// busiz restoran panelida stollar har yangilashda sakrab turardi.
-	sort.Slice(list, func(i, j int) bool { return list[i].Label < list[j].Label })
+	sort.Slice(list, func(i, j int) bool {
+		zi, zj := zoneOf(*list[i]), zoneOf(*list[j])
+		if zi != zj {
+			return zi < zj
+		}
+		return list[i].Label < list[j].Label
+	})
 	return list, nil
 }
 
@@ -101,7 +113,9 @@ func (r *MemoryTableRepo) Update(_ context.Context, t *tables.Table) error {
 	}
 	// Nom o'zgargan bo'lsa — takrorlanmasin.
 	for id, x := range r.byID {
-		if id != t.ID && x.RestaurantID == t.RestaurantID && strings.EqualFold(x.Label, t.Label) {
+		if id != t.ID && x.RestaurantID == t.RestaurantID &&
+			strings.EqualFold(zoneOf(x), zoneOf(*t)) &&
+			strings.EqualFold(x.Label, t.Label) {
 			return tables.ErrDuplicate
 		}
 	}
@@ -115,9 +129,20 @@ func (r *MemoryTableRepo) Update(_ context.Context, t *tables.Table) error {
 	// Shuning uchun kiruvchi qiymat emas, ESKI token saqlanadi.
 	// └───────────────────────────────────────────────────────────────┘
 	updated := *t
+	if strings.TrimSpace(updated.Zone) == "" {
+		updated.Zone = tables.DefaultZone
+	}
 	updated.QRToken = old.QRToken
 	r.byID[t.ID] = updated
 	return nil
+}
+
+func zoneOf(t tables.Table) string {
+	z := strings.TrimSpace(t.Zone)
+	if z == "" {
+		return tables.DefaultZone
+	}
+	return z
 }
 
 func (r *MemoryTableRepo) Delete(_ context.Context, id string) error {

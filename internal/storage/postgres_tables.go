@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -16,21 +17,26 @@ import (
 // aylantiradi — chaqiruvchi "23505" degan xom Postgres kodini
 // bilishi shart emas.
 const (
-	idxTablesToken = "idx_restaurant_tables_token"
-	idxTablesLabel = "idx_restaurant_tables_label"
+	idxTablesToken     = "idx_restaurant_tables_token"
+	idxTablesLabel     = "idx_restaurant_tables_label" // 0032, 0042 dan keyin tushadi
+	idxTablesZoneLabel = "idx_restaurant_tables_zone_label"
 )
 
 type PgTableRepo struct{ pool *pgxpool.Pool }
 
 func NewPgTableRepo(pool *pgxpool.Pool) *PgTableRepo { return &PgTableRepo{pool: pool} }
 
-const tableColumns = `id, restaurant_id, label, qr_token, active, created_at`
+const tableColumns = `id, restaurant_id, zone, label, qr_token, active, created_at`
 
 func (r *PgTableRepo) Create(ctx context.Context, t *tables.Table) error {
+	zone := t.Zone
+	if strings.TrimSpace(zone) == "" {
+		zone = tables.DefaultZone
+	}
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO restaurant_tables (`+tableColumns+`)
-		VALUES ($1,$2,$3,$4,$5,$6)`,
-		t.ID, t.RestaurantID, t.Label, t.QRToken, t.Active, t.CreatedAt)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		t.ID, t.RestaurantID, zone, t.Label, t.QRToken, t.Active, t.CreatedAt)
 	return mapTableErr(err)
 }
 
@@ -43,7 +49,7 @@ func mapTableErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		switch pgErr.ConstraintName {
-		case idxTablesLabel:
+		case idxTablesLabel, idxTablesZoneLabel:
 			return tables.ErrDuplicate
 		case idxTablesToken:
 			// Amalda imkonsiz (32 tasodifiy bayt), lekin jimgina
@@ -57,7 +63,7 @@ func mapTableErr(err error) error {
 
 func scanTable(row pgx.Row) (*tables.Table, error) {
 	var t tables.Table
-	err := row.Scan(&t.ID, &t.RestaurantID, &t.Label, &t.QRToken, &t.Active, &t.CreatedAt)
+	err := row.Scan(&t.ID, &t.RestaurantID, &t.Zone, &t.Label, &t.QRToken, &t.Active, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, tables.ErrNotFound
 	}
@@ -80,7 +86,7 @@ func (r *PgTableRepo) GetByToken(ctx context.Context, token string) (*tables.Tab
 func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string) ([]*tables.Table, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+tableColumns+` FROM restaurant_tables
-		 WHERE restaurant_id = $1 ORDER BY label`, restaurantID)
+		 WHERE restaurant_id = $1 ORDER BY zone, label`, restaurantID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +95,7 @@ func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string)
 	var list []*tables.Table
 	for rows.Next() {
 		var t tables.Table
-		if err := rows.Scan(&t.ID, &t.RestaurantID, &t.Label, &t.QRToken,
+		if err := rows.Scan(&t.ID, &t.RestaurantID, &t.Zone, &t.Label, &t.QRToken,
 			&t.Active, &t.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -113,8 +119,8 @@ func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string)
 func (r *PgTableRepo) Update(ctx context.Context, t *tables.Table) error {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE restaurant_tables
-		SET label = $2, active = $3
-		WHERE id = $1`, t.ID, t.Label, t.Active)
+		SET zone = $2, label = $3, active = $4
+		WHERE id = $1`, t.ID, t.Zone, t.Label, t.Active)
 	if err != nil {
 		return mapTableErr(err)
 	}
