@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'api.dart';
 import 'screens/courier_shell.dart';
@@ -7,7 +8,68 @@ import 'screens/register_screen.dart';
 import 'theme.dart';
 import 'session.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Mahsulot tahlili. Kalit (ONDEX_POSTHOG_KEY) berilmagan bo'lsa
+  // hech narsa yuborilmaydi va hech qanday kechikish qo'shilmaydi.
+  //
+  // Xatolik ilovani TO'XTATMAYDI: tahlil hech qachon ishga tushishga
+  // to'sqinlik qilmasligi kerak.
+  // â”Œâ”€ SEANS YOZUVI (session replay) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  // Foydalanuvchi ekranini keyin video kabi qayta ko'rish imkonini
+  // beradi - nosozlikni "qanday qilib shunday bo'ldi" degan savolga
+  // javob topish uchun eng tez yo'l.
+  //
+  // Bu FAQAT mobil/veb'da mumkin: posthog_flutter Windows'ni
+  // qo'llamaydi. Panellarda shuning uchun faqat hodisalar bor.
+  //
+  // Matn va rasmlar NIQOBLANADI: telefon raqami, manzil, parol
+  // yozuvga tushmasligi kerak.
+  // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+  if (posthogEnabled) {
+    try {
+      final cfg = PostHogConfig(posthogApiKey)
+        ..host = posthogHost
+        ..sessionReplay = true
+        ..sessionReplayConfig.maskAllTexts = true
+        ..sessionReplayConfig.maskAllImages = true
+        ..captureScreenViews = true
+        ..captureApplicationLifecycleEvents = true
+        ..debouncerTimeSecs = 5;
+      await Posthog().setup(cfg);
+      Analytics.instance.onIdentify = ({
+        required String userId,
+        String? phone,
+        String? name,
+        String? role,
+      }) async {
+        try {
+          final props = <String, Object?>{};
+          if (phone != null && phone.isNotEmpty) props['phone'] = phone;
+          if (name != null && name.isNotEmpty) props['name'] = name;
+          if (role != null && role.isNotEmpty) props['role'] = role;
+          await Posthog().identify(
+            userId: userId,
+            userProperties: props.isNotEmpty ? props : null,
+          );
+        } catch (e) {
+          if (kDebugMode) debugPrint('[PostHog SDK] identify xatosi: $e');
+        }
+      };
+      Analytics.instance.onReset = (String anonId) async {
+        try {
+          await Posthog().reset();
+        } catch (e) {
+          if (kDebugMode) debugPrint('[PostHog SDK] reset xatosi: $e');
+        }
+      };
+    } catch (e) {
+      debugPrint('PostHog ishga tushmadi: $e');
+    }
+  }
+  await Analytics.bootstrap();
+
   runApp(const CourierApp());
 }
 

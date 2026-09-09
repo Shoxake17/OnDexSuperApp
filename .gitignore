@@ -221,6 +221,7 @@ $RECYCLE.BIN/
 .claude/
 *.scratch.md
 *.md
+!BackendGo/*.md
 README.md
 ROADMAP.md
 

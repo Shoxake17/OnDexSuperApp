@@ -32,3 +32,7 @@ flutter:
   uses-material-design: true
   assets:
     - sound/ding.mp3
+    # Brend logotipi — yon menyudagi sarlavhada. Ilgari u kod bilan
+    # CHIZILARDI (rangli kvadrat + ikonka + "Ondex" matni), ya'ni
+    # haqiqiy logotipga o'xshamasdi.
+    - assets/ondex.png

@@ -246,14 +246,15 @@ class _TelegramHint extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Telegramda:', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Text(
-            '1. "Start" tugmasini bosing\n'
-            '2. "Raqamni ulashish" tugmasini bosing\n'
-            '3. Bot yuborgan kodni pastga kiriting',
-            style: theme.textTheme.bodySmall,
-          ),
+          // â”Œâ”€ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          // Ilgari bu yerda "1. Start bosing, 2. Raqamni ulashing,
+          // 3. Kodni kiriting" degan uch qatorli o'rgatish turardi.
+          //
+          // Bot oqimining o'zi allaqachon tushunarli: havola ochilganda
+          // Telegram Start tugmasini, so'ng raqam so'rovini o'zi
+          // ko'rsatadi. Ya'ni ko'rsatma ekranda joy egallab, hech
+          // qanday yangi ma'lumot bermasdi.
+          // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
           // Raqam MOS KELMASA bot kodni umuman yubormaydi — bu
           // xavfsizlik qoidasi, nosozlik emas.
           const SizedBox(height: 6),

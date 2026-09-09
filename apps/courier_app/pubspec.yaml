@@ -35,6 +35,7 @@ dependencies:
   audioplayers: ^6.0.0
   # Restoranga "Qo'ng'iroq qilish" tugmasi uchun (tel: havolasini ochadi).
   url_launcher: ^6.3.0
+  posthog_flutter: ^5.39.0
 
 dev_dependencies:
   flutter_test:
@@ -43,6 +44,12 @@ dev_dependencies:
   # Ilova belgisini `assets/logo.png` dan barcha o'lchamlarga
   # generatsiya qiladi (mijoz ilovasidagi bilan bir xil naqsh).
   flutter_launcher_icons: ^0.14.4
+
+dependency_overrides:
+  jni:
+    path: ../../local_packages/jni
+  jni_flutter:
+    path: ../../local_packages/jni_flutter
 
 flutter_launcher_icons:
   android: true

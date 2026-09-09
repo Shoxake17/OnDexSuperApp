@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../api.dart'; // `ondex_core` ni qayta eksport qiladi (LegalSection)
 // `kPagePadding` shu yerda (`page_header.dart`), `theme.dart` da emas.
 import '../widgets/page_header.dart';
 
@@ -33,11 +32,19 @@ class HelpPage extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          _card(
-            title: 'Huquqiy hujjatlar',
-            child: const LegalSection(),
-          ),
-          const SizedBox(height: 16),
+          // ┌─ HUQUQIY HUJJATLAR OLIB TASHLANDI ──────────────────────┐
+          // Ilgari bu yerda oferta va maxfiylik siyosati kartasi
+          // turardi (bug.md 70-band).
+          //
+          // Ular MIJOZ ilovasida qoladi — xizmatdan foydalanish
+          // shartlarini qabul qiladigan tomon o'sha. Restoran
+          // platforma bilan ALOHIDA shartnoma bo'yicha ishlaydi va
+          // uni panelda o'qimaydi.
+          //
+          // Xodimning shaxsiy ma'lumotlar bilan ishlash mas'uliyati
+          // o'sha shartnomada qoladi — panelda havola bo'lmagani
+          // buni bekor qilmaydi.
+          // └──────────────────────────────────────────────────────────┘
 
           _card(
             title: 'Bog\'lanish',

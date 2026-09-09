@@ -22,6 +22,17 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
 
+  static const _pageNames = [
+    'Dashboard',
+    'Orders',
+    'Restaurants',
+    'Couriers',
+    'Customers',
+    'Waiters',
+    'Books',
+    'OnDexMap',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -29,6 +40,10 @@ class _AdminShellState extends State<AdminShell> {
     // unga obuna bo'ladi — `lib/live.dart`). Ekran darajasida ochilsa
     // har bo'limga o'tganda yangi soket va yangi bilet kerak bo'lardi.
     adminLive.start();
+    // Ilova ochilganda birinchi sahifani PostHog'ga yozamiz.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Analytics.instance.screen(_pageNames[0]);
+    });
   }
 
   @override
@@ -92,7 +107,10 @@ class _AdminShellState extends State<AdminShell> {
         children: [
           NavigationRail(
             selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            onDestinationSelected: (i) {
+              setState(() => _index = i);
+              Analytics.instance.screen(_pageNames[i]);
+            },
             labelType: NavigationRailLabelType.all,
             leading: const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
@@ -106,21 +124,15 @@ class _AdminShellState extends State<AdminShell> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Huquqiy hujjatlar — superadmin ham ular bilan
-                      // ishlaydi va foydalanuvchilarga havola bera
-                      // olishi kerak (bug.md 70-band). Tor panelda
-                      // ro'yxat sig'maydi, shuning uchun ikkita ikonka.
-                      IconButton(
-                        tooltip: 'Ommaviy oferta',
-                        icon: const Icon(Icons.description_outlined),
-                        onPressed: () => openLegalUrl(LegalLinks.offerUrl),
-                      ),
-                      IconButton(
-                        tooltip: 'Maxfiylik siyosati',
-                        icon: const Icon(Icons.privacy_tip_outlined),
-                        onPressed: () => openLegalUrl(LegalLinks.privacyUrl),
-                      ),
-                      const Divider(indent: 16, endIndent: 16),
+                      // ┌─ HUQUQIY HAVOLALAR OLIB TASHLANDI ──────────┐
+                      // Oferta va maxfiylik siyosati MIJOZGA kerak —
+                      // u xizmatdan foydalanish shartlarini qabul
+                      // qiladi. Superadmin esa platformaning egasi:
+                      // u hujjatlarni o'zi yozadi va panelda ularga
+                      // havola bosishning ma'nosi yo'q edi.
+                      //
+                      // Mijoz ilovasidagi havolalar TEGILMADI.
+                      // └──────────────────────────────────────────────┘
                       IconButton(
                         tooltip: 'Chiqish',
                         icon: const Icon(Icons.logout),

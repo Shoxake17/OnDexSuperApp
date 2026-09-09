@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'analytics.dart';
 import 'config.dart';
 
 /// Serverdan kelgan xato — barcha ilovalar shu bitta turdan foydalanadi.
@@ -177,8 +178,33 @@ class ApiClient {
   }
 
   /// Login qilgan foydalanuvchining ma'lumotlari (rol shu yerdan aniqlanadi).
-  Future<Map<String, dynamic>> me() async =>
-      Map<String, dynamic>.from(await send('GET', '/me'));
+  ///
+  /// ┌─ TAHLIL SHU YERGA ULANGAN ─────────────────────────────────────┐
+  /// `identify()` ni har bir ilovaning har bir kirish yo'liga qo'shish
+  /// mumkin edi: parol bilan kirish, SMS kod, Telegram, PIN tiklash,
+  /// parolni unutish — mijoz ilovasining o'zida beshta joy. Bittasi
+  /// unutilsa, o'sha yo'ldan kirgan foydalanuvchi ANONIM bo'lib
+  /// qolardi va buni sezish deyarli imkonsiz.
+  ///
+  /// `me()` esa yagona nuqta: rolni aniqlash uchun uni HAMMA ilova
+  /// kirgandan keyin chaqiradi. Shuning uchun bog'lanish shu yerda.
+  ///
+  /// Tahlil o'chirilgan bo'lsa (`ONDEX_POSTHOG_KEY` bo'sh) hech narsa
+  /// bajarilmaydi.
+  /// └────────────────────────────────────────────────────────────────┘
+  Future<Map<String, dynamic>> me() async {
+    final user = Map<String, dynamic>.from(await send('GET', '/me'));
+    final id = (user['id'] as String?) ?? '';
+    if (id.isNotEmpty) {
+      await Analytics.instance.identify(
+        userId: id,
+        phone: user['phone'] as String?,
+        name: user['name'] as String?,
+        role: user['role'] as String?,
+      );
+    }
+    return user;
+  }
 
   /// Serverda sessiyani bekor qiladi — shu foydalanuvchining BARCHA
   /// tokenlari darhol yaroqsiz bo'ladi.
@@ -188,6 +214,17 @@ class ApiClient {
   Future<void> logout() async {
     try {
       await send('POST', '/auth/logout');
+    } catch (_) {}
+    // ┌─ TAHLILNI HAM UZAMIZ ──────────────────────────────────────┐
+    // Busiz keyingi foydalanuvchining harakatlari CHIQIB KETGAN
+    // odamning yo'liga yozilardi — bitta qurilmani ikki kishi
+    // ishlatganda (masalan restoran xodimlari almashganda) tahlil
+    // umuman ishonchsiz bo'lib qolardi.
+    //
+    // YANGI anonim ID beriladi (eskisi allaqachon akkauntga
+    // birlashtirilgan — `resetAnonymousId` izohiga qarang).
+    try {
+      await Analytics.instance.reset(await Analytics.resetAnonymousId());
     } catch (_) {}
   }
 

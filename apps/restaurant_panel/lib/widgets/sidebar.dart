@@ -106,15 +106,34 @@ class _BrandHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       child: Row(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: OnDexColors.primary,
-              borderRadius: BorderRadius.circular(10),
+          // ┌─ HAQIQIY LOGOTIP, CHIZILGAN BELGI EMAS ──────────────────┐
+          // Ilgari bu yerda rangli kvadrat va ichida savat ikonkasi
+          // chizilardi — bu OnDex logotipi emas, shunchaki o'xshatma
+          // edi.
+          //
+          // `errorBuilder` SHART: rasm yuklanmasa (asset ro'yxatdan
+          // tushib qolsa) butun yon menyu qizil xato kvadrati bilan
+          // buzilardi. Bunday holatda eski ko'rinishga qaytamiz.
+          // └──────────────────────────────────────────────────────────┘
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset(
+              'assets/ondex.png',
+              width: 38,
+              height: 38,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (_, __, ___) => Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: OnDexColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.shopping_bag_rounded,
+                    color: Colors.white, size: 20),
+              ),
             ),
-            child: const Icon(Icons.shopping_bag_rounded,
-                color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           const Column(

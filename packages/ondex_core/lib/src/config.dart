@@ -54,6 +54,64 @@ const String appVersion = String.fromEnvironment(
   defaultValue: 'dev',
 );
 
+/// ┌─ POSTHOG (mahsulot tahlili va seans yozuvi) ───────────────────────┐
+/// `phc_...` kaliti — OCHIQ kalit. U ataylab klient ilovaga kiradi va
+/// sir emas: u bilan faqat HODISA YUBORISH mumkin, o'qish yoki
+/// boshqarish mumkin emas. Shuning uchun uni `config/prod.json` da
+/// saqlash to'g'ri (sirlar esa `.env` da qoladi).
+///
+/// Bo'sh bo'lsa PostHog UMUMAN yoqilmaydi — bu standart holat. Ya'ni
+/// kalitsiz qurilgan build hech qayerga ma'lumot yubormaydi.
+/// └────────────────────────────────────────────────────────────────────┘
+const String posthogApiKey = String.fromEnvironment(
+  'ONDEX_POSTHOG_KEY',
+  defaultValue: '',
+);
+
+/// PostHog serveri. `us` yoki `eu` — ro'yxatdan o'tishda tanlanadi va
+/// KEYIN o'zgartirib bo'lmaydi, shuning uchun noto'g'ri host bilan
+/// hodisalar jimgina yo'qoladi.
+const String posthogHost = String.fromEnvironment(
+  'ONDEX_POSTHOG_HOST',
+  defaultValue: 'https://us.i.posthog.com',
+);
+
+/// PostHog loyiha raqami — admin panelida odam sahifasiga havola
+/// qurish uchun (`app.posthog.com/project/<id>/person/<distinct_id>`).
+/// Hodisa yuborishda ishlatilmaydi.
+const String posthogProjectId = String.fromEnvironment(
+  'ONDEX_POSTHOG_PROJECT',
+  defaultValue: '',
+);
+
+/// PostHog yoqilganmi — kalit berilganda.
+bool get posthogEnabled => posthogApiKey.isNotEmpty;
+
+/// ┌─ IKKI XIL HOST ────────────────────────────────────────────────────┐
+/// PostHog'da hodisa QABUL QILADIGAN va INTERFEYS ko'rsatadigan
+/// manzillar boshqa-boshqa:
+///
+///   us.i.posthog.com  — hodisalar shu yerga yuboriladi
+///   us.posthog.com    — brauzerda ochiladigan panel
+///
+/// Havolani noto'g'ri hostga qursak, sahifa umuman ochilmaydi.
+/// Shuning uchun `i.` bo'lagi olib tashlanadi.
+/// └────────────────────────────────────────────────────────────────────┘
+String get posthogAppHost => posthogHost.replaceFirst('://us.i.', '://us.').replaceFirst('://eu.i.', '://eu.');
+
+/// Odamning PostHog sahifasi — u yerda seans yozuvlari va hodisalar
+/// tarixi bo'ladi.
+///
+/// Bo'sh satr qaytsa havola ko'rsatilmasligi kerak: loyiha raqami
+/// berilmagan yoki tahlil o'chirilgan.
+String posthogPersonUrl(String distinctId) {
+  if (!posthogEnabled || posthogProjectId.isEmpty || distinctId.isEmpty) {
+    return '';
+  }
+  return '$posthogAppHost/project/$posthogProjectId/person/'
+      '${Uri.encodeComponent(distinctId)}';
+}
+
 /// Mijoz platformasi — `X-Ondex-Client` sarlavhasi uchun.
 ///
 /// Qiymatlar serverdagi YOPIQ ro'yxatga mos bo'lishi shart

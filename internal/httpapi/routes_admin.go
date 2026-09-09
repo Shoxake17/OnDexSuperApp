@@ -462,6 +462,22 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 		}))
 
 	// GET /admin/orders — so'nggi buyurtmalar
+	//
+	// ┌─ NEGA NOMLAR QO'SHILADI ───────────────────────────────────────┐
+	// Avval bu yerdan XOM buyurtma obyekti qaytardi va admin panel
+	// jadvalida `restaurant_id`/`courier_id` — ya'ni o'n oltilik ID —
+	// ko'rinardi. Mijoz esa umuman ko'rsatilmasdi: `customer_id` bor
+	// edi, lekin unga mos ustun yo'q edi.
+	//
+	// Panel har qatorga alohida so'rov yuborishi mumkin edi, lekin 100
+	// ta buyurtma uchun bu 300 ta qo'shimcha so'rov degani. Shuning
+	// uchun nomlar SHU YERDA to'ldiriladi — `GET /me/orders` dagi bilan
+	// bir xil naqsh.
+	//
+	// Kesh takroriy qidiruvni yo'q qiladi: bir necha restoran va
+	// kuryerga tegishli 100 ta buyurtma odatda 5-10 ta qidiruv bilan
+	// to'ladi.
+	// └────────────────────────────────────────────────────────────────┘
 	mux.HandleFunc("GET /admin/orders", s.auth([]users.Role{users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			list, err := s.OrderRepo.ListRecent(r.Context(), 100)
@@ -469,7 +485,135 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, list)
+
+			type found struct {
+				name  string
+				found bool
+			}
+			restCache := map[string]*found{}
+			courierCache := map[string]*found{}
+			userCache := map[string][2]string{} // ism, telefon
+
+			out := make([]map[string]any, 0, len(list))
+			for _, o := range list {
+				entry := map[string]any{
+					"id":            o.ID,
+					"order_number":  o.OrderNumber,
+					"created_at":    o.CreatedAt,
+					"status":        o.Status,
+					"type":          o.Type,
+					"table_label":   o.TableLabel,
+					"total_tiyin":   o.TotalTiyin,
+					"customer_id":   o.CustomerID,
+					"restaurant_id": o.RestaurantID,
+					"courier_id":    o.CourierID,
+				}
+
+				if o.RestaurantID != "" {
+					f, ok := restCache[o.RestaurantID]
+					if !ok {
+						f = &found{}
+						if rest, err := s.CatalogRepo.GetRestaurant(r.Context(), o.RestaurantID); err == nil && rest != nil {
+							f.name = rest.Name
+							f.found = true
+						}
+						restCache[o.RestaurantID] = f
+					}
+					if f.found {
+						entry["restaurant_name"] = f.name
+					}
+				}
+
+				if o.CourierID != "" {
+					f, ok := courierCache[o.CourierID]
+					if !ok {
+						f = &found{}
+						if c, err := s.CourierRepo.GetByID(r.Context(), o.CourierID); err == nil && c != nil {
+							f.name = c.Name
+							f.found = true
+						}
+						courierCache[o.CourierID] = f
+					}
+					if f.found {
+						entry["courier_name"] = f.name
+					}
+				}
+
+				if o.CustomerID != "" {
+					who, ok := userCache[o.CustomerID]
+					if !ok {
+						if u, err := s.UserRepo.GetByID(r.Context(), o.CustomerID); err == nil && u != nil {
+							who = [2]string{u.Name, u.Phone}
+						}
+						userCache[o.CustomerID] = who
+					}
+					entry["customer_name"] = who[0]
+					// ┌─ TELEFON NEGA KERAK ────────────────────────────┐
+					// Ism ixtiyoriy va ko'p mijozda bo'sh bo'ladi
+					// (ro'yxatdan o'tishda faqat raqam so'raladi).
+					// Faqat ismga tayansak jadval yana bo'sh ko'rinardi.
+					// Telefon esa HAR DOIM bor — u login identifikatori.
+					// └─────────────────────────────────────────────────┘
+					entry["customer_phone"] = who[1]
+				}
+
+				out = append(out, entry)
+			}
+			writeJSON(w, http.StatusOK, out)
+		}))
+
+	// GET /admin/accounts?role=restaurant|courier|waiter
+	//
+	// ┌─ NEGA KERAK ───────────────────────────────────────────────────┐
+	// Superadmin panelida restoran yoki kuryer ustiga bosilganda uning
+	// PANELDA/ILOVADA nima qilgani ko'rsatilishi kerak (PostHog seans
+	// yozuvi).
+	//
+	// Lekin PostHog'da "odam" — bu RESTORAN emas, uning XODIM AKKAUNTI:
+	// tahlil `ApiClient.me()` da `identify(userId: <user.ID>)` bilan
+	// bog'lanadi. Restoranlar ro'yxati esa katalogdan keladi va unda
+	// akkaunt ID si umuman yo'q.
+	//
+	// Shu endpoint o'sha bog'lanishni beradi: `entity_id` (restoran yoki
+	// kuryer) -> `user_id` (PostHog dagi odam).
+	//
+	// Telefon/ism ham qaytadi — panelda kimga tegishli ekanini
+	// ko'rsatish uchun. Parol xeshi `json:"-"` bilan himoyalangan
+	// (`users.User` izohiga qarang), ya'ni bu yerdan chiqib keta olmaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	mux.HandleFunc("GET /admin/accounts", s.auth([]users.Role{users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			var role users.Role
+			switch r.URL.Query().Get("role") {
+			case "restaurant":
+				role = users.RoleRestaurant
+			case "courier":
+				role = users.RoleCourier
+			case "waiter":
+				role = users.RoleWaiter
+			default:
+				httpError(w, http.StatusBadRequest,
+					errors.New("role: restaurant, courier yoki waiter"))
+				return
+			}
+			list, err := s.UserRepo.ListByRole(r.Context(), role)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			out := make([]map[string]any, 0, len(list))
+			for _, u := range list {
+				if u == nil || u.EntityID == "" {
+					continue
+				}
+				out = append(out, map[string]any{
+					"entity_id": u.EntityID,
+					"user_id":   u.ID,
+					"name":      u.Name,
+					"phone":     u.Phone,
+				})
+			}
+			writeJSON(w, http.StatusOK, out)
 		}))
 
 	// GET /admin/stats — boshqaruv paneli ko'rsatkichlari

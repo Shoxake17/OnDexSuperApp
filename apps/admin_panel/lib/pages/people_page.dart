@@ -142,10 +142,19 @@ class _PeopleViewState extends State<_PeopleView> {
       final haystack = [
         p['name'], p['first_name'], p['last_name'],
         p['phone'], p['email'], p['restaurant_name'],
+        p['id'],
       ].whereType<String>().join(' ').toLowerCase();
       return haystack.contains(q);
     }).toList();
   }
+
+  int get _unverifiedCount => _all.where((p) {
+        final pv = p['phone_verified'] == true;
+        final ev = p['email_verified'] == true;
+        final hasAny = (p['phone'] as String?)?.isNotEmpty == true ||
+            (p['email'] as String?)?.isNotEmpty == true;
+        return hasAny && !(pv || ev);
+      }).length;
 
   Future<void> _confirmDelete(Map<String, dynamic> person) async {
     final deleted = await confirmDeleteAccount(
@@ -180,6 +189,18 @@ class _PeopleViewState extends State<_PeopleView> {
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(width: 12),
               Chip(label: Text('Jami: ${_all.length}')),
+              if (_unverifiedCount > 0) ...[
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Telefon yoki emaili tasdiqlanmagan mijozlar '
+                      '(ro\'yxatdan o\'tgan, lekin SMS kodni kiritmagan)',
+                  child: Chip(
+                    label: Text('Tasdiqlanmagan: $_unverifiedCount'),
+                    backgroundColor: const Color(0xFFFFE9CC),
+                    side: const BorderSide(color: Color(0xFFE0A040)),
+                  ),
+                ),
+              ],
               const Spacer(),
               SizedBox(
                 width: 280,
@@ -225,51 +246,193 @@ class _PeopleViewState extends State<_PeopleView> {
       return Center(
           child: Text(_query.isEmpty ? widget.emptyText : 'Topilmadi'));
     }
-    return SingleChildScrollView(
-      child: SizedBox(
-        width: double.infinity,
-        child: DataTable(
-          columns: [
-            const DataColumn(label: Text('Ism familiya')),
-            const DataColumn(label: Text('Telefon')),
-            if (widget.showRestaurant) const DataColumn(label: Text('Restoran')),
-            const DataColumn(label: Text('Qurilma / ilova')),
-            const DataColumn(label: Text('Qo\'shilgan')),
-            const DataColumn(label: Text('Amal')),
-          ],
-          rows: [
-            for (final p in rows)
-              DataRow(cells: [
-                DataCell(Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_displayName(p)),
-                    if (p['telegram_linked'] == true) ...[
-                      const SizedBox(width: 6),
-                      const Tooltip(
-                        message: 'Telegram bilan bog\'langan',
-                        child: Icon(Icons.telegram, size: 16,
-                            color: Color(0xFF2AABEE)),
-                      ),
-                    ],
-                  ],
-                )),
-                DataCell(Text((p['phone'] as String?)?.isNotEmpty == true
-                    ? p['phone'] as String
-                    : '—')),
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: box.maxWidth),
+            child: DataTable(
+              columns: [
+                const DataColumn(label: Text('Ism familiya')),
+                const DataColumn(label: Text('Telefon')),
+                const DataColumn(label: Text('Email')),
                 if (widget.showRestaurant)
-                  DataCell(Text((p['restaurant_name'] as String?) ?? '—')),
-                DataCell(_devices(p['devices'])),
-                DataCell(Text(_formatDate(p['created_at'] as String?))),
-                DataCell(IconButton(
-                  tooltip: 'Akkauntni o\'chirish',
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () => _confirmDelete(p),
-                )),
-              ]),
-          ],
+                  const DataColumn(label: Text('Restoran')),
+                const DataColumn(label: Text('Qurilma / ilova')),
+                const DataColumn(label: Text('Qo\'shilgan')),
+                const DataColumn(label: Text('Amal')),
+              ],
+              rows: [
+                for (final p in rows)
+                  DataRow(cells: [
+                    DataCell(Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_displayName(p)),
+                        const SizedBox(width: 6),
+                        if (p['phone_verified'] != true &&
+                            p['email_verified'] != true &&
+                            ((p['phone'] as String?)?.isNotEmpty == true ||
+                                (p['email'] as String?)?.isNotEmpty == true))
+                          const Tooltip(
+                            message: 'Telefon yoki email hali tasdiqlanmagan',
+                            child: Icon(Icons.warning_amber,
+                                size: 16, color: Color(0xFFE0A040)),
+                          ),
+                        if (p['telegram_linked'] == true) ...[
+                          const SizedBox(width: 6),
+                          const Tooltip(
+                            message: 'Telegram bilan bog\'langan',
+                            child: Icon(Icons.telegram, size: 16,
+                                color: Color(0xFF2AABEE)),
+                          ),
+                        ],
+                      ],
+                    )),
+                    DataCell(_phoneWithBadge(p)),
+                    DataCell(_emailWithBadge(p)),
+                    if (widget.showRestaurant)
+                      DataCell(
+                          Text((p['restaurant_name'] as String?) ?? '—')),
+                    DataCell(_devices(p['devices'])),
+                    DataCell(Text(_formatDate(p['created_at'] as String?))),
+                    DataCell(Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _posthogButton(p),
+                        IconButton(
+                          tooltip: 'Akkauntni o\'chirish',
+                          icon:
+                              const Icon(Icons.delete_outline, color: Colors.red),
+                          onPressed: () => _confirmDelete(p),
+                        ),
+                      ],
+                    )),
+                  ]),
+              ],
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _phoneWithBadge(Map<String, dynamic> p) {
+    final phone = (p['phone'] as String?) ?? '';
+    final verified = p['phone_verified'] == true;
+    if (phone.isEmpty) {
+      return const Text('—', style: TextStyle(color: Colors.black45));
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(phone),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: verified
+              ? 'Telefon tasdiqlangan (SMS kod kiritilgan)'
+              : 'Telefon hali tasdiqlanmagan — mijoz SMS kodni kiritmagan',
+          child: Icon(
+            verified ? Icons.verified_user : Icons.pending,
+            size: 14,
+            color: verified ? const Color(0xFF2E7D32) : const Color(0xFFE0A040),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emailWithBadge(Map<String, dynamic> p) {
+    final email = (p['email'] as String?) ?? '';
+    final verified = p['email_verified'] == true;
+    if (email.isEmpty) {
+      return const Text('—', style: TextStyle(color: Colors.black45));
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            email,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: verified
+              ? 'Email tasdiqlangan'
+              : 'Email hali tasdiqlanmagan',
+          child: Icon(
+            verified ? Icons.mark_email_read : Icons.email_outlined,
+            size: 14,
+            color: verified ? const Color(0xFF2E7D32) : const Color(0xFFE0A040),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// ┌─ SEANS YOZUVI: FOYDALANUVCHI ILOVADA NIMA QILDI ─────────────────┐
+  /// Bosilganda PostHog'da o'sha ODAMNING sahifasi ochiladi — u yerda
+  /// seans yozuvlari (ekran video kabi qayta ko'riladi) va hodisalar
+  /// tarixi bo'ladi.
+  ///
+  /// Havola BRAUZERDA ochiladi va hech qanday sir uzatilmaydi: PostHog
+  /// panelida admin o'z hisobi bilan kiradi. Ya'ni bu tugma panelga
+  /// qo'shimcha huquq ham, xavf ham qo'shmaydi.
+  ///
+  /// `distinct_id` — foydalanuvchining ID si: `ApiClient.me()` da
+  /// `identify(userId: id)` aynan shuni yuboradi. Ikkalasi bir xil
+  /// bo'lmasa PostHog odamni topa olmaydi.
+  ///
+  /// "Person not found" xatosi eng ko'p uchraydigan sabablari:
+  ///   1. Mijoz/affitsiant HECH QACHON mobil ilovaga KIRMAGAN (shuning
+  ///      uchun `identify()` chaqirilmagan va PostHog'da person yo'q)
+  ///   2. Mobil ilova PRODUCTION build emas (dev build'da PostHog kaliti
+  ///      yo'q — identify ishlamaydi)
+  ///   3. Ilova config.json'da JSON xatosi — kalitlar parse qilinmagan
+  ///
+  /// Tahlil o'chirilgan bo'lsa tugma KO'RINADI lekin KO'K emas, kulrang
+  /// va bosilganda SABABNI aytadi — "nima uchun yo'q?" degan savol
+  /// doim paydo bo'lgani uchun.
+  /// └──────────────────────────────────────────────────────────────────┘
+  Widget _posthogButton(Map<String, dynamic> p) {
+    final id = (p['id']?.toString() ?? '').trim();
+    final url = posthogPersonUrl(id);
+    if (url.isEmpty) {
+      String reason;
+      if (!posthogEnabled) {
+        reason = 'Admin panel PostHog kaliti yo\'q (build config)';
+      } else if (posthogProjectId.isEmpty) {
+        reason = 'PostHog loyiha raqami yo\'q';
+      } else if (id.isEmpty) {
+        reason = 'Bu odamning ID si bo\'sh';
+      } else {
+        reason = '';
+      }
+      if (reason.isEmpty) return const SizedBox.shrink();
+      return IconButton(
+        tooltip: 'PostHog yoqilmagan: $reason',
+        icon: Icon(Icons.play_circle_outline, color: Colors.grey.shade400),
+        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PostHog: $reason')),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: 'Ilovada nima qilgani (PostHog)\n\nEslatma: "Person not found" '
+          'chiqsa — bu odam hali mobil ilovaga PRODUCTION rejimda '
+          'hech qachon kirmagan demak.',
+      icon: const Icon(Icons.play_circle_outline, color: Color(0xFF1D4AFF)),
+      onPressed: () async {
+        final ok = await openLegalUrl(url);
+        if (!ok && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Havola ochilmadi')),
+          );
+        }
+      },
     );
   }
 

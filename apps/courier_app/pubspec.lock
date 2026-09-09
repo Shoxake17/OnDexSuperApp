@@ -417,20 +417,18 @@ packages:
     source: hosted
     version: "4.9.1"
   jni:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: jni
-      sha256: "5bc9a9daac5ccfbd6a758377600b9f7fdce13d93f26e8012a8941014a5d978d1"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../local_packages/jni"
+      relative: true
+    source: path
     version: "1.0.2"
   jni_flutter:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: jni_flutter
-      sha256: "7b717011ea40d04fd47c2731d3d1d36eb99eba3435c2753d62489e8c3c9991d5"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../local_packages/jni_flutter"
+      relative: true
+    source: path
     version: "1.0.2"
   jni_util:
     dependency: transitive
@@ -655,6 +653,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.2"
+  posthog_flutter:
+    dependency: "direct main"
+    description:
+      name: posthog_flutter
+      sha256: "7b61aca485bcef80ac5d76c4855da8c81a9d65872002562b9dce63ad97bd6260"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.39.0"
   pub_semver:
     dependency: transitive
     description:

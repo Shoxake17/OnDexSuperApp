@@ -22,6 +22,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"chustapp/internal/catalog"
 	"chustapp/internal/images"
 	"chustapp/internal/storage"
 
@@ -68,6 +70,25 @@ func main() {
 		dpi     = flag.Int("dpi", 150, "render zichligi")
 		envFile = flag.String("env", ".env", "sozlamalar fayli")
 		keep    = flag.Bool("keep", false, "vaqtinchalik rasmlarni o'chirmaslik")
+
+		// ┌─ BAZASIZ REJIM ────────────────────────────────────────────┐
+		// Production Mongo'si ATAYLAB tashqariga chiqarilmagan — u
+		// faqat Docker tarmog'i ichida ko'rinadi. Vositani ishlatish
+		// uchun o'sha portni ochish yoki baza parolini ish stoliga
+		// olib chiqish kerak bo'lardi; ikkalasi ham qilingan xavfsizlik
+		// ishini bekor qiladi.
+		//
+		// Shuning uchun ish ikkiga bo'linadi — `cmd/r2upload` va
+		// `sync-scene.sh` dagi bilan bir xil tartib:
+		//
+		//   bu yerda : PDF sahifalarga chiziladi, R2 ga yuklanadi,
+		//              manzillar JSON bo'lib bosiladi
+		//   serverda : o'sha JSON kitob yozuviga yoziladi
+		//
+		// Baza paroli serverdan chiqmaydi.
+		// └────────────────────────────────────────────────────────────┘
+		noDB   = flag.Bool("no-db", false, "bazaga ulanmaydi: sahifalar yuklanadi va manzillar JSON bo'lib bosiladi")
+		pdfURL = flag.String("pdf-url", "", "-no-db bilan: PDF shu manzildan olinadi")
 	)
 	flag.Parse()
 
@@ -76,18 +97,33 @@ func main() {
 	}
 	loadDotEnv(*envFile)
 
-	repo, closeRepo, err := openCatalog()
-	if err != nil {
-		log.Fatalf("bazaga ulanmadi: %v", err)
-	}
-	defer closeRepo()
-
 	ctx := context.Background()
-	book, err := repo.GetBook(ctx, *bookID)
-	if err != nil {
-		log.Fatalf("kitob topilmadi: %v", err)
+
+	// Bazasiz rejimda kitob yozuvi o'qilmaydi, shuning uchun PDF
+	// manbasi ALOHIDA ko'rsatilishi shart.
+	var repo *storage.MongoCatalogRepo
+	var book *catalog.Book
+	if *noDB {
+		if *pdfPath == "" && *pdfURL == "" {
+			log.Fatal("-no-db bilan -file yoki -pdf-url kerak")
+		}
+		book = &catalog.Book{ID: *bookID, PDFURL: *pdfURL}
+		fmt.Printf("Kitob: %s (bazasiz rejim)\n", *bookID)
+	} else {
+		opened, closeRepo, err := openCatalog()
+		if err != nil {
+			log.Fatalf("bazaga ulanmadi: %v", err)
+		}
+		defer closeRepo()
+		repo = opened
+
+		got, err := repo.GetBook(ctx, *bookID)
+		if err != nil {
+			log.Fatalf("kitob topilmadi: %v", err)
+		}
+		book = got
+		fmt.Printf("Kitob: %s (%s)\n", book.Title, book.ID)
 	}
-	fmt.Printf("Kitob: %s (%s)\n", book.Title, book.ID)
 
 	work, err := os.MkdirTemp("", "bookpages-")
 	if err != nil {
@@ -143,6 +179,27 @@ func main() {
 	// ekranga chiqardi.
 	// └────────────────────────────────────────────────────────────────┘
 	book.Text = ""
+
+	// Bazasiz rejim: yozishni serverga qoldiramiz (yuqoridagi
+	// `-no-db` izohiga qarang). Manzillar JSON bo'lib chiqadi —
+	// uni to'g'ridan-to'g'ri `mongosh` ga berish mumkin.
+	if *noDB {
+		out, err := json.Marshal(urls)
+		if err != nil {
+			log.Fatalf("JSON yasalmadi: %v", err)
+		}
+		name := fmt.Sprintf("book-pages-%s.json", book.ID)
+		if err := os.WriteFile(name, out, 0o600); err != nil {
+			log.Fatalf("JSON saqlanmadi: %v", err)
+		}
+		fmt.Printf("\nTayyor: %d sahifa R2 ga yuklandi.\n", len(urls))
+		fmt.Println("Birinchi sahifa:", urls[0])
+		fmt.Println("Manzillar fayli:", name)
+		fmt.Println("\nEndi serverda bazaga yozing:")
+		fmt.Printf("  bash ~/ondex/set-book-pages.sh %s %s\n", book.ID, name)
+		return
+	}
+
 	if err := repo.SaveBook(ctx, book); err != nil {
 		log.Fatalf("saqlanmadi: %v", err)
 	}

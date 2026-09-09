@@ -37,18 +37,83 @@ class _CouriersPageState extends State<CouriersPage> {
     super.dispose();
   }
 
+  /// Kuryer -> uning akkaunti (PostHog dagi "odam"). Izohi
+  /// `restaurants_page.dart` dagi `_posthogButton` da.
+  Map<String, ({String userId, String phone, String name})> _accounts = {};
+
   Future<void> _load() async {
     try {
       final l = await api.couriers();
+      // Xatosi ro'yxatni yiqitmaydi — faqat PostHog tugmasi uchun.
+      final acc = await api.accountsByEntity('courier')
+          .catchError((_) => <String, ({String userId, String phone, String name})>{});
       if (!mounted) return;
       setState(() {
         _list = l;
+        _accounts = acc;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  /// Kuryer ilovada nima qilgani — seans yozuvi bilan (ilova Android,
+  /// ya'ni bu yerda haqiqiy video kabi qayta ko'rish mumkin).
+  ///
+  /// Izohi `people_page.dart` dagi `_posthogButton` va
+  /// `restaurants_page.dart` dagi o'xshash funksiya bilan bir xil.
+  ///
+  /// NIMA UCHUN IKKALA HOLATDA HAM ICON KO'RINADI:
+  ///   * Yashil/Ko'k icon → PostHog ochilgan va havola mavjud
+  ///   * Kulrang icon → nima sababdan ishlamasligini SABABI bilan
+  ///     (tooltip + snackbar). Avvalgi versiyada bu yerda
+  ///     `SizedBox.shrink()` qaytarilgani sababli icon UMUMAN
+  ///     ko'rinmaydi va admin "nima uchun yo'q?" degan savol
+  ///     doim paydo bo'lardi.
+  Widget _posthogButton(Map<String, dynamic> c) {
+    final cId = (c['id']?.toString() ?? '').trim();
+    final rec = _accounts[cId];
+    final userId = rec?.userId ?? '';
+    final url = posthogPersonUrl(userId);
+    if (url.isEmpty) {
+      String reason;
+      if (!posthogEnabled) {
+        reason = 'Admin panel PostHog kaliti yo\'q (build config)';
+      } else if (posthogProjectId.isEmpty) {
+        reason = 'PostHog loyiha raqami yo\'q';
+      } else if (rec == null) {
+        reason = 'Bu kuryerga kirish akkaunti biriktirilmagan'
+            ' (users jadvalida entity_id="$cId" bo\'lgan user yo\'q)';
+      } else if (userId.isEmpty) {
+        reason = 'Kuryer akkauntining user_id si bo\'sh';
+      } else {
+        reason = '';
+      }
+      if (reason.isEmpty) return const SizedBox.shrink();
+      return IconButton(
+        tooltip: 'PostHog yoqilmagan: $reason',
+        icon: Icon(Icons.play_circle_outline, color: Colors.grey.shade400),
+        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PostHog: $reason')),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: 'Ilovada nima qilgani (PostHog)\n\nEslatma: "Person not found" '
+          'chiqsa — bu kuryer hali mobil ilovaga PRODUCTION rejimda '
+          'hech qachon kirmagan demak.',
+      icon: const Icon(Icons.play_circle_outline, color: Color(0xFF1D4AFF)),
+      onPressed: () async {
+        final ok = await openLegalUrl(url);
+        if (!ok && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Havola ochilmadi')),
+          );
+        }
+      },
+    );
   }
 
   Future<void> _setApproved(String id, bool approved) async {
@@ -157,6 +222,7 @@ class _CouriersPageState extends State<CouriersPage> {
                                   DataCell(Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      _posthogButton(c),
                                       c['approved'] == true
                                           ? TextButton(
                                               onPressed: () =>

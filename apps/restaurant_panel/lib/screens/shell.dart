@@ -105,6 +105,10 @@ class _RestaurantShellState extends State<RestaurantShell> {
     try {
       await api.setOpen(v);
       setState(() => _open = v);
+      // Ochish/yopish — restoranning eng muhim amali: mijoz buyurtma
+      // bera oladimi yo'qmi shunga bog'liq. "Nega buyurtma kelmadi"
+      // degan savolga javob ko'pincha shu yerda bo'ladi.
+      Analytics.instance.capture('restoran_holati', {'ochiq': v});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(v
@@ -139,7 +143,31 @@ class _RestaurantShellState extends State<RestaurantShell> {
     );
   }
 
-  void _goTo(int i) => setState(() => _index = i);
+  /// ┌─ PANELDA NIMA QILINGANI YOZIB BORILADI ────────────────────────┐
+  /// Superadmin "bu restoran panelda nima qildi" degan savolga javob
+  /// olishi kerak. Panel Windows ilovasi bo'lgani uchun SEANS YOZUVI
+  /// mumkin emas (`posthog_flutter` Windows'ni qo'llamaydi) — shuning
+  /// uchun HODISALAR yoziladi.
+  ///
+  /// Bo'sh nom yuborilmaydi: PostHog'da nomsiz ekran "(unknown)"
+  /// bo'lib chiqib, ro'yxatni o'qib bo'lmas holga keltirardi.
+  /// └────────────────────────────────────────────────────────────────┘
+  static const _pageNames = <int, String>{
+    _iDashboard: 'Boshqaruv',
+    _iOrders: 'Buyurtmalar',
+    _iMenu: 'Menyu',
+    3: 'Aksiyalar',
+    4: 'Stollar',
+    8: 'Xodimlar',
+    9: 'Bildirishnomalar',
+    10: 'Yordam',
+  };
+
+  void _goTo(int i) {
+    setState(() => _index = i);
+    final name = _pageNames[i];
+    if (name != null) Analytics.instance.screen('restoran/$name');
+  }
 
   @override
   Widget build(BuildContext context) {

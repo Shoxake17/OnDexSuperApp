@@ -99,6 +99,19 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> _goHome() async {
     await tokenStore.write(api.token!);
+    // ┌─ POSTHOG IDENTIFY: BARCHA LOGIN USULLARI UCHUN ──────────┐
+    // identify() faqat `ApiClient.me()` ichida chaqiriladi va u
+    // PostHog person yaratadi. Password/SMS/Firebase/email har
+    // qaysi usul bilan kirganidan qat'iy nazar, shu yerda bitta
+    // so'rov orqali identify() bajariladi. Aks holda mijoz keyin
+    // ilovani qayta ochmaguncha admin panel PostHog da "Person
+    // not found" chiqadi.
+    //
+    // Xato chiqsa ilova ishlashiga ta'sir qilmasligi kerak.
+    // └──────────────────────────────────────────────────────────┘
+    try {
+      await api.me();
+    } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LockedHome()),

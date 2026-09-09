@@ -5,6 +5,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 // `SystemChrome` / `SystemUiMode` uchun.
 import 'package:flutter/services.dart';
+// `Analytics`, `posthog*` — `api.dart` orqali (u `ondex_core` ni
+// qayta eksport qiladi).
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'api.dart';
 import 'session.dart';
@@ -41,6 +44,82 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase ishga tushmadi (telefon tasdiqlash ishlamaydi): $e');
   }
+
+  // ┌─ MAHSULOT TAHLILI VA SEANS YOZUVI ────────────────────────────┐
+  // Ikki qatlam ATAYLAB:
+  //
+  //   Analytics (`ondex_core`) — HODISALAR. Sof HTTP, hamma
+  //   platformada ishlaydi, panellar ham shundan foydalanadi.
+  //
+  //   PostHog SDK — SEANS YOZUVI (foydalanuvchi ekranini video kabi
+  //   qayta ko'rish). Bu faqat Android/iOS/veb'da mumkin.
+  //
+  // Kalit berilmagan bo'lsa (`ONDEX_POSTHOG_KEY` bo'sh) ikkalasi ham
+  // JIM turadi — dev build hech qayerga ma'lumot yubormaydi.
+  //
+  // XATO ILOVANI TO'XTATMAYDI: tahlil hech qachon buyurtma berishga
+  // to'sqinlik qilmasligi kerak.
+  // └───────────────────────────────────────────────────────────────┘
+  if (posthogEnabled) {
+    try {
+      final cfg = PostHogConfig(posthogApiKey)
+        ..host = posthogHost
+        ..sessionReplay = true
+        // Session Replay uchun to'liq config:
+        //   1) maskAllTexts/maskAllImages — shaxsiy ma'lumot niqoblash
+        //   2) captureScreenViews — qaysi ekranda bo'lganini Recordingga
+        //      avtomatik yozish (playback da ekranga o'tishlar ko'rinadi)
+        //   3) captureApplicationLifecycleEvents — ilova foreground/background
+        //      o'tganda ham hodisa yozish
+        //   4) debouncerTimeSecs — hodisalarni to'plash (default 5 dan kamroq)
+        ..sessionReplayConfig.maskAllTexts = true
+        ..sessionReplayConfig.maskAllImages = true
+        ..captureScreenViews = true
+        ..captureApplicationLifecycleEvents = true
+        ..debouncerTimeSecs = 5;
+      await Posthog().setup(cfg);
+      // ┌─ SDK BRIDGE: ondex_core Analytics bilan sinxronlash ─────┐
+      // `api.me()` da `Analytics.instance.identify()` chaqirilganda,
+      // shu callback orqali posthog_flutter SDK ga ham aytamiz — va
+      // SDK Session Replay yozuvini shu PERSON ga biriktiradi.
+      //
+      // Agar bu bridge bo'lmasa:
+      //   * ondex_core odam yaratadi (Properties tayyor) ✅
+      //   * SDK Recording yozadi, lekin ANONIM holatda ❌
+      //   * Natija: PostHog da person bor, Recordings bo'sh turadi
+      // └───────────────────────────────────────────────────────────┘
+      Analytics.instance.onIdentify = ({
+        required String userId,
+        String? phone,
+        String? name,
+        String? role,
+      }) async {
+        try {
+          final props = <String, Object?>{};
+          if (phone != null && phone.isNotEmpty) props['phone'] = phone;
+          if (name != null && name.isNotEmpty) props['name'] = name;
+          if (role != null && role.isNotEmpty) props['role'] = role;
+          await Posthog().identify(
+            userId: userId,
+            userProperties: props.isNotEmpty ? props : null,
+          );
+        } catch (e) {
+          if (kDebugMode) debugPrint('[PostHog SDK] identify xatosi: $e');
+        }
+      };
+      Analytics.instance.onReset = (String anonId) async {
+        try {
+          await Posthog().reset();
+        } catch (e) {
+          if (kDebugMode) debugPrint('[PostHog SDK] reset xatosi: $e');
+        }
+      };
+    } catch (e) {
+      debugPrint('PostHog ishga tushmadi: $e');
+    }
+  }
+  await Analytics.bootstrap();
+
   runApp(const ChustApp());
 }
 

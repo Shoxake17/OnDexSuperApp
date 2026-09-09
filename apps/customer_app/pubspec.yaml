@@ -54,6 +54,7 @@ dependencies:
   # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
   # rasmiy `camera` plagini.
   camera: ^0.11.0
+  posthog_flutter: ^5.39.0
 
 dev_dependencies:
   flutter_test:

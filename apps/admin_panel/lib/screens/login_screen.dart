@@ -70,13 +70,23 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
   Future<void> _verify() => _run(() async {
         final d = await api.verify(_phone.text.trim(), _code.text.trim());
-        final role = (d['user'] as Map)['role'];
+        final user = Map<String, dynamic>.from(d['user'] as Map);
+        final role = (user['role'] as String?) ?? '';
         if (role != 'admin') {
           api.token = null;
           setState(() => _error = 'Bu panel faqat superadmin uchun');
           return;
         }
         await adminTokenStore.write(api.token!);
+        final userId = (user['id'] as String?) ?? '';
+        if (userId.isNotEmpty) {
+          Analytics.instance.identify(
+            userId: userId,
+            phone: user['phone'] as String?,
+            name: user['name'] as String?,
+            role: role,
+          );
+        }
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdminShell()),
@@ -179,14 +189,15 @@ class _TelegramHint extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Telegramda:', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Text(
-            '1. "Start" tugmasini bosing\n'
-            '2. "Raqamni ulashish" tugmasini bosing\n'
-            '3. Bot yuborgan kodni pastga kiriting',
-            style: theme.textTheme.bodySmall,
-          ),
+          // ┌─ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI ──────────────────┐
+          // Ilgari bu yerda "1. Start bosing, 2. Raqamni ulashing,
+          // 3. Kodni kiriting" degan uch qatorli o'rgatish turardi.
+          //
+          // Bot oqimining o'zi allaqachon tushunarli: havola ochilganda
+          // Telegram Start tugmasini, so'ng raqam so'rovini o'zi
+          // ko'rsatadi. Ya'ni ko'rsatma ekranda joy egallab, hech
+          // qanday yangi ma'lumot bermasdi.
+          // └────────────────────────────────────────────────────────────┘
           if (deepLink != null) ...[
             const SizedBox(height: 8),
             SelectableText(

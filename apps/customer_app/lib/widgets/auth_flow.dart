@@ -190,6 +190,17 @@ mixin SocialAuthMixin<T extends StatefulWidget> on State<T> {
     }
     if (res == null || !mounted) return;
     await tokenStore.write(api.token!);
+    // ┌─ POSTHOG IDENTIFY TELEGRAM RESUME UCHUN ─────────────────────┐
+    // `_goHome()` da api.me() orqali identify() chaqiriladi — bu yerda
+    // ham xuddi shu amal bajarilishi shart. Aks holda bu yo'ldan
+    // kirgan mijoz uchun PostHog'da HECH QACHON person yaratilmaydi
+    // va admin panel play button "Person not found" chiqaradi.
+    //
+    // Xato ilova ishlashiga to'sqin qilmasligi kerak.
+    // └───────────────────────────────────────────────────────────────┘
+    try {
+      await api.me();
+    } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LockedHome()),
@@ -212,6 +223,17 @@ mixin SocialAuthMixin<T extends StatefulWidget> on State<T> {
         return;
       }
       await tokenStore.write(api.token!);
+      // ┌─ POSTHOG IDENTIFY GOOGLE/TELEGRAM LOGIN UCHUN ──────────────┐
+      // `api.me()` ichida identify() chaqiriladi va PostHog person
+      // yaratiladi. Bu qilinmasa Google yoki Telegram orqali kirgan
+      // mijozlar PostHog'da umuman yo'q bo'ladi — admin uchun bular
+      // "play icon bosilganda person topilmadi" xatosi beradi.
+      //
+      // Bu _goHome() funksiyasidagi aniq mantiqning AYNAN NUSXASI.
+      // └───────────────────────────────────────────────────────────────┘
+      try {
+        await api.me();
+      } catch (_) {}
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LockedHome()),

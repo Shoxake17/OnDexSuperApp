@@ -39,6 +39,18 @@ type personRow struct {
 	Email     string    `json:"email,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 
+	// PhoneVerified — telefon raqami SMS kod bilan tasdiqlanganmi.
+	//
+	// ADMIN uchun juda muhim: ro'yxatdan o'tgan lekin tasdiqlanmagan
+	// mijozlar ko'pincha "ro'yxatda yo'q" deb hisoblanadi — aslida
+	// ular bazada bor, lekin ularni chaqirib bo'lmaydi (telefon
+	// egasi ekanligi tasdiqlanmagan). Bu bayroq admin uchun buni
+	// darhol ko'rsatadi.
+	PhoneVerified bool `json:"phone_verified"`
+
+	// EmailVerified — email manzil tasdiqlanganmi.
+	EmailVerified bool `json:"email_verified"`
+
 	// TelegramLinked — akkaunt Telegram bilan bog'langanmi.
 	//
 	// TELEGRAM ID'NING O'ZI ATAYLAB QAYTARILMAYDI: u admin uchun
@@ -272,6 +284,8 @@ func (s *Server) toPersonRows(ctx context.Context, list []*users.User) []personR
 			Phone:          u.Phone,
 			Email:          u.Email,
 			CreatedAt:      u.CreatedAt,
+			PhoneVerified:  u.PhoneVerified,
+			EmailVerified:  u.EmailVerified,
 			TelegramLinked: u.TelegramID != 0,
 			RestaurantID:   u.EntityID,
 			Devices:        []users.Device{},

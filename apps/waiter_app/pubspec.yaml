@@ -29,6 +29,7 @@ dependencies:
   # Telegram bot havolasini ochish uchun (kirish oqimi). Kod SMS emas,
   # bot orqali keladi — `api.telegramStart` izohiga qarang.
   url_launcher: ^6.3.2
+  posthog_flutter: ^5.39.0
 
 dev_dependencies:
   flutter_test:
@@ -37,6 +38,12 @@ dev_dependencies:
   # Ilova belgisini `assets/logo.png` dan barcha o'lchamlarga
   # generatsiya qiladi (boshqa OnDex ilovalari bilan bir xil naqsh).
   flutter_launcher_icons: ^0.14.4
+
+dependency_overrides:
+  jni:
+    path: ../../local_packages/jni
+  jni_flutter:
+    path: ../../local_packages/jni_flutter
 
 flutter_launcher_icons:
   android: true

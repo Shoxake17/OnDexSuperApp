@@ -162,9 +162,24 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  Future<void> _do(String orderId, Future<void> Function() action) async {
+  /// Buyurtma holatini o'zgartiradigan YAGONA nuqta.
+  ///
+  /// `label` faqat tahlil uchun: superadmin PostHog'da "bu restoran
+  /// buyurtmani qabul qildimi, rad etdimi, qancha vaqtdan keyin tayyor
+  /// dedi" degan savolga javob topa olishi kerak. Amalning O'ZIGA
+  /// ta'sir qilmaydi.
+  Future<void> _do(String orderId, Future<void> Function() action,
+      {String? label}) async {
     try {
       await action();
+      if (label != null) {
+        Analytics.instance.capture('buyurtma_amali', {
+          'amal': label,
+          // Buyurtma ID si — PostHog'da hodisani haqiqiy buyurtma bilan
+          // solishtirish uchun. Shaxsiy ma'lumot emas.
+          'buyurtma': orderId,
+        });
+      }
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -182,7 +197,8 @@ class _OrdersPageState extends State<OrdersPage> {
     final minutes = await _askPreparationMinutes();
     if (minutes == null) return; // xodim bekor qildi
     await _do(
-        id, () => api.transition(id, 'accepted', preparationMinutes: minutes));
+        id, () => api.transition(id, 'accepted', preparationMinutes: minutes),
+        label: 'qabul_qildi');
   }
 
   /// Restoran "Qabul qilish" bosganda taxminiy tayyorlash vaqtini (daqiqada)
@@ -240,7 +256,7 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
     if (yes == true) {
-      await _do(id, () => api.transition(id, 'rejected'));
+      await _do(id, () => api.transition(id, 'rejected'), label: 'rad_etdi');
     }
   }
 
@@ -342,8 +358,10 @@ class _OrdersPageState extends State<OrdersPage> {
                   onAccept: _accept,
                   onReject: _reject,
                   onStartPreparing: (id) =>
-                      _do(id, () => api.transition(id, 'preparing')),
-                  onReady: (id) => _do(id, () => api.transition(id, 'ready')),
+                      _do(id, () => api.transition(id, 'preparing'),
+                    label: 'tayyorlashni_boshladi'),
+                  onReady: (id) =>
+              _do(id, () => api.transition(id, 'ready'), label: 'tayyor'),
                 )
               else
                 _ActiveOrdersList(orders: [

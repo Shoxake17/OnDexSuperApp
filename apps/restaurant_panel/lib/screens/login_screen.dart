@@ -73,7 +73,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
 
   Future<void> _verify() => _run(() async {
         final d = await api.verify(_phone.text.trim(), _code.text.trim());
-        final user = d['user'] as Map;
+        final user = Map<String, dynamic>.from(d['user'] as Map);
         if (user['role'] != 'restaurant') {
           api.token = null;
           setState(() => _error =
@@ -85,6 +85,22 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         await restTokenStore.write(api.token!);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('rest_rid', api.rid);
+
+        // ┌─ POSTHOG IDENTIFY: ILK KIRISHDA HAM ──────────────────┐
+        // `main.dart` dagi tokenni tiklash (restart) da identify()
+        // ishlaydi, lekin BIRINCHI marta kirgandagi identify dan
+        // keyin admin panel PostHog da person topilishi uchun.
+        // └───────────────────────────────────────────────────────┘
+        final userId = (user['id'] as String?) ?? '';
+        if (userId.isNotEmpty) {
+          Analytics.instance.identify(
+            userId: userId,
+            phone: user['phone'] as String?,
+            name: user['name'] as String?,
+            role: user['role'] as String?,
+          );
+        }
+
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const RestaurantShell()),
@@ -193,14 +209,15 @@ class _TelegramHint extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Telegramda:', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Text(
-            '1. "Start" tugmasini bosing\n'
-            '2. "Raqamni ulashish" tugmasini bosing\n'
-            '3. Bot yuborgan kodni pastga kiriting',
-            style: theme.textTheme.bodySmall,
-          ),
+          // â”Œâ”€ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          // Ilgari bu yerda "1. Start bosing, 2. Raqamni ulashing,
+          // 3. Kodni kiriting" degan uch qatorli o'rgatish turardi.
+          //
+          // Bot oqimining o'zi allaqachon tushunarli: havola ochilganda
+          // Telegram Start tugmasini, so'ng raqam so'rovini o'zi
+          // ko'rsatadi. Ya'ni ko'rsatma ekranda joy egallab, hech
+          // qanday yangi ma'lumot bermasdi.
+          // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
           if (deepLink != null) ...[
             const SizedBox(height: 8),
             SelectableText(

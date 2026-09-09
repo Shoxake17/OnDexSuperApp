@@ -74,41 +74,68 @@ class _DashboardPageState extends State<DashboardPage> {
           Text('Har 10 soniyada avtomatik yangilanadi',
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 24),
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              _StatCard(
-                  title: 'Bugungi buyurtmalar',
-                  value: '${s['orders_today'] ?? 0}',
-                  icon: Icons.receipt_long,
-                  color: Colors.blue),
-              _StatCard(
-                  title: 'Bugungi tushum',
-                  value: formatSum((s['revenue_today_tiyin'] ?? 0) as int),
-                  icon: Icons.payments,
-                  color: Colors.green),
-              _StatCard(
-                  title: 'Bugun yetkazildi',
-                  value: '${s['delivered_today'] ?? 0}',
-                  icon: Icons.done_all,
-                  color: Colors.teal),
-              _StatCard(
-                  title: 'Kuryerlar online',
-                  value: '${s['couriers_online'] ?? 0}',
-                  icon: Icons.delivery_dining,
-                  color: Colors.orange),
-              _StatCard(
-                  title: 'Tasdiq kutayotgan kuryerlar',
-                  value: '${s['couriers_pending'] ?? 0}',
-                  icon: Icons.hourglass_top,
-                  color: Colors.red),
-              _StatCard(
-                  title: 'Restoranlar',
-                  value: '${s['restaurants_total'] ?? 0}',
-                  icon: Icons.storefront,
-                  color: Colors.purple),
-            ],
+          // ┌─ BIR QATORDA AYNAN 6 TA ──────────────────────────────────┐
+          // Avval `Wrap` va qat'iy `width: 220` ishlatilardi. Wrap
+          // "sig'gancha joylashtir" degani — oyna eniga qarab qatorda
+          // 4, 5 yoki 6 ta chiqardi va oxirgi karta pastga tushib
+          // qolardi.
+          //
+          // Endi en HISOBLANADI: mavjud joydan oraliqlar ayirilib
+          // oltiga bo'linadi. Natijada karta soni oyna o'lchamiga
+          // bog'liq emas.
+          //
+          // Tor oynada (noutbuk, panel yonma-yon ochilgan) 6 ta karta
+          // o'qib bo'lmas darajada siqilib ketardi — shuning uchun
+          // 1100 px dan tor bo'lsa 3 tadan ikki qator qilinadi.
+          // └────────────────────────────────────────────────────────────┘
+          LayoutBuilder(
+            builder: (context, box) {
+              const gap = 16.0;
+              final perRow = box.maxWidth < 1100 ? 3 : 6;
+              final w = (box.maxWidth - gap * (perRow - 1)) / perRow;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  _StatCard(
+                      width: w,
+                      title: 'Bugungi buyurtmalar',
+                      value: '${s['orders_today'] ?? 0}',
+                      icon: Icons.receipt_long,
+                      color: Colors.blue),
+                  _StatCard(
+                      width: w,
+                      title: 'Bugungi tushum',
+                      value: formatSum((s['revenue_today_tiyin'] ?? 0) as int),
+                      icon: Icons.payments,
+                      color: Colors.green),
+                  _StatCard(
+                      width: w,
+                      title: 'Bugun yetkazildi',
+                      value: '${s['delivered_today'] ?? 0}',
+                      icon: Icons.done_all,
+                      color: Colors.teal),
+                  _StatCard(
+                      width: w,
+                      title: 'Kuryerlar online',
+                      value: '${s['couriers_online'] ?? 0}',
+                      icon: Icons.delivery_dining,
+                      color: Colors.orange),
+                  _StatCard(
+                      width: w,
+                      title: 'Tasdiq kutayotgan',
+                      value: '${s['couriers_pending'] ?? 0}',
+                      icon: Icons.hourglass_top,
+                      color: Colors.red),
+                  _StatCard(
+                      width: w,
+                      title: 'Restoranlar',
+                      value: '${s['restaurants_total'] ?? 0}',
+                      icon: Icons.storefront,
+                      color: Colors.purple),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 32),
           Text('Buyurtmalar holati bo\'yicha (so\'nggi 500 ta)',
@@ -136,34 +163,52 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
 
+  /// En tashqaridan beriladi — qatordagi karta soni `DashboardPage` da
+  /// hisoblanadi (izohi o'sha yerda).
+  final double width;
+
   const _StatCard({
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
+    required this.width,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Container(
-        width: 220,
-        padding: const EdgeInsets.all(20),
+        width: width,
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: color),
+                Icon(icon, color: color, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
+                  // Karta tor bo'lganda uzun sarlavha ikki qatorga
+                  // tushadi; uchinchisi kesiladi — kartalar bo'yi bir
+                  // xil qolsin.
                   child: Text(title,
-                      style: Theme.of(context).textTheme.bodyMedium),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            Text(value, style: Theme.of(context).textTheme.headlineSmall),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              // Tushum summasi uzun bo'ladi ("1 250 000 so'm") va tor
+              // kartada sig'masdi. `FittedBox` uni kesish o'rniga
+              // kichraytiradi.
+              child: Text(value,
+                  style: Theme.of(context).textTheme.headlineSmall),
+            ),
           ],
         ),
       ),

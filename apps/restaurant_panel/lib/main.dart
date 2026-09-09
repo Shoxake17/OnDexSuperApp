@@ -6,7 +6,16 @@ import 'screens/login_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Mahsulot tahlili. Kalit (ONDEX_POSTHOG_KEY) berilmagan bo'lsa
+  // hech narsa yuborilmaydi va hech qanday kechikish qo'shilmaydi.
+  //
+  // Xatolik ilovani TO'XTATMAYDI: tahlil hech qachon ishga tushishga
+  // to'sqinlik qilmasligi kerak.
+  await Analytics.bootstrap();
+
   runApp(const RestaurantApp());
 }
 

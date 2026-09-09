@@ -32,6 +32,33 @@ class AdminApi extends ApiClient {
   Future<List<dynamic>> couriers() async =>
       (await send('GET', '/admin/couriers')) as List<dynamic>? ?? [];
 
+  /// Rol bo'yicha akkauntlar: `entity_id` -> {userId, phone, name}.
+  ///
+  /// PostHog seans yozuviga havola qurish uchun kerak (userId).
+  /// Telefon raqam ham — admin panel restoranlar jadvalida
+  /// ko'rsatish uchun. Ism — "mas'ul shaxs" ko'rsatish uchun.
+  ///
+  /// Backend `GET /admin/accounts` har bir yozuvda `entity_id`,
+  /// `user_id`, `name`, `phone` ni hammaisini qaytaradi.
+  Future<Map<String, ({String userId, String phone, String name})>>
+      accountsByEntity(String role) async {
+    final list =
+        (await send('GET', '/admin/accounts?role=$role')) as List<dynamic>? ??
+            [];
+    final map = <String, ({String userId, String phone, String name})>{};
+    for (final row in list) {
+      if (row is! Map) continue;
+      final e = (row['entity_id'] as String?) ?? '';
+      final u = (row['user_id'] as String?) ?? '';
+      final p = (row['phone'] as String?) ?? '';
+      final n = (row['name'] as String?) ?? '';
+      if (e.isNotEmpty && u.isNotEmpty) {
+        map.putIfAbsent(e, () => (userId: u, phone: p, name: n));
+      }
+    }
+    return map;
+  }
+
   Future<void> approveCourier(String id, bool approved) =>
       send('POST', '/admin/couriers/$id/approve', {'approved': approved});
 

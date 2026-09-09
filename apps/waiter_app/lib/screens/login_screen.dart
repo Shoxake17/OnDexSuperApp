@@ -159,6 +159,24 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       await tokenStore.write(res['token'] as String);
+
+      // ┌─ POSTHOG IDENTIFY — ILK KIRISHDA HAM ISHLASHI SHART ──┐
+      // `main.dart` dagi tokenni tiklashda `api.me()` orqali
+      // identify() chaqiriladi. Lekin YANGI login (birinchi marta
+      // kirish) da keyingi ochilishgacha kutmaslik, darhol PostHog
+      // person yaratish uchun bu yerda ham identify() chaqiriladi.
+      // Aks holda admin panelda "Person not found" chiqadi.
+      // └────────────────────────────────────────────────────────┘
+      final userId = (user['id'] as String?) ?? '';
+      if (userId.isNotEmpty) {
+        Analytics.instance.identify(
+          userId: userId,
+          phone: user['phone'] as String?,
+          name: user['name'] as String?,
+          role: role,
+        );
+      }
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const WaiterHome()),
@@ -311,14 +329,15 @@ class _TelegramHint extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Telegramda:', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Text(
-            '1. "Start" tugmasini bosing\n'
-            '2. "Raqamni ulashish" tugmasini bosing\n'
-            '3. Bot yuborgan kodni pastga kiriting',
-            style: theme.textTheme.bodySmall,
-          ),
+          // â”Œâ”€ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          // Ilgari bu yerda "1. Start bosing, 2. Raqamni ulashing,
+          // 3. Kodni kiriting" degan uch qatorli o'rgatish turardi.
+          //
+          // Bot oqimining o'zi allaqachon tushunarli: havola ochilganda
+          // Telegram Start tugmasini, so'ng raqam so'rovini o'zi
+          // ko'rsatadi. Ya'ni ko'rsatma ekranda joy egallab, hech
+          // qanday yangi ma'lumot bermasdi.
+          // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
           // Raqam MOS KELMASA bot kodni umuman yubormaydi — bu
           // xavfsizlik qoidasi, nosozlik emas. Affitsiant buni
           // bilmasa "bot ishlamayapti" deb o'ylardi.

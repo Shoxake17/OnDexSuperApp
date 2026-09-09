@@ -12,6 +12,7 @@
 /// qilinadi va to'rtala ilovaga birdan yetadi.
 library ondex_core;
 
+export 'src/analytics.dart';
 export 'src/api_client.dart';
 // Kesh qatlami — "avval keshdan chiz, keyin tarmoqdan yangila".
 // Ekranlar yuklanish mantig'ini O'ZI yozmaydi, faqat shu ikkitasini

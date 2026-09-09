@@ -17,6 +17,18 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
   List<dynamic> _list = [];
   bool _loading = true;
 
+  /// Restoran -> uning akkaunt ma'lumotlari (PostHog userID + telefon
+  /// raqam + mas'ul shaxs ismi). Jadvalning Telefon ustuni va PostHog
+  /// tugmasi uchun. Xatosi ro'yxatni yiqitmasligi uchun try/catch.
+  Map<String, ({String userId, String phone, String name})> _accounts = {};
+
+  /// PostHog so'rovining holati: false → tugma ko'rinadi/yo'q, true →
+  /// Snack orqali foydalanuvchiga xatoni aytamiz, chunki u avval hech
+  /// qanday xabar olmagan — "nima uchun PostHog ko'rinmayapti?" degan
+  /// savol doim paydo bo'lardi.
+  bool _accountsHadError = false;
+  String? _accountsError;
+
   @override
   void initState() {
     super.initState();
@@ -26,11 +38,25 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
   Future<void> _load() async {
     try {
       final l = await api.restaurants();
+      Map<String, ({String userId, String phone, String name})> acc = {};
+      Object? accErr;
+      try {
+        acc = await api.accountsByEntity('restaurant');
+      } catch (e) {
+        accErr = e;
+      }
       if (!mounted) return;
       setState(() {
         _list = l;
+        _accounts = acc;
         _loading = false;
+        _accountsHadError = accErr != null;
+        _accountsError = accErr?.toString();
       });
+      if (_accountsHadError && mounted) {
+        _snack('Ogohlantirish: akkauntlar ro\'yxati olinmadi — PostHog va '
+            'Telefon ko\'rinmay qolishi mumkin. Xato: $_accountsError');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -38,9 +64,119 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     }
   }
 
+  /// ┌─ RESTORAN PANELIDA NIMA QILINGAN ────────────────────────────────┐
+  /// PostHog'da "odam" — restoranning O'ZI emas, uning xodim akkaunti:
+  /// tahlil `ApiClient.me()` da `identify(userId: <user.ID>)` bilan
+  /// bog'lanadi. Shuning uchun avval restoran ID sidan akkaunt ID si
+  /// topiladi (`GET /admin/accounts`).
+  ///
+  /// Panel Windows ilovasi bo'lgani uchun u yerda SEANS YOZUVI emas,
+  /// HODISALAR ko'rinadi (qaysi sahifa ochilgan, qaysi amal bajarilgan)
+  /// — `posthog_flutter` Windows'ni qo'llamaydi.
+  ///
+  /// Nima uchun ko'pincha KO'RINMAYDI:
+  ///   * PostHog kaliti yo'q (`ONDEX_POSTHOG_KEY`) — butunlay o'chirilgan
+  ///   * `ONDEX_POSTHOG_PROJECT` keltirilmagan — havola qurilmaydi
+  ///   * `/admin/accounts` so'rovida xato — `_accountsError` orqali ko'rsatiladi
+  ///   * Restoranda akkaunt umuman yo'q (yaratilmagan)
+  ///   * `phone`/`name` bo'sh — PostHog emas, jadval ustunlari uchun
+  /// └──────────────────────────────────────────────────────────────────┘
+  Widget _posthogButton(Map<String, dynamic> r) {
+    final rId = (r['id']?.toString() ?? '').trim();
+    final rec = _accounts[rId];
+    final userId = rec?.userId ?? '';
+    final url = posthogPersonUrl(userId);
+    if (url.isEmpty) {
+      // Nima uchun ko'rinmasligini tooltip bilan ko'rsatamiz.
+      String reason;
+      if (!posthogEnabled) {
+        reason = 'PostHog kaliti qo\'yilmagan (build config)';
+      } else if (posthogProjectId.isEmpty) {
+        reason = 'PostHog loyiha raqami qo\'yilmagan';
+      } else if (_accountsHadError) {
+        reason = 'Akkauntlar so\'rovida xato: $_accountsError';
+      } else if (userId.isEmpty) {
+        reason = 'Bu restoranga kirish akkaunti biriktirilmagan';
+      } else {
+        reason = '';
+      }
+      if (reason.isEmpty) return const SizedBox.shrink();
+      return IconButton(
+        tooltip: 'PostHog yoqilmagan: $reason',
+        icon: Icon(Icons.play_circle_outline,
+            color: Colors.grey.shade400),
+        onPressed: () => _snack('PostHog: $reason'),
+      );
+    }
+    return IconButton(
+      tooltip: 'Panelda nima qilgani (PostHog)',
+      icon: const Icon(Icons.play_circle_outline, color: Color(0xFF1D4AFF)),
+      onPressed: () async {
+        final ok = await openLegalUrl(url);
+        if (!ok && mounted) _snack('Havola ochilmadi');
+      },
+    );
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// Restoran telefonini ko'rsatuvchi katak. Akkaunt ma'lumotlaridan
+  /// olinadi, chunki `Catalog.Restaurant` struct'ida phone maydoni
+  /// umuman yo'q — u "users" jadvaliga tegishli (akkaunt telefon raqami).
+  Widget _phoneCell(Map<String, dynamic> r) {
+    final rId = (r['id']?.toString() ?? '').trim();
+    final rec = _accounts[rId];
+    final phone = rec?.phone ?? '';
+    final name = rec?.name ?? '';
+
+    if (_accountsHadError) {
+      return Tooltip(
+        message: 'Xatolik: $_accountsError\n\nQayta yuklash — yuqoridagi yangilash tugmasini bosing',
+        child: Text('⚠️ Yuklanmadi',
+            style: TextStyle(color: Colors.orange.shade700)),
+      );
+    }
+
+    if (rId.isEmpty) {
+      return Text('—', style: TextStyle(color: Colors.grey.shade400));
+    }
+
+    if (rec == null) {
+      return Tooltip(
+        message: 'Bu restoranga kirish akkaunti hali yaratilmagan.\n\n'
+            'Qanday yaratish: "Restoran qo\'shish" tugmasi orqali restoran '
+            'yaratganda avtomatik telefon akkaunti ham yaratiladi. '
+            'Agar eski restoran bo\'lsa — bazada users jadvalida '
+            'entity_id = "$rId" bo\'lgan user yaratilganini tekshiring.',
+        child: Text('📵 Akkaunt yo\'q',
+            style: TextStyle(color: Colors.grey.shade600)),
+      );
+    }
+
+    if (phone.isEmpty && name.isEmpty) {
+      return Tooltip(
+        message: 'Ushbu restoran akkaunti mavjud, lekin telefon raqami va '
+            'mas\'ul shaxs ismi kiritilmagan.\n\nuserId = ${rec.userId}',
+        child: Text('—', style: TextStyle(color: Colors.grey.shade400)),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (phone.isNotEmpty) Text(phone),
+        if (name.isNotEmpty)
+          Tooltip(
+            message: 'Mas\'ul shaxs',
+            child: Text(name,
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ),
+      ],
+    );
   }
 
   Future<void> _toggleOpen(Map<String, dynamic> r, bool open) async {
@@ -226,49 +362,73 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : _list.isEmpty
                       ? const Center(child: Text('Hozircha restoran yo\'q'))
-                      : SingleChildScrollView(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: DataTable(
+                      // ┌─ JADVAL BUTUN QATORNI EGALLASIN ──────────┐
+                      // Ilgari jadval gorizontal skroll ichida
+                      // to'g'ridan-to'g'ri turardi va shu sababli
+                      // MAZMUNI qadar kenglik olardi — keng oynada u
+                      // o'rtada tugab, o'ng tomonda katta bo'sh joy
+                      // qolardi.
+                      //
+                      // `ConstrainedBox(minWidth: maxWidth)` eng kam
+                      // enni oyna kengligiga tenglashtiradi: jadval
+                      // butun qatorni egallaydi. Gorizontal skroll
+                      // SAQLANADI — tor oynada ustunlar siqilib
+                      // ketmasligi uchun u baribir kerak.
+                      // └────────────────────────────────────────────┘
+                      : LayoutBuilder(
+                          builder: (context, box) => SingleChildScrollView(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(minWidth: box.maxWidth),
+                                child: DataTable(
                               columns: const [
+                                DataColumn(label: Text('№')),
                                 DataColumn(label: Text('Logo')),
                                 DataColumn(label: Text('Nomi')),
+                                DataColumn(label: Text('Telefon')),
                                 DataColumn(label: Text('Manzil')),
                                 DataColumn(label: Text('Holat')),
                                 DataColumn(label: Text('Amal')),
                               ],
                               rows: [
-                                for (final r in _list.cast<Map<String, dynamic>>())
+                                for (var i = 0; i < _list.length; i++)
                                   DataRow(cells: [
+                                    DataCell(Text('${i + 1}')),
                                     DataCell(_LogoThumb(
-                                        url: r['logo_url'] as String? ?? '')),
-                                    DataCell(Text(r['name'] ?? '')),
-                                    DataCell(Text(r['address'] ?? '')),
+                                        url: (_list[i] as Map<String, dynamic>)['logo_url'] as String? ?? '')),
+                                    DataCell(Text((_list[i] as Map<String, dynamic>)['name'] ?? '')),
+                                    DataCell(_phoneCell(_list[i] as Map<String, dynamic>)),
+                                    DataCell(Text((_list[i] as Map<String, dynamic>)['address'] ?? '')),
                                     DataCell(Switch(
-                                      value: r['open'] == true,
-                                      onChanged: (v) => _toggleOpen(r, v),
+                                      value: (_list[i] as Map<String, dynamic>)['open'] == true,
+                                      onChanged: (v) => _toggleOpen(_list[i] as Map<String, dynamic>, v),
                                     )),
                                     DataCell(Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
+                                        _posthogButton(_list[i] as Map<String, dynamic>),
                                         IconButton(
                                           tooltip: 'Tahrirlash',
                                           icon: const Icon(
                                               Icons.edit_outlined),
                                           onPressed: () =>
-                                              _showEditDialog(r),
+                                              _showEditDialog(_list[i] as Map<String, dynamic>),
                                         ),
                                         IconButton(
                                           tooltip: 'Restoranni o\'chirish',
                                           icon: const Icon(
                                               Icons.delete_outline,
                                               color: Colors.red),
-                                          onPressed: () => _confirmDelete(r),
+                                          onPressed: () => _confirmDelete(_list[i] as Map<String, dynamic>),
                                         ),
                                       ],
                                     )),
                                   ]),
-                              ],
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
