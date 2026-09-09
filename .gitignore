@@ -8,6 +8,12 @@
 /image/
 /scripts/
 
+# Application config & secrets
+**/config/prod.json
+**/config/*.json
+!**/config/*.example.json
+
+
 # Firevase
 /secrets/
 secrets/
