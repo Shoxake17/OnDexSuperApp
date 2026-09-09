@@ -25,9 +25,15 @@ var (
 	ErrNotFound     = errors.New("stol topilmadi")
 	ErrInactive     = errors.New("stol vaqtincha faol emas")
 	ErrDuplicate    = errors.New("bu nomli stol allaqachon mavjud")
-	ErrEmptyLabel   = errors.New("stol nomi bo'sh bo'lishi mumkin emas")
-	ErrLabelTooLong = errors.New("stol nomi juda uzun")
+	ErrEmptyLabel   = errors.New("stol raqami bo'sh bo'lishi mumkin emas")
+	ErrLabelTooLong = errors.New("stol raqami juda uzun")
+	ErrEmptyZone    = errors.New("zona nomi bo'sh bo'lishi mumkin emas")
+	ErrZoneTooLong  = errors.New("zona nomi juda uzun")
 )
+
+// DefaultZone — yangi restoran uchun birinchi zal. Panelda "Asosiy zal"
+// har doim ro'yxatda turadi; foydalanuvchi o'zi boshqa zonalar qo'shadi.
+const DefaultZone = "Asosiy zal"
 
 // maxLabelLen — stol nomi uzunligi chegarasi.
 //
@@ -40,7 +46,9 @@ const maxLabelLen = 40
 type Table struct {
 	ID           string `json:"id"`
 	RestaurantID string `json:"restaurant_id"`
-	Label        string `json:"label"`
+	// Zone — zal/zona nomi ("Asosiy zal", "Ayvon", "VIP").
+	Zone  string `json:"zone"`
+	Label string `json:"label"`
 	// QRToken — SIR. `json:"-"` ATAYLAB: token QR kodga chop etish
 	// uchun ALOHIDA endpoint orqali beriladi (faqat restoran egasiga).
 	// Oddiy ro'yxat javobida chiqsa, uni ko'rgan har kim istalgan stol
@@ -104,12 +112,50 @@ func normalizeLabel(label string) (string, error) {
 	return label, nil
 }
 
+func normalizeZone(zone string) (string, error) {
+	zone = strings.TrimSpace(zone)
+	if zone == "" {
+		return DefaultZone, nil
+	}
+	if len([]rune(zone)) > maxLabelLen {
+		return "", ErrZoneTooLong
+	}
+	return zone, nil
+}
+
+// DisplayLabel — affitsiant va buyurtma kartochkasida ko'rinadigan nom.
+// Raqamning o'zi yetarli emas: ikki xil zonada "5" bo'lishi mumkin.
+func (t *Table) DisplayLabel() string {
+	if t == nil {
+		return ""
+	}
+	z := strings.TrimSpace(t.Zone)
+	if z == "" {
+		z = DefaultZone
+	}
+	return z + " · " + t.Label
+}
+
 // Create — yangi stol qo'shadi va unga QR token yaratadi.
+// Zona berilmasa `DefaultZone` ("Asosiy zal") ishlatiladi.
 func (s *Service) Create(ctx context.Context, restaurantID, label string) (*Table, error) {
+	return s.CreateInZone(ctx, restaurantID, DefaultZone, label)
+}
+
+// CreateInZone — belgilangan zonaga stol qo'shadi.
+//
+// QR token BIR MARTA yaratiladi va keyin hech qachon o'zgarmaydi
+// (regenerate metodi yo'q). Shuning uchun ertasi kuni QR kodi
+// boshqacha chiqmaydi — bu chizma, token emas.
+func (s *Service) CreateInZone(ctx context.Context, restaurantID, zone, label string) (*Table, error) {
 	if strings.TrimSpace(restaurantID) == "" {
 		return nil, errors.New("restaurant_id bo'sh")
 	}
-	label, err := normalizeLabel(label)
+	zone, err := normalizeZone(zone)
+	if err != nil {
+		return nil, err
+	}
+	label, err = normalizeLabel(label)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +170,7 @@ func (s *Service) Create(ctx context.Context, restaurantID, label string) (*Tabl
 	t := &Table{
 		ID:           id,
 		RestaurantID: restaurantID,
+		Zone:         zone,
 		Label:        label,
 		QRToken:      token,
 		Active:       true,
@@ -176,6 +223,23 @@ func (s *Service) Rename(ctx context.Context, id, label string) (*Table, error) 
 		return nil, err
 	}
 	t.Label = label
+	if err := s.repo.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// SetZone — stolni boshqa zalga ko'chiradi. QR token o'zgarmaydi.
+func (s *Service) SetZone(ctx context.Context, id, zone string) (*Table, error) {
+	zone, err := normalizeZone(zone)
+	if err != nil {
+		return nil, err
+	}
+	t, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	t.Zone = zone
 	if err := s.repo.Update(ctx, t); err != nil {
 		return nil, err
 	}

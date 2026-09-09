@@ -56,5 +56,7 @@ String formatWeightUnit(String unit) => unit == 'l' ? 'L' : unit;
 String tableText(String label) {
   if (label.isEmpty) return 'Stol';
   if (RegExp(r'^\d+$').hasMatch(label)) return '$label-stol';
+  final zoned = RegExp(r'^(.*) · (\d+)$').firstMatch(label);
+  if (zoned != null) return '${zoned.group(1)} · ${zoned.group(2)}-stol';
   return label;
 }

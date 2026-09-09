@@ -117,12 +117,13 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			}
 			var req struct {
 				Label string `json:"label"`
+				Zone  string `json:"zone"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}
-			t, err := s.TableSvc.Create(r.Context(), restaurantID, req.Label)
+			t, err := s.TableSvc.CreateInZone(r.Context(), restaurantID, req.Zone, req.Label)
 			if err != nil {
 				status := http.StatusBadRequest
 				if errors.Is(err, tables.ErrDuplicate) {
@@ -146,6 +147,7 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			}
 			var req struct {
 				Label  *string `json:"label"`
+				Zone   *string `json:"zone"`
 				Active *bool   `json:"active"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -155,6 +157,17 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			var err error
 			if req.Label != nil {
 				t, err = s.TableSvc.Rename(r.Context(), t.ID, *req.Label)
+				if err != nil {
+					status := http.StatusBadRequest
+					if errors.Is(err, tables.ErrDuplicate) {
+						status = http.StatusConflict
+					}
+					httpError(w, status, err)
+					return
+				}
+			}
+			if req.Zone != nil {
+				t, err = s.TableSvc.SetZone(r.Context(), t.ID, *req.Zone)
 				if err != nil {
 					status := http.StatusBadRequest
 					if errors.Is(err, tables.ErrDuplicate) {
@@ -224,7 +237,9 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			// biladi, qaytarish esa uni loglarga/keshlarga yoyardi.
 			resp := map[string]any{
 				"table_id":      t.ID,
-				"table_label":   t.Label,
+				"table_label":   t.DisplayLabel(),
+				"table_number":  t.Label,
+				"zone":          t.Zone,
 				"restaurant_id": t.RestaurantID,
 			}
 			if rest, err := s.CatalogRepo.GetRestaurant(r.Context(), t.RestaurantID); err == nil {
@@ -396,6 +411,7 @@ func (s *Server) tableWithQR(r *http.Request, t *tables.Table) map[string]any {
 	out := map[string]any{
 		"id":            t.ID,
 		"restaurant_id": t.RestaurantID,
+		"zone":          t.Zone,
 		"label":         t.Label,
 		"active":        t.Active,
 		"created_at":    t.CreatedAt,

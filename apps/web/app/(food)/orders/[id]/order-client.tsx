@@ -134,7 +134,9 @@ export default function OrderTrackingPage({
         )}
         {dineIn && order.table_label && (
           <p className="mt-1 text-sm text-neutral-500">
-            {order.table_label}-stol
+            {/^\d+$/.test(order.table_label)
+              ? `${order.table_label}-stol`
+              : order.table_label}
             {order.party_size ? ` · ${order.party_size} kishi` : ""}
           </p>
         )}

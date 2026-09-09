@@ -1,23 +1,22 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api.dart';
 import '../theme.dart';
 import '../widgets/page_header.dart';
 
+const kDefaultZone = 'Asosiy zal';
+
 /// Stollar va ularning QR kodlari.
 ///
-/// ┌─ QR KOD NIMA QILADI ──────────────────────────────────────────────┐
 /// QR ichida `https://t.me/<bot>/<short_name>?startapp=<token>` havolasi
-/// bor (hozir short_name = `ondex`, BotFather'dagi nom bilan aynan mos
-/// bo'lishi SHART — serverda `miniAppShortName`).
-/// Mijoz uni kamera bilan skanerlaydi → Telegram ochiladi → Mini App
-/// avtomatik kirib, AYNAN shu stolning menyusini ko'rsatadi.
-///
-/// `<token>` — 32 baytlik tasodifiy sir. Stol ID'si EMAS: ID taxmin
-/// qilinadigan bo'lsa, istalgan odam boshqa stol nomidan buyurtma
-/// bera olardi.
-/// └───────────────────────────────────────────────────────────────────┘
+/// bor. Token BIR MARTA yaratiladi va serverda hech qachon almashtirilmaydi —
+/// shuning uchun kartochkadagi QR ertasi kuni boshqa kodga aylanib ketmaydi.
 class TablesPage extends StatefulWidget {
   const TablesPage({super.key});
 
@@ -27,6 +26,7 @@ class TablesPage extends StatefulWidget {
 
 class _TablesPageState extends State<TablesPage> {
   List<Map<String, dynamic>> _tables = [];
+  String _restaurantName = '';
   bool _loading = true;
   String? _error;
 
@@ -38,10 +38,15 @@ class _TablesPageState extends State<TablesPage> {
 
   Future<void> _load() async {
     try {
-      final list = await api.tables();
+      final results = await Future.wait([
+        api.tables(),
+        api.myRestaurant(),
+      ]);
       if (!mounted) return;
+      final rest = Map<String, dynamic>.from(results[1] as Map);
       setState(() {
-        _tables = list.cast<Map<String, dynamic>>();
+        _tables = (results[0] as List).cast<Map<String, dynamic>>();
+        _restaurantName = '${rest['name'] ?? ''}'.trim();
         _loading = false;
         _error = null;
       });
@@ -54,11 +59,25 @@ class _TablesPageState extends State<TablesPage> {
     }
   }
 
+  List<String> get _knownZones {
+    final set = <String>{};
+    for (final t in _tables) {
+      set.add(_zoneOf(t));
+    }
+    final extra = set.where((z) => z != kDefaultZone).toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return [kDefaultZone, ...extra];
+  }
+
   Future<void> _addTable() async {
-    final label = await _askLabel(context, title: 'Yangi stol');
-    if (label == null) return;
+    final result = await showDialog<_NewTable>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _AddTableDialog(knownZones: _knownZones),
+    );
+    if (result == null) return;
     try {
-      await api.createTable(label);
+      await api.createTable(result.number, zone: result.zone);
       await _load();
     } catch (e) {
       _toast('$e');
@@ -68,7 +87,7 @@ class _TablesPageState extends State<TablesPage> {
   Future<void> _rename(Map<String, dynamic> t) async {
     final label = await _askLabel(
       context,
-      title: 'Stol nomini o\'zgartirish',
+      title: 'Stol raqamini o\'zgartirish',
       initial: t['label'] as String? ?? '',
     );
     if (label == null) return;
@@ -93,8 +112,8 @@ class _TablesPageState extends State<TablesPage> {
     final ok = await _confirm(
       context,
       title: 'Stolni o\'chirish',
-      message: '"${t['label']}" stoli o\'chiriladi.\n\n'
-          'DIQQAT: menyu varaqasiga chop etilgan QR kod ABADIY ishlamay '
+      message: '"${_zoneOf(t)} · ${t['label']}" stoli o\'chiriladi.\n\n'
+          'DIQQAT: chop etilgan QR kod ABADIY ishlamay '
           'qoladi va uni QAYTARIB BO\'LMAYDI — varaqani qayta chop etish '
           'kerak bo\'ladi.\n\n'
           'Stolni vaqtincha ishlatmaslik uchun o\'chirish o\'rniga '
@@ -119,8 +138,6 @@ class _TablesPageState extends State<TablesPage> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    // Sarlavha/chekinish — umumiy manbadan (`widgets/page_header.dart`),
-    // "Xodimlar" va boshqa bo'limlar bilan bir xil.
     return PageScaffold(
       title: 'Stollar (QR kod)',
       subtitle: 'Har bir stolga QR kod chop etib, stol ustiga qo\'ying. '
@@ -138,21 +155,114 @@ class _TablesPageState extends State<TablesPage> {
                 style: TextStyle(color: OnDexColors.inkDim),
               ),
             )
-          : GridView.builder(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 280,
-                mainAxisExtent: 360,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: _tables.length,
-              itemBuilder: (_, i) => _TableCard(
-                table: _tables[i],
-                onRename: () => _rename(_tables[i]),
-                onToggleActive: () => _toggleActive(_tables[i]),
-                onDelete: () => _delete(_tables[i]),
+          : _TablesByZone(
+              tables: _tables,
+              restaurantName: _restaurantName,
+              onRename: _rename,
+              onToggleActive: _toggleActive,
+              onDelete: _delete,
+              onPrintError: _toast,
+            ),
+    );
+  }
+}
+
+class _TablesByZone extends StatelessWidget {
+  const _TablesByZone({
+    required this.tables,
+    required this.restaurantName,
+    required this.onRename,
+    required this.onToggleActive,
+    required this.onDelete,
+    required this.onPrintError,
+  });
+
+  final List<Map<String, dynamic>> tables;
+  final String restaurantName;
+  final void Function(Map<String, dynamic>) onRename;
+  final void Function(Map<String, dynamic>) onToggleActive;
+  final void Function(Map<String, dynamic>) onDelete;
+  final void Function(String) onPrintError;
+
+  List<MapEntry<String, List<Map<String, dynamic>>>> _groups() {
+    final map = <String, List<Map<String, dynamic>>>{};
+    for (final t in tables) {
+      map.putIfAbsent(_zoneOf(t), () => []).add(t);
+    }
+    final keys = map.keys.toList()
+      ..sort((a, b) {
+        if (a == kDefaultZone && b != kDefaultZone) return -1;
+        if (b == kDefaultZone && a != kDefaultZone) return 1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+    return [for (final k in keys) MapEntry(k, map[k]!)];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _groups();
+    return CustomScrollView(
+      slivers: [
+        for (final g in groups) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12, top: 4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: OnDexColors.primaryTint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.meeting_room_rounded,
+                        color: OnDexColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      g.key,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: OnDexColors.ink,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${g.value.length} ta stol',
+                    style: const TextStyle(
+                      color: OnDexColors.inkDim,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
+          SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 280,
+              mainAxisExtent: 372,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _TableCard(
+                table: g.value[i],
+                restaurantName: restaurantName,
+                onRename: () => onRename(g.value[i]),
+                onToggleActive: () => onToggleActive(g.value[i]),
+                onDelete: () => onDelete(g.value[i]),
+                onPrintError: onPrintError,
+              ),
+              childCount: g.value.length,
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 22)),
+        ],
+      ],
     );
   }
 }
@@ -160,30 +270,34 @@ class _TablesPageState extends State<TablesPage> {
 class _TableCard extends StatelessWidget {
   const _TableCard({
     required this.table,
+    required this.restaurantName,
     required this.onRename,
     required this.onToggleActive,
     required this.onDelete,
+    required this.onPrintError,
   });
 
   final Map<String, dynamic> table;
+  final String restaurantName;
   final VoidCallback onRename;
   final VoidCallback onToggleActive;
   final VoidCallback onDelete;
+  final void Function(String) onPrintError;
 
   @override
   Widget build(BuildContext context) {
     final active = table['active'] == true;
     final label = table['label'] as String? ?? '';
-    // `qr_link` serverда bot nomi aniqlanganda qo'shiladi. Bo'lmasa —
-    // QR chizmaymiz va SABABINI aytamiz: bo'sh joy ko'rsatib qo'yish
-    // restoranni "nega QR yo'q?" deb o'ylantirib qo'yardi.
+    final zone = _zoneOf(table);
     final link = table['qr_link'] as String?;
 
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: active ? Colors.white24 : OnDexColors.danger.withValues(alpha: 0.6),
+          color: active
+              ? OnDexColors.cardBorder
+              : OnDexColors.danger.withValues(alpha: 0.55),
         ),
       ),
       child: Padding(
@@ -192,18 +306,25 @@ class _TableCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  '$label-stol',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    tableText(label),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: OnDexColors.ink,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (!active)
-                  const Text(
-                    'Faol emas',
-                    style: TextStyle(color: Colors.orange, fontSize: 12),
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Text(
+                      'Faol emas',
+                      style: TextStyle(color: Colors.orange, fontSize: 12),
+                    ),
                   ),
                 PopupMenuButton<String>(
                   onSelected: (v) => switch (v) {
@@ -212,12 +333,10 @@ class _TableCard extends StatelessWidget {
                     'delete' => onDelete(),
                     _ => null,
                   },
-                  // "QR kodni yangilash" bandi ATAYLAB yo'q: QR menyu
-                  // varaqasiga chop etilgan va abadiy o'zgarmaydi.
                   itemBuilder: (_) => [
                     const PopupMenuItem(
                       value: 'rename',
-                      child: Text('Nomini o\'zgartirish'),
+                      child: Text('Raqamini o\'zgartirish'),
                     ),
                     PopupMenuItem(
                       value: 'active',
@@ -244,9 +363,6 @@ class _TableCard extends StatelessWidget {
                           style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       )
-                    // Oq fon MAJBURIY: QR skanerlari qorong'i fonda
-                    // teskari kontrastli kodni ko'pincha o'qiy olmaydi,
-                    // panel esa qorong'i mavzuda.
                     : Container(
                         color: Colors.white,
                         padding: const EdgeInsets.all(8),
@@ -262,11 +378,22 @@ class _TableCard extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: FilledButton.icon(
                 onPressed: link == null
                     ? null
-                    : () => _showPrintable(context, label, link),
-                icon: const Icon(Icons.print, size: 18),
+                    : () async {
+                        try {
+                          await printTableQr(
+                            restaurantName: restaurantName,
+                            zone: zone,
+                            label: label,
+                            link: link,
+                          );
+                        } catch (e) {
+                          onPrintError('$e');
+                        }
+                      },
+                icon: const Icon(Icons.print_rounded, size: 18),
                 label: const Text('Chop etish'),
               ),
             ),
@@ -275,58 +402,209 @@ class _TableCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// Chop etishga tayyor ko'rinish — katta QR va stol raqami.
-  ///
-  /// Brauzerning o'z chop etish oynasi ishlatiladi (Ctrl+P): alohida
-  /// PDF kutubxonasi qo'shish shu bitta ekran uchun ortiqcha bo'lardi.
-  static void _showPrintable(BuildContext context, String label, String link) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.white,
+class _NewTable {
+  const _NewTable({required this.zone, required this.number});
+  final String zone;
+  final String number;
+}
+
+class _AddTableDialog extends StatefulWidget {
+  const _AddTableDialog({required this.knownZones});
+  final List<String> knownZones;
+
+  @override
+  State<_AddTableDialog> createState() => _AddTableDialogState();
+}
+
+class _AddTableDialogState extends State<_AddTableDialog> {
+  late final TextEditingController _numberCtrl;
+  late final TextEditingController _zoneCtrl;
+  late List<String> _zones;
+  late String _selected;
+  bool _addingZone = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _numberCtrl = TextEditingController();
+    _zoneCtrl = TextEditingController();
+    _zones = List.of(widget.knownZones);
+    if (!_zones.contains(kDefaultZone)) {
+      _zones.insert(0, kDefaultZone);
+    }
+    _selected = kDefaultZone;
+  }
+
+  @override
+  void dispose() {
+    _numberCtrl.dispose();
+    _zoneCtrl.dispose();
+    super.dispose();
+  }
+
+  void _commitNewZone() {
+    final name = _zoneCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Zona nomini yozing');
+      return;
+    }
+    final exists = _zones.any((z) => z.toLowerCase() == name.toLowerCase());
+    setState(() {
+      _error = null;
+      if (!exists) _zones.add(name);
+      _selected = exists
+          ? _zones.firstWhere((z) => z.toLowerCase() == name.toLowerCase())
+          : name;
+      _addingZone = false;
+      _zoneCtrl.clear();
+    });
+  }
+
+  void _save() {
+    final number = _numberCtrl.text.trim();
+    if (number.isEmpty) {
+      setState(() => _error = 'Stol raqamini kiriting');
+      return;
+    }
+    Navigator.of(context).pop(_NewTable(zone: _selected, number: number));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '$label-STOL',
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
+              const Text(
+                'Yangi stol',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: OnDexColors.ink,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               const Text(
-                'Menyu uchun QR kodni skanerlang',
-                style: TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 16),
-              QrImageView(
-                data: link,
-                version: QrVersions.auto,
-                size: 320,
-                backgroundColor: Colors.white,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Kamerangizni QR kodga tuting',
-                style: TextStyle(color: Colors.black87, fontSize: 15),
+                'Avval zalni tanlang, so\'ng stol raqamini yozing.',
+                style: TextStyle(color: OnDexColors.inkDim, fontSize: 13.5),
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              _sectionTitle('Zona'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Yopish'),
+                  for (final z in _zones)
+                    ChoiceChip(
+                      label: Text(z),
+                      selected: _selected == z,
+                      selectedColor: OnDexColors.primaryTint,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _selected == z
+                            ? OnDexColors.primary
+                            : OnDexColors.ink,
+                      ),
+                      onSelected: (_) => setState(() {
+                        _selected = z;
+                        _error = null;
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (_addingZone)
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _zoneCtrl,
+                        autofocus: true,
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          hintText: 'Zona nomi, masalan: Ayvon',
+                          isDense: true,
+                        ),
+                        onSubmitted: (_) => _commitNewZone(),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Qo\'shish',
+                      onPressed: _commitNewZone,
+                      icon: const Icon(Icons.check_rounded,
+                          color: OnDexColors.success),
+                    ),
+                    IconButton(
+                      tooltip: 'Bekor',
+                      onPressed: () => setState(() {
+                        _addingZone = false;
+                        _zoneCtrl.clear();
+                      }),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                )
+              else
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() {
+                      _addingZone = true;
+                      _error = null;
+                    }),
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text('Yangi zona qo\'shish'),
                   ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Chop etish uchun Ctrl+P',
-                    style: TextStyle(color: Colors.black45, fontSize: 12),
+                ),
+              const SizedBox(height: 14),
+              _sectionTitle('Stol raqami'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _numberCtrl,
+                autofocus: !_addingZone,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  hintText: 'Masalan: 12',
+                  prefixIcon: Icon(Icons.table_restaurant_rounded),
+                ),
+                onSubmitted: (_) => _save(),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: const TextStyle(
+                      color: OnDexColors.danger, fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Bekor qilish'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.save_rounded, size: 18),
+                      label: const Text('Saqlash'),
+                    ),
                   ),
                 ],
               ),
@@ -336,6 +614,112 @@ class _TableCard extends StatelessWidget {
       ),
     );
   }
+
+  static Widget _sectionTitle(String text) => Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 11.5,
+          letterSpacing: 0.7,
+          fontWeight: FontWeight.w800,
+          color: OnDexColors.inkFaint,
+        ),
+      );
+}
+
+/// Chop etish: tizim printer oynasini ochadi.
+/// QR ma'lumoti — serverdagi abadiy `qr_link`, sana/vaqt qo'shilmaydi.
+Future<void> printTableQr({
+  required String restaurantName,
+  required String zone,
+  required String label,
+  required String link,
+}) async {
+  final png = await _qrPng(link);
+  await Printing.layoutPdf(
+    name: '$zone · stol $label',
+    format: PdfPageFormat.a6,
+    onLayout: (format) async {
+      final doc = pw.Document();
+      final image = pw.MemoryImage(png);
+      doc.addPage(
+        pw.Page(
+          pageFormat: format,
+          margin: const pw.EdgeInsets.all(22),
+          build: (_) => pw.Center(
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              children: [
+                if (restaurantName.isNotEmpty)
+                  pw.Text(
+                    restaurantName,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      fontSize: 13,
+                      color: PdfColor.fromInt(0xFF7A6B5C),
+                    ),
+                  ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  zone,
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  tableText(label).toUpperCase(),
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                    fontSize: 28,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 12),
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(
+                      color: PdfColor.fromInt(0xFFEAD9C8),
+                    ),
+                  ),
+                  child: pw.Image(image, width: 180, height: 180),
+                ),
+                pw.SizedBox(height: 12),
+                pw.Text(
+                  'Menyu uchun QR kodni skanerlang',
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return doc.save();
+    },
+  );
+}
+
+Future<Uint8List> _qrPng(String data) async {
+  final painter = QrPainter(
+    data: data,
+    version: QrVersions.auto,
+    gapless: true,
+    color: const Color(0xFF000000),
+    emptyColor: const Color(0xFFFFFFFF),
+  );
+  final bytes = await painter.toImageData(512);
+  if (bytes == null) {
+    throw StateError('QR tasvirini chizib bo\'lmadi');
+  }
+  return bytes.buffer.asUint8List();
+}
+
+String _zoneOf(Map<String, dynamic> table) {
+  final z = (table['zone'] as String?)?.trim() ?? '';
+  return z.isEmpty ? kDefaultZone : z;
 }
 
 Future<String?> _askLabel(
@@ -351,9 +735,10 @@ Future<String?> _askLabel(
       content: TextField(
         controller: ctrl,
         autofocus: true,
+        keyboardType: TextInputType.number,
         decoration: const InputDecoration(
-          labelText: 'Stol nomi',
-          hintText: 'masalan: 5, VIP-2, Ayvon 3',
+          labelText: 'Stol raqami',
+          hintText: 'masalan: 5',
         ),
         onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
       ),

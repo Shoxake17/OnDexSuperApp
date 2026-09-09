@@ -5,13 +5,12 @@ import 'package:ondex_core/ondex_core.dart';
 // o'zgarishsiz kirishda davom etadi. Endi 4 ta ilovada takrorlanmaydi.
 export 'package:ondex_core/ondex_core.dart';
 
-/// Restoran paneli manzili - ONDEX_API_URL dart-define orqali beriladi.
+/// Backend manzili — BUILD vaqtida `--dart-define-from-file` orqali keladi,
+/// bu yerga qattiq yozilmaydi (`config/dev.json`, `config/dev-tunnel.json`,
+/// `config/prod.json`). Sozlama berilmasa `http://localhost:8080`.
+///
+/// Production: `flutter build windows --release --dart-define-from-file=config/prod.json`
 const baseUrl = apiBaseUrl;
-
-/// GET /ws uchun manzil (bilet bilan).
-String wsUrl(String ticket) =>
-    '${baseUrl.replaceFirst('http', 'ws')}/ws?ticket=$ticket';
-
 
 /// Restoran paneli endpointlari.
 ///
@@ -59,13 +58,18 @@ class RestaurantApi extends ApiClient {
   Future<List<dynamic>> tables() async =>
       (await send('GET', '/restaurants/$rid/tables')) as List<dynamic>? ?? [];
 
-  Future<Map<String, dynamic>> createTable(String label) async =>
-      Map<String, dynamic>.from(
-          await send('POST', '/restaurants/$rid/tables', {'label': label}));
+  Future<Map<String, dynamic>> createTable(String label,
+          {String zone = 'Asosiy zal'}) async =>
+      Map<String, dynamic>.from(await send(
+          'POST', '/restaurants/$rid/tables', {'label': label, 'zone': zone}));
 
   Future<Map<String, dynamic>> renameTable(String tableId, String label) async =>
       Map<String, dynamic>.from(
           await send('PATCH', '/tables/$tableId', {'label': label}));
+
+  Future<Map<String, dynamic>> setTableZone(String tableId, String zone) async =>
+      Map<String, dynamic>.from(
+          await send('PATCH', '/tables/$tableId', {'zone': zone}));
 
   Future<Map<String, dynamic>> setTableActive(
           String tableId, bool active) async =>
