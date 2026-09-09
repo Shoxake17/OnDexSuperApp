@@ -24,21 +24,21 @@ dependencies:
   record: ^7.1.1
   flutter_pcm_sound: ^3.3.3
   shared_preferences: ^2.2.0
-  geolocator: ^13.0.1
+  geolocator: ^14.0.3
   google_maps_flutter: ^2.10.0
   web: ^1.1.0
   webview_flutter: ^4.9.0
-  webview_flutter_android: ^4.0.0
+  webview_flutter_android: ^4.14.1
   flutter_secure_storage: ^10.3.1
   firebase_core: ^4.13.0
-  firebase_auth: ^6.5.7
+  firebase_auth: ^6.6.1
   url_launcher: ^6.3.2
   google_sign_in: ^7.2.0
   app_links: ^7.2.1
   local_auth: ^3.0.2
-  local_auth_android: ^2.0.9
+  local_auth_android: ^2.0.10
   crypto: ^3.0.7
-  firebase_messaging: ^16.5.0
+  firebase_messaging: ^16.6.0
   # Stol QR kodini ILOVA ICHIDA skanerlash uchun (`qr_scan_screen.dart`).
   #
   # NEGA KERAK: Telegram Mini App'da kamerani Telegram beradi
@@ -53,13 +53,13 @@ dependencies:
   # KADRDA QR qidiradi — bu yerda esa skanerlash umuman kerak emas va
   # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
   # rasmiy `camera` plagini.
-  camera: ^0.11.0
+  camera: ^0.12.1
   posthog_flutter: ^5.39.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
   # Ilova belgisini (launcher icon) `assets/logo.png` dan barcha
   # Android/iOS o'lchamlariga generatsiya qiladi. Qo'lda 10+ PNG
   # yasash o'rniga bitta buyruq — va o'lchamlardan biri unutilib
