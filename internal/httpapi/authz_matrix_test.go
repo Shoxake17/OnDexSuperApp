@@ -203,7 +203,6 @@ func allowsRole(r authRoute, role users.Role) bool {
 
 // ★ ASOSIY: har bir himoyalangan endpoint × har bir rol.
 func TestAuthorizationMatrix(t *testing.T) {
-	h, jwt := authzServer(t)
 	roles := []users.Role{
 		users.RoleAdmin, users.RoleCustomer, users.RoleRestaurant,
 		users.RoleCourier, users.RoleWaiter,
@@ -212,6 +211,23 @@ func TestAuthorizationMatrix(t *testing.T) {
 	t.Logf("himoyalangan endpointlar: %d ta", len(routes))
 
 	for _, r := range routes {
+		// ┌─ HAR ENDPOINT UCHUN YANGI FIKSTURA (tuzatilgan beqaror test) ───┐
+		// Matritsa `POST /auth/logout` ni ham har bir rol tokeni bilan
+		// uradi, u esa SHU foydalanuvchining oldingi barcha tokenlarini
+		// bekor qiladi (`revoke`, soniya aniqligida). Fikstura butun test
+		// uchun BITTA bo'lganda tokenlar N-soniyada chiqarilib, logout
+		// N+1-soniyaga to'g'ri kelsa, undan keyingi BARCHA endpointlar
+		// (routes_catalog.go, routes_me.go, ... alifbo tartibida) 401
+		// olardi. Natija mashina tezligiga bog'liq edi: tez lokal
+		// mashinada hammasi bir soniyaga sig'ib o'tardi, CI'da `-race`
+		// sekinlashtirgani uchun yiqildi.
+		//
+		// Parol almashtirish, akkaunt/restoran/kuryer o'chirish ham
+		// sessiyani bekor qiladi — shuning uchun "xavfli endpointlar
+		// ro'yxati" emas (yangisi qo'shilganda unutilardi), to'liq
+		// izolyatsiya: bitta endpointning yon ta'siri boshqasiga o'tmaydi.
+		// └────────────────────────────────────────────────────────────────┘
+		h, jwt := authzServer(t)
 		for _, role := range roles {
 			t.Run(string(role)+"_"+r.method+"_"+r.pattern, func(t *testing.T) {
 				w := do(t, h, r.method, r.path, jwt[role], `{}`)
