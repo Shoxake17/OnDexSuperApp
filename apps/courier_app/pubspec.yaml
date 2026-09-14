@@ -18,7 +18,7 @@ dependencies:
   # martalik ko'chirish uchun qoldirilgan (lib/token_store.dart).
   flutter_secure_storage: ^10.3.1
   web_socket_channel: ^3.0.0
-  geolocator: ^13.0.1
+  geolocator: ^14.0.3
   google_maps_flutter: ^2.10.0
   web: ^1.1.0
   # Google Maps veb'da xom HTML platform-view (HtmlElementView) sifatida
