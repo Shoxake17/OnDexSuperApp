@@ -21,7 +21,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
 	"chustapp/internal/tables"
 	"chustapp/internal/users"
@@ -365,142 +364,9 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, resp)
 		}))
 
-	// ---------- Affitsiantlar ----------
-
-	// GET /restaurants/{id}/waiters
-	mux.HandleFunc("GET /restaurants/{id}/waiters", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			list, err := s.waitersOf(r, restaurantID)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, list)
-		}))
-
-	// POST /restaurants/{id}/waiters  {"phone":"+998...","name":"Ali"}
-	//
-	// Akkaunt YARATILADI, lekin parol o'rnatilmaydi: affitsiant o'z
-	// ilovasida SMS kod bilan kiradi (mavjud oqim). Shu sababli
-	// restoran hech qachon xodimning parolini bilmaydi.
-	mux.HandleFunc("POST /restaurants/{id}/waiters", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			var req struct {
-				Phone string `json:"phone"`
-				Name  string `json:"name"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			phone, err := users.NormalizePhone(req.Phone)
-			if err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			name := strings.TrimSpace(req.Name)
-			if name == "" {
-				httpError(w, http.StatusBadRequest, errors.New("ism bo'sh bo'lishi mumkin emas"))
-				return
-			}
-			// ┌─ MAVJUD AKKAUNT ─────────────────────────────────────┐
-			// Raqam allaqachon ro'yxatda bo'lsa YANGI akkaunt
-			// yaratilmaydi va MAVJUDI ham o'zgartirilmaydi.
-			//
-			// Nega: aks holda restoran istalgan telefon raqamini
-			// kiritib, o'sha odamning akkauntini o'z affitsiantiga
-			// AYLANTIRIB yuborardi — jabrlanuvchi o'z buyurtmalari
-			// o'rniga restoran buyurtmalarini ko'rib qolardi. Bu
-			// akkauntni egallashning to'g'ridan-to'g'ri yo'li.
-			// └───────────────────────────────────────────────────────┘
-			if existing, err := s.UserRepo.GetByPhone(r.Context(), phone); err == nil {
-				if existing.Role == users.RoleWaiter && existing.EntityID == restaurantID {
-					httpError(w, http.StatusConflict,
-						errors.New("bu affitsiant allaqachon qo'shilgan"))
-					return
-				}
-				httpError(w, http.StatusConflict,
-					errors.New("bu telefon raqam boshqa akkauntga biriktirilgan"))
-				return
-			}
-			account := users.User{
-				ID: NewID(), Phone: phone, Name: name,
-				Role: users.RoleWaiter, EntityID: restaurantID,
-				CreatedAt: time.Now(),
-			}
-			if err := s.UserRepo.Create(r.Context(), &account); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, account)
-		}))
-
-	// DELETE /restaurants/{id}/waiters/{waiterID}
-	mux.HandleFunc("DELETE /restaurants/{id}/waiters/{waiterID}", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			waiterID := r.PathValue("waiterID")
-			u, err := s.UserRepo.GetByID(r.Context(), waiterID)
-			if err != nil || u.Role != users.RoleWaiter || u.EntityID != restaurantID {
-				httpError(w, http.StatusNotFound, errors.New("affitsiant topilmadi"))
-				return
-			}
-			// ┌─ O'CHIRISH EMAS, ROLNI QAYTARISH ────────────────────┐
-			// Affitsiantni ishdan bo'shatish uning SHAXSIY
-			// akkauntini yo'q qilmasligi kerak: o'sha odam bir
-			// vaqtning o'zida oddiy mijoz ham bo'lishi mumkin va
-			// uning buyurtmalar tarixi, manzili, sevimlilari
-			// akkauntga bog'langan.
-			//
-			// Shuning uchun rol `customer` ga qaytariladi va
-			// `EntityID` tozalanadi — restoran ma'lumotlariga
-			// kirish shu zahoti yopiladi.
-			// └───────────────────────────────────────────────────────┘
-			if err := s.UserRepo.UpdateRole(r.Context(), waiterID, users.RoleCustomer, ""); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			// Rolni bazada o'zgartirish YETARLI EMAS: `auth()` faqat
-			// imzoni tekshiradi va ESKI tokendagi rol `waiter` bo'lib
-			// qolaveradi — u 30 kun ishlayverardi. Sessiyani bekor
-			// qilish uni darhol to'xtatadi (restoran o'chirilganda
-			// ham xuddi shu qadam qo'yiladi — routes_admin.go).
-			s.Revoked.Revoke(r.Context(), waiterID)
-			writeJSON(w, http.StatusOK, map[string]bool{"removed": true})
-		}))
-}
-
-// waitersOf — restoranning affitsiantlari.
-//
-// `ListByRole` + filtr: bitta restoranda affitsiantlar soni o'nlab,
-// shuning uchun alohida repository metodi va migratsiya shart emas
-// (`restaurantPhoneFor` bilan bir xil mulohaza — authz.go).
-func (s *Server) waitersOf(r *http.Request, restaurantID string) ([]*users.User, error) {
-	all, err := s.UserRepo.ListByRole(r.Context(), users.RoleWaiter)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*users.User, 0, 4)
-	for _, u := range all {
-		if u.EntityID == restaurantID {
-			out = append(out, u)
-		}
-	}
-	return out, nil
+	// Affitsiantlar endi "Xodimlar" bo'limida boshqariladi
+	// (`routes_staff.go`, `internal/staff`): ilovaga kirish xodim
+	// yozuviga ergashadi va ta'til/ishdan bo'shatishda darhol yopiladi.
 }
 
 // tableOccupancy — joylar holati uchun buyurtmalar.

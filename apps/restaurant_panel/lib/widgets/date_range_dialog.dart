@@ -125,6 +125,134 @@ Future<DateTime?> showOnDexDateTimePicker({
   return result is DateTime ? result : null;
 }
 
+/// Vaqt (soat:daqiqa) — kalendardagi bilan bir xil maydon va tezkor
+/// tanlovlar bilan (ish vaqti jadvali uchun).
+Future<TimeOfDay?> showOnDexTimePicker({
+  required BuildContext context,
+  required TimeOfDay initial,
+  String title = 'Vaqtni tanlang',
+}) =>
+    showDialog<TimeOfDay>(
+      context: context,
+      builder: (_) => _TimeDialog(initial: initial, title: title),
+    );
+
+class _TimeDialog extends StatefulWidget {
+  const _TimeDialog({required this.initial, required this.title});
+
+  final TimeOfDay initial;
+  final String title;
+
+  @override
+  State<_TimeDialog> createState() => _TimeDialogState();
+}
+
+class _TimeDialogState extends State<_TimeDialog> {
+  late int _hour = widget.initial.hour;
+  late int _minute = widget.initial.minute;
+
+  static const _quick = ['00:00', '07:00', '08:00', '09:00', '10:00', '18:00', '20:00', '22:00', '23:00'];
+
+  @override
+  Widget build(BuildContext context) {
+    final current = '${_two(_hour)}:${_two(_minute)}';
+    return Dialog(
+      backgroundColor: OnDexColors.cardBg,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                        color: OnDexColors.primaryTint, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.schedule_rounded, size: 19, color: OnDexColors.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
+                  ),
+                  IconButton(
+                    tooltip: 'Yopish',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, size: 20, color: OnDexColors.inkDim),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Center(
+                child: _TimeField(
+                  hour: _hour,
+                  minute: _minute,
+                  onHour: (h) => setState(() => _hour = h),
+                  onMinute: (m) => setState(() => _minute = m),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final q in _quick)
+                    _PresetChip(
+                      label: q,
+                      selected: q == current,
+                      onTap: () => setState(() {
+                        _hour = int.parse(q.substring(0, 2));
+                        _minute = int.parse(q.substring(3));
+                      }),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                        foregroundColor: OnDexColors.inkDim, minimumSize: const Size(0, 40)),
+                    child: const Text('Bekor qilish'),
+                  ),
+                  FilledButton(
+                    key: const ValueKey('time-apply'),
+                    onPressed: () => Navigator.of(context).pop(TimeOfDay(hour: _hour, minute: _minute)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: OnDexColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Qo\'llash'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Yordamchilar ─────────────────────────────────────────────────────────
 
 const _monthNames = [

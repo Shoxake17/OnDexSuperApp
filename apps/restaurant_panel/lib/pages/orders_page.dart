@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 // (u butun paketni qayta eksport qiladi).
 import '../api.dart';
 import '../live.dart';
+import '../panel_prefs.dart';
 import '../sound.dart';
 import '../widgets/order_card_header.dart';
 import '../widgets/page_header.dart';
@@ -130,6 +131,8 @@ class _OrdersPageState extends State<OrdersPage> {
     if (!mounted) return;
     switch (e['type']) {
       case 'new_order':
+        // "Restoran sozlamalari" → "Bildirishnomalar" (shu kompyuter uchun).
+        if (!PanelPrefs.newOrderBanner.value) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(
               'YANGI BUYURTMA! ${formatSum((e['total_tiyin'] ?? 0) as int)}'),
@@ -140,6 +143,7 @@ class _OrdersPageState extends State<OrdersPage> {
         // xabar faqat haqiqiy infratuzilma xatosida keladi (masalan
         // server ichki xatosi), oddiy "hozircha kuryer yo'q" holatida
         // EMAS. Qo'lda qayta urinish tugmasi yo'q — kerak ham emas.
+        if (!PanelPrefs.courierAlerts.value) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
               'Kuryer qidirishda kutilmagan xato yuz berdi — server jurnalini tekshiring.'),

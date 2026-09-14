@@ -19,6 +19,26 @@ type Restaurant struct {
 	CoverURL string  `json:"cover_url"`
 	Tags     string  `json:"tags"`
 
+	// ┌─ KIM NIMANI O'ZGARTIRADI ─────────────────────────────────────────┐
+	// Nomi, turi, manzili, joylashuvi (va akkaunt telefoni) — FAQAT
+	// admin (`POST /admin/restaurants/{id}`): ular shartnoma, xarita va
+	// kuryer taqsimotiga bog'liq. Logo, muqova, tavsif, ish vaqti va
+	// to'lov usullari — restoranning o'zi (`PATCH /restaurants/{id}/settings`,
+	// ruxsat etilgan maydonlar ro'yxati serverda).
+	// └───────────────────────────────────────────────────────────────────┘
+
+	// Kind — muassasa turi (bo'sh — belgilanmagan).
+	Kind RestaurantKind `json:"kind"`
+	// Description — mijozga ko'rinadigan tavsif (`NormalizeDescription`).
+	Description string `json:"description"`
+	// WorkingHours — haftalik ish vaqti; `nil` — cheklanmagan.
+	WorkingHours *WorkingHours `json:"working_hours"`
+	// PaymentMethods — `nil` — standart (`DefaultPaymentMethods`).
+	PaymentMethods *PaymentMethods `json:"payment_methods"`
+	// OpenNow — HISOBLANADIGAN, saqlanmaydi: hozir buyurtma qabul
+	// qilinadimi (`Open` VA ish vaqti). Faqat ochiq javoblarda to'ldiriladi.
+	OpenNow *bool `json:"open_now,omitempty"`
+
 	// ┌─ 0 = "MA'LUMOT YO'Q", "yomon" EMAS ────────────────────────────┐
 	// Mijoz tomonida 0 bo'lganda tegishli chip UMUMAN chizilmaydi —
 	// "0.0 ★" yoki "0 daqiqa" ko'rsatilmaydi. Shu sabab bu maydonlar

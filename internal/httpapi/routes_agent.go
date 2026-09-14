@@ -565,6 +565,11 @@ func (s *Server) placeAgentOrder(ctx context.Context, d *agentapi.Draft) (string
 	if restaurantID != d.RestaurantID {
 		return "", errors.New("menyu o'zgargan — qoralamani qaytadan yarating")
 	}
+	// Agent buyurtmasi yetkazishda to'lanadi — restoran joyida to'lovni
+	// o'chirgan bo'lsa (faqat onlayn karta), buyurtma yaratilmaydi.
+	if err := s.CatalogSvc.CheckPayment(ctx, restaurantID, orders.PaymentCash); err != nil {
+		return "", err
+	}
 	o := orders.Order{
 		CustomerID:   d.UserID,
 		RestaurantID: restaurantID,

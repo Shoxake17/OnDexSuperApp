@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'panel_prefs.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
 import 'theme.dart';
@@ -15,6 +16,10 @@ void main() async {
   // Xatolik ilovani TO'XTATMAYDI: tahlil hech qachon ishga tushishga
   // to'sqinlik qilmasligi kerak.
   await Analytics.bootstrap();
+
+  // Shu kompyuterdagi bildirishnoma sozlamalari (ovoz, xabarlar) —
+  // birinchi buyurtma kelishidan OLDIN o'qilishi kerak.
+  await PanelPrefs.load();
 
   runApp(const RestaurantApp());
 }

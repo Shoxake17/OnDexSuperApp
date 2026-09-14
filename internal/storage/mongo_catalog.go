@@ -33,6 +33,14 @@ type mongoRestaurant struct {
 	LogoURL  string  `bson:"logo_url"`
 	CoverURL string  `bson:"cover_url"`
 	Tags     string  `bson:"tags"`
+	// Sozlamalar. Eski hujjatlarda yo'q — nol qiymat: tur belgilanmagan,
+	// tavsif bo'sh, ish vaqti cheklanmagan, to'lov usullari standart.
+	// `omitempty` ATAYLAB yo'q: bo'shatilgan tavsif `$set` bilan yozilganda
+	// ham eski qiymat qolib ketmasin.
+	Kind           string                  `bson:"kind"`
+	Description    string                  `bson:"description"`
+	WorkingHours   *catalog.WorkingHours   `bson:"working_hours"`
+	PaymentMethods *catalog.PaymentMethods `bson:"payment_methods"`
 	// Eski hujjatlarda bu maydonlar YO'Q — BSON ularni nol qiymat bilan
 	// qoldiradi, ya'ni "ma'lumot yo'q". Migratsiya kerak emas.
 	Rating        float64 `bson:"rating"`
@@ -50,6 +58,8 @@ func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 	return &catalog.Restaurant{
 		ID: d.ID, Name: d.Name, Address: d.Address, Lat: d.Lat, Lng: d.Lng, Open: d.Open,
 		LogoURL: d.LogoURL, CoverURL: d.CoverURL, Tags: d.Tags,
+		Kind: catalog.RestaurantKind(d.Kind), Description: d.Description,
+		WorkingHours: d.WorkingHours, PaymentMethods: d.PaymentMethods,
 		Rating: d.Rating, RatingCount: d.RatingCount,
 		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
 		Scene3DURL: d.Scene3DURL, Scene3DSHA256: d.Scene3DSHA256, Scene3DBytes: d.Scene3DBytes,
@@ -60,6 +70,8 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 	return mongoRestaurant{
 		ID: x.ID, Name: x.Name, Address: x.Address, Lat: x.Lat, Lng: x.Lng, Open: x.Open,
 		LogoURL: x.LogoURL, CoverURL: x.CoverURL, Tags: x.Tags,
+		Kind: string(x.Kind), Description: x.Description,
+		WorkingHours: x.WorkingHours, PaymentMethods: x.PaymentMethods,
 		Rating: x.Rating, RatingCount: x.RatingCount,
 		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
 		Scene3DURL: x.Scene3DURL, Scene3DSHA256: x.Scene3DSHA256, Scene3DBytes: x.Scene3DBytes,

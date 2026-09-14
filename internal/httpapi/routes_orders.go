@@ -83,6 +83,11 @@ func (s *Server) createDineInOrder(
 			errors.New("savatdagi taomlar bu restoranga tegishli emas"))
 		return
 	}
+	// Restoran "To'lov usullari" sozlamasi — serverda majburiy.
+	if err := s.CatalogSvc.CheckPayment(r.Context(), restaurantID, paymentMethod); err != nil {
+		httpError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	o := orders.Order{
 		CustomerID:     claimsFrom(r).Subject,
@@ -194,6 +199,11 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 
 			restaurantID, items, err := s.CatalogSvc.PriceOrder(r.Context(), req.Items)
 			if err != nil {
+				httpError(w, http.StatusBadRequest, err)
+				return
+			}
+			// Restoran "To'lov usullari" sozlamasi — serverda majburiy.
+			if err := s.CatalogSvc.CheckPayment(r.Context(), restaurantID, paymentMethod); err != nil {
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}

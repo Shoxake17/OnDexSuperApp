@@ -59,3 +59,7 @@ flutter:
     # CHIZILARDI (rangli kvadrat + ikonka + "Ondex" matni), ya'ni
     # haqiqiy logotipga o'xshamasdi.
     - assets/ondex.png
+    # To'lov tizimlari brend logotiplari (mijoz ilovasidagi bilan bir xil
+    # fayllar) — "Restoran sozlamalari" → "To'lov usullari".
+    - assets/payments/click.png
+    - assets/payments/payme.png

@@ -33,6 +33,18 @@ class RestaurantApi extends ApiClient {
   Future<void> setOpen(bool open) =>
       send('POST', '/restaurants/$rid/open', {'open': open});
 
+  /// "Restoran sozlamalari". Nomi, turi, telefoni, manzili — faqat ko'rish
+  /// uchun (`locked`): ularni faqat OnDex administratori o'zgartiradi.
+  Future<Map<String, dynamic>> restaurantSettings() async =>
+      Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/settings') as Map);
+
+  /// Faqat ruxsat etilgan maydonlar: `logo_url`, `cover_url`, `description`,
+  /// `working_hours` (null — cheklanmagan), `payment_methods`. Boshqa maydon
+  /// yuborilsa server 403/400 qaytaradi.
+  Future<Map<String, dynamic>> updateRestaurantSettings(Map<String, Object?> patch) async =>
+      Map<String, dynamic>.from(
+          await send('PATCH', '/restaurants/$rid/settings', patch) as Map);
+
   Future<List<dynamic>> orders() async =>
       (await send('GET', '/restaurants/$rid/orders')) as List<dynamic>? ?? [];
 
@@ -107,20 +119,36 @@ class RestaurantApi extends ApiClient {
 
   // ---------- Affitsiantlar ----------
 
-  Future<List<dynamic>> waiters() async =>
-      (await send('GET', '/restaurants/$rid/waiters')) as List<dynamic>? ?? [];
+  /// "Xodimlar": ro'yxat, kartalar, lavozimlar taqsimoti va so'nggi
+  /// faoliyat — bitta javobda.
+  Future<Map<String, dynamic>> staffOverview() async =>
+      Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/staff') as Map);
 
-  /// Affitsiant akkauntini yaratadi. Parol o'rnatilmaydi — xodim o'z
-  /// ilovasida SMS kod bilan kiradi, ya'ni restoran uning parolini
-  /// hech qachon bilmaydi.
-  Future<Map<String, dynamic>> addWaiter(String phone, String name) async =>
-      Map<String, dynamic>.from(await send(
-          'POST', '/restaurants/$rid/waiters', {'phone': phone, 'name': name}));
+  /// Yangi xodim. Ofitsiantga `app_access: true` berilsa "OnDex Affitsiant"
+  /// akkaunti ochiladi — parolsiz, xodim SMS/Telegram kod bilan kiradi.
+  Future<Map<String, dynamic>> createStaff(Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(await send('POST', '/restaurants/$rid/staff', body) as Map);
 
-  /// Ishdan bo'shatish: rol `customer` ga qaytariladi va sessiya
-  /// darhol bekor qilinadi (akkauntning o'zi o'chirilmaydi).
-  Future<void> removeWaiter(String waiterId) =>
-      send('DELETE', '/restaurants/$rid/waiters/$waiterId');
+  /// Faqat o'zgargan maydonlar (`schedule: null` — jadvalni olib tashlash).
+  Future<Map<String, dynamic>> updateStaff(String id, Map<String, dynamic> patch) async =>
+      Map<String, dynamic>.from(await send('PATCH', '/restaurants/$rid/staff/$id', patch) as Map);
+
+  /// `active` / `on_leave` / `dismissed`. Ta'til va ishdan bo'shatishda
+  /// ilovaga kirish serverda DARHOL yopiladi; yozuv o'chirilmaydi.
+  Future<Map<String, dynamic>> setStaffStatus(String id, String status) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/restaurants/$rid/staff/$id/status', {'status': status}) as Map);
+
+  Future<List<dynamic>> staffActivity(String id) async {
+    final res = await send('GET', '/restaurants/$rid/staff/$id/activity');
+    return (res is Map ? res['items'] as List<dynamic>? : null) ?? const [];
+  }
+
+  /// Oylik hisobot (`month` — "2026-09"): har bir xodimning ish kunlari,
+  /// soatlari, ta'tili va hisoblangan maoshi — ish jadvali va holatlar
+  /// tarixi bo'yicha.
+  Future<Map<String, dynamic>> staffReport(String month) async => Map<String, dynamic>.from(
+      await send('GET', '/restaurants/$rid/staff/report?month=${Uri.encodeQueryComponent(month)}') as Map);
 
   /// Menyu — panel uchun TO'LIQ ro'yxat.
   ///

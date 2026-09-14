@@ -610,19 +610,9 @@ class _TablesHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = Row(
+    const title = Row(
       children: [
-        Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: OnDexColors.primaryTint,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Icon(Icons.table_restaurant_rounded, color: OnDexColors.primary, size: 28),
-        ),
-        const SizedBox(width: 14),
-        const Flexible(
+        Flexible(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -693,7 +683,7 @@ class _TablesHeader extends StatelessWidget {
       if (w >= 980) {
         top = Row(
           children: [
-            Expanded(child: title),
+            const Expanded(child: title),
             const SizedBox(width: 16),
             SizedBox(width: w >= 1300 ? 340 : 270, child: search),
             const SizedBox(width: 10),

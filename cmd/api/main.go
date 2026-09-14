@@ -41,6 +41,7 @@ import (
 	"chustapp/internal/search"
 	"chustapp/internal/stats"
 	"chustapp/internal/storage"
+	"chustapp/internal/staff"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
 	"chustapp/internal/users"
@@ -884,6 +885,21 @@ func main() {
 	}
 	tableSvc := tables.NewService(tableRepo)
 
+	// ── Xodimlar ("Xodimlar" bo'limi) ──
+	//
+	// Ofitsiantning ilovaga kirishi `users` jadvalidagi akkaunt bilan
+	// bog'liq, shuning uchun xodimlar ham o'sha omborda (Postgres/xotira).
+	var staffRepo staff.Repository
+	if pgPool != nil {
+		staffRepo = storage.NewPgStaffRepo(pgPool)
+	} else {
+		staffRepo = storage.NewMemoryStaffRepo()
+		slog.Warn("rejim: in-memory (xodimlar) — xodimlar ro'yxati server qayta ishga tushganda yo'qoladi")
+	}
+	staffSvc := staff.NewService(staffRepo, &staff.UserAccounts{
+		Users: userRepo, Revoked: revokedSessions, NewID: httpapi.NewID,
+	})
+
 	// â”€â”€ Tashqi AI agentlar (integratsiya sheriklari) â”€â”€
 	//
 	// â”Œâ”€ NEGA XOTIRA REJIMIDA O'CHIQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
@@ -1104,6 +1120,7 @@ func main() {
 		OrderSvc:           orderSvc,
 		CatalogSvc:         catalogSvc,
 		TableSvc:           tableSvc,
+		StaffSvc:           staffSvc,
 		TableOrders:        tableOrders,
 		Payments:           paymentSvc,
 		OctoClient:         octoClient,

@@ -9,6 +9,7 @@ import '../pages/help_page.dart';
 import '../pages/menu_page.dart';
 import '../pages/orders_page.dart';
 import '../pages/promotions_page.dart';
+import '../pages/restaurant_settings_page.dart';
 import '../pages/staff_page.dart';
 import '../pages/statistics_page.dart';
 import '../pages/tables_page.dart';
@@ -20,6 +21,7 @@ const _iDashboard = 0;
 const _iOrders = 1;
 const _iMenu = 2;
 const _iStatistics = 5;
+const _iSettings = 7;
 
 class RestaurantShell extends StatefulWidget {
   const RestaurantShell({super.key});
@@ -44,6 +46,10 @@ class _RestaurantShellState extends State<RestaurantShell> {
   /// tugmalarining umumiy holati — shu yerda, ya'ni boshqa sahifaga o'tib
   /// qaytganda tanlangan davr saqlanadi.
   final _stats = StatisticsController();
+
+  /// "Restoran sozlamalari" da saqlanmagan o'zgarish bo'lsa, boshqa
+  /// sahifaga o'tishdan oldin so'raladi.
+  final _settingsGuard = SettingsLeaveGuard();
 
   @override
   void initState() {
@@ -168,6 +174,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
     3: 'Aksiyalar',
     4: 'Stollar',
     _iStatistics: 'Statistika',
+    _iSettings: 'Sozlamalar',
     8: 'Xodimlar',
     9: 'Bildirishnomalar',
     10: 'Yordam',
@@ -181,7 +188,10 @@ class _RestaurantShellState extends State<RestaurantShell> {
     _stats.openHistory(backLabel: 'Buyurtmalar', onBack: () => _goTo(_iOrders));
   }
 
-  void _goTo(int i) {
+  Future<void> _goTo(int i) async {
+    if (_index == _iSettings && i != _iSettings && _settingsGuard.hasUnsavedChanges) {
+      if (!await confirmDiscardSettings(context) || !mounted) return;
+    }
     // Yon menyudan "Statistika" bosilsa — "Barcha buyurtmalar" ichida
     // bo'lsa ham asosiy statistikaga qaytadi.
     if (i == _iStatistics) _stats.closeHistory();
@@ -253,12 +263,13 @@ class _RestaurantShellState extends State<RestaurantShell> {
           description:
               'To\'lov tarixi, komissiya tafsiloti, bank rekvizitlari — to\'lov tizimi (Payme/Click) ulanganidan keyin qo\'shiladi.',
         );
-      case 7:
-        return const ComingSoonPage(
-          title: 'Restoran sozlamalari',
-          icon: Icons.settings_rounded,
-          description:
-              'Ish vaqti jadvali, yetkazish sozlamalari — tez orada. Hozircha restoran profilini superadmin tahrirlaydi.',
+      case _iSettings:
+        return RestaurantSettingsPage(
+          guard: _settingsGuard,
+          open: _open,
+          onOpenChanged: _toggleOpen,
+          // Logo o'zgarsa yuqori panel va yon menyuda ham darhol yangilansin.
+          onSaved: _loadInfo,
         );
       case 8:
         return const StaffPage();

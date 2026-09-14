@@ -473,6 +473,18 @@ class _LogoThumb extends StatelessWidget {
 
 /// Restoranni tahrirlash oynasi: nomi, manzili/joylashuvi (xarita orqali),
 /// logo (kvadrat) va cover/banner (keng) rasmlari.
+/// Server bilan BIR XIL ro'yxat (`internal/catalog/settings.go` →
+/// `RestaurantKinds`). Server noma'lum qiymatni 400 bilan rad etadi.
+const _restaurantKinds = <(String, String)>[
+  ('restaurant', 'Restoran'),
+  ('cafe', 'Kafe'),
+  ('canteen', 'Oshxona'),
+  ('teahouse', 'Choyxona'),
+  ('fast_food', 'Fast food'),
+  ('coffee_shop', 'Qahvaxona'),
+  ('bakery', 'Qandolatxona'),
+];
+
 class _EditRestaurantDialog extends StatefulWidget {
   final Map<String, dynamic> restaurant;
   const _EditRestaurantDialog({required this.restaurant});
@@ -493,6 +505,9 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
   late final TextEditingController _etaMax;
   late double _lat;
   late double _lng;
+
+  /// Restoran turi — restoran paneli uni O'ZGARTIRA OLMAYDI, faqat shu yerda.
+  late String _kind;
 
   Uint8List? _logoBytes;
   String? _logoName;
@@ -520,6 +535,9 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
     _etaMax = TextEditingController(text: _numOrEmpty(r['eta_max_minutes']));
     _lat = (r['lat'] as num?)?.toDouble() ?? 41.0030;
     _lng = (r['lng'] as num?)?.toDouble() ?? 71.2360;
+    final kind = r['kind'] as String? ?? '';
+    // Noma'lum qiymat (eski yozuv) ro'yxatda yo'q — "Belgilanmagan" ko'rinadi.
+    _kind = _restaurantKinds.any((k) => k.$1 == kind) ? kind : '';
     _existingLogoUrl = r['logo_url'] as String? ?? '';
     _existingCoverUrl = r['cover_url'] as String? ?? '';
   }
@@ -640,6 +658,7 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
         logoUrl: logoUrl,
         coverUrl: coverUrl,
         tags: _tags.text.trim(),
+        kind: _kind,
         rating: rating,
         ratingCount: ratingCount.toInt(),
         etaMinMinutes: etaMin.toInt(),
@@ -726,6 +745,21 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('restaurant-kind'),
+                initialValue: _kind,
+                decoration: const InputDecoration(
+                  labelText: 'Restoran turi',
+                  helperText: 'Restoran paneli bu maydonni o\'zgartira olmaydi',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('Belgilanmagan')),
+                  for (final k in _restaurantKinds) DropdownMenuItem(value: k.$1, child: Text(k.$2)),
+                ],
+                onChanged: _saving ? null : (v) => setState(() => _kind = v ?? ''),
               ),
               const SizedBox(height: 8),
               TextField(

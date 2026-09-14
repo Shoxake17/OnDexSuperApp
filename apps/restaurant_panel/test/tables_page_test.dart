@@ -168,7 +168,16 @@ void main() {
         final rowY = tester.getCenter(find.byType(TextField).first).dy;
         expect((tester.getCenter(find.text('Yangi stol qo\'shish')).dy - rowY).abs(), lessThan(2));
         expect((tester.getCenter(find.byTooltip('Holat va zal bo\'yicha filtr')).dy - rowY).abs(), lessThan(2));
-        expect((tester.getCenter(find.byIcon(Icons.table_restaurant_rounded).first).dy - rowY).abs(), lessThan(2));
+        // Sarlavhada ikonka yo'q — "QR Stollar" matni sahifa chetidan boshlanadi
+        // (stol ikonkasi faqat kartalarda qoladi).
+        expect(tester.getTopLeft(find.text('QR Stollar')).dx, closeTo(24, 0.5));
+        expect(
+          find.byIcon(Icons.table_restaurant_rounded).evaluate().where((e) {
+            final box = e.renderObject! as RenderBox;
+            return (box.localToGlobal(box.size.center(Offset.zero)).dy - rowY).abs() < 30;
+          }),
+          isEmpty,
+        );
         final chip = find.ancestor(of: find.text('Barchasi'), matching: find.byType(Material)).first;
         expect(tester.getTopLeft(chip).dx, closeTo(24, 0.5));
         expect(tester.getTopLeft(chip).dy, greaterThan(rowY + 20));

@@ -222,8 +222,11 @@ class AdminApi extends ApiClient {
     String logoUrl = '',
     String coverUrl = '',
     String tags = '',
+    // Restoran turi (`catalog.RestaurantKinds`). null — o'zgartirilmaydi.
+    String? kind,
   }) async =>
       Map<String, dynamic>.from(await send('POST', '/admin/restaurants/$id', {
+        if (kind != null) 'kind': kind,
         'name': name,
         'address': address,
         'lat': lat,

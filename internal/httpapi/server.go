@@ -40,6 +40,7 @@ import (
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/scenes"
+	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
@@ -109,6 +110,10 @@ type Deps struct {
 	// TableOrders — joylar holati (band/bo'sh) uchun stol buyurtmalari.
 	// `nil` bo'lsa holatlar buyurtmasiz hisoblanadi (hamma joy "bo'sh").
 	TableOrders tables.OrdersSource
+
+	// StaffSvc — "Xodimlar" bo'limi (`internal/staff`). `nil` bo'lsa
+	// xodim endpointlari 503 qaytaradi.
+	StaffSvc *staff.Service
 
 	// Payments â€” karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
 	// 503 qaytaradi va buyurtmalar faqat NAQD bo'ladi (tizimning
@@ -303,6 +308,8 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
 	s.registerStatsRoutes(mux)
+	s.registerRestaurantSettingsRoutes(mux)
+	s.registerStaffRoutes(mux)
 	s.registerTableRoutes(mux)
 	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)
