@@ -126,7 +126,7 @@ func TestNames(t *testing.T) {
 			t.Errorf("%q rad etildi: %v", good, err)
 		}
 	}
-	for _, bad := range []string{"", "Ali7", "<b>", "a‮b", "Ali" + string(rune(0)) + "Vali"} {
+	for _, bad := range []string{"", "Ali7", "<b>", "a\u202eb", "Ali" + string(rune(0)) + "Vali"} {
 		if _, err := normalizeName(bad, true); err == nil {
 			t.Errorf("%q qabul qilindi", bad)
 		}

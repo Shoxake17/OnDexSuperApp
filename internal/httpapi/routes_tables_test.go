@@ -122,7 +122,6 @@ func TestTablesListShowsLiveStatus(t *testing.T) {
 		{ID: "o4", RestaurantID: testRestB, Type: orders.TypeDineIn, TableID: closed.ID,
 			Status: orders.StatusPreparing, CreatedAt: now},
 	} {
-		o := o
 		if err := repo.Save(ctx, &o); err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +206,7 @@ func TestTablesCreateBatchAndKinds(t *testing.T) {
 	}
 	// Chetdagi bo'shliq (yangi qator ham) kesiladi — bu xato emas; nom ICHIDAGI
 	// boshqaruv belgisi esa rad etiladi.
-	if w := do(t, h, "POST", path, jwt["a"], `{"label":"5A","kind":"table"}`); w.Code != http.StatusBadRequest {
+	if w := do(t, h, "POST", path, jwt["a"], `{"label":"5\u0007A","kind":"table"}`); w.Code != http.StatusBadRequest {
 		t.Errorf("boshqaruv belgili nom: %d", w.Code)
 	}
 	// Ro'yxat xom holda sanaladi: `listTables` nom bo'yicha xarita quradi,

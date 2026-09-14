@@ -177,7 +177,7 @@ func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *U
 		return "", nil, ErrInvalidCode
 	}
 	if s.now().After(c.ExpiresAt) {
-		s.codes.Delete(ctx, phone)
+		s.dropCode(ctx, phone)
 		return "", nil, ErrInvalidCode
 	}
 	// Urinish AVVAL atomik hisoblanadi, KEYIN chegara tekshiriladi —
@@ -188,15 +188,40 @@ func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *U
 		return "", nil, ErrInvalidCode
 	}
 	if attempts > maxAttempts {
-		s.codes.Delete(ctx, phone)
+		s.dropCode(ctx, phone)
 		return "", nil, ErrTooManyAttempts
 	}
 	if !s.sameCode(phone, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
-	s.codes.Delete(ctx, phone)
+	if err := s.consumeCode(ctx, phone); err != nil {
+		return "", nil, err
+	}
 
 	return s.finishPhoneLogin(ctx, phone)
+}
+
+// consumeCode — to'g'ri kiritilgan kodni BIR MARTALIK qiladi.
+//
+// Kod o'chirilmasa, u muddati tugaguncha qayta ishlatilishi mumkin edi
+// (masalan ekrandan yoki SMS'dan ko'rib olingan kod bilan ikkinchi
+// qurilmadan kirish). Shuning uchun o'chirib bo'lmasa kirish RAD etiladi
+// (fail closed): foydalanuvchi qayta urinadi, kod esa baribir o'chadi.
+func (s *Service) consumeCode(ctx context.Context, key string) error {
+	if err := s.codes.Delete(ctx, key); err != nil {
+		return fmt.Errorf("tasdiqlash kodini yakunlab bo'lmadi: %w", err)
+	}
+	return nil
+}
+
+// dropCode — muddati o'tgan yoki urinishlari tugagan kodni o'chiradi.
+// Bu yo'llarda o'chirish xatosi xavf tug'dirmaydi (kod baribir yaroqsiz yoki
+// urinishlar hisoblagichi uni bloklab turadi), shuning uchun faqat log
+// qilinadi. Telefon/email logga YOZILMAYDI.
+func (s *Service) dropCode(ctx context.Context, key string) {
+	if err := s.codes.Delete(ctx, key); err != nil {
+		slog.Warn("tasdiqlash kodini o'chirib bo'lmadi", "err", err)
+	}
 }
 
 // LoginWithFirebasePhone — raqam Firebase tomonidan tasdiqlangandan
@@ -576,7 +601,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		return "", nil, ErrInvalidCode
 	}
 	if s.now().After(c.ExpiresAt) {
-		s.codes.Delete(ctx, email)
+		s.dropCode(ctx, email)
 		return "", nil, ErrInvalidCode
 	}
 	attempts, err := s.codes.IncrementAttempts(ctx, email)
@@ -584,13 +609,15 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		return "", nil, ErrInvalidCode
 	}
 	if attempts > maxAttempts {
-		s.codes.Delete(ctx, email)
+		s.dropCode(ctx, email)
 		return "", nil, ErrTooManyAttempts
 	}
 	if !s.sameCode(email, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
-	s.codes.Delete(ctx, email)
+	if err := s.consumeCode(ctx, email); err != nil {
+		return "", nil, err
+	}
 
 	u, err := s.users.GetByEmail(ctx, email)
 	if err != nil {

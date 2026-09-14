@@ -59,13 +59,13 @@ var geoClient = &http.Client{Timeout: geoHTTPTimeout}
 // Xatolar birlashtirilgan: chaqiruvchi ularni odatda 502 (Bad Gateway)
 // bilan qaytaradi — sabab bizda emas, tashqi xizmatda.
 func fetchGeoJSON(ctx context.Context, url string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) //nolint:gosec // G704 emas: URL faqat kod ichidagi o'zgarmas geo xizmat hostlaridan quriladi
 	if err != nil {
 		// Avval bu xato `_` bilan tashlanardi va `req` nil bo'lsa
 		// keyingi qator panic berardi.
 		return fmt.Errorf("geo so'rovini qurib bo'lmadi: %w", err)
 	}
-	resp, err := geoClient.Do(req)
+	resp, err := geoClient.Do(req) //nolint:gosec // G704 emas: yuqoridagi izohga qarang
 	if err != nil {
 		return err
 	}

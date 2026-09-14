@@ -84,7 +84,7 @@ func TestPublishDedupeWhitelistAndLiveEvent(t *testing.T) {
 	ctx := context.Background()
 	in := alerts.Input{
 		Kind: alerts.KindNewOrder, Category: alerts.CategoryNew,
-		Title: "  Yangi‮ buyurtma ", Body: "Jami: 180 000 so'm",
+		Title: "  Yangi\u202e buyurtma ", Body: "Jami: 180 000 so'm",
 		Data:      map[string]string{"order_id": "o1", "phone": "+998901234567", "token": "x"},
 		DedupeKey: "new_order:o1",
 	}

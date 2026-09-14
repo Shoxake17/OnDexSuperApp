@@ -18,7 +18,7 @@ import (
 func init() {
 	// Ba'zi tizimlarda .webp uchun mime turi ro'yxatdan o'tmagan bo'ladi —
 	// aniq belgilab qo'yamiz (lokal disk rejimida FileServer shunga tayanadi).
-	mime.AddExtensionType(".webp", "image/webp")
+	_ = mime.AddExtensionType(".webp", "image/webp") // xato faqat noto'g'ri kengaytmada bo'ladi
 }
 
 const (

@@ -162,7 +162,7 @@ func TestCreateValidation(t *testing.T) {
 		{Spec{Label: ""}, ErrEmptyLabel},
 		{Spec{Label: strings.Repeat("a", maxLabelLen+1)}, ErrLabelTooLong},
 		{Spec{Label: "5\n6"}, ErrControlChars},
-		{Spec{Label: "5‮"}, ErrControlChars}, // yo'nalish o'zgartirgich
+		{Spec{Label: "5\u202e"}, ErrControlChars}, // yo'nalish o'zgartirgich
 		{Spec{Label: "5", Zone: "Zal\x00"}, ErrControlChars},
 		{Spec{Label: "5", Kind: "sauna"}, ErrUnknownKind},
 		{Spec{Label: "5", Capacity: intp(0)}, ErrBadCapacity},

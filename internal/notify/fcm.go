@@ -36,7 +36,7 @@ import (
 
 const (
 	fcmScope    = "https://www.googleapis.com/auth/firebase.messaging"
-	googleToken = "https://oauth2.googleapis.com/token"
+	googleToken = "https://oauth2.googleapis.com/token" //nolint:gosec // G101 emas: OAuth token manzili, sir emas
 )
 
 // serviceAccount — kerakli maydonlar (JSON'da boshqalari ham bor).

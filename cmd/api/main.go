@@ -142,7 +142,7 @@ func firebaseServiceAccount() string {
 	if path == "" {
 		return ""
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // yo'l operator .env da beradi (FIREBASE_SERVICE_ACCOUNT_FILE), foydalanuvchi kiritmasi emas
 	if err != nil {
 		// Yo'l berilgan, lekin o'qib bo'lmadi â€” bu ANIQ konfiguratsiya
 		// xatosi, jimgina "push o'chirilgan" deb o'tib ketmaymiz.
@@ -587,7 +587,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else if jwtSecret == "" {
-		jwtSecret = "dev-secret-almashtiring"
+		jwtSecret = "dev-secret-almashtiring" //nolint:gosec // faqat dev rejimida; production'da JWT_SECRET majburiy
 		slog.Warn("JWT_SECRET berilmagan â€” FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
 	}
 	const tokenTTL = 30 * 24 * time.Hour

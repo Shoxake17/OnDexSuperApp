@@ -453,7 +453,9 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			}
 			// Blok qilinganda darhol offline ham qilamiz
 			if !req.Approved {
-				s.CourierRepo.SetAvailable(r.Context(), courierID, false)
+				if err := s.CourierRepo.SetAvailable(r.Context(), courierID, false); err != nil {
+					slog.Error("bloklangan kuryerni offline qilib bo'lmadi", "courier", courierID, "err", err)
+				}
 				// ...va sessiyasini bekor qilamiz. Busiz "blokladim"
 				// degan amal yarim choraki bo'lardi: kuryer offline
 				// qilinsa ham, qo'lidagi token bilan API'ga murojaat

@@ -595,7 +595,8 @@ func (s *Service) CaptureForOrder(ctx context.Context, orderID string, amountTiy
 	// └───────────────────────────────────────────────────────────────┘
 	others, err := s.repo.ListByOrder(ctx, orderID)
 	if err != nil {
-		return nil // pul yechildi; ortiqcha bloklarni keyin tozalaymiz
+		slog.Warn("ortiqcha to'lov bloklarini o'qib bo'lmadi", "order", orderID, "err", err)
+		return nil //nolint:nilerr // pul yechildi: ortiqcha bloklarni bo'shatish asosiy natijani bekor qilmaydi
 	}
 	for _, other := range others {
 		if other.ID == p.ID || other.Status != StatusHeld || other.ProviderPaymentID == "" {

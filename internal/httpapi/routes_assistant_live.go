@@ -139,7 +139,7 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 		if err != nil {
 			slog.Warn("ai live: ruxsatlarni o'qib bo'lmadi",
 				"user", userID, "err", err)
-			writeLiveJSON(conn, assistant.LiveEvent{
+			_ = writeLiveJSON(conn, assistant.LiveEvent{
 				Type:  assistant.LiveEventError,
 				Error: "Ruxsatlarni o'qib bo'lmadi. Qayta urinib ko'ring.",
 			})
@@ -149,7 +149,7 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 		sess, err := s.Assistant.StartLive(ctx, cfg, userID, disabled)
 		if err != nil {
 			slog.Warn("ai live: seans ochilmadi", "user", userID, "err", err)
-			writeLiveJSON(conn, assistant.LiveEvent{
+			_ = writeLiveJSON(conn, assistant.LiveEvent{
 				Type:  assistant.LiveEventError,
 				Error: "Ovozli yordamchi hozir mavjud emas.",
 			})

@@ -176,7 +176,7 @@ func TestSettingsPatchValidationAndPersistence(t *testing.T) {
 		want int
 	}{
 		{`{"description":"` + strings.Repeat("a", catalog.MaxDescriptionLen+1) + `"}`, http.StatusBadRequest},
-		{`{"description":"a‮b"}`, http.StatusBadRequest},
+		{`{"description":"a\u202eb"}`, http.StatusBadRequest},
 		{`{"logo_url":"https://evil.example/pixel.webp"}`, http.StatusBadRequest},
 		{`{"logo_url":"/uploads/products/x.webp"}`, http.StatusBadRequest},
 		{`{"logo_url":"/uploads/logos/../covers/x.webp"}`, http.StatusBadRequest},

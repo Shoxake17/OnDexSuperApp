@@ -617,23 +617,23 @@ func busiestWeekday(q Query, rows []Row) *BusyWeekday {
 	for _, r := range rows {
 		counts[isoIndex(r.CreatedAt.In(Location).Weekday())]++
 	}
-	best := -1
+	best, bestOrders := -1, 0
 	var bestAvg float64
-	for i := 0; i < 7; i++ {
+	for i := range counts {
 		if occurrences[i] == 0 {
 			continue
 		}
 		if avg := float64(counts[i]) / float64(occurrences[i]); best < 0 || avg > bestAvg {
-			best, bestAvg = i, avg
+			best, bestAvg, bestOrders = i, avg, counts[i]
 		}
 	}
-	if best < 0 || counts[best] == 0 {
+	if best < 0 || bestOrders == 0 {
 		return nil
 	}
 	return &BusyWeekday{
 		Weekday:   best + 1,
 		AvgOrders: math.Round(bestAvg*10) / 10,
-		Orders:    counts[best],
+		Orders:    bestOrders,
 	}
 }
 

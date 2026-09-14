@@ -17,7 +17,7 @@ package octo
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // Octo callback imzosi provayder protokoli bo'yicha SHA1
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -428,7 +428,7 @@ func (c *Client) VerifyCallbackSignature(cb Callback) (ok bool, checked bool) {
 	if key == "" || cb.Signature == "" {
 		return false, false
 	}
-	sum := sha1.Sum([]byte(key + cb.OctoPaymentUUID + cb.Status))
+	sum := sha1.Sum([]byte(key + cb.OctoPaymentUUID + cb.Status)) //nolint:gosec // Octo protokoli talabi; taqqoslash subtle bilan
 	want := hex.EncodeToString(sum[:])
 	got := strings.ToLower(strings.TrimSpace(cb.Signature))
 	// `subtle` — imzoni belgima-belgi solishtirishda vaqt bo'yicha

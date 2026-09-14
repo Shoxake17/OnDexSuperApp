@@ -141,7 +141,7 @@ func TestNormalizeDescription(t *testing.T) {
 	if _, err := NormalizeDescription(strings.Repeat("a", MaxDescriptionLen+1)); !errors.Is(err, ErrDescriptionTooLong) {
 		t.Fatal("uzun tavsif qabul qilindi")
 	}
-	for _, bad := range []string{"a\x00b", "a‮b", "ab"} {
+	for _, bad := range []string{"a\x00b", "a\u202eb", "a\u0007b"} {
 		if _, err := NormalizeDescription(bad); !errors.Is(err, ErrDescriptionChars) {
 			t.Errorf("%q qabul qilindi", bad)
 		}

@@ -92,7 +92,7 @@ func cmdCreate(ctx context.Context, svc *agentapi.Service, args []string) {
 	env := fs.String("env", "test", "live yoki test")
 	scopes := fs.String("scopes", strings.Join(agentapi.AllScopes, ","),
 		"vergul bilan: "+strings.Join(agentapi.AllScopes, ","))
-	fs.Parse(args)
+	_ = fs.Parse(args) // ExitOnError: xato bo'lsa jarayon o'zi to'xtaydi
 
 	if strings.TrimSpace(*name) == "" {
 		fail("-name majburiy")
@@ -149,7 +149,7 @@ func cmdList(ctx context.Context, svc *agentapi.Service) {
 func cmdSetActive(ctx context.Context, svc *agentapi.Service, args []string, active bool) {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	id := fs.String("id", "", "sherik ID'si (`list` dan)")
-	fs.Parse(args)
+	_ = fs.Parse(args) // ExitOnError: xato bo'lsa jarayon o'zi to'xtaydi
 	if strings.TrimSpace(*id) == "" {
 		fail("-id majburiy")
 	}

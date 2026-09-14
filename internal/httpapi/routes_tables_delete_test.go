@@ -21,7 +21,6 @@ func TestTablesDeleteBlockedWhileOccupied(t *testing.T) {
 		{ID: "o2", RestaurantID: testRestA, Type: orders.TypeDineIn, TableID: done.ID,
 			Status: orders.StatusServed, CreatedAt: time.Now()},
 	} {
-		o := o
 		if err := repo.Save(ctx, &o); err != nil {
 			t.Fatal(err)
 		}
