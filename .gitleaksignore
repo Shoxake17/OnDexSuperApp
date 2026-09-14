@@ -1,0 +1,25 @@
+# Gitleaks — tekshirilgan TARIXIY topilmalar (aniq fingerprint bo'yicha).
+#
+# ┌─ NEGA BU FAYL (2026-09-15) ───────────────────────────────────────────┐
+# `7cc60ed` ("Add PostHog") commit'ida 5 ta ilovaning `config/prod.json`
+# fayli `ONDEX_POSTHOG_KEY` bilan commit qilingan. Keyingi commitlarda
+# (207020b, 479a4ab) fayllar gitdan chiqarilib `.gitignore` ga qo'shildi,
+# lekin qiymat TARIXDA qoldi. Tungi `schedule` ishga tushirishi butun
+# tarixni skanerlaydi, shuning uchun 2026-09-10 dan beri har kecha
+# "Leaks detected" bilan yiqilib, qolgan barcha job'lar skip bo'lardi.
+#
+# Bu sir EMAS: `phc_` bilan boshlanadigan PostHog PROJECT API kaliti
+# faqat voqea (event) YUBORISH uchun — ma'lumotni o'qiy olmaydi va
+# PostHog uni klient ilovaga (APK, veb) joylash uchun loyihalashtirgan.
+# U baribir har bir chiqarilgan ilova ichida foydalanuvchi qo'lida.
+# (`phx_` PERSONAL API kaliti esa haqiqiy sir — u bu yerga TUSHMAYDI.)
+#
+# Nega regex istisnosi emas, fingerprint: qoida zaiflashtirilmaydi.
+# Faqat shu 5 ta tarixiy joy o'tkaziladi; yangi commitdagi har qanday
+# kalit (shu jumladan boshqa fayldagi PostHog kaliti) YANA ushlanadi.
+# └───────────────────────────────────────────────────────────────────────┘
+7cc60edb2b2f914516d79db7b7dfcad286789299:apps/admin_panel/config/prod.json:generic-api-key:11
+7cc60edb2b2f914516d79db7b7dfcad286789299:apps/courier_app/config/prod.json:generic-api-key:9
+7cc60edb2b2f914516d79db7b7dfcad286789299:apps/customer_app/config/prod.json:generic-api-key:8
+7cc60edb2b2f914516d79db7b7dfcad286789299:apps/restaurant_panel/config/prod.json:generic-api-key:10
+7cc60edb2b2f914516d79db7b7dfcad286789299:apps/waiter_app/config/prod.json:generic-api-key:8
