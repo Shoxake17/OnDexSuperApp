@@ -1,402 +1,866 @@
-import 'dart:typed_data';
+import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../theme.dart';
-import '../widgets/page_header.dart';
+import '../widgets/file_saver.dart';
+import 'tables/table_models.dart';
 
-const kDefaultZone = 'Asosiy zal';
+part 'tables/table_dialogs.dart';
+part 'tables/table_panels.dart';
+part 'tables/table_qr.dart';
 
-/// Stollar va ularning QR kodlari.
+/// "QR Stollar" — restoranning barcha joylari (stol, kabina, VIP xona,
+/// topchan, bar stoyka...) va ularning O'ZGARMAS QR kodlari. Joylashuv
+/// `image/QR.png` namunasi bo'yicha.
 ///
-/// QR ichida `https://t.me/<bot>/<short_name>?startapp=<token>` havolasi
-/// bor. Token BIR MARTA yaratiladi va serverda hech qachon almashtirilmaydi —
-/// shuning uchun kartochkadagi QR ertasi kuni boshqa kodga aylanib ketmaydi.
+/// ┌─ HAMMA HOLAT SERVERDAN ───────────────────────────────────────────┐
+/// "Band" — joyga bog'langan yakunlanmagan buyurtma borligi, "So'nggi
+/// skanerlangan" — QR haqiqatan skanerlangan vaqt (`GET /tables/resolve`),
+/// "Tozalanmoqda" — xodim qo'ygan belgi. Hech biri shu yerda taxmin
+/// qilinmaydi (`internal/tables/occupancy.go`).
+/// └───────────────────────────────────────────────────────────────────┘
+///
+/// ┌─ QR KOD BIR MARTA YARATILADI ─────────────────────────────────────┐
+/// QR ichida faqat serverdagi abadiy havola (`qr_link`). "Qayta yaratish"
+/// tugmasi ham, endpointi ham ATAYLAB yo'q: QR menyu varaqasiga chop
+/// etilib joyda turadi — uni almashtirish butun zalni qayta chop etish
+/// degani. Ekrandagi va yuklab olingan (PDF) QR bir xil ma'lumotdan.
+/// └───────────────────────────────────────────────────────────────────┘
 class TablesPage extends StatefulWidget {
-  const TablesPage({super.key});
+  const TablesPage({super.key, this.live = true});
+
+  /// Jonli yangilanish (soket + zaxira so'rov, "N daqiqadan beri" yozuvlari).
+  /// Testlarda o'chiriladi.
+  final bool live;
 
   @override
   State<TablesPage> createState() => _TablesPageState();
 }
 
+const _gap = 14.0;
+const _cardHeight = 160.0;
+const _wideBreakpoint = 1180.0;
+const _panelTint = Color(0xFFFBF6EF);
+const _monthsShort = [
+  'yan', 'fev', 'mar', 'apr', 'may', 'iyun', //
+  'iyul', 'avg', 'sen', 'okt', 'noy', 'dek',
+];
+const _noLinkText =
+    'QR havolasi yo\'q: serverda Telegram bot sozlanmagan (TELEGRAM_BOT_TOKEN).';
+
+String _two(int n) => n.toString().padLeft(2, '0');
+
+String _clock(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
+
+String _dateText(DateTime t) => '${t.day}-${_monthsShort[t.month - 1]}, ${t.year}';
+
+/// Bugun — faqat soat; boshqa kun — sana bilan.
+String _when(DateTime t) {
+  final now = DateTime.now();
+  if (t.year == now.year && t.month == now.month && t.day == now.day) return _clock(t);
+  return '${t.day}-${_monthsShort[t.month - 1]} ${_clock(t)}';
+}
+
+String _sinceText(DateTime since) {
+  final m = DateTime.now().difference(since).inMinutes;
+  if (m < 1) return 'hozirgina';
+  if (m < 60) return '$m daq';
+  final h = m ~/ 60;
+  return m % 60 == 0 ? '$h soat' : '$h soat ${m % 60} daq';
+}
+
 class _TablesPageState extends State<TablesPage> {
-  List<Map<String, dynamic>> _tables = [];
+  List<DiningTable> _tables = const [];
   String _restaurantName = '';
   bool _loading = true;
   String? _error;
+  String? _selectedId;
+
+  /// Filtrlar: '' — barcha turlar.
+  String _kind = '';
+  TableStatus? _status;
+  String? _zone;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  LiveRefresher? _live;
+  Timer? _tick;
+  int _loadSeq = 0;
+
+  /// Oxirgi joylashuv keng edimi — "QR kod" tugmasi keng ekranda o'ng
+  /// paneldagi QR'ni almashtiradi, torda alohida oyna ochadi.
+  bool _isWide = true;
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(() {
+      final q = _searchCtrl.text.trim();
+      if (q != _query) setState(() => _query = q);
+    });
     _load();
+    if (widget.live) {
+      _live = LiveRefresher(
+        bus: restaurantLive,
+        onRefresh: _load,
+        types: const {'new_order', 'order_status'},
+        offlineInterval: const Duration(seconds: 20),
+      )..start();
+      _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _live?.dispose();
+    _tick?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    final seq = ++_loadSeq;
     try {
-      final results = await Future.wait([
-        api.tables(),
-        api.myRestaurant(),
-      ]);
-      if (!mounted) return;
-      final rest = Map<String, dynamic>.from(results[1] as Map);
+      final raw = await api.tables();
+      if (!mounted || seq != _loadSeq) return;
+      final list = [
+        for (final e in raw)
+          if (e is Map) DiningTable.fromJson(Map<String, dynamic>.from(e)),
+      ]..sort(compareTables);
       setState(() {
-        _tables = (results[0] as List).cast<Map<String, dynamic>>();
-        _restaurantName = '${rest['name'] ?? ''}'.trim();
+        _tables = list;
         _loading = false;
         _error = null;
+        if (_selectedId == null || !list.any((t) => t.id == _selectedId)) {
+          _selectedId = list.isEmpty ? null : list.first.id;
+        }
+        if (_zone != null && !list.any((t) => t.zone == _zone)) _zone = null;
       });
-    } catch (e) {
-      if (!mounted) return;
+    } on ApiException catch (e) {
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
-        _error = '$e';
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted || seq != _loadSeq) return;
+      setState(() {
+        _loading = false;
+        _error = 'Joylarni yuklab bo\'lmadi. Internet aloqasini tekshirib, qayta urinib ko\'ring.';
       });
     }
+    if (_restaurantName.isEmpty) {
+      try {
+        final r = await api.myRestaurant();
+        if (mounted) setState(() => _restaurantName = '${r['name'] ?? ''}'.trim());
+      } catch (_) {
+        // Faqat PDF sarlavhasi uchun — sahifani to'xtatmaydi.
+      }
+    }
   }
 
-  List<String> get _knownZones {
-    final set = <String>{};
+  // ─── Hosila ma'lumotlar ─────────────────────────────────────────────
+
+  List<String> get _zones {
+    final set = <String>{for (final t in _tables) t.zone};
+    return set.toList()..sort(compareZones);
+  }
+
+  bool get _multiZone => _zones.length > 1;
+
+  List<(TableKindInfo, int)> get _kindCounts {
+    final counts = <String, int>{};
     for (final t in _tables) {
-      set.add(_zoneOf(t));
+      counts[t.kind] = (counts[t.kind] ?? 0) + 1;
     }
-    final extra = set.where((z) => z != kDefaultZone).toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return [kDefaultZone, ...extra];
+    return [
+      for (final k in kTableKinds)
+        if (counts[k.kind] != null) (k, counts[k.kind]!),
+    ];
   }
 
-  Future<void> _addTable() async {
-    final result = await showDialog<_NewTable>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _AddTableDialog(knownZones: _knownZones),
-    );
-    if (result == null) return;
-    try {
-      await api.createTable(result.number, zone: result.zone);
-      await _load();
-    } catch (e) {
-      _toast('$e');
+  List<DiningTable> get _visible => _tables
+      .where((t) =>
+          (_kind.isEmpty || t.kind == _kind) &&
+          (_status == null || t.status == _status) &&
+          (_zone == null || t.zone == _zone) &&
+          t.matches(_query))
+      .toList();
+
+  DiningTable? get _selected {
+    for (final t in _tables) {
+      if (t.id == _selectedId) return t;
     }
+    return null;
   }
 
-  Future<void> _rename(Map<String, dynamic> t) async {
-    final label = await _askLabel(
-      context,
-      title: 'Stol raqamini o\'zgartirish',
-      initial: t['label'] as String? ?? '',
-    );
-    if (label == null) return;
-    try {
-      await api.renameTable(t['id'] as String, label);
-      await _load();
-    } catch (e) {
-      _toast('$e');
-    }
+  int get _extraFilterCount => (_status == null ? 0 : 1) + (_zone == null ? 0 : 1);
+
+  void _resetFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _kind = '';
+      _status = null;
+      _zone = null;
+      _query = '';
+    });
   }
 
-  Future<void> _toggleActive(Map<String, dynamic> t) async {
-    try {
-      await api.setTableActive(t['id'] as String, !(t['active'] == true));
-      await _load();
-    } catch (e) {
-      _toast('$e');
-    }
-  }
-
-  Future<void> _delete(Map<String, dynamic> t) async {
-    final ok = await _confirm(
-      context,
-      title: 'Stolni o\'chirish',
-      message: '"${_zoneOf(t)} · ${t['label']}" stoli o\'chiriladi.\n\n'
-          'DIQQAT: chop etilgan QR kod ABADIY ishlamay '
-          'qoladi va uni QAYTARIB BO\'LMAYDI — varaqani qayta chop etish '
-          'kerak bo\'ladi.\n\n'
-          'Stolni vaqtincha ishlatmaslik uchun o\'chirish o\'rniga '
-          '"Vaqtincha yopish" ni tanlang — QR kod saqlanib qoladi.',
-    );
-    if (!ok) return;
-    try {
-      await api.deleteTable(t['id'] as String);
-      await _load();
-    } catch (e) {
-      _toast('$e');
-    }
-  }
-
+  /// Yangi xabar oldingisini kutib navbatda turmaydi: aks holda "band joyni
+  /// o'chirib bo'lmaydi" kabi javob 4 soniya kechikib, boshqa amalga
+  /// tegishlidek ko'rinardi.
   void _toast(String m) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(m)));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return PageScaffold(
-      title: 'Stollar (QR kod)',
-      subtitle: 'Har bir stolga QR kod chop etib, stol ustiga qo\'ying. '
-          'Mijoz uni skanerlab, o\'sha stolga buyurtma beradi.',
-      action: PageActionButton(
-        icon: Icons.add_rounded,
-        label: 'Stol qo\'shish',
-        onPressed: _addTable,
+  // ─── Amallar ────────────────────────────────────────────────────────
+
+  Future<void> _create() async {
+    final ids = await showDialog<List<String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _TableEditorDialog(
+        zones: _zones,
+        onSubmit: (d) async {
+          if (d.batch) {
+            final list = await api.createTablesBatch(
+              zone: d.zone,
+              kind: d.kind,
+              prefix: d.prefix,
+              from: d.from,
+              count: d.count,
+              capacity: d.capacity,
+            );
+            return [
+              for (final e in list)
+                if (e is Map) '${e['id']}',
+            ];
+          }
+          final one = await api.createTable(
+              label: d.label, zone: d.zone, kind: d.kind, capacity: d.capacity);
+          return ['${one['id']}'];
+        },
       ),
-      error: _error,
-      child: _tables.isEmpty
-          ? const Center(
-              child: Text(
-                'Hali stol qo\'shilmagan',
-                style: TextStyle(color: OnDexColors.inkDim),
-              ),
-            )
-          : _TablesByZone(
-              tables: _tables,
-              restaurantName: _restaurantName,
-              onRename: _rename,
-              onToggleActive: _toggleActive,
-              onDelete: _delete,
-              onPrintError: _toast,
+    );
+    if (ids == null || !mounted) return;
+    // Yangi joylar filtr ortida qolib ketmasin.
+    _resetFilters();
+    if (ids.isNotEmpty) _selectedId = ids.first;
+    await _load();
+    _toast(ids.length == 1
+        ? 'Joy qo\'shildi — QR kodi tayyor'
+        : '${ids.length} ta joy qo\'shildi — QR kodlari tayyor');
+  }
+
+  Future<void> _edit(DiningTable t) async {
+    final ids = await showDialog<List<String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _TableEditorDialog(
+        zones: _zones,
+        existing: t,
+        onSubmit: (d) async {
+          final patch = d.patchFor(t);
+          if (patch.isNotEmpty) await api.updateTable(t.id, patch);
+          return [t.id];
+        },
+      ),
+    );
+    if (ids == null || !mounted) return;
+    await _load();
+    _toast('O\'zgarishlar saqlandi');
+  }
+
+  Future<void> _patch(DiningTable t, Map<String, Object?> body, String done) async {
+    try {
+      await api.updateTable(t.id, body);
+      await _load();
+      _toast(done);
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('Saqlab bo\'lmadi. Internet aloqasini tekshiring.');
+    }
+  }
+
+  Future<void> _delete(DiningTable t) async {
+    if (t.status == TableStatus.occupied) {
+      _toast('Band joyni o\'chirib bo\'lmaydi — avval undagi buyurtmalarni yakunlang');
+      return;
+    }
+    if (!await _confirmDelete(context, t)) return;
+    try {
+      await api.deleteTable(t.id);
+      if (_selectedId == t.id) _selectedId = null;
+      await _load();
+      _toast('"${t.displayLabel}" o\'chirildi');
+    } on ApiException catch (e) {
+      _toast(e.message);
+    } catch (_) {
+      _toast('O\'chirib bo\'lmadi. Internet aloqasini tekshiring.');
+    }
+  }
+
+  Future<void> _openDetails(DiningTable t) async {
+    setState(() => _selectedId = t.id);
+    final action = await showDialog<_DetailAction>(
+      context: context,
+      builder: (_) => _TableDetailsDialog(table: t, multiZone: _multiZone),
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case _DetailAction.edit:
+        await _edit(t);
+      case _DetailAction.cleaning:
+        final start = t.cleaningSince == null;
+        await _patch(t, {'cleaning': start},
+            start ? '"${t.title}" — tozalanmoqda' : '"${t.title}" — tozalash tugadi');
+      case _DetailAction.active:
+        await _patch(
+            t,
+            {'active': !t.active},
+            t.active
+                ? '"${t.title}" vaqtincha yopildi — QR kodi bilan buyurtma qabul qilinmaydi'
+                : '"${t.title}" qayta ochildi');
+      case _DetailAction.downloadPdf:
+        await _downloadQr(t);
+      case _DetailAction.delete:
+        await _delete(t);
+    }
+  }
+
+  /// QR varaqasi (PDF, A6) — bosmaga tayyor fayl.
+  Future<void> _downloadQr(DiningTable t) async {
+    if (t.qrLink == null) {
+      _toast(_noLinkText);
+      return;
+    }
+    try {
+      final bytes = await _buildQrPdf(table: t, restaurantName: _restaurantName);
+      final path = await saveBytesAs(
+        fileName: _qrFileName(t, 'pdf'),
+        bytes: bytes,
+        extension: 'pdf',
+      );
+      if (path != null) _toast('QR kod saqlandi: $path');
+    } catch (e) {
+      _toast('QR kodni saqlab bo\'lmadi: $e');
+    }
+  }
+
+  Future<void> _showQr(DiningTable t) async {
+    setState(() => _selectedId = t.id);
+    if (_isWide) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: SingleChildScrollView(
+            child: _QrCard(
+              table: t,
+              multiZone: _multiZone,
+              onDownloadPdf: () {
+                Navigator.of(ctx).pop();
+                _downloadQr(t);
+              },
             ),
+          ),
+        ),
+      ),
     );
   }
-}
 
-class _TablesByZone extends StatelessWidget {
-  const _TablesByZone({
-    required this.tables,
-    required this.restaurantName,
-    required this.onRename,
-    required this.onToggleActive,
-    required this.onDelete,
-    required this.onPrintError,
-  });
-
-  final List<Map<String, dynamic>> tables;
-  final String restaurantName;
-  final void Function(Map<String, dynamic>) onRename;
-  final void Function(Map<String, dynamic>) onToggleActive;
-  final void Function(Map<String, dynamic>) onDelete;
-  final void Function(String) onPrintError;
-
-  List<MapEntry<String, List<Map<String, dynamic>>>> _groups() {
-    final map = <String, List<Map<String, dynamic>>>{};
-    for (final t in tables) {
-      map.putIfAbsent(_zoneOf(t), () => []).add(t);
+  Future<void> _openFilterMenu(BuildContext anchor) async {
+    final box = anchor.findRenderObject()! as RenderBox;
+    final overlay = Overlay.of(anchor).context.findRenderObject()! as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset(0, box.size.height + 4), ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(const Offset(0, 4)), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    const section = TextStyle(
+        fontSize: 11, letterSpacing: 0.6, fontWeight: FontWeight.w700, color: OnDexColors.inkFaint);
+    final zones = _zones;
+    final value = await showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        const PopupMenuItem(enabled: false, height: 28, child: Text('HOLAT', style: section)),
+        CheckedPopupMenuItem(value: 'status:', checked: _status == null, child: const Text('Barcha holatlar')),
+        for (final s in TableStatus.values)
+          CheckedPopupMenuItem(value: 'status:${s.name}', checked: _status == s, child: Text(s.title)),
+        if (zones.length > 1) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(enabled: false, height: 28, child: Text('ZAL', style: section)),
+          CheckedPopupMenuItem(value: 'zone:', checked: _zone == null, child: const Text('Barcha zallar')),
+          for (final z in zones)
+            CheckedPopupMenuItem(value: 'zone:$z', checked: _zone == z, child: Text(z)),
+        ],
+        const PopupMenuDivider(),
+        const PopupMenuItem(value: 'reset', child: Text('Filtrlarni tozalash')),
+      ],
+    );
+    if (value == null || !mounted) return;
+    if (value == 'reset') {
+      _resetFilters();
+      return;
     }
-    final keys = map.keys.toList()
-      ..sort((a, b) {
-        if (a == kDefaultZone && b != kDefaultZone) return -1;
-        if (b == kDefaultZone && a != kDefaultZone) return 1;
-        return a.toLowerCase().compareTo(b.toLowerCase());
-      });
-    return [for (final k in keys) MapEntry(k, map[k]!)];
+    final i = value.indexOf(':');
+    final key = value.substring(0, i);
+    final arg = value.substring(i + 1);
+    setState(() {
+      if (key == 'status') {
+        _status = arg.isEmpty ? null : TableStatus.values.byName(arg);
+      } else {
+        _zone = arg.isEmpty ? null : arg;
+      }
+    });
   }
+
+  void _toggleStatusFilter(TableStatus? s) =>
+      setState(() => _status = s == null || _status == s ? null : s);
+
+  Future<void> _showBreakdown() => showDialog<void>(
+        context: context,
+        builder: (_) => _StatusBreakdownDialog(tables: _tables, zones: _zones),
+      );
+
+  Future<void> _showAllScans() async {
+    final picked = await showDialog<DiningTable>(
+      context: context,
+      builder: (_) => _RecentScansDialog(tables: _tables, multiZone: _multiZone),
+    );
+    if (picked != null && mounted) setState(() => _selectedId = picked.id);
+  }
+
+  // ─── Ko'rinish ──────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final groups = _groups();
-    return CustomScrollView(
-      slivers: [
-        for (final g in groups) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 12, top: 4),
-              child: Row(
+    if (_loading && _tables.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TablesHeader(
+            searchCtrl: _searchCtrl,
+            filterCount: _extraFilterCount,
+            onFilter: _openFilterMenu,
+            onAdd: _create,
+          ),
+          const SizedBox(height: 16),
+          if (_error != null && _tables.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ErrorStrip(message: _error!, onRetry: _load),
+            ),
+          Expanded(
+            child: _error != null && _tables.isEmpty
+                ? _ErrorState(message: _error!, onRetry: _load)
+                : _buildBody(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    return LayoutBuilder(builder: (context, box) {
+      _isWide = box.maxWidth >= _wideBreakpoint;
+      final sidebar = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _QrCard(
+            table: _selected,
+            multiZone: _multiZone,
+            onDownloadPdf: _selected == null ? null : () => _downloadQr(_selected!),
+          ),
+          const SizedBox(height: _gap),
+          _StatusCard(
+            tables: _tables,
+            selected: _status,
+            onStatus: _toggleStatusFilter,
+            onDetails: _showBreakdown,
+          ),
+          const SizedBox(height: _gap),
+          _RecentScansCard(
+            tables: _tables,
+            multiZone: _multiZone,
+            onOpen: _openDetails,
+            onShowAll: _showAllScans,
+          ),
+        ],
+      );
+      final chips = _KindChipsBar(
+        total: _tables.length,
+        kinds: _kindCounts,
+        selected: _kind,
+        onKind: (k) => setState(() => _kind = k),
+      );
+      if (_isWide) {
+        // Turlar faqat chap ustun ustida: o'ng paneldagi QR kartasi sarlavha
+        // ostidan, turlar bilan BIR balandlikdan boshlanadi (namunadagidek).
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: OnDexColors.primaryTint,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.meeting_room_rounded,
-                        color: OnDexColors.primary, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      g.key,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: OnDexColors.ink,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${g.value.length} ta stol',
-                    style: const TextStyle(
-                      color: OnDexColors.inkDim,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  chips,
+                  const SizedBox(height: _gap),
+                  Expanded(child: _buildGrid(scrollable: true)),
                 ],
               ),
             ),
-          ),
-          SliverGrid(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 280,
-              mainAxisExtent: 372,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
+            const SizedBox(width: 16),
+            SizedBox(
+              width: box.maxWidth >= 1500 ? 420 : 380,
+              child: SingleChildScrollView(child: sidebar),
             ),
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _TableCard(
-                table: g.value[i],
-                restaurantName: restaurantName,
-                onRename: () => onRename(g.value[i]),
-                onToggleActive: () => onToggleActive(g.value[i]),
-                onDelete: () => onDelete(g.value[i]),
-                onPrintError: onPrintError,
-              ),
-              childCount: g.value.length,
-            ),
+          ],
+        );
+      }
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            chips,
+            const SizedBox(height: _gap),
+            _buildGrid(scrollable: false),
+            const SizedBox(height: 16),
+            sidebar,
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildGrid({required bool scrollable}) {
+    if (_tables.isEmpty) return _EmptyState(onAdd: _create);
+    final list = _visible;
+    if (list.isEmpty) return _NoMatches(onReset: _resetFilters);
+    return LayoutBuilder(builder: (context, box) {
+      const minWidth = 268.0;
+      final columns = ((box.maxWidth + _gap) / (minWidth + _gap)).floor().clamp(1, 4);
+      return GridView.builder(
+        shrinkWrap: !scrollable,
+        physics: scrollable ? null : const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: _gap,
+          mainAxisSpacing: _gap,
+          mainAxisExtent: _cardHeight,
+        ),
+        itemCount: list.length,
+        itemBuilder: (context, i) {
+          final t = list[i];
+          return _TableCard(
+            key: ValueKey('table-${t.id}'),
+            table: t,
+            selected: t.id == _selectedId,
+            showZone: _multiZone,
+            onSelect: () => setState(() => _selectedId = t.id),
+            onOpen: () => _openDetails(t),
+            onQr: () => _showQr(t),
+          );
+        },
+      );
+    });
+  }
+}
+
+// ─── Sarlavha ─────────────────────────────────────────────────────────
+
+class _TablesHeader extends StatelessWidget {
+  const _TablesHeader({
+    required this.searchCtrl,
+    required this.filterCount,
+    required this.onFilter,
+    required this.onAdd,
+  });
+
+  final TextEditingController searchCtrl;
+  final int filterCount;
+  final void Function(BuildContext anchor) onFilter;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Row(
+      children: [
+        Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: OnDexColors.primaryTint,
+            borderRadius: BorderRadius.circular(14),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 22)),
-        ],
+          child: const Icon(Icons.table_restaurant_rounded, color: OnDexColors.primary, size: 28),
+        ),
+        const SizedBox(width: 14),
+        const Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('QR Stollar',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
+              SizedBox(height: 2),
+              Text('Mijozlar uchun QR kodlar orqali stol buyurtmalarini qabul qiling',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, color: OnDexColors.inkDim)),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final search = TextField(
+      controller: searchCtrl,
+      style: const TextStyle(fontSize: 13.5),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Stol raqami yoki QR kodini qidiring...',
+        hintStyle: const TextStyle(fontSize: 13, color: OnDexColors.inkFaint),
+        prefixIcon: const Icon(Icons.search_rounded, size: 19, color: OnDexColors.inkFaint),
+        filled: true,
+        fillColor: OnDexColors.cardBg,
+        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: OnDexColors.cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: OnDexColors.primary),
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
+    final filter = Builder(
+      builder: (anchor) => _FilterButton(count: filterCount, onPressed: () => onFilter(anchor)),
+    );
+
+    final add = FilledButton.icon(
+      onPressed: onAdd,
+      style: FilledButton.styleFrom(
+        backgroundColor: OnDexColors.primary,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+      icon: const Icon(Icons.add_rounded, size: 20),
+      label: const Text('Yangi stol qo\'shish'),
+    );
+
+    // Yuqorida BITTA qator: sarlavha, qidiruv, filtr va "Yangi stol
+    // qo'shish". Turlar bu yerda EMAS — joylar ro'yxati ustida
+    // (`_KindChipsBar`), aks holda o'ng paneldagi QR kartasi ham ular
+    // ostiga tushib ketardi.
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth;
+      final Widget top;
+      if (w >= 980) {
+        top = Row(
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 16),
+            SizedBox(width: w >= 1300 ? 340 : 270, child: search),
+            const SizedBox(width: 10),
+            filter,
+            const SizedBox(width: 12),
+            add,
+          ],
+        );
+      } else {
+        // Tor oynada bitta qatorga sig'maydi — ustma-ust.
+        top = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title,
+            const SizedBox(height: 12),
+            Row(children: [Expanded(child: search), const SizedBox(width: 8), filter]),
+            const SizedBox(height: 10),
+            add,
+          ],
+        );
+      }
+      return top;
+    });
+  }
+}
+
+/// Restoranda BOR turlarning HAMMASI (sonlari bilan), chap chetdan.
+/// `Wrap`, gorizontal aylanadigan ro'yxat emas: ish stolida sichqoncha
+/// g'ildiragi yon tomonga aylantirmaydi va sig'magan turlar ko'rinmay
+/// qolardi.
+class _KindChipsBar extends StatelessWidget {
+  const _KindChipsBar({
+    required this.total,
+    required this.kinds,
+    required this.selected,
+    required this.onKind,
+  });
+
+  final int total;
+  final List<(TableKindInfo, int)> kinds;
+  final String selected;
+  final ValueChanged<String> onKind;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _KindChip(
+          label: 'Barchasi',
+          count: total,
+          selected: selected.isEmpty,
+          onTap: () => onKind(''),
+        ),
+        for (final (k, n) in kinds)
+          _KindChip(
+            icon: k.icon,
+            label: k.title,
+            count: n,
+            selected: selected == k.kind,
+            onTap: () => onKind(k.kind),
+          ),
       ],
     );
   }
 }
 
-class _TableCard extends StatelessWidget {
-  const _TableCard({
-    required this.table,
-    required this.restaurantName,
-    required this.onRename,
-    required this.onToggleActive,
-    required this.onDelete,
-    required this.onPrintError,
+class _KindChip extends StatelessWidget {
+  const _KindChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+    this.icon,
   });
 
-  final Map<String, dynamic> table;
-  final String restaurantName;
-  final VoidCallback onRename;
-  final VoidCallback onToggleActive;
-  final VoidCallback onDelete;
-  final void Function(String) onPrintError;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    final active = table['active'] == true;
-    final label = table['label'] as String? ?? '';
-    final zone = _zoneOf(table);
-    final link = table['qr_link'] as String?;
-
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: active
-              ? OnDexColors.cardBorder
-              : OnDexColors.danger.withValues(alpha: 0.55),
+    final fg = selected ? Colors.white : OnDexColors.ink;
+    return Material(
+      color: selected ? OnDexColors.primary : OnDexColors.cardBg,
+      shape: StadiumBorder(
+          side: BorderSide(color: selected ? OnDexColors.primary : OnDexColors.cardBorder)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: selected ? Colors.white : OnDexColors.inkDim),
+                const SizedBox(width: 6),
+              ],
+              Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: fg)),
+              const SizedBox(width: 7),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white.withValues(alpha: 0.22) : OnDexColors.pageBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('$count',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : OnDexColors.inkDim)),
+              ),
+            ],
+          ),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+    );
+  }
+}
+
+class _FilterButton extends StatelessWidget {
+  const _FilterButton({required this.count, required this.onPressed});
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Holat va zal bo\'yicha filtr',
+      child: SizedBox(
+        width: 46,
+        height: 46,
+        child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    tableText(label),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: OnDexColors.ink,
-                    ),
-                  ),
+            Positioned.fill(
+              child: OutlinedButton(
+                onPressed: onPressed,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: count > 0 ? OnDexColors.primary : OnDexColors.ink,
+                  backgroundColor: count > 0 ? OnDexColors.primaryTint : OnDexColors.cardBg,
+                  side: BorderSide(color: count > 0 ? OnDexColors.primary : OnDexColors.cardBorder),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                if (!active)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 4),
-                    child: Text(
-                      'Faol emas',
-                      style: TextStyle(color: Colors.orange, fontSize: 12),
-                    ),
-                  ),
-                PopupMenuButton<String>(
-                  onSelected: (v) => switch (v) {
-                    'rename' => onRename(),
-                    'active' => onToggleActive(),
-                    'delete' => onDelete(),
-                    _ => null,
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'rename',
-                      child: Text('Raqamini o\'zgartirish'),
-                    ),
-                    PopupMenuItem(
-                      value: 'active',
-                      child: Text(active ? 'Vaqtincha yopish' : 'Yoqish'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('O\'chirish'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Center(
-                child: link == null
-                    ? const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Text(
-                          'QR havolasi yo\'q.\n\nTELEGRAM_BOT_TOKEN '
-                          'sozlanmagan — bot nomi aniqlanmadi.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      )
-                    : Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.all(8),
-                        child: QrImageView(
-                          data: link,
-                          version: QrVersions.auto,
-                          size: 180,
-                          backgroundColor: Colors.white,
-                        ),
-                      ),
+                child: const Icon(Icons.tune_rounded, size: 20),
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: link == null
-                    ? null
-                    : () async {
-                        try {
-                          await printTableQr(
-                            restaurantName: restaurantName,
-                            zone: zone,
-                            label: label,
-                            link: link,
-                          );
-                        } catch (e) {
-                          onPrintError('$e');
-                        }
-                      },
-                icon: const Icon(Icons.print_rounded, size: 18),
-                label: const Text('Chop etish'),
+            if (count > 0)
+              Positioned(
+                right: -4,
+                top: -4,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(color: OnDexColors.primary, shape: BoxShape.circle),
+                  child: Text('$count',
+                      style: const TextStyle(
+                          fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -404,206 +868,116 @@ class _TableCard extends StatelessWidget {
   }
 }
 
-class _NewTable {
-  const _NewTable({required this.zone, required this.number});
-  final String zone;
-  final String number;
-}
+// ─── Kartochka ────────────────────────────────────────────────────────
 
-class _AddTableDialog extends StatefulWidget {
-  const _AddTableDialog({required this.knownZones});
-  final List<String> knownZones;
+class _TableCard extends StatelessWidget {
+  const _TableCard({
+    super.key,
+    required this.table,
+    required this.selected,
+    required this.showZone,
+    required this.onSelect,
+    required this.onOpen,
+    required this.onQr,
+  });
 
-  @override
-  State<_AddTableDialog> createState() => _AddTableDialogState();
-}
-
-class _AddTableDialogState extends State<_AddTableDialog> {
-  late final TextEditingController _numberCtrl;
-  late final TextEditingController _zoneCtrl;
-  late List<String> _zones;
-  late String _selected;
-  bool _addingZone = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _numberCtrl = TextEditingController();
-    _zoneCtrl = TextEditingController();
-    _zones = List.of(widget.knownZones);
-    if (!_zones.contains(kDefaultZone)) {
-      _zones.insert(0, kDefaultZone);
-    }
-    _selected = kDefaultZone;
-  }
-
-  @override
-  void dispose() {
-    _numberCtrl.dispose();
-    _zoneCtrl.dispose();
-    super.dispose();
-  }
-
-  void _commitNewZone() {
-    final name = _zoneCtrl.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Zona nomini yozing');
-      return;
-    }
-    final exists = _zones.any((z) => z.toLowerCase() == name.toLowerCase());
-    setState(() {
-      _error = null;
-      if (!exists) _zones.add(name);
-      _selected = exists
-          ? _zones.firstWhere((z) => z.toLowerCase() == name.toLowerCase())
-          : name;
-      _addingZone = false;
-      _zoneCtrl.clear();
-    });
-  }
-
-  void _save() {
-    final number = _numberCtrl.text.trim();
-    if (number.isEmpty) {
-      setState(() => _error = 'Stol raqamini kiriting');
-      return;
-    }
-    Navigator.of(context).pop(_NewTable(zone: _selected, number: number));
-  }
+  final DiningTable table;
+  final bool selected;
+  final bool showZone;
+  final VoidCallback onSelect;
+  final VoidCallback onOpen;
+  final VoidCallback onQr;
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+    final t = table;
+    final subtitle = [
+      t.capacity == null ? 'Sig\'im ko\'rsatilmagan' : '${t.capacity} kishilik',
+      if (showZone) t.zone,
+    ].join(' · ');
+    return Material(
+      color: OnDexColors.cardBg,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onSelect,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.fromLTRB(16, 14, 6, 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? OnDexColors.primary : OnDexColors.cardBorder,
+              width: selected ? 1.6 : 1,
+            ),
+            boxShadow: const [
+              BoxShadow(color: Color(0x0A1F1710), blurRadius: 14, offset: Offset(0, 4)),
+            ],
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Yangi stol',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: OnDexColors.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Avval zalni tanlang, so\'ng stol raqamini yozing.',
-                style: TextStyle(color: OnDexColors.inkDim, fontSize: 13.5),
-              ),
-              const SizedBox(height: 20),
-              _sectionTitle('Zona'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final z in _zones)
-                    ChoiceChip(
-                      label: Text(z),
-                      selected: _selected == z,
-                      selectedColor: OnDexColors.primaryTint,
-                      labelStyle: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: _selected == z
-                            ? OnDexColors.primary
-                            : OnDexColors.ink,
-                      ),
-                      onSelected: (_) => setState(() {
-                        _selected = z;
-                        _error = null;
-                      }),
+                  _KindIconTile(kind: t.kindInfo, status: t.status, size: 46),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 20,
+                                height: 1.15,
+                                fontWeight: FontWeight.w800,
+                                color: OnDexColors.ink)),
+                        const SizedBox(height: 3),
+                        Text(subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkDim)),
+                      ],
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  _FitPill(status: t.status),
+                  SizedBox(
+                    width: 30,
+                    height: 26,
+                    child: IconButton(
+                      tooltip: 'Batafsil',
+                      padding: EdgeInsets.zero,
+                      onPressed: onOpen,
+                      icon: const Icon(Icons.chevron_right_rounded, size: 22, color: OnDexColors.inkFaint),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 6),
-              if (_addingZone)
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _zoneCtrl,
-                        autofocus: true,
-                        textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(
-                          hintText: 'Zona nomi, masalan: Ayvon',
-                          isDense: true,
-                        ),
-                        onSubmitted: (_) => _commitNewZone(),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Qo\'shish',
-                      onPressed: _commitNewZone,
-                      icon: const Icon(Icons.check_rounded,
-                          color: OnDexColors.success),
-                    ),
-                    IconButton(
-                      tooltip: 'Bekor',
-                      onPressed: () => setState(() {
-                        _addingZone = false;
-                        _zoneCtrl.clear();
-                      }),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                )
-              else
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => setState(() {
-                      _addingZone = true;
-                      _error = null;
-                    }),
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                    label: const Text('Yangi zona qo\'shish'),
-                  ),
-                ),
-              const SizedBox(height: 14),
-              _sectionTitle('Stol raqami'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _numberCtrl,
-                autofocus: !_addingZone,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  hintText: 'Masalan: 12',
-                  prefixIcon: Icon(Icons.table_restaurant_rounded),
-                ),
-                onSubmitted: (_) => _save(),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  style: const TextStyle(
-                      color: OnDexColors.danger, fontSize: 13),
-                ),
-              ],
-              const SizedBox(height: 22),
+              const Spacer(),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Bekor qilish'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.save_rounded, size: 18),
-                      label: const Text('Saqlash'),
+                  Expanded(child: _CardFooterInfo(table: t)),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: OutlinedButton.icon(
+                      onPressed: onQr,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: OnDexColors.ink,
+                        side: const BorderSide(color: OnDexColors.cardBorder),
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                      icon: const Icon(Icons.qr_code_2_rounded, size: 17),
+                      label: const Text('QR kod'),
                     ),
                   ),
                 ],
@@ -614,171 +988,197 @@ class _AddTableDialogState extends State<_AddTableDialog> {
       ),
     );
   }
-
-  static Widget _sectionTitle(String text) => Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11.5,
-          letterSpacing: 0.7,
-          fontWeight: FontWeight.w800,
-          color: OnDexColors.inkFaint,
-        ),
-      );
 }
 
-/// Chop etish: tizim printer oynasini ochadi.
-/// QR ma'lumoti — serverdagi abadiy `qr_link`, sana/vaqt qo'shilmaydi.
-Future<void> printTableQr({
-  required String restaurantName,
-  required String zone,
-  required String label,
-  required String link,
-}) async {
-  final png = await _qrPng(link);
-  await Printing.layoutPdf(
-    name: '$zone · stol $label',
-    format: PdfPageFormat.a6,
-    onLayout: (format) async {
-      final doc = pw.Document();
-      final image = pw.MemoryImage(png);
-      doc.addPage(
-        pw.Page(
-          pageFormat: format,
-          margin: const pw.EdgeInsets.all(22),
-          build: (_) => pw.Center(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                if (restaurantName.isNotEmpty)
-                  pw.Text(
-                    restaurantName,
-                    textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      fontSize: 13,
-                      color: PdfColor.fromInt(0xFF7A6B5C),
-                    ),
-                  ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  zone,
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    fontSize: 14,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
+class _CardFooterInfo extends StatelessWidget {
+  const _CardFooterInfo({required this.table});
+
+  final DiningTable table;
+
+  static const _dim = TextStyle(fontSize: 12, color: OnDexColors.inkDim);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = table;
+    switch (t.status) {
+      case TableStatus.occupied:
+        final o = t.currentOrder!;
+        final more = t.activeOrders.length - 1;
+        final at = o.createdAt;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(o.shortNumber.isEmpty ? 'Buyurtma' : 'Buyurtma ${o.shortNumber}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
+            const SizedBox(height: 2),
+            Text(
+                [
+                  if (at != null) _clock(at),
+                  '${o.items} ta mahsulot',
+                  if (more > 0) '+$more buyurtma',
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _dim),
+          ],
+        );
+      case TableStatus.cleaning:
+        final since = t.cleaningSince;
+        return Text(since == null ? 'Tozalanmoqda' : 'Tozalanmoqda · ${_sinceText(since)}',
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: _dim);
+      case TableStatus.inactive:
+        return const Text('Vaqtincha yopilgan',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: OnDexColors.danger, fontWeight: FontWeight.w600));
+      case TableStatus.available:
+        final scanned = t.lastScannedAt;
+        if (scanned == null) return const SizedBox.shrink();
+        return Text('Oxirgi skanerlash: ${_when(scanned)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: OnDexColors.inkFaint));
+    }
+  }
+}
+
+// ─── Bo'sh va xato holatlar ───────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: OnDexColors.cardBg,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: OnDexColors.cardBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                    color: OnDexColors.primaryTint, borderRadius: BorderRadius.circular(18)),
+                child: const Icon(Icons.qr_code_2_rounded, size: 34, color: OnDexColors.primary),
+              ),
+              const SizedBox(height: 14),
+              const Text('Hali joy qo\'shilmagan',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
+              const SizedBox(height: 6),
+              const Text(
+                'Stol, kabina, VIP xona yoki topchan qo\'shing — har biriga o\'zgarmas QR kod '
+                'yaratiladi. Mijoz uni skanerlab, shu joyga buyurtma beradi.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13.5, color: OnDexColors.inkDim),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onAdd,
+                style: FilledButton.styleFrom(
+                  backgroundColor: OnDexColors.primary,
+                  minimumSize: const Size(0, 44),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                pw.SizedBox(height: 6),
-                pw.Text(
-                  tableText(label).toUpperCase(),
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    fontSize: 28,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.SizedBox(height: 12),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(
-                      color: PdfColor.fromInt(0xFFEAD9C8),
-                    ),
-                  ),
-                  child: pw.Image(image, width: 180, height: 180),
-                ),
-                pw.SizedBox(height: 12),
-                pw.Text(
-                  'Menyu uchun QR kodni skanerlang',
-                  textAlign: pw.TextAlign.center,
-                  style: const pw.TextStyle(fontSize: 11),
-                ),
-              ],
-            ),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Birinchi joyni qo\'shish'),
+              ),
+            ],
           ),
         ),
-      );
-      return doc.save();
-    },
-  );
-}
-
-Future<Uint8List> _qrPng(String data) async {
-  final painter = QrPainter(
-    data: data,
-    version: QrVersions.auto,
-    gapless: true,
-    color: const Color(0xFF000000),
-    emptyColor: const Color(0xFFFFFFFF),
-  );
-  final bytes = await painter.toImageData(512);
-  if (bytes == null) {
-    throw StateError('QR tasvirini chizib bo\'lmadi');
-  }
-  return bytes.buffer.asUint8List();
-}
-
-String _zoneOf(Map<String, dynamic> table) {
-  final z = (table['zone'] as String?)?.trim() ?? '';
-  return z.isEmpty ? kDefaultZone : z;
-}
-
-Future<String?> _askLabel(
-  BuildContext context, {
-  required String title,
-  String initial = '',
-}) async {
-  final ctrl = TextEditingController(text: initial);
-  final result = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-          labelText: 'Stol raqami',
-          hintText: 'masalan: 5',
-        ),
-        onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('Bekor qilish'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
-          child: const Text('Saqlash'),
-        ),
-      ],
-    ),
-  );
-  ctrl.dispose();
-  return (result == null || result.isEmpty) ? null : result;
+    );
+  }
 }
 
-Future<bool> _confirm(
-  BuildContext context, {
-  required String title,
-  required String message,
-}) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Bekor qilish'),
+class _NoMatches extends StatelessWidget {
+  const _NoMatches({required this.onReset});
+
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded, size: 40, color: OnDexColors.inkFaint),
+            const SizedBox(height: 10),
+            const Text('Filtr bo\'yicha joy topilmadi',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
+            const SizedBox(height: 10),
+            OutlinedButton(onPressed: onReset, child: const Text('Filtrlarni tozalash')),
+          ],
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: const Text('Davom etish'),
-        ),
-      ],
-    ),
-  );
-  return ok == true;
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 40, color: OnDexColors.inkFaint),
+          const SizedBox(height: 10),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, color: OnDexColors.ink)),
+          const SizedBox(height: 14),
+          FilledButton(onPressed: onRetry, child: const Text('Qayta urinish')),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorStrip extends StatelessWidget {
+  const _ErrorStrip({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(color: OnDexColors.dangerBg, borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, size: 18, color: OnDexColors.danger),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('Yangilab bo\'lmadi: $message',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: OnDexColors.ink)),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Qayta urinish')),
+        ],
+      ),
+    );
+  }
 }

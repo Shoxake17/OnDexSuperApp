@@ -178,6 +178,7 @@ func main() {
 	// (Postgres yoki xotira), faqat boshqa interfeys orqali.
 	var statsSource stats.Source
 	var historySource stats.HistorySource
+	var tableOrders tables.OrdersSource
 	var courierRepo couriers.Repository
 	var userRepo users.Repository
 	var codeStore users.CodeStore
@@ -273,6 +274,7 @@ func main() {
 		orderRepo = pgOrders
 		statsSource = pgOrders
 		historySource = pgOrders
+		tableOrders = pgOrders
 		courierRepo = storage.NewPgCourierRepo(pool)
 		userRepo = storage.NewPgUserRepo(pool)
 		codeStore = storage.NewPgCodeStore(pool)
@@ -288,6 +290,7 @@ func main() {
 		orderRepo = memOrders
 		statsSource = memOrders
 		historySource = memOrders
+		tableOrders = memOrders
 		userRepo = storage.NewMemoryUserRepo(storage.DemoUsers()...)
 		codeStore = storage.NewMemoryCodeStore()
 		favoritesRepo = storage.NewMemoryFavoritesRepo()
@@ -1101,6 +1104,7 @@ func main() {
 		OrderSvc:           orderSvc,
 		CatalogSvc:         catalogSvc,
 		TableSvc:           tableSvc,
+		TableOrders:        tableOrders,
 		Payments:           paymentSvc,
 		OctoClient:         octoClient,
 		Dispatcher:         dispatcher,

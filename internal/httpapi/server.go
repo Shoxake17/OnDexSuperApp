@@ -106,6 +106,9 @@ type Deps struct {
 	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
 	// â€” bu funksiyani bosqichma-bosqich yoqish uchun.
 	TableSvc *tables.Service
+	// TableOrders — joylar holati (band/bo'sh) uchun stol buyurtmalari.
+	// `nil` bo'lsa holatlar buyurtmasiz hisoblanadi (hamma joy "bo'sh").
+	TableOrders tables.OrdersSource
 
 	// Payments â€” karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
 	// 503 qaytaradi va buyurtmalar faqat NAQD bo'ladi (tizimning

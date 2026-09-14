@@ -58,23 +58,44 @@ class RestaurantApi extends ApiClient {
   Future<List<dynamic>> tables() async =>
       (await send('GET', '/restaurants/$rid/tables')) as List<dynamic>? ?? [];
 
-  Future<Map<String, dynamic>> createTable(String label,
-          {String zone = 'Asosiy zal'}) async =>
-      Map<String, dynamic>.from(await send(
-          'POST', '/restaurants/$rid/tables', {'label': label, 'zone': zone}));
+  /// Bitta joy. [kind] — `table` | `cabin` | `vip_room` | `tapchan` |
+  /// `bar_counter` | `lounge` | `banquet_hall` (`pages/tables/table_models.dart`).
+  Future<Map<String, dynamic>> createTable({
+    required String label,
+    required String zone,
+    required String kind,
+    int? capacity,
+  }) async =>
+      Map<String, dynamic>.from(await send('POST', '/restaurants/$rid/tables', {
+        'label': label,
+        'zone': zone,
+        'kind': kind,
+        if (capacity != null) 'capacity': capacity,
+      }));
 
-  Future<Map<String, dynamic>> renameTable(String tableId, String label) async =>
-      Map<String, dynamic>.from(
-          await send('PATCH', '/tables/$tableId', {'label': label}));
+  /// Bir nechta ketma-ket raqamli joy birdaniga (hammasi yoki hech biri).
+  Future<List<dynamic>> createTablesBatch({
+    required String zone,
+    required String kind,
+    required String prefix,
+    required int from,
+    required int count,
+    int? capacity,
+  }) async =>
+      (await send('POST', '/restaurants/$rid/tables/batch', {
+        'zone': zone,
+        'kind': kind,
+        'prefix': prefix,
+        'from': from,
+        'count': count,
+        if (capacity != null) 'capacity': capacity,
+      })) as List<dynamic>? ??
+      [];
 
-  Future<Map<String, dynamic>> setTableZone(String tableId, String zone) async =>
-      Map<String, dynamic>.from(
-          await send('PATCH', '/tables/$tableId', {'zone': zone}));
-
-  Future<Map<String, dynamic>> setTableActive(
-          String tableId, bool active) async =>
-      Map<String, dynamic>.from(
-          await send('PATCH', '/tables/$tableId', {'active': active}));
+  /// Qisman tahrir: `label`, `zone`, `kind`, `capacity` (null — olib
+  /// tashlash), `active`, `cleaning`. Server hammasini BITTA yozuvda saqlaydi.
+  Future<Map<String, dynamic>> updateTable(String tableId, Map<String, Object?> patch) async =>
+      Map<String, dynamic>.from(await send('PATCH', '/tables/$tableId', patch));
 
   // Eslatma: QR tokenni YANGILASH metodi ATAYLAB yo'q. QR kod menyu
   // varaqasiga chop etilgan va stolda abadiy turadi — tokenni

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"chustapp/internal/tables"
 )
@@ -12,10 +13,10 @@ import (
 // MemoryTableRepo — DATABASE_URL berilmaganda (mahalliy ishlab chiqish
 // va testlar) ishlatiladigan xotira ombori.
 //
-// MUHIM: qiymatlar NUSXA sifatida saqlanadi va NUSXA sifatida
-// qaytariladi. Ko'rsatkich qaytarilsa chaqiruvchi omborni qulfsiz
-// o'zgartira olardi — bu aynan `internal/telegram` da topilgan va
-// tuzatilgan poyga (data race) bilan bir xil xato bo'lardi.
+// MUHIM: qiymatlar CHUQUR NUSXA sifatida saqlanadi va qaytariladi
+// (`cloneTable` — ko'rsatkichli maydonlar ham). Aks holda chaqiruvchi
+// qaytgan `*Capacity` ni o'zgartirib omborni qulfsiz o'zgartira olardi —
+// bu aynan `internal/telegram` da topilgan poyga bilan bir xil xato.
 type MemoryTableRepo struct {
 	mu sync.RWMutex
 	// byID — asosiy saqlash joyi.
@@ -33,26 +34,75 @@ func NewMemoryTableRepo() *MemoryTableRepo {
 	}
 }
 
+func cloneTable(t tables.Table) tables.Table {
+	if t.Capacity != nil {
+		v := *t.Capacity
+		t.Capacity = &v
+	}
+	if t.CleaningSince != nil {
+		v := *t.CleaningSince
+		t.CleaningSince = &v
+	}
+	if t.LastScannedAt != nil {
+		v := *t.LastScannedAt
+		t.LastScannedAt = &v
+	}
+	if strings.TrimSpace(t.Zone) == "" {
+		t.Zone = tables.DefaultZone
+	}
+	t.Kind = t.Kind.Normalized()
+	return t
+}
+
+// sameSlotMem — Postgres'dagi unikal indeks (restaurant_id, zone, kind,
+// label) bilan bir xil qoida; ikkala ombor BIR XIL xatoni qaytarishi
+// shart, aks holda xotirada o'tgan test Postgres'da yiqilardi.
+func sameSlotMem(a, b tables.Table) bool {
+	return a.RestaurantID == b.RestaurantID &&
+		strings.EqualFold(zoneOf(a), zoneOf(b)) &&
+		a.Kind.Normalized() == b.Kind.Normalized() &&
+		strings.EqualFold(a.Label, b.Label)
+}
+
+func (r *MemoryTableRepo) conflictLocked(t tables.Table, skipID string) bool {
+	for id, x := range r.byID {
+		if id != skipID && sameSlotMem(x, t) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *MemoryTableRepo) Create(_ context.Context, t *tables.Table) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// Bir restoranda bir xil nom bo'lmasin (Postgres'dagi
-	// idx_restaurant_tables_label bilan bir xil qoida — ikkala ombor
-	// ham BIR XIL xatoni qaytarishi shart, aks holda xotirada
-	// ishlaydigan test Postgres'da yiqilardi).
-	for _, x := range r.byID {
-		if x.RestaurantID == t.RestaurantID &&
-			strings.EqualFold(zoneOf(x), zoneOf(*t)) &&
-			strings.EqualFold(x.Label, t.Label) {
+	if r.conflictLocked(*t, "") {
+		return tables.ErrDuplicate
+	}
+	r.byID[t.ID] = cloneTable(*t)
+	r.byToken[t.QRToken] = t.ID
+	return nil
+}
+
+// CreateMany — avval HAMMASI tekshiriladi (bazadagilar bilan ham, o'zaro
+// ham), keyin yoziladi: Postgres tranzaksiyasi bilan bir xil natija.
+func (r *MemoryTableRepo) CreateMany(_ context.Context, list []*tables.Table) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, t := range list {
+		if r.conflictLocked(*t, "") {
 			return tables.ErrDuplicate
 		}
+		for _, other := range list[:i] {
+			if sameSlotMem(*other, *t) {
+				return tables.ErrDuplicate
+			}
+		}
 	}
-	stored := *t
-	if strings.TrimSpace(stored.Zone) == "" {
-		stored.Zone = tables.DefaultZone
+	for _, t := range list {
+		r.byID[t.ID] = cloneTable(*t)
+		r.byToken[t.QRToken] = t.ID
 	}
-	r.byID[t.ID] = stored
-	r.byToken[t.QRToken] = t.ID
 	return nil
 }
 
@@ -63,7 +113,7 @@ func (r *MemoryTableRepo) GetByID(_ context.Context, id string) (*tables.Table, 
 	if !ok {
 		return nil, tables.ErrNotFound
 	}
-	cp := x
+	cp := cloneTable(x)
 	return &cp, nil
 }
 
@@ -78,7 +128,7 @@ func (r *MemoryTableRepo) GetByToken(_ context.Context, token string) (*tables.T
 	if !ok {
 		return nil, tables.ErrNotFound
 	}
-	cp := x
+	cp := cloneTable(x)
 	return &cp, nil
 }
 
@@ -88,7 +138,7 @@ func (r *MemoryTableRepo) ListByRestaurant(_ context.Context, restaurantID strin
 	var list []*tables.Table
 	for _, x := range r.byID {
 		if x.RestaurantID == restaurantID {
-			cp := x
+			cp := cloneTable(x)
 			list = append(list, &cp)
 		}
 	}
@@ -98,6 +148,9 @@ func (r *MemoryTableRepo) ListByRestaurant(_ context.Context, restaurantID strin
 		zi, zj := zoneOf(*list[i]), zoneOf(*list[j])
 		if zi != zj {
 			return zi < zj
+		}
+		if list[i].Kind != list[j].Kind {
+			return list[i].Kind < list[j].Kind
 		}
 		return list[i].Label < list[j].Label
 	})
@@ -111,13 +164,8 @@ func (r *MemoryTableRepo) Update(_ context.Context, t *tables.Table) error {
 	if !ok {
 		return tables.ErrNotFound
 	}
-	// Nom o'zgargan bo'lsa — takrorlanmasin.
-	for id, x := range r.byID {
-		if id != t.ID && x.RestaurantID == t.RestaurantID &&
-			strings.EqualFold(zoneOf(x), zoneOf(*t)) &&
-			strings.EqualFold(x.Label, t.Label) {
-			return tables.ErrDuplicate
-		}
+	if r.conflictLocked(*t, t.ID) {
+		return tables.ErrDuplicate
 	}
 	// ┌─ TOKEN O'ZGARMAYDI ──────────────────────────────────────────┐
 	// QR kod menyu varaqasiga chop etilgan va stolda abadiy turadi.
@@ -126,14 +174,31 @@ func (r *MemoryTableRepo) Update(_ context.Context, t *tables.Table) error {
 	// ishlashi shart, aks holda testlar bir joyda o'tib, ishlab
 	// chiqarishda boshqacha natija berardi.
 	//
-	// Shuning uchun kiruvchi qiymat emas, ESKI token saqlanadi.
+	// Shuning uchun kiruvchi qiymat emas, ESKI token saqlanadi
+	// (skanerlash va yaratilish vaqti ham).
 	// └───────────────────────────────────────────────────────────────┘
-	updated := *t
-	if strings.TrimSpace(updated.Zone) == "" {
-		updated.Zone = tables.DefaultZone
-	}
+	updated := cloneTable(*t)
+	updated.RestaurantID = old.RestaurantID
 	updated.QRToken = old.QRToken
+	updated.LastScannedAt = old.LastScannedAt
+	updated.CreatedAt = old.CreatedAt
 	r.byID[t.ID] = updated
+	return nil
+}
+
+func (r *MemoryTableRepo) TouchScanned(_ context.Context, id string, at time.Time, minInterval time.Duration) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	x, ok := r.byID[id]
+	if !ok {
+		return nil // Postgres'dagi kabi: yo'q qator — xato emas
+	}
+	if x.LastScannedAt != nil && x.LastScannedAt.After(at.Add(-minInterval)) {
+		return nil
+	}
+	v := at
+	x.LastScannedAt = &v
+	r.byID[id] = x
 	return nil
 }
 
