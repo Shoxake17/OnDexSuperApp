@@ -39,10 +39,14 @@ enum _ViewMode { kanban, list }
 
 /// Buyurtmalar sahifasi — image/buyurtma.png namunasiga mos, Kanban-uslubidagi
 /// to'rt ustunli taxta (Yangi/Tayyorlanmoqda/Tayyor/Kuryerda), qidiruv,
-/// sana filtri, tarix ko'rinishi va grid/ro'yxat almashtirgichi bilan.
+/// "Tarix" tugmasi va grid/ro'yxat almashtirgichi bilan.
 /// Yangi buyurtma WebSocket orqali JONLI tushadi.
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key});
+  /// "Tarix" — to'liq buyurtmalar tarixi (Statistika → "Barcha
+  /// buyurtmalar", davr filtri bilan). `null` bo'lsa tugma ko'rinmaydi.
+  final VoidCallback? onOpenHistory;
+
+  const OrdersPage({super.key, this.onOpenHistory});
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -59,8 +63,6 @@ class _OrdersPageState extends State<OrdersPage> {
   String _search = '';
   _TabFilter _tab = _TabFilter.all;
   _ViewMode _view = _ViewMode.kanban;
-  bool _showHistory = false;
-  DateTime _date = DateTime.now();
 
   @override
   void initState() {
@@ -270,32 +272,17 @@ class _OrdersPageState extends State<OrdersPage> {
     return number.contains(_search);
   }
 
-  bool _matchesDate(Map<String, dynamic> o) {
-    final createdAt = _parseAt(o['created_at']);
-    if (createdAt == null) return false;
-    return createdAt.year == _date.year &&
-        createdAt.month == _date.month &&
-        createdAt.day == _date.day;
-  }
-
   // MUHIM: faol buyurtmalar sana bo'yicha FILTRLANMAYDI — ular haqiqatan
   // ham "joriy" (masalan kecha qabul qilingan-u hali yetkazilmagan
-  // buyurtma bo'lishi mumkin), sana filtri esa faqat TARIX ko'rinishida
-  // mantiqiy (yakunlangan buyurtmalarni kunma-kun ko'rish uchun).
+  // buyurtma bo'lishi mumkin).
+  //
+  // Yakunlangan buyurtmalar "Tarix" da — Statistika → "Barcha
+  // buyurtmalar" (`onOpenHistory`). Avval tarix shu sahifada
+  // `api.orders()` dan ko'rsatilardi: u faqat oxirgi 100 ta buyurtmani
+  // beradi, ya'ni eski kunlar jimgina BO'SH chiqardi.
   List<Map<String, dynamic>> get _activeOrders => _orders
       .where((o) => !isTerminalStatus((o['status'] ?? '').toString()))
       .toList();
-
-  List<Map<String, dynamic>> get _historyOrders => _orders
-      .where((o) => isTerminalStatus((o['status'] ?? '').toString()))
-      .where(_matchesDate)
-      .where(_matchesSearch)
-      .toList()
-    ..sort((a, b) {
-      final da = _parseAt(a['created_at']) ?? DateTime(0);
-      final db = _parseAt(b['created_at']) ?? DateTime(0);
-      return db.compareTo(da);
-    });
 
   List<Map<String, dynamic>> _byStatus(Set<String> statuses) => _activeOrders
       .where((o) => statuses.contains(o['status']))
@@ -327,15 +314,11 @@ class _OrdersPageState extends State<OrdersPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Header(
-              totalCount: _showHistory ? _historyOrders.length : totalActive,
-              isHistory: _showHistory,
+              totalCount: totalActive,
               searchCtrl: _searchCtrl,
-              date: _date,
-              onDateChanged: (d) => setState(() => _date = d),
-              onToggleHistory: () => setState(() => _showHistory = !_showHistory),
+              onOpenHistory: widget.onOpenHistory,
             ),
             const SizedBox(height: 20),
-            if (!_showHistory) ...[
               _TabRow(
                 selected: _tab,
                 onSelect: (t) => setState(() => _tab = t),
@@ -374,8 +357,6 @@ class _OrdersPageState extends State<OrdersPage> {
                     final db = _parseAt(b['created_at']) ?? DateTime(0);
                     return db.compareTo(da);
                   })),
-            ] else
-              _HistoryList(orders: _historyOrders),
           ],
         ),
       ),
@@ -442,40 +423,16 @@ String _elapsedSince(DateTime since) {
 // Sarlavha: qidiruv, sana, tarix
 // ---------------------------------------------------------------------------
 
-const _monthNamesShort = [
-  'yan', 'fev', 'mar', 'apr', 'may', 'iyun',
-  'iyul', 'avg', 'sen', 'okt', 'noy', 'dek', // ignore-format
-];
-
 class _Header extends StatelessWidget {
   final int totalCount;
-  final bool isHistory;
   final TextEditingController searchCtrl;
-  final DateTime date;
-  final ValueChanged<DateTime> onDateChanged;
-  final VoidCallback onToggleHistory;
+  final VoidCallback? onOpenHistory;
 
   const _Header({
     required this.totalCount,
-    required this.isHistory,
     required this.searchCtrl,
-    required this.date,
-    required this.onDateChanged,
-    required this.onToggleHistory,
+    required this.onOpenHistory,
   });
-
-  Future<void> _pickDate(BuildContext context) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: date,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now(),
-      helpText: 'Sanani tanlang',
-      cancelText: 'Bekor qilish',
-      confirmText: 'Tanlash',
-    );
-    if (picked != null) onDateChanged(picked);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +447,7 @@ class _Header extends StatelessWidget {
                   fontSize: 27, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
           const SizedBox(height: 4),
           Text(
-            isHistory ? 'Tarix — jami $totalCount ta buyurtma' : 'Jami $totalCount ta buyurtma',
+            'Jami $totalCount ta buyurtma',
             style: const TextStyle(fontSize: 14, color: OnDexColors.inkDim),
           ),
         ],
@@ -524,48 +481,20 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          // Sana tanlagich FAQAT Tarix ko'rinishida ko'rsatiladi — faol
-          // (joriy) buyurtmalar ATAYLAB sana bo'yicha filtrlanmaydi (kecha
-          // qabul qilingan-u hali yetkazilmagan buyurtma ham "faol"
-          // hisoblanishi kerak), shuning uchun bu yerda ko'rsatish
-          // chalkashtirar edi (ishlamaydigan tugma taassurotini berardi).
-          if (isHistory)
-            InkWell(
-              onTap: () => _pickDate(context),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: OnDexColors.cardBg,
-                  border: Border.all(color: OnDexColors.cardBorder),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.calendar_today_rounded, size: 15, color: OnDexColors.inkDim),
-                    const SizedBox(width: 9),
-                    Text('${date.day}-${_monthNamesShort[date.month - 1]}, ${date.year}',
-                        style: const TextStyle(
-                            fontSize: 13, color: OnDexColors.ink, fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.keyboard_arrow_down_rounded, size: 17, color: OnDexColors.inkDim),
-                  ],
-                ),
+          // Faol buyurtmalar ATAYLAB sana bo'yicha filtrlanmaydi. Sana
+          // filtri "Tarix" sahifasining yuqori panelida (davr bilan).
+          if (onOpenHistory != null)
+            OutlinedButton.icon(
+              onPressed: onOpenHistory,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: OnDexColors.primary,
+                side: const BorderSide(color: OnDexColors.primary),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
+              icon: const Icon(Icons.history_rounded, size: 17),
+              label: const Text('Tarix'),
             ),
-          OutlinedButton.icon(
-            onPressed: onToggleHistory,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: OnDexColors.primary,
-              side: const BorderSide(color: OnDexColors.primary),
-              backgroundColor: isHistory ? OnDexColors.primaryTint : null,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            icon: Icon(isHistory ? Icons.dashboard_rounded : Icons.history_rounded, size: 17),
-            label: Text(isHistory ? 'Joriy buyurtmalar' : 'Tarix'),
-          ),
         ],
       );
       if (narrow) {
@@ -1316,38 +1245,3 @@ class _ActiveListRow extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tarix ko'rinishi
-// ---------------------------------------------------------------------------
-
-class _HistoryList extends StatelessWidget {
-  final List<Map<String, dynamic>> orders;
-  const _HistoryList({required this.orders});
-
-  @override
-  Widget build(BuildContext context) {
-    if (orders.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
-        child: Center(
-            child: Text('Tanlangan sanada yakunlangan buyurtma yo\'q',
-                style: TextStyle(color: OnDexColors.inkDim))),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: OnDexColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: OnDexColors.cardBorder),
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < orders.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: OnDexColors.cardBorder),
-            _ActiveListRow(order: orders[i]),
-          ],
-        ],
-      ),
-    );
-  }
-}

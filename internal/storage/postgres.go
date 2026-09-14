@@ -334,7 +334,7 @@ func (r *PgOrderRepo) ListByRestaurant(ctx context.Context, restaurantID string,
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+orderColumns+` FROM orders
 		 WHERE restaurant_id = $1
-		   AND NOT (payment_method = 'card' AND payment_state NOT IN ('held','paid'))
+		   AND `+restaurantVisibleSQL+`
 		 ORDER BY created_at DESC LIMIT $2`, restaurantID, limit)
 	if err != nil {
 		return nil, err

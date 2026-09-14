@@ -70,17 +70,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			// ko'rinmaydi. Kuryer ismi â€” restoran panelida "Faol
 			// buyurtmalar" ro'yxatida qaysi kuryer ekanini ko'rsatish
 			// uchun (avval faqat xom ID ko'rinardi).
-			out := make([]map[string]any, 0, len(list))
-			for _, o := range list {
-				entry := withExtraField(o, "customer_phone", customerPhoneFor(r.Context(), s.UserRepo, o.CustomerID))
-				if o.CourierID != "" {
-					if c, err := s.CourierRepo.GetByID(r.Context(), o.CourierID); err == nil {
-						entry = withExtraField(entry, "courier_name", c.Name)
-					}
-				}
-				out = append(out, entry)
-			}
-			writeJSON(w, http.StatusOK, out)
+			writeJSON(w, http.StatusOK, s.restaurantOrderViews(r.Context(), list))
 		}))
 
 	// POST /restaurants/{id}/open â€” restoran o'zini ochiq/yopiq qiladi (yoki admin)

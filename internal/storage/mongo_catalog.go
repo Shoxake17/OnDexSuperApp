@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -10,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"chustapp/internal/catalog"
+	"chustapp/internal/search"
 )
 
 // maxSearchResults — `SearchProducts` qaytaradigan eng ko'p natija
@@ -115,12 +117,81 @@ func productDoc(x *catalog.Product) mongoProduct {
 type MongoCatalogRepo struct {
 	restaurants *mongo.Collection
 	products    *mongo.Collection
+	// search — MeiliSearch klienti (ixtiyoriy, dastlab nil). `nil`
+	// bo'lsa `SearchProducts` eski Mongo substring skaneriga tushadi.
+	search *search.Client
 }
 
 func NewMongoCatalogRepo(db *mongo.Database) *MongoCatalogRepo {
 	return &MongoCatalogRepo{
 		restaurants: db.Collection("restaurants"),
 		products:    db.Collection("products"),
+	}
+}
+
+// SetSearchClient — MeiliSearch klientini ulaydi (yoki `nil` bilan
+// uzadi). `cmd/api/main.go` server ishga tushganda, dastlabki
+// indekslash (`ReindexSearch`) muvaffaqiyatli bo'lgandagina chaqiradi —
+// ulanmagan yoki nosoz Meilisearch qidiruvni HECH QACHON buzmasligi
+// kerak, faqat eski (sekinroq, lekin ishonchli) Mongo skaneriga
+// qoldiradi.
+func (r *MongoCatalogRepo) SetSearchClient(c *search.Client) {
+	r.search = c
+}
+
+// ReindexSearch — Mongo'dagi BARCHA mahsulotlarni Meilisearch'ga qayta
+// yuklaydi. Meilisearch birinchi marta ulanganda hali bo'sh bo'ladi,
+// mavjud katalog esa undan oldin allaqachon Mongo'da turgan bo'lishi
+// mumkin — shu funksiya bo'lmasa ular hech qachon izlanmas edi. Server
+// ishga tushganda bir marta chaqiriladi; keyingi o'zgarishlar
+// `SaveProduct`/`DeleteProduct`/`DeleteRestaurant` orqali o'sha zahoti
+// sinxronlanadi.
+func (r *MongoCatalogRepo) ReindexSearch(ctx context.Context) error {
+	if r.search == nil {
+		return nil
+	}
+	cur, err := r.products.Find(ctx, bson.M{})
+	if err != nil {
+		return err
+	}
+	defer cur.Close(ctx)
+	var docs []search.ProductDoc
+	for cur.Next(ctx) {
+		var doc mongoProduct
+		if err := cur.Decode(&doc); err != nil {
+			return err
+		}
+		docs = append(docs, search.ProductDoc{
+			ID: doc.ID, RestaurantID: doc.RestaurantID, Name: doc.Name,
+			Category: doc.Category, Available: doc.Available,
+		})
+	}
+	if err := cur.Err(); err != nil {
+		return err
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	return r.search.IndexProducts(ctx, docs)
+}
+
+// indexProductBestEffort — mahsulotni Meilisearch'ga qo'shadi/yangilaydi.
+//
+// ┌─ MUVAFFAQIYATSIZLIK XATO QAYTARMAYDI ──────────────────────────────┐
+// Mongo — yagona haqiqat manbai (`single-source-of-truth`), indeks esa
+// faqat qidiruv uchun hosila nusxa. Meilisearch vaqtincha ishlamay
+// qolsa ham taom saqlanishi/o'chirilishi TO'XTAMASLIGI kerak — faqat
+// keyingi qidiruv natijasi bir muddat eskirgan bo'lishi mumkin.
+// └────────────────────────────────────────────────────────────────────┘
+func (r *MongoCatalogRepo) indexProductBestEffort(ctx context.Context, p *catalog.Product) {
+	if r.search == nil {
+		return
+	}
+	if err := r.search.IndexProducts(ctx, []search.ProductDoc{{
+		ID: p.ID, RestaurantID: p.RestaurantID, Name: p.Name,
+		Category: p.Category, Available: p.Available,
+	}}); err != nil {
+		slog.Warn("MeiliSearch indekslash muvaffaqiyatsiz", "product_id", p.ID, "err", err)
 	}
 }
 
@@ -181,6 +252,11 @@ func (r *MongoCatalogRepo) DeleteRestaurant(ctx context.Context, id string) erro
 	}
 	if _, err := r.products.DeleteMany(ctx, bson.M{"restaurant_id": id}); err != nil {
 		return err
+	}
+	if r.search != nil {
+		if err := r.search.DeleteByRestaurant(ctx, id); err != nil {
+			slog.Warn("MeiliSearch'dan restoran taomlarini o'chirish muvaffaqiyatsiz", "restaurant_id", id, "err", err)
+		}
 	}
 	_, err := r.restaurants.DeleteOne(ctx, bson.M{"_id": id})
 	return err
@@ -256,6 +332,90 @@ func (r *MongoCatalogRepo) SearchProducts(ctx context.Context, query string) ([]
 		return nil, nil
 	}
 
+	// MeiliSearch ulangan bo'lsa — tez, xato-kechiruvchan qidiruv.
+	// Muvaffaqiyatsiz bo'lsa (vaqtincha ishlamay qolgan, tarmoq xatosi)
+	// XATO QAYTARILMAYDI: eski Mongo skaneriga qaytiladi, ya'ni
+	// Meilisearch'ning o'zi hech qachon qidiruvni butunlay o'ldirmaydi.
+	if r.search != nil {
+		list, err := r.searchViaMeili(ctx, query)
+		if err != nil {
+			slog.Warn("MeiliSearch so'rovi muvaffaqiyatsiz — Mongo skaneriga qaytildi", "err", err)
+		} else {
+			return list, nil
+		}
+	}
+	return r.searchViaMongoScan(ctx, nq)
+}
+
+// searchViaMeili — Meilisearch orqali mos ID'larni topadi va ularni
+// (moslik tartibida) Mongo'dan HAQIQIY holatda o'qiydi — narx,
+// mavjudlik va boshqa hamma maydon har doim Mongo'dan, indeks faqat
+// "qaysi ID'lar mos keladi" javobini beradi.
+func (r *MongoCatalogRepo) searchViaMeili(ctx context.Context, query string) ([]*catalog.ProductSearchResult, error) {
+	ids, err := r.search.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	products, err := r.GetProductsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*catalog.Product, len(products))
+	for _, p := range products {
+		byID[p.ID] = p
+	}
+
+	var (
+		list    []*catalog.ProductSearchResult
+		restIDs []string
+		seen    = map[string]bool{}
+	)
+	// `ids` tartibida yuramiz (Meilisearch moslik darajasi bo'yicha
+	// saralagan) — `byID` xaritasi faqat qidiruv uchun, tartib uchun
+	// emas.
+	for _, id := range ids {
+		p, ok := byID[id]
+		// Indeksda bor, Mongo'da yo'q/mavjud emas — yozuv endigina
+		// o'chirilgan-u indeks hali yetib bormagan bo'lishi mumkin
+		// (eventual consistency). Xato emas, shunchaki o'tkazib
+		// yuboriladi — indeks o'zi keyingi Save/Delete'da tuzaladi.
+		if !ok || !p.Available {
+			continue
+		}
+		if p.RestaurantID != "" && !seen[p.RestaurantID] {
+			seen[p.RestaurantID] = true
+			restIDs = append(restIDs, p.RestaurantID)
+		}
+		// `PublicView()` — ulgurji narx va 3D generatsiyasining ichki
+		// holati bu yerda ham kesiladi, aynan Mongo skaneri kabi
+		// (`Product.PublicView` izohiga qarang).
+		list = append(list, &catalog.ProductSearchResult{Product: p.PublicView()})
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	rests, err := r.restaurantsByIDs(ctx, restIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range list {
+		if rest, ok := rests[it.RestaurantID]; ok {
+			it.RestaurantName = rest.Name
+			it.RestaurantLogoURL = rest.LogoURL
+			it.RestaurantOpen = rest.Open
+		}
+	}
+	return list, nil
+}
+
+// searchViaMongoScan — eski (Meilisearch'siz) usul: `products`
+// kolleksiyasini skanerlab, nom/turkumni qo'lda solishtiradi.
+// `SearchProducts` bu yo'lga faqat Meilisearch ulanmagan yoki vaqtincha
+// ishlamay qolgan holatda tushadi.
+func (r *MongoCatalogRepo) searchViaMongoScan(ctx context.Context, nq string) ([]*catalog.ProductSearchResult, error) {
 	// 1-qadam: faqat mahsulotlar. `$lookup`/`$unwind` YO'Q.
 	cur, err := r.products.Find(ctx,
 		bson.M{"available": true},
@@ -370,7 +530,11 @@ func scanMongoProducts(ctx context.Context, cur *mongo.Cursor) ([]*catalog.Produ
 func (r *MongoCatalogRepo) SaveProduct(ctx context.Context, x *catalog.Product) error {
 	doc := productDoc(x)
 	_, err := r.products.ReplaceOne(ctx, bson.M{"_id": x.ID}, doc, options.Replace().SetUpsert(true))
-	return err
+	if err != nil {
+		return err
+	}
+	r.indexProductBestEffort(ctx, x)
+	return nil
 }
 
 func (r *MongoCatalogRepo) DeleteProduct(ctx context.Context, id string) error {
@@ -380,6 +544,11 @@ func (r *MongoCatalogRepo) DeleteProduct(ctx context.Context, id string) error {
 	}
 	if res.DeletedCount == 0 {
 		return catalog.ErrNotFound
+	}
+	if r.search != nil {
+		if err := r.search.DeleteProduct(ctx, id); err != nil {
+			slog.Warn("MeiliSearch'dan o'chirish muvaffaqiyatsiz", "product_id", id, "err", err)
+		}
 	}
 	return nil
 }

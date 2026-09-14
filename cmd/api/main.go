@@ -38,6 +38,8 @@ import (
 	"chustapp/internal/revoke"
 	"chustapp/internal/safego"
 	"chustapp/internal/scenes"
+	"chustapp/internal/search"
+	"chustapp/internal/stats"
 	"chustapp/internal/storage"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
@@ -172,6 +174,10 @@ func main() {
 	appenv.Report(devMode)
 
 	var orderRepo orders.Repository
+	// Statistika manbai — buyurtmalar ombori bilan AYNAN bir obyekt
+	// (Postgres yoki xotira), faqat boshqa interfeys orqali.
+	var statsSource stats.Source
+	var historySource stats.HistorySource
 	var courierRepo couriers.Repository
 	var userRepo users.Repository
 	var codeStore users.CodeStore
@@ -263,7 +269,10 @@ func main() {
 			}
 		}
 		pgPool = pool
-		orderRepo = storage.NewPgOrderRepo(pool)
+		pgOrders := storage.NewPgOrderRepo(pool)
+		orderRepo = pgOrders
+		statsSource = pgOrders
+		historySource = pgOrders
 		courierRepo = storage.NewPgCourierRepo(pool)
 		userRepo = storage.NewPgUserRepo(pool)
 		codeStore = storage.NewPgCodeStore(pool)
@@ -275,7 +284,10 @@ func main() {
 			couriers.Courier{ID: "c2", Name: "Bekzod", Lat: 41.0010, Lng: 71.2400, Available: true, Approved: true, VehicleType: couriers.VehicleBike, Rating: 5.0},
 			couriers.Courier{ID: "c3", Name: "Doniyor", Lat: 40.9980, Lng: 71.2330, Available: true, Approved: true, VehicleType: couriers.VehicleFoot, Rating: 5.0},
 		)
-		orderRepo = storage.NewMemoryOrderRepo()
+		memOrders := storage.NewMemoryOrderRepo()
+		orderRepo = memOrders
+		statsSource = memOrders
+		historySource = memOrders
 		userRepo = storage.NewMemoryUserRepo(storage.DemoUsers()...)
 		codeStore = storage.NewMemoryCodeStore()
 		favoritesRepo = storage.NewMemoryFavoritesRepo()
@@ -333,11 +345,42 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		catalogRepo = storage.NewMongoCatalogRepo(mdb)
+		mongoCatalogRepo := storage.NewMongoCatalogRepo(mdb)
+		catalogRepo = mongoCatalogRepo
 		// Kitob ombori faqat Mongo rejimida: katalog ham shu yerda.
 		bookRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
 		slog.Info("rejim: MongoDB (katalog)")
+
+		// ---------- Tezkor qidiruv (MeiliSearch, ixtiyoriy) ----------
+		// MEILI_HOST bo'sh bo'lsa butunlay o'chiq: `GET /products/search`
+		// avvalgidek Mongo skaneri orqali ishlayveradi. Boshqa ixtiyoriy
+		// komponentlar (R2, Tripo, Redis) bilan bir xil falsafa: bu
+		// xizmat hech qachon serverni to'xtatmaydi.
+		if meiliHost := strings.TrimSpace(os.Getenv("MEILI_HOST")); meiliHost != "" {
+			meili := search.New(meiliHost, os.Getenv("MEILI_API_KEY"))
+			mctx, mcancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := meili.EnsureIndex(mctx); err != nil {
+				slog.Error("MeiliSearch indeksi sozlanmadi — eski Mongo qidiruvi ishlatiladi "+
+					"(MEILI_HOST/MEILI_API_KEY to'g'rimi, konteyner ko'tarilganmi?)", "err", err)
+			} else {
+				mongoCatalogRepo.SetSearchClient(meili)
+				// Dastlabki to'liq indekslash: Meilisearch birinchi marta
+				// ulanganda bo'sh, mavjud katalog esa undan oldin
+				// allaqachon Mongo'da turgan bo'lishi mumkin.
+				rctx, rcancel := context.WithTimeout(context.Background(), 60*time.Second)
+				if err := mongoCatalogRepo.ReindexSearch(rctx); err != nil {
+					slog.Error("MeiliSearch dastlabki indekslash muvaffaqiyatsiz — eski Mongo qidiruviga qaytildi", "err", err)
+					mongoCatalogRepo.SetSearchClient(nil)
+				} else {
+					slog.Info("MeiliSearch yoqilgan (tezkor taom qidiruv)", "host", meiliHost)
+				}
+				rcancel()
+			}
+			mcancel()
+		} else {
+			slog.Info("MeiliSearch o'chiq — MEILI_HOST berilmagan, qidiruv eski Mongo skaneri orqali ishlaydi")
+		}
 	} else if devMode {
 		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
 		promotionsRepo = storage.NewMemoryPromotionsRepo()
@@ -1037,6 +1080,8 @@ func main() {
 	// faqat bog'liqliklar yig'iladi â€” Express'dagi `app.js` kabi.
 	api := httpapi.New(httpapi.Deps{
 		OrderRepo:          orderRepo,
+		StatsSource:        statsSource,
+		HistorySource:      historySource,
 		CourierRepo:        courierRepo,
 		UserRepo:           userRepo,
 		CatalogRepo:        catalogRepo,

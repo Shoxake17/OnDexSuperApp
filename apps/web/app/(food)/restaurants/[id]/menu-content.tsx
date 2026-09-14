@@ -8,7 +8,12 @@ import { fullImageUrl } from "@/lib/images";
 import { goBack } from "@/lib/nav";
 import { categoryOf, computeProductDiscount } from "@/lib/promotions";
 import { useFavorites } from "@/lib/use-favorites";
-import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
+import type {
+  ActivePromotion,
+  Product,
+  ProductSearchResult,
+  Restaurant,
+} from "@/lib/types";
 import { useCart } from "@/lib/cart-context";
 import { useQuote } from "@/lib/use-quote";
 import ProductCard from "./product-card";
@@ -74,11 +79,54 @@ export default function MenuContent({
   // Qidiruv endi FAQAT ikonka bosilganda ochiladigan overlay ichida
   // ishlaydi (Bosh sahifa bilan bir xil naqsh) — asosiy sahifa har doim
   // to'liq, filtrlanmagan menyuni ko'rsatadi.
-  const searchResults = useMemo(() => {
+  const localResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     return menu.filter((p) => p.name.toLowerCase().includes(q));
   }, [menu, query]);
+
+  // ┌─ MeiliSearch — LOKAL FILTRNI ALMASHTIRADI, YO'QOTMAYDI ────────────┐
+  // `GET /products/search` global (barcha restoranlar bo'yicha) va endi
+  // MeiliSearch orqali xato-kechiruvchan ("mohito" yozilsa "Moxito" ham
+  // topiladi). Natija shu restoranga tegishlilarigacha toraytiriladi.
+  //
+  // `localResults` — `menu` propidan bir zumda hisoblanadi, tarmoqqa
+  // chiqmaydi. Shuning uchun natija HAR SAFAR shu bilan boshlanadi,
+  // so'ngra (300ms kutib, yozish to'xtaganda) tarmoq javobi kelsa unga
+  // ALMASHADI. So'rov muvaffaqiyatsiz bo'lsa `remoteResults` `null`
+  // holicha qoladi va lokal filtr ko'rinishda qolaveradi.
+  // └────────────────────────────────────────────────────────────────────┘
+  const [remoteResults, setRemoteResults] = useState<
+    ProductSearchResult[] | null
+  >(null);
+
+  useEffect(() => {
+    setRemoteResults(null);
+    const q = query.trim();
+    if (!q) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/proxy/products/search?q=${encodeURIComponent(q)}`,
+        );
+        if (!res.ok || cancelled) return;
+        const list = ((await res.json()) ?? []) as ProductSearchResult[];
+        if (cancelled) return;
+        setRemoteResults(
+          list.filter((p) => p.restaurant_id === restaurant.id),
+        );
+      } catch {
+        // Tarmoq xatosi — jim qolamiz, `localResults` ko'rinishda qoladi.
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, restaurant.id]);
+
+  const searchResults = remoteResults ?? localResults;
 
   const categories = useMemo(() => {
     const list: string[] = [];

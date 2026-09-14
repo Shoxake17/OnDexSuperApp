@@ -29,9 +29,13 @@ class MainLayout extends StatelessWidget {
   final int newOrdersCount;
   final VoidCallback onLogout;
 
+  /// Yuqori paneldagi sahifaga xos amallar (`TopBar.actions` ga qarang).
+  final Widget? topBarActions;
+
   final Widget child;
 
   const MainLayout({
+    this.topBarActions,
     super.key,
     required this.selectedIndex,
     required this.onSelect,
@@ -81,6 +85,7 @@ class MainLayout extends StatelessWidget {
                   onDateChanged: onDateChanged,
                   newOrdersCount: newOrdersCount,
                   onBellTap: () => onSelect(1), // Buyurtmalar
+                  actions: topBarActions,
                 ),
                 Expanded(child: child),
               ],

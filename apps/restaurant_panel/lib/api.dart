@@ -186,6 +186,47 @@ class RestaurantApi extends ApiClient {
   Future<void> deletePromotion(String promotionId) =>
       send('DELETE', '/restaurants/$rid/promotions/$promotionId');
 
+  /// "Statistika" sahifasi — butun hisob-kitob SERVERDA
+  /// (`internal/stats`).
+  ///
+  /// NEGA `orders()` dan hisoblanmaydi: u eng so'nggi 100 ta buyurtmani
+  /// qaytaradi, ya'ni bir oylik statistika jimgina kesilgan ro'yxatdan
+  /// chiqib, yolg'on raqam ko'rsatardi.
+  ///
+  /// [from] va [to] — kalendar kunlari (ikkalasi ham davrga kiradi),
+  /// [granularity] — `day` | `week` | `month`.
+  Future<Map<String, dynamic>> stats({
+    required DateTime from,
+    required DateTime to,
+    String granularity = 'day',
+  }) async =>
+      Map<String, dynamic>.from(await send(
+          'GET',
+          '/restaurants/$rid/stats'
+              '?from=${_apiDate(from)}&to=${_apiDate(to)}'
+              '&granularity=${Uri.encodeQueryComponent(granularity)}') as Map);
+
+  /// "Barcha buyurtmalar" — eng yangisidan, sahifalab. [status] — `all` |
+  /// `in_progress` | `completed` | `cancelled`, [cursor] — oldingi
+  /// javobning `next_cursor` i. [from]/[to] — kalendar kunlari (ikkalasi
+  /// ham kiradi); berilmasa restoran ochilgandan beri.
+  ///
+  /// Birinchi sahifada (kursorsiz) javobga shu davr xulosasi (`summary`)
+  /// ham qo'shiladi.
+  Future<Map<String, dynamic>> orderHistory({
+    String status = 'all',
+    String? cursor,
+    int limit = 30,
+    DateTime? from,
+    DateTime? to,
+  }) async =>
+      Map<String, dynamic>.from(await send(
+          'GET',
+          '/restaurants/$rid/orders/history'
+              '?status=${Uri.encodeQueryComponent(status)}&limit=$limit'
+              '${from == null || to == null ? '' : '&from=${_apiDate(from)}&to=${_apiDate(to)}'}'
+              '${cursor == null || cursor.isEmpty ? '' : '&cursor=${Uri.encodeQueryComponent(cursor)}'}') as Map);
+
   /// [startAt]/[endAt] — RFC3339 (masalan "2026-08-02T10:00:00.000Z"),
   /// backend shu formatni kutadi. [endAt] indefinite=true bo'lsa e'tiborga
   /// olinmaydi, lekin baribir yuborilishi kerak (backend uni o'qimaydi).
@@ -243,6 +284,11 @@ class RestaurantApi extends ApiClient {
   }
 
 }
+
+/// Sana `YYYY-MM-DD` shaklida (server `internal/stats.ParseQuery` shuni kutadi).
+String _apiDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}'
+    '-${d.day.toString().padLeft(2, '0')}';
 
 final api = RestaurantApi();
 

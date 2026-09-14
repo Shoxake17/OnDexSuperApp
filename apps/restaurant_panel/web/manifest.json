@@ -1,11 +1,11 @@
 {
-    "name": "chust_restaurant",
-    "short_name": "chust_restaurant",
+    "name": "OnDex Restoran",
+    "short_name": "OnDex",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#000000",
+    "theme_color": "#F2650F",
+    "description": "OnDex — Restoran paneli",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 // `SystemChrome` / `SystemUiMode` uchun.
 import 'package:flutter/services.dart';
@@ -67,16 +68,16 @@ void main() async {
         ..sessionReplay = true
         // Session Replay uchun to'liq config:
         //   1) maskAllTexts/maskAllImages — shaxsiy ma'lumot niqoblash
-        //   2) captureScreenViews — qaysi ekranda bo'lganini Recordingga
-        //      avtomatik yozish (playback da ekranga o'tishlar ko'rinadi)
-        //   3) captureApplicationLifecycleEvents — ilova foreground/background
+        //   2) captureApplicationLifecycleEvents — ilova foreground/background
         //      o'tganda ham hodisa yozish
-        //   4) debouncerTimeSecs — hodisalarni to'plash (default 5 dan kamroq)
+        // (`captureScreenViews`/`debouncerTimeSecs` posthog_flutter 5.39.0
+        // da olib tashlangan — endi ekran ko'rinishini avtomatik yozish
+        // uchun `PosthogObserver` navigator observer sifatida ulanishi
+        // kerak, hodisalar esa `flushAt`/`flushInterval` standart
+        // qiymatlari bilan to'planadi.)
         ..sessionReplayConfig.maskAllTexts = true
         ..sessionReplayConfig.maskAllImages = true
-        ..captureScreenViews = true
-        ..captureApplicationLifecycleEvents = true
-        ..debouncerTimeSecs = 5;
+        ..captureApplicationLifecycleEvents = true;
       await Posthog().setup(cfg);
       // ┌─ SDK BRIDGE: ondex_core Analytics bilan sinxronlash ─────┐
       // `api.me()` da `Analytics.instance.identify()` chaqirilganda,
@@ -95,7 +96,7 @@ void main() async {
         String? role,
       }) async {
         try {
-          final props = <String, Object?>{};
+          final props = <String, Object>{};
           if (phone != null && phone.isNotEmpty) props['phone'] = phone;
           if (name != null && name.isNotEmpty) props['name'] = name;
           if (role != null && role.isNotEmpty) props['role'] = role;

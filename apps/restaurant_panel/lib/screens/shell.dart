@@ -10,6 +10,7 @@ import '../pages/menu_page.dart';
 import '../pages/orders_page.dart';
 import '../pages/promotions_page.dart';
 import '../pages/staff_page.dart';
+import '../pages/statistics_page.dart';
 import '../pages/tables_page.dart';
 import '../sound.dart';
 import '../widgets/main_layout.dart';
@@ -18,6 +19,7 @@ import 'login_screen.dart';
 const _iDashboard = 0;
 const _iOrders = 1;
 const _iMenu = 2;
+const _iStatistics = 5;
 
 class RestaurantShell extends StatefulWidget {
   const RestaurantShell({super.key});
@@ -37,6 +39,11 @@ class _RestaurantShellState extends State<RestaurantShell> {
   DateTime _selectedDate = DateTime.now();
   int _newOrdersCount = 0;
   late final LiveRefresher _live;
+
+  /// Statistika sahifasi va uning yuqori paneldagi davr/Eksport
+  /// tugmalarining umumiy holati — shu yerda, ya'ni boshqa sahifaga o'tib
+  /// qaytganda tanlangan davr saqlanadi.
+  final _stats = StatisticsController();
 
   @override
   void initState() {
@@ -61,6 +68,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
   void dispose() {
     _live.dispose();
     restaurantLive.stop();
+    _stats.dispose();
     super.dispose();
   }
 
@@ -85,11 +93,12 @@ class _RestaurantShellState extends State<RestaurantShell> {
     try {
       final list = await api.orders();
       if (!mounted) return;
-      final newCount = list
-          .cast<Map<String, dynamic>>()
-          .where((o) => o['status'] == 'created')
-          .length;
+      final orders = list.cast<Map<String, dynamic>>().toList();
+      final newCount = orders.where((o) => o['status'] == 'created').length;
       setState(() => _newOrdersCount = newCount);
+      // Statistika sahifasidagi "So'nggi buyurtmalar" jadvali shu
+      // ro'yxatdan oziqlanadi — alohida so'rov yubormaydi.
+      _stats.setRecentOrders(orders);
       // Qo'ng'iroq AYNAN shu yerdan boshqariladi — qobiq panel ochiq
       // turgan BUTUN vaqt davomida tirik, ya'ni foydalanuvchi qaysi
       // sahifada bo'lishidan qat'i nazar ovoz eshitiladi
@@ -158,12 +167,24 @@ class _RestaurantShellState extends State<RestaurantShell> {
     _iMenu: 'Menyu',
     3: 'Aksiyalar',
     4: 'Stollar',
+    _iStatistics: 'Statistika',
     8: 'Xodimlar',
     9: 'Bildirishnomalar',
     10: 'Yordam',
   };
 
+  /// Buyurtmalar → "Tarix": to'liq tarix Statistika ichidagi "Barcha
+  /// buyurtmalar" sahifasida (davr filtri bilan, sahifalab). Qaytish
+  /// tugmasi yana Buyurtmalar sahifasiga olib boradi.
+  void _openOrderHistory() {
+    _goTo(_iStatistics);
+    _stats.openHistory(backLabel: 'Buyurtmalar', onBack: () => _goTo(_iOrders));
+  }
+
   void _goTo(int i) {
+    // Yon menyudan "Statistika" bosilsa — "Barcha buyurtmalar" ichida
+    // bo'lsa ham asosiy statistikaga qaytadi.
+    if (i == _iStatistics) _stats.closeHistory();
     setState(() => _index = i);
     final name = _pageNames[i];
     if (name != null) Analytics.instance.screen('restoran/$name');
@@ -192,6 +213,11 @@ class _RestaurantShellState extends State<RestaurantShell> {
         onDateChanged: (d) => setState(() => _selectedDate = d),
         newOrdersCount: _newOrdersCount,
         onLogout: _logout,
+        // Faqat Statistika sahifasida: bir kunlik sana o'rniga davr
+        // tanlagich + Eksport. Qolgan sahifalar odatiy holida.
+        topBarActions: _index == _iStatistics
+            ? StatisticsToolbar(controller: _stats, restaurantName: _name)
+            : null,
         child: _buildPage(),
       ),
     );
@@ -206,7 +232,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
           onGoToMenu: () => _goTo(_iMenu),
         );
       case _iOrders:
-        return const OrdersPage();
+        return OrdersPage(onOpenHistory: _openOrderHistory);
       case _iMenu:
         return const MenuPage();
       case 3:
@@ -218,13 +244,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
       // bosib "Statistika" ni ochib qo'yardi.
       case 4:
         return const TablesPage();
-      case 5:
-        return const ComingSoonPage(
-          title: 'Statistika',
-          icon: Icons.bar_chart_rounded,
-          description:
-              'Savdo dinamikasi, eng ko\'p sotilgan taomlar va band soatlar tahlili — tez orada. Asosiy ko\'rsatkichlar hozircha Bosh sahifada.',
-        );
+      case _iStatistics:
+        return StatisticsPage(controller: _stats);
       case 6:
         return const ComingSoonPage(
           title: 'Moliya',

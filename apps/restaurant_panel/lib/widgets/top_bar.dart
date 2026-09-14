@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'date_range_dialog.dart';
 
 const _monthNamesShort = [
   'yan',
@@ -43,7 +44,13 @@ class TopBar extends StatelessWidget {
   final int newOrdersCount;
   final VoidCallback onBellTap;
 
+  /// Sahifaga xos amallar (masalan Statistika: davr tanlash + Eksport).
+  /// Berilsa, oddiy bir kunlik sana tugmasi O'RNIGA ko'rsatiladi;
+  /// `null` — boshqa barcha sahifalardagi kabi sana tugmasi.
+  final Widget? actions;
+
   const TopBar({
+    this.actions,
     super.key,
     required this.restaurantName,
     required this.restaurantAddress,
@@ -59,14 +66,12 @@ class TopBar extends StatelessWidget {
   });
 
   Future<void> _pickDate(BuildContext context) async {
-    final picked = await showDatePicker(
+    // Statistika sahifasidagi bilan bir xil kalendar (`date_range_dialog.dart`).
+    final picked = await showOnDexDatePicker(
       context: context,
       initialDate: selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
-      helpText: 'Sanani tanlang',
-      cancelText: 'Bekor qilish',
-      confirmText: 'Tanlash',
     );
     if (picked != null) onDateChanged(picked);
   }
@@ -144,7 +149,7 @@ class TopBar extends StatelessWidget {
               ],
             ),
           ),
-          _DateButton(date: selectedDate, onTap: () => _pickDate(context)),
+          actions ?? _DateButton(date: selectedDate, onTap: () => _pickDate(context)),
           const SizedBox(width: 14),
           _BellButton(count: newOrdersCount, onTap: onBellTap),
           const SizedBox(width: 16),

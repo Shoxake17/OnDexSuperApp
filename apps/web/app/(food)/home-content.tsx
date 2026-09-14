@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronDown, MapPin, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin, Search, UtensilsCrossed, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CategoryTile from "./category-tile";
 import DesktopHome from "./desktop-home";
 import HeaderActions from "./header-actions";
@@ -74,6 +75,22 @@ function MobileHome({
   setSearchOpen: (v: boolean) => void;
   filtered: Restaurant[];
 }) {
+  const router = useRouter();
+
+  // ┌─ TAOMLAR — "desktop-navbar.tsx"dagi `submitSearch` bilan bir xil ─┐
+  // Yuqoridagi `filtered` — LOKAL, tarmoqqa chiqmaydi (allaqachon
+  // kelgan restoranlar ro'yxatini filtrlaydi). Taom nomi/turkumi
+  // bo'yicha qidiruv esa backend'ga (`GET /products/search`, endi
+  // MeiliSearch orqali xato-kechiruvchan) borishi kerak — `/search`
+  // sahifasi buni allaqachon qiladi, faqat mobil ko'rinishda unga
+  // o'tish tugmasi yo'q edi (faqat kompyuter navbar'ida bor edi).
+  // └────────────────────────────────────────────────────────────────────┘
+  function searchProducts() {
+    const q = query.trim();
+    if (!q) return;
+    router.push(`/search?category=${encodeURIComponent(q)}`);
+  }
+
   return (
     // `pb-28` — pastki menyu (`bottom-nav.tsx`) kontentning oxirini
     // bosib qolmasin.
@@ -146,7 +163,13 @@ function MobileHome({
         <div className="fixed inset-0 z-50 flex flex-col bg-neutral-200 pt-1 dark:bg-[#121212]">
           {/* Menyu sahifasidagi qidiruv oynasi bilan AYNAN bir xil. */}
           <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden rounded-t-[20px] bg-white dark:bg-[#1A1A1A]">
-            <div className="safe-top flex items-center gap-2 px-4 pb-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                searchProducts();
+              }}
+              className="safe-top flex items-center gap-2 px-4 pb-3"
+            >
               <div className="flex flex-1 items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 dark:border-neutral-700 dark:bg-neutral-800">
                 <Search size={20} className="shrink-0 text-neutral-400" />
                 {/* eslint-disable-next-line jsx-a11y/no-autofocus -- qidiruv oynasi ATAYLAB ochilganda klaviatura darhol tayyor bo'lishi kerak */}
@@ -154,11 +177,12 @@ function MobileHome({
                   autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Restoran qidirish..."
+                  placeholder="Restoran yoki taom qidirish..."
                   className="w-full bg-transparent py-2.5 text-base outline-none"
                 />
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setSearchOpen(false);
                   setQuery("");
@@ -168,14 +192,47 @@ function MobileHome({
               >
                 <X size={22} />
               </button>
-            </div>
+            </form>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-5">
-              {filtered.length === 0 ? (
-                <p className="py-10 text-center text-neutral-500">
-                  {query ? "Mos restoran topilmadi" : "Restoran nomini yozing"}
-                </p>
+              {query.trim() ? (
+                <>
+                  {/* Restoran nomi mos kelmasa ham, xuddi shu matn taom
+                      nomi bo'lishi mumkin ("mohito" — restoran emas,
+                      ichimlik) — shuning uchun qator har doim ko'rinadi. */}
+                  <button
+                    type="button"
+                    onClick={searchProducts}
+                    className="flex items-center gap-3 rounded-2xl bg-neutral-100 px-3.5 py-3.5 text-left dark:bg-neutral-800"
+                  >
+                    <UtensilsCrossed
+                      size={18}
+                      className="shrink-0 text-brand"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      <span className="font-bold">
+                        &quot;{query.trim()}&quot;
+                      </span>{" "}
+                      bo&apos;yicha taomlarni qidirish
+                    </span>
+                    <ChevronRight
+                      size={18}
+                      className="shrink-0 text-neutral-400"
+                    />
+                  </button>
+                  {filtered.length === 0 ? (
+                    <p className="py-6 text-center text-neutral-500">
+                      Mos restoran topilmadi
+                    </p>
+                  ) : (
+                    filtered.map((r) => (
+                      <RestaurantCard key={r.id} restaurant={r} />
+                    ))
+                  )}
+                </>
               ) : (
-                filtered.map((r) => <RestaurantCard key={r.id} restaurant={r} />)
+                <p className="py-10 text-center text-neutral-500">
+                  Restoran nomini yozing
+                </p>
               )}
             </div>
           </div>
