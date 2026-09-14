@@ -82,6 +82,33 @@ services:
       timeout: 5s
       retries: 12
 
+  # ┌─ MEILISEARCH — tezkor taom qidiruv (ixtiyoriy) ────────────────────┐
+  # `internal/search`. `.env`da `MEILI_HOST` bo'sh bo'lsa API bu
+  # konteynerni umuman ishlatmaydi — eski Mongo substring skaneriga
+  # qaytadi (R2/Redis/Telegram bilan bir xil falsafa: ixtiyoriy
+  # komponent hech qachon serverni to'xtatmaydi).
+  #
+  # Port boshqa bazalar bilan bir xil sababdan `127.0.0.1:` bilan
+  # cheklangan: master-key ochiq tarmoqqa chiqmasligi kerak.
+  #
+  # `MEILI_MASTER_KEY` gitda YO'Q — `.env`dagi `MEILI_API_KEY` dan olinadi
+  # (compose loyiha papkasidagi `.env` ni o'zi o'qiydi). Shu bilan API va
+  # konteyner har doim bitta kalitni ishlatadi. Kalit berilmasa konteyner
+  # umuman ko'tarilmaydi: master-key'siz Meilisearch hamma uchun ochiq.
+  # Production'da kalit faqat sirlar boshqaruvida turadi.
+  meilisearch:
+    image: getmeili/meilisearch:v1.40.0
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_API_KEY:?MEILI_API_KEY .env da berilishi kerak}
+      MEILI_ENV: development
+      # Ba'zi versiyalarda telemetriyani o'chiradi; tanilmasa e'tiborsiz
+      # qoldiriladi (Meilisearch noma'lum o'zgaruvchilarni rad etmaydi).
+      MEILI_NO_ANALYTICS: "true"
+    ports:
+      - "127.0.0.1:7700:7700"
+    volumes:
+      - meilidata:/meili_data
+
   # apps/web (Next.js) — mijoz mini-app'lari (WebView/sayt/Telegram) uchun
   # BFF. Go API hozircha konteynerlanmagan (to'g'ridan-to'g'ri hostda
   # ishlaydi), shuning uchun host.docker.internal orqali unga chiqadi.
@@ -104,3 +131,4 @@ services:
 volumes:
   dbdata:
   mongodata:
+  meilidata:

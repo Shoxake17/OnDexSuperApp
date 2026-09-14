@@ -2,11 +2,28 @@ package storage
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
 	"chustapp/internal/catalog"
 )
+
+// cloneRestaurant — chuqur nusxa: ish vaqti va to'lov usullari
+// ko'rsatkich, ular chaqiruvchi bilan bo'lishilsa omborni qulfsiz
+// o'zgartirish mumkin bo'lardi.
+func cloneRestaurant(x catalog.Restaurant) catalog.Restaurant {
+	if x.WorkingHours != nil {
+		h := catalog.WorkingHours{Days: slices.Clone(x.WorkingHours.Days)}
+		x.WorkingHours = &h
+	}
+	if x.PaymentMethods != nil {
+		p := *x.PaymentMethods
+		x.PaymentMethods = &p
+	}
+	x.OpenNow = nil // hisoblanadigan maydon saqlanmaydi
+	return x
+}
 
 type MemoryCatalogRepo struct {
 	mu          sync.RWMutex
@@ -33,7 +50,7 @@ func (r *MemoryCatalogRepo) ListRestaurants(_ context.Context) ([]*catalog.Resta
 	defer r.mu.RUnlock()
 	var list []*catalog.Restaurant
 	for _, x := range r.restaurants {
-		cp := x
+		cp := cloneRestaurant(x)
 		list = append(list, &cp)
 	}
 	return list, nil
@@ -46,14 +63,14 @@ func (r *MemoryCatalogRepo) GetRestaurant(_ context.Context, id string) (*catalo
 	if !ok {
 		return nil, catalog.ErrNotFound
 	}
-	cp := x
+	cp := cloneRestaurant(x)
 	return &cp, nil
 }
 
 func (r *MemoryCatalogRepo) SaveRestaurant(_ context.Context, x *catalog.Restaurant) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.restaurants[x.ID] = *x
+	r.restaurants[x.ID] = cloneRestaurant(*x)
 	return nil
 }
 

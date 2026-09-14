@@ -1,0 +1,146 @@
+# golangci-lint — Go kod sifati va xavfsizlik (SonarCloud o'rniga).
+#
+# ┌─ TANLOV MANTIG'I ─────────────────────────────────────────────────────┐
+# Faqat HAQIQIY xato yoki xavfni topadigan linterlar yoqilgan. Uslub
+# bo'yicha bahslashadigan linterlar (nomlash, qator uzunligi, izoh
+# formati) ATAYLAB yo'q: ular yuzlab "topilma" beradi, jamoa ularga
+# ko'nikadi va muhim ogohlantirish shovqin ichida yo'qoladi.
+#
+# Istisno qo'shish qoidasi (`.gitleaks.toml` bilan bir xil): har bir
+# istisnoda NEGA ekani yoziladi. Kod ichidagi `//nolint:<linter> // sabab`
+# ham faqat sababi bilan qo'yiladi.
+# └───────────────────────────────────────────────────────────────────────┘
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # ── Xatolar ──
+    - govet          # shubhali konstruksiyalar (printf argumentlari, nusxalangan mutex)
+    - staticcheck    # bug'lar, eskirgan API, keraksiz kod
+    - errcheck       # tekshirilmagan xatolar
+    - ineffassign    # hech qachon o'qilmaydigan qiymat
+    - unused         # ishlatilmaydigan kod
+    - nilerr         # xato bor, lekin nil qaytarilyapti
+    - bodyclose      # HTTP javob tanasi yopilmagan (ulanish oqishi)
+    - rowserrcheck   # sql rows.Err() tekshirilmagan
+    - sqlclosecheck  # sql.Rows/Stmt yopilmagan
+    - copyloopvar    # sikl o'zgaruvchisini keraksiz nusxalash
+    # ── Xavfsizlik ──
+    - gosec          # SQL/buyruq in'ektsiyasi, zaif kripto, fayl yo'li, TLS
+    - depguard       # taqiqlangan (xavfli) paketlar import qilinmasin
+    # ── Sifat (murakkablik va takror) ──
+    - gocognit       # tushunish qiyin funksiyalar
+    - dupl           # nusxa ko'chirilgan kod bloklari
+
+  settings:
+    depguard:
+      rules:
+        insecure:
+          list-mode: lax
+          deny:
+            # Zaif xeshlar (md5, sha1) va `math/rand` bu yerda YO'Q:
+            # ularni `gosec` (G401, G501, G404) allaqachon ushlaydi.
+            - pkg: golang.org/x/crypto/openpgp
+              desc: "qo'llab-quvvatlanmaydi va xavfli (GO-2026-5932); kerak bo'lsa github.com/ProtonMail/go-crypto/openpgp"
+    errcheck:
+      # `defer x.Close()` va log yozuvchilarning xatosi amalda ishlanmaydi.
+      exclude-functions:
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
+    gocognit:
+      min-complexity: 40
+    dupl:
+      threshold: 200
+    gosec:
+      excludes:
+        # G104 — errcheck bilan bir xil (ikki marta xabar bermasin).
+        - G104
+    staticcheck:
+      checks:
+        # golangci-lint standart to'plami...
+        - "all"
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1016"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
+        # ...va ikkita uslub qoidasi o'chirilgan:
+        # ST1005 — "xato matni kichik harf bilan boshlansin". Bu loyihada
+        #          xato matnlari foydalanuvchiga ko'rinadigan o'zbekcha gap.
+        - "-ST1005"
+        # QF1001 — De Morgan qonuni bo'yicha qayta yozish taklifi (uslub).
+        - "-QF1001"
+
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    paths:
+      # `apps/web/node_modules` ichida begona paketlarning Go kodi bor
+      # (masalan `flatted`) — bu bizning kodimiz emas.
+      - node_modules
+    rules:
+      # Testlarda soxta sirlar, murakkab jadval-testlar va takroriy
+      # fikstura kodi — normal. Xato/bug linterlari testlarda ham ishlaydi.
+      - path: _test\.go
+        linters:
+          - gosec
+          - dupl
+          - gocognit
+          - errcheck
+
+      # `cmd/bookpages`, `cmd/r2upload` — admin o'z kompyuterida ishga
+      # tushiradigan CLI vositalar: fayl yo'li va buyruq argumentlari
+      # OPERATORdan keladi, tarmoq foydalanuvchisidan emas.
+      - path: cmd/(bookpages|r2upload)/
+        linters:
+          - gosec
+        text: 'G(204|304)'
+
+      # ┌─ MURAKKABLIK: STRUKTURAVIY ISTISNOLAR ────────────────────────┐
+      # `register*Routes` o'nlab handler'ni closure sifatida ro'yxatga
+      # oladi va gocognit ularning HAMMASINI bitta funksiyaga qo'shib
+      # sanaydi. `main` — butun ilovani yig'ish (wiring). Bu ko'rsatkich
+      # ular uchun ma'nosiz: haqiqiy mantiq handler va servislarda.
+      # └───────────────────────────────────────────────────────────────┘
+      - linters:
+          - gocognit
+        text: 'func `\(\*Server\)\.register\w*Routes`'
+      - path: cmd/api/main\.go
+        linters:
+          - gocognit
+        text: 'func `main`'
+
+      # ┌─ MURAKKABLIK: MAVJUD QARZ (2026-09-15 holati) ────────────────┐
+      # Bu 5 ta funksiya chegaradan oshgan va refaktoring kutmoqda.
+      # Ular ANIQ nomi va fayli bilan qayd etilgan — boshqa har qanday
+      # (yangi) funksiya chegaradan oshsa CI yiqiladi. Refaktoring
+      # qilingan funksiya shu ro'yxatdan O'CHIRILADI.
+      # └───────────────────────────────────────────────────────────────┘
+      - path: internal/assistant/live\.go
+        linters:
+          - gocognit
+        text: 'func `\(\*LiveSession\)\.receive`'
+      - path: internal/couriers/dispatch\.go
+        linters:
+          - gocognit
+        text: 'func `\(\*Dispatcher\)\.Dispatch`'
+      - path: internal/staff/service\.go
+        linters:
+          - gocognit
+        text: 'func `\(\*Service\)\.Update`'
+      - path: internal/stats/stats\.go
+        linters:
+          - gocognit
+        text: 'func `sales`'
+      - path: internal/users/register\.go
+        linters:
+          - gocognit
+        text: 'func `\(\*Service\)\.Register`'

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import '../widgets/date_range_dialog.dart';
 import '../widgets/page_header.dart';
 
 enum _PromoStatusFilter { all, active, scheduled, expired, paused }
@@ -1443,24 +1444,20 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
     return id;
   }
 
+  // Sana va vaqt BITTA oynada (Statistika sahifasidagi kalendar bilan bir
+  // xil). Avval ikkita ketma-ket Material oynasi ochilardi: sana, keyin
+  // soat siferblati.
   Future<void> _pickStartAt() async {
-    final date = await showDatePicker(
+    final picked = await showOnDexDateTimePicker(
       context: context,
-      initialDate: _startAt,
+      initial: _startAt,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-      helpText: 'Boshlanish sanasi',
+      title: 'Boshlanish sanasi va vaqti',
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_startAt),
-      helpText: 'Boshlanish vaqti',
-    );
-    if (time == null) return;
+    if (picked == null || !mounted) return;
     setState(() {
-      _startAt =
-          DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _startAt = picked;
       if (!_endAt.isAfter(_startAt)) {
         _endAt = _startAt.add(const Duration(hours: 1));
       }
@@ -1468,22 +1465,22 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
   }
 
   Future<void> _pickEndAt() async {
-    final date = await showDatePicker(
+    final picked = await showOnDexDateTimePicker(
       context: context,
-      initialDate: _endAt.isBefore(_startAt) ? _startAt : _endAt,
+      initial: _endAt.isBefore(_startAt) ? _startAt : _endAt,
       firstDate: _startAt,
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-      helpText: 'Tugash sanasi',
+      title: 'Tugash sanasi va vaqti',
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_endAt),
-      helpText: 'Tugash vaqti',
-    );
-    if (time == null) return;
-    setState(() => _endAt =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    if (picked == null || !mounted) return;
+    // Bir kunning o'zida boshlanishdan oldingi soat tanlanishi mumkin —
+    // bunday aksiya hech qachon faol bo'lmasdi.
+    if (!picked.isAfter(_startAt)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Tugash vaqti boshlanish vaqtidan keyin bo\'lishi kerak')));
+      return;
+    }
+    setState(() => _endAt = picked);
   }
 
   Future<void> _openTargetPicker() async {

@@ -337,8 +337,17 @@ func (s *Service) Create(ctx context.Context, o *Order) (*Order, error) {
 func (s *Service) CreateExpecting(ctx context.Context, o *Order,
 	expectedTotalTiyin int64) (*Order, error) {
 
-	if o.CustomerID == "" || o.RestaurantID == "" || len(o.Items) == 0 {
-		return nil, errors.New("customer_id, restaurant_id va items majburiy")
+	// Buyurtma egasi: mijoz (ilova/QR) YOKI uni kiritgan xodim
+	// (affitsiant). Ikkalasi ham bo'lmasa — hech kimniki bo'lmagan
+	// buyurtma, bunga yo'l qo'yilmaydi.
+	if (o.CustomerID == "" && o.PlacedBy == "") || o.RestaurantID == "" || len(o.Items) == 0 {
+		return nil, errors.New("customer_id (yoki placed_by), restaurant_id va items majburiy")
+	}
+	// Xodim kiritgan buyurtma FAQAT stol buyurtmasi bo'la oladi:
+	// yetkazish buyurtmasi mijozning saqlangan manzili va to'lovi bilan
+	// bog'liq, xodim nomidan yaratilishi kerak emas.
+	if o.PlacedBy != "" && !o.IsDineIn() {
+		return nil, errors.New("xodim faqat stol buyurtmasini kirita oladi")
 	}
 	// Idempotentlik: klient shu mijoz uchun avval AYNAN shu kalit bilan
 	// buyurtma yaratgan bo'lsa (masalan tarmoq uzilib qayta yuborilgan
@@ -536,7 +545,7 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		if err != nil {
 			return nil, err
 		}
-		if err := ValidateTransition(o.Type, o.Status, to, by); err != nil {
+		if err := ValidateOrderTransition(o, to, by); err != nil {
 			return nil, err
 		}
 		// ┌─ TO'LANMAGAN BUYURTMA HARAKATLANMAYDI ────────────────────┐
@@ -558,6 +567,7 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		o.Status = to
 		o.UpdatedAt = s.now()
 		o.History = append(o.History, StatusChange{From: from, To: to, By: by, At: o.UpdatedAt})
+		applyDispatchPolicy(o, to, o.UpdatedAt)
 		err = s.repo.Save(ctx, o)
 		if errors.Is(err, ErrConflict) {
 			continue
@@ -723,6 +733,11 @@ func (s *Service) AssignCourier(ctx context.Context, orderID, courierID string) 
 			return nil, fmt.Errorf("buyurtmada allaqachon kuryer bor: %s", o.CourierID)
 		}
 		o.CourierID = courierID
+		// Qidiruv tugadi. "Kuryer topilmadi" holatida ham kuryer
+		// biriktiriladi: to'xtatish buyrug'idan bir lahza oldin kimdir
+		// qabul qilgan bo'lsa, bu buyurtmani bekor qilishdan yaxshiroq.
+		o.DispatchState = DispatchNone
+		o.DispatchDeadline = nil
 		o.UpdatedAt = s.now()
 		err = s.repo.Save(ctx, o)
 		if errors.Is(err, ErrConflict) {

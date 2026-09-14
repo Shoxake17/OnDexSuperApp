@@ -130,9 +130,10 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			                    promotion_discount_tiyin,
 			                    payment_method, payment_state,
 			                    delivery_address,
-			                    order_type, table_id, table_label, party_size)
+			                    order_type, table_id, table_label, party_size,
+			                    dispatch_state, dispatch_deadline, placed_by)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-			        $22,$23,$24,$25,$26,$27,$28)
+			        $22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
 			ON CONFLICT (id) DO UPDATE SET
 				courier_id           = EXCLUDED.courier_id,
 				status               = EXCLUDED.status,
@@ -145,6 +146,10 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 				-- yangilanadigan ustunlar ro'yxatida bo'lishi SHART.
 				-- payment_method esa o'zgarmaydi (faqat INSERT'da).
 				payment_state        = EXCLUDED.payment_state,
+				-- Kuryer qidiruvi holati ham hayot davomida o'zgaradi
+				-- (migration 0048, orders/dispatch_state.go).
+				dispatch_state       = EXCLUDED.dispatch_state,
+				dispatch_deadline    = EXCLUDED.dispatch_deadline,
 				version              = orders.version + 1
 			WHERE orders.version = EXCLUDED.version
 			RETURNING order_number, version`,
@@ -162,6 +167,10 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			// eskirgan nusxa bilan kelgan so'rov stolni almashtirib
 			// yuborishi mumkin bo'lardi.
 			o.Type.Normalized(), tableID, tableLabel, partySize,
+			o.DispatchState, o.DispatchDeadline,
+			// placed_by — faqat INSERT'da (DO UPDATE ro'yxatida ATAYLAB
+			// yo'q): buyurtmani kim kiritgani keyin o'zgarmaydi.
+			o.PlacedBy,
 		).Scan(&o.OrderNumber, &o.Version)
 
 		if err == nil {
@@ -248,7 +257,8 @@ const orderColumns = `id, order_number, customer_id, restaurant_id, courier_id, 
 		       preparation_minutes, ready_at, version,
 		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
 		       promotion_discount_tiyin, payment_method, payment_state, delivery_address,
-		       order_type, table_id, table_label, party_size`
+		       order_type, table_id, table_label, party_size, dispatch_state, dispatch_deadline,
+		       placed_by`
 
 // rowScanner — pgx.Row va pgx.Rows ning umumiy qismi. Ikkalasi ham
 // `Scan(...any) error` beradi, shuning uchun bitta scan funksiyasi
@@ -271,7 +281,8 @@ func scanOrder(row rowScanner) (*orders.Order, error) {
 		&o.PreparationMinutes, &o.ReadyAt, &o.Version,
 		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName,
 		&o.PromotionDiscountTiyin, &o.PaymentMethod, &o.PaymentState, &addressJSON,
-		&o.Type, &tableID, &tableLabel, &partySize)
+		&o.Type, &tableID, &tableLabel, &partySize, &o.DispatchState, &o.DispatchDeadline,
+		&o.PlacedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +345,7 @@ func (r *PgOrderRepo) ListByRestaurant(ctx context.Context, restaurantID string,
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+orderColumns+` FROM orders
 		 WHERE restaurant_id = $1
-		   AND NOT (payment_method = 'card' AND payment_state NOT IN ('held','paid'))
+		   AND `+restaurantVisibleSQL+`
 		 ORDER BY created_at DESC LIMIT $2`, restaurantID, limit)
 	if err != nil {
 		return nil, err

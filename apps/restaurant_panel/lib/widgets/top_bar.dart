@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'date_range_dialog.dart';
 
 const _monthNamesShort = [
   'yan',
@@ -29,7 +30,8 @@ String _initials(String name) {
 /// Yuqori panel — image/bosh.png namunasiga mos, BARCHA sahifalarda
 /// doimiy ko'rinadi (MainLayout orqali): restoran logo/nomi/Ochiq-Yopiq
 /// holati/manzili chapda; sana tanlagich, bildirishnoma qo'ng'irog'i
-/// (haqiqiy — yangi buyurtmalar soni) va xodim avatari o'ngda.
+/// (haqiqiy — o'qilmagan restoran bildirishnomalari, jonli) va xodim
+/// avatari o'ngda.
 class TopBar extends StatelessWidget {
   final String restaurantName;
   final String restaurantAddress;
@@ -40,10 +42,16 @@ class TopBar extends StatelessWidget {
   final String staffRole;
   final DateTime selectedDate;
   final ValueChanged<DateTime> onDateChanged;
-  final int newOrdersCount;
+  final int notificationsCount;
   final VoidCallback onBellTap;
 
+  /// Sahifaga xos amallar (masalan Statistika: davr tanlash + Eksport).
+  /// Berilsa, oddiy bir kunlik sana tugmasi O'RNIGA ko'rsatiladi;
+  /// `null` — boshqa barcha sahifalardagi kabi sana tugmasi.
+  final Widget? actions;
+
   const TopBar({
+    this.actions,
     super.key,
     required this.restaurantName,
     required this.restaurantAddress,
@@ -54,19 +62,17 @@ class TopBar extends StatelessWidget {
     required this.staffRole,
     required this.selectedDate,
     required this.onDateChanged,
-    required this.newOrdersCount,
+    required this.notificationsCount,
     required this.onBellTap,
   });
 
   Future<void> _pickDate(BuildContext context) async {
-    final picked = await showDatePicker(
+    // Statistika sahifasidagi bilan bir xil kalendar (`date_range_dialog.dart`).
+    final picked = await showOnDexDatePicker(
       context: context,
       initialDate: selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
-      helpText: 'Sanani tanlang',
-      cancelText: 'Bekor qilish',
-      confirmText: 'Tanlash',
     );
     if (picked != null) onDateChanged(picked);
   }
@@ -144,9 +150,9 @@ class TopBar extends StatelessWidget {
               ],
             ),
           ),
-          _DateButton(date: selectedDate, onTap: () => _pickDate(context)),
+          actions ?? _DateButton(date: selectedDate, onTap: () => _pickDate(context)),
           const SizedBox(width: 14),
-          _BellButton(count: newOrdersCount, onTap: onBellTap),
+          _BellButton(count: notificationsCount, onTap: onBellTap),
           const SizedBox(width: 16),
           if (staffName.isNotEmpty) ...[
             CircleAvatar(
@@ -250,6 +256,7 @@ class _BellButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      key: const ValueKey('topbar-bell'),
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Padding(

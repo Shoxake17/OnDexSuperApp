@@ -36,7 +36,7 @@ import (
 
 const (
 	fcmScope    = "https://www.googleapis.com/auth/firebase.messaging"
-	googleToken = "https://oauth2.googleapis.com/token"
+	googleToken = "https://oauth2.googleapis.com/token" //nolint:gosec // G101 emas: OAuth token manzili, sir emas
 )
 
 // serviceAccount — kerakli maydonlar (JSON'da boshqalari ham bor).
@@ -178,31 +178,10 @@ func (f *FCM) Push(ctx context.Context, tokens []string, e Event) error {
 	endpoint := "https://fcm.googleapis.com/v1/projects/" +
 		url.PathEscape(f.sa.ProjectID) + "/messages:send"
 
-	// FCM `data` FAQAT satr qabul qiladi.
-	data := make(map[string]string, len(e.Data)+2)
-	for k, v := range e.Data {
-		data[k] = v
-	}
-	data["module"] = e.Module
-	data["kind"] = e.Kind
-
 	var firstErr error
 	for _, t := range tokens {
-		payload := map[string]any{
-			"message": map[string]any{
-				"token": t,
-				"notification": map[string]any{
-					"title": e.Title,
-					"body":  e.Body,
-				},
-				"data": data,
-				"android": map[string]any{
-					// Buyurtma/taklif xabarlari kechiktirilmasin.
-					"priority": "high",
-				},
-			},
-		}
-		raw, _ := json.Marshal(payload)
+		// Xabar tuzilishi (kanal, ovoz, vibratsiya) — `fcm_message.go`.
+		raw, _ := json.Marshal(map[string]any{"message": fcmMessage(t, e)})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 		if err != nil {
 			return err

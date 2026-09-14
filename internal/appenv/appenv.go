@@ -175,6 +175,14 @@ var Registry = []Var{
 	{Name: "TRIPO_BASE_URL", Effect: "standart Tripo manzili ishlatiladi", DeployRequired: true},
 	{Name: "TRIPO_MODEL_VERSION", Effect: "standart model versiyasi ishlatiladi", DeployRequired: true},
 
+	// ---------- Qidiruv (MeiliSearch) ----------
+	// Ikkalasi ham FAQAT DEV: hozircha `docker-compose.yml`da (lokal
+	// dev) turibdi, `deploy/docker-compose.prod.yml`da YO'Q. Production
+	// ishga tushirilganda shu ikkovi ham compose'ga qo'shiladi va
+	// `DeployRequired: true` ga o'zgartiriladi.
+	{Name: "MEILI_HOST", Effect: "tezkor qidiruv o'chiq — eski Mongo substring skaneri ishlatiladi", DeployRequired: false},
+	{Name: "MEILI_API_KEY", Effect: "MeiliSearch'ga master-key'siz so'raladi (faqat lokal, 127.0.0.1 portida xavfsiz)", DeployRequired: false},
+
 	// ---------- Boshqaruv ----------
 	{Name: "BOOTSTRAP_ADMIN_PHONE", Effect: "yangi bazada hech kim ADMIN bo'la olmaydi", DeployRequired: true},
 	{Name: "ARGON_MAX_CONCURRENCY", Effect: "parol xeshlash cheklovi standart qiymatda", DeployRequired: true},

@@ -6,6 +6,7 @@ import '../api.dart';
 import '../theme.dart';
 // `tableText` — `api.dart` orqali `ondex_core` dan keladi (u yerda
 // butun yadro qayta eksport qilinadi, `formatSum` kabi).
+import '../widgets/courier_status_box.dart' show isCourierNotFound;
 import '../widgets/order_card_header.dart' show isDineInOrder;
 import '../widgets/page_header.dart';
 
@@ -1204,6 +1205,7 @@ class _ActiveOrderRow extends StatelessWidget {
     // `if !o.IsDineIn()`). Bu tekshiruvsiz qator "Kuryer qidirilmoqda"
     // deb turardi va restoran xodimi tizim ishlamayapti deb o'ylardi.
     final dineIn = isDineInOrder(order);
+    final notFound = isCourierNotFound(order);
     final tableLabel = order['table_label'] as String? ?? '';
     final (label, color, bg) = orderStatusStyle(order['status'] as String? ?? '');
     return Padding(
@@ -1231,11 +1233,15 @@ class _ActiveOrderRow extends StatelessWidget {
                 ? Icons.room_service_rounded
                 : (hasCourier
                     ? Icons.pedal_bike_rounded
-                    : Icons.hourglass_empty_rounded),
+                    : (notFound
+                        ? Icons.person_search_rounded
+                        : Icons.hourglass_empty_rounded)),
             size: 17,
             color: dineIn
                 ? OnDexColors.primary
-                : (hasCourier ? OnDexColors.info : OnDexColors.inkFaint),
+                : (hasCourier
+                    ? OnDexColors.info
+                    : (notFound ? OnDexColors.danger : OnDexColors.inkFaint)),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1244,13 +1250,19 @@ class _ActiveOrderRow extends StatelessWidget {
                   ? '${tableText(tableLabel)} · affitsiant'
                   : (hasCourier
                       ? (courierName.isEmpty ? 'Kuryer yo\'lda' : courierName)
-                      : 'Kuryer qidirilmoqda'),
+                      // Kuryer topilmasa buyurtmalar sahifasida qaror
+                      // tugmalari bor — bu yerda holat aniq aytiladi,
+                      // abadiy "qidirilmoqda" emas.
+                      : (notFound ? 'Kuryer topilmadi' : 'Kuryer qidirilmoqda')),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12.5,
-                color: dineIn ? OnDexColors.primary : OnDexColors.ink,
-                fontWeight: dineIn ? FontWeight.w600 : FontWeight.normal,
+                color: dineIn
+                    ? OnDexColors.primary
+                    : (notFound ? OnDexColors.danger : OnDexColors.ink),
+                fontWeight:
+                    dineIn || notFound ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ),

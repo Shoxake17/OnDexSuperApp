@@ -3,6 +3,8 @@
 # Bosqichlar (har biri oldingisidan o'tishini kutadi):
 #   0. Gitleaks     — tarixda sir bormi
 #   1. Go sifati    — build, vet, test -race, govulncheck
+#   1b. Go lint     — golangci-lint (xatolar, xavfsizlik, murakkablik)
+#   1c. Bog'liqlik  — OSV-Scanner (go.mod, pubspec.lock, package-lock.json)
 #   2. Semgrep      — SAST (statik tahlil)
 #   3. Build+Trivy  — image yig'ish va zaiflik skanerlash
 #   4. OWASP ZAP    — DAST (ishlab turgan serverga hujum simulyatsiyasi)
@@ -226,6 +228,70 @@ jobs:
         run: govulncheck ./...
 
   # ══════════════════════════════════════════════════════════════════
+  # 1b. Go lint — golangci-lint (SonarCloud o'rniga)
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # Qoidalar va har bir istisnoning sababi: `.golangci.yml`.
+  go_lint:
+    name: Go - Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    needs: gitleaks_scan
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          # Keshni golangci-lint-action o'zi boshqaradi — ikki kesh
+          # bir-birini ustidan yozmasin.
+          cache: false
+
+      # ┌─ NEGA `install-mode: goinstall` ──────────────────────────────┐
+      # Tayyor binar o'z relizi paytidagi Go bilan yig'ilgan. `go.mod`
+      # esa go 1.26.6 talab qiladi; binar eskiroq Go bilan yig'ilgan
+      # bo'lsa, golangci-lint "Go versiyasi past" deb ishlamay qoladi.
+      # `goinstall` uni shu yerdagi (eng yangi 1.26.x) Go bilan yig'adi.
+      # Versiya baribir QADALGAN — natija lokal tekshiruv bilan bir xil.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          install-mode: goinstall
+          args: --timeout=10m
+
+  # ══════════════════════════════════════════════════════════════════
+  # 1c. Bog'liqliklar — OSV-Scanner (Go, Flutter, npm)
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # ┌─ NEGA govulncheck YETARLI EMAS ────────────────────────────────────┐
+  # `govulncheck` faqat Go modullarini ko'radi. Flutter ilovalari
+  # (`pubspec.lock`) va veb (`apps/web/package-lock.json`) bog'liqliklari
+  # hech qaysi skanerdan o'tmas edi. Tungi `schedule` ham shu job'ni
+  # ishga tushiradi — kod o'zgarmasa ham yangi e'lon qilingan CVE topiladi.
+  #
+  # Istisnolar va sabablari: `osv-scanner.toml`.
+  # └────────────────────────────────────────────────────────────────────┘
+  dependency_scan:
+    name: Dependencies - OSV-Scanner
+    runs-on: ubuntu-latest
+    needs: gitleaks_scan
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Obraz versiya VA digest bilan qadalgan: teg keyinchalik boshqa
+      # obrazga ko'chirilsa ham CI o'sha tekshirilgan obrazni ishlatadi.
+      - name: Run OSV-Scanner
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src \
+            ghcr.io/google/osv-scanner:v2.6.0@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa \
+            scan source -r /src
+
+  # ══════════════════════════════════════════════════════════════════
   # 2. SAST — Semgrep
   # ══════════════════════════════════════════════════════════════════
   semgrep_sast:
@@ -290,7 +356,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: [ go_quality, semgrep_sast ]
+    needs: [ go_quality, go_lint, dependency_scan, semgrep_sast ]
     # ┌─ PR'LARDA ISHLAMAYDI — IKKI SABAB ────────────────────────────┐
     #  1. Dependabot PR'larida `GITHUB_TOKEN` FAQAT O'QISH huquqiga
     #     ega bo'ladi (GitHub'ning ataylab qo'ygan himoyasi: buzilgan
@@ -408,7 +474,7 @@ jobs:
   build-web:
     name: Build and Push Web Image
     runs-on: ubuntu-latest
-    needs: [ go_quality, semgrep_sast ]
+    needs: [ go_quality, go_lint, dependency_scan, semgrep_sast ]
     if: github.event_name != 'pull_request'
     permissions:
       contents: read

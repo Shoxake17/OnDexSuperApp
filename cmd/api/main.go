@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"chustapp/internal/agentapi"
+	"chustapp/internal/alerts"
 	"chustapp/internal/appenv"
 	"chustapp/internal/assistant"
 	"chustapp/internal/cache"
@@ -38,7 +39,11 @@ import (
 	"chustapp/internal/revoke"
 	"chustapp/internal/safego"
 	"chustapp/internal/scenes"
+	"chustapp/internal/search"
+	"chustapp/internal/staff"
+	"chustapp/internal/stats"
 	"chustapp/internal/storage"
+	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
 	"chustapp/internal/users"
@@ -137,7 +142,7 @@ func firebaseServiceAccount() string {
 	if path == "" {
 		return ""
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // yo'l operator .env da beradi (FIREBASE_SERVICE_ACCOUNT_FILE), foydalanuvchi kiritmasi emas
 	if err != nil {
 		// Yo'l berilgan, lekin o'qib bo'lmadi â€” bu ANIQ konfiguratsiya
 		// xatosi, jimgina "push o'chirilgan" deb o'tib ketmaymiz.
@@ -172,6 +177,11 @@ func main() {
 	appenv.Report(devMode)
 
 	var orderRepo orders.Repository
+	// Statistika manbai — buyurtmalar ombori bilan AYNAN bir obyekt
+	// (Postgres yoki xotira), faqat boshqa interfeys orqali.
+	var statsSource stats.Source
+	var historySource stats.HistorySource
+	var tableOrders tables.OrdersSource
 	var courierRepo couriers.Repository
 	var userRepo users.Repository
 	var codeStore users.CodeStore
@@ -263,7 +273,11 @@ func main() {
 			}
 		}
 		pgPool = pool
-		orderRepo = storage.NewPgOrderRepo(pool)
+		pgOrders := storage.NewPgOrderRepo(pool)
+		orderRepo = pgOrders
+		statsSource = pgOrders
+		historySource = pgOrders
+		tableOrders = pgOrders
 		courierRepo = storage.NewPgCourierRepo(pool)
 		userRepo = storage.NewPgUserRepo(pool)
 		codeStore = storage.NewPgCodeStore(pool)
@@ -275,7 +289,11 @@ func main() {
 			couriers.Courier{ID: "c2", Name: "Bekzod", Lat: 41.0010, Lng: 71.2400, Available: true, Approved: true, VehicleType: couriers.VehicleBike, Rating: 5.0},
 			couriers.Courier{ID: "c3", Name: "Doniyor", Lat: 40.9980, Lng: 71.2330, Available: true, Approved: true, VehicleType: couriers.VehicleFoot, Rating: 5.0},
 		)
-		orderRepo = storage.NewMemoryOrderRepo()
+		memOrders := storage.NewMemoryOrderRepo()
+		orderRepo = memOrders
+		statsSource = memOrders
+		historySource = memOrders
+		tableOrders = memOrders
 		userRepo = storage.NewMemoryUserRepo(storage.DemoUsers()...)
 		codeStore = storage.NewMemoryCodeStore()
 		favoritesRepo = storage.NewMemoryFavoritesRepo()
@@ -333,11 +351,42 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		catalogRepo = storage.NewMongoCatalogRepo(mdb)
+		mongoCatalogRepo := storage.NewMongoCatalogRepo(mdb)
+		catalogRepo = mongoCatalogRepo
 		// Kitob ombori faqat Mongo rejimida: katalog ham shu yerda.
 		bookRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
 		slog.Info("rejim: MongoDB (katalog)")
+
+		// ---------- Tezkor qidiruv (MeiliSearch, ixtiyoriy) ----------
+		// MEILI_HOST bo'sh bo'lsa butunlay o'chiq: `GET /products/search`
+		// avvalgidek Mongo skaneri orqali ishlayveradi. Boshqa ixtiyoriy
+		// komponentlar (R2, Tripo, Redis) bilan bir xil falsafa: bu
+		// xizmat hech qachon serverni to'xtatmaydi.
+		if meiliHost := strings.TrimSpace(os.Getenv("MEILI_HOST")); meiliHost != "" {
+			meili := search.New(meiliHost, os.Getenv("MEILI_API_KEY"))
+			mctx, mcancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := meili.EnsureIndex(mctx); err != nil {
+				slog.Error("MeiliSearch indeksi sozlanmadi — eski Mongo qidiruvi ishlatiladi "+
+					"(MEILI_HOST/MEILI_API_KEY to'g'rimi, konteyner ko'tarilganmi?)", "err", err)
+			} else {
+				mongoCatalogRepo.SetSearchClient(meili)
+				// Dastlabki to'liq indekslash: Meilisearch birinchi marta
+				// ulanganda bo'sh, mavjud katalog esa undan oldin
+				// allaqachon Mongo'da turgan bo'lishi mumkin.
+				rctx, rcancel := context.WithTimeout(context.Background(), 60*time.Second)
+				if err := mongoCatalogRepo.ReindexSearch(rctx); err != nil {
+					slog.Error("MeiliSearch dastlabki indekslash muvaffaqiyatsiz — eski Mongo qidiruviga qaytildi", "err", err)
+					mongoCatalogRepo.SetSearchClient(nil)
+				} else {
+					slog.Info("MeiliSearch yoqilgan (tezkor taom qidiruv)", "host", meiliHost)
+				}
+				rcancel()
+			}
+			mcancel()
+		} else {
+			slog.Info("MeiliSearch o'chiq — MEILI_HOST berilmagan, qidiruv eski Mongo skaneri orqali ishlaydi")
+		}
 	} else if devMode {
 		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
 		promotionsRepo = storage.NewMemoryPromotionsRepo()
@@ -538,7 +587,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else if jwtSecret == "" {
-		jwtSecret = "dev-secret-almashtiring"
+		jwtSecret = "dev-secret-almashtiring" //nolint:gosec // faqat dev rejimida; production'da JWT_SECRET majburiy
 		slog.Warn("JWT_SECRET berilmagan â€” FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
 	}
 	const tokenTTL = 30 * 24 * time.Hour
@@ -620,6 +669,29 @@ func main() {
 	// bo'lsa haqiqiy yuborish, bo'lmasa dev log. Sozlanmagan bo'lsa
 	// email oqimlari ANIQ xato bilan rad etiladi (`users` paketidagi
 	// `ErrEmailSendUnavailable`) â€” jimgina "yuborildi" deyilmaydi.
+	// ── Restoran "Bildirishnomalar" markazi (`internal/alerts`) ──
+	//
+	// Buyurtma, to'lov, xodim va kuryer hodisalari AVVAL bazaga yoziladi,
+	// keyin restoran rahbariyati kanaliga jonli yuboriladi.
+	var alertStore alerts.Store
+	if pgPool != nil {
+		alertStore = storage.NewPgAlertStore(pgPool)
+	} else {
+		alertStore = storage.NewMemoryAlertStore()
+		slog.Warn("rejim: in-memory (restoran bildirishnomalari) — server qayta ishga tushganda yo'qoladi")
+	}
+	alertsSvc := alerts.NewService(alertStore, hub, httpapi.NewID).WithOrders(orderRepo.GetByID)
+
+	// ── Qo'llab-quvvatlash: aloqa ma'lumotlari va restoran ↔ admin chati ──
+	var supportStore support.Store
+	if pgPool != nil {
+		supportStore = storage.NewPgSupportStore(pgPool)
+	} else {
+		supportStore = storage.NewMemorySupportStore()
+		slog.Warn("rejim: in-memory (qo'llab-quvvatlash chati) — server qayta ishga tushganda yo'qoladi")
+	}
+	supportSvc := support.NewService(supportStore, hub, httpapi.NewID)
+
 	emailSender, emailConfigured := notify.NewEmailSender()
 	if emailConfigured {
 		slog.Info("rejim: SMTP (email tasdiqlash yoqilgan)", "host", os.Getenv("SMTP_HOST"))
@@ -820,7 +892,7 @@ func main() {
 	} else {
 		slog.Warn("TELEGRAM_BOT_TOKEN yo'q â€” /auth/telegram/start o'chirilgan")
 	}
-	orderSvc := orders.NewService(orderRepo, notifier, httpapi.NewID, promotionsRepo)
+	orderSvc := orders.NewService(orderRepo, alertsSvc.WrapOrders(notifier), httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -837,6 +909,21 @@ func main() {
 		slog.Warn("rejim: in-memory (stollar) â€” QR kodlar server qayta ishga tushganda yo'qoladi")
 	}
 	tableSvc := tables.NewService(tableRepo)
+
+	// ── Xodimlar ("Xodimlar" bo'limi) ──
+	//
+	// Ofitsiantning ilovaga kirishi `users` jadvalidagi akkaunt bilan
+	// bog'liq, shuning uchun xodimlar ham o'sha omborda (Postgres/xotira).
+	var staffRepo staff.Repository
+	if pgPool != nil {
+		staffRepo = storage.NewPgStaffRepo(pgPool)
+	} else {
+		staffRepo = storage.NewMemoryStaffRepo()
+		slog.Warn("rejim: in-memory (xodimlar) — xodimlar ro'yxati server qayta ishga tushganda yo'qoladi")
+	}
+	staffSvc := staff.NewService(staffRepo, &staff.UserAccounts{
+		Users: userRepo, Revoked: revokedSessions, NewID: httpapi.NewID,
+	}).WithObserver(alertsSvc.StaffEvents)
 
 	// â”€â”€ Tashqi AI agentlar (integratsiya sheriklari) â”€â”€
 	//
@@ -968,6 +1055,10 @@ func main() {
 		// Buyurtma qabul qilinganda pulni yechish / rad etilganda
 		// bo'shatish shu bog'lanish orqali ishlaydi.
 		orderSvc.WithPayments(paymentSvc)
+		// Pul haqiqatan yechilganda — restoranga "To'lov qabul qilindi".
+		paymentSvc.OnPaid(func(p payments.Payment) {
+			alertsSvc.PaymentReceived(p.RestaurantID, p.ID, p.OrderID, p.AmountTiyin)
+		})
 		// â”Œâ”€ TUZATILGAN NOSOZLIK (bug.md 43-band) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 		// `OCTO_TEST` ning standarti â€” `true` (kodda ham, compose'da
 		// ham). Fail-safe tanlov mantiqiy: tasodifan haqiqiy pul
@@ -1032,11 +1123,43 @@ func main() {
 			"(tekshiring: .env da bormi VA docker-compose.prod.yml environment ro'yxatida bormi)")
 	}
 
+	// ── Bildirishnomalar fon vazifalari: qabul qilinmagan buyurtma
+	// eslatmasi, kunlik hisobot, 90 kunlik saqlash muddati ──
+	alertsSvc.RunJobs(context.Background(), alerts.JobDeps{
+		RecentOrders: func(ctx context.Context) ([]*orders.Order, error) {
+			return orderRepo.ListRecent(ctx, 1000)
+		},
+		Restaurants: func(ctx context.Context) ([]string, error) {
+			list, err := catalogRepo.ListRestaurants(ctx)
+			if err != nil {
+				return nil, err
+			}
+			ids := make([]string, 0, len(list))
+			for _, r := range list {
+				ids = append(ids, r.ID)
+			}
+			return ids, nil
+		},
+		DaySummary: func(ctx context.Context, restaurantID string, from, to time.Time) (alerts.DaySummary, error) {
+			if historySource == nil {
+				return alerts.DaySummary{}, errors.New("buyurtmalar tarixi manbai ulanmagan")
+			}
+			l, err := historySource.Lifetime(ctx, restaurantID, stats.Period{From: from, To: to})
+			if err != nil {
+				return alerts.DaySummary{}, err
+			}
+			return alerts.DaySummary{Orders: l.Orders, Completed: l.Completed, Cancelled: l.Cancelled,
+				RevenueTiyin: l.RevenueTiyin}, nil
+		},
+	})
+
 	// ---------- HTTP qatlami ----------
 	// Barcha endpointlar `internal/httpapi` da (routes_*.go). Bu yerda
 	// faqat bog'liqliklar yig'iladi â€” Express'dagi `app.js` kabi.
 	api := httpapi.New(httpapi.Deps{
 		OrderRepo:          orderRepo,
+		StatsSource:        statsSource,
+		HistorySource:      historySource,
 		CourierRepo:        courierRepo,
 		UserRepo:           userRepo,
 		CatalogRepo:        catalogRepo,
@@ -1056,6 +1179,10 @@ func main() {
 		OrderSvc:           orderSvc,
 		CatalogSvc:         catalogSvc,
 		TableSvc:           tableSvc,
+		StaffSvc:           staffSvc,
+		AlertsSvc:          alertsSvc,
+		SupportSvc:         supportSvc,
+		TableOrders:        tableOrders,
 		Payments:           paymentSvc,
 		OctoClient:         octoClient,
 		Dispatcher:         dispatcher,
@@ -1100,41 +1227,21 @@ func main() {
 		})
 	}
 
-	// Dispatch tiklash (crash-recovery) â€” dispatch holati FAQAT xotirada
-	// (Dispatcher.pending map + fon goroutine) saqlanadi. Server process
-	// biror sababdan (deploy, qulash, qayta ishga tushirish) o'chib-yonsa,
-	// avvalgi dispatch IZSIZ yo'qoladi â€” "accepted" holatida qolib ketgan-u
-	// hali kuryer biriktirilmagan buyurtma hech qachon qayta qidirilmay,
-	// abadiy shu holatda qotib qolardi. Shuning uchun HAR server startida
-	// so'nggi buyurtmalar orasidan aynan shunday holatdagilarni topib,
-	// ularga dispatch qayta boshlanadi.
 	{
-		const recoveryWindow = 500
-		recent, err := orderRepo.ListRecent(context.Background(), recoveryWindow)
-		if err != nil {
-			slog.Error("dispatch tiklashda buyurtmalarni o'qib bo'lmadi", "err", err)
+		// ┌─ KURYER QIDIRUVI NAZORATCHISI ────────────────────────────┐
+		// Pastdagi bir martalik tiklash ENDI ISHLATILMAYDI: u faqat
+		// `accepted` holatini ko'rardi va tayyorlanayotgan/tayyor
+		// buyurtmalar restartdan keyin abadiy "Kuryer qidirilmoqda"
+		// bo'lib qolardi. Tiklash, "kuryer topilmadi" va avtomatik
+		// bekor qilish endi bitta doimiy nazoratchida, bazadagi holatga
+		// tayanib (`httpapi/dispatch_watchdog.go`).
+		// └───────────────────────────────────────────────────────────┘
+		queue, ok := orderRepo.(httpapi.AwaitingCourierLister)
+		if !ok {
+			slog.Error("buyurtmalar ombori ListAwaitingCourier ni qo'llamaydi — kuryer qidiruvi nazoratchisi ishga tushmaydi")
+			os.Exit(1)
 		}
-		// Oyna to'lgan bo'lsa, undan ESKIROQ osilib qolgan buyurtma
-		// ko'rinmay qolgan bo'lishi mumkin. Hozirgi hajmda bu uzoq â€”
-		// lekin jimgina o'tib ketmasligi uchun ogohlantiramiz, aks
-		// holda "bitta buyurtma kuryersiz qoldi" muammosining sababi
-		// hech qachon topilmasdi.
-		if len(recent) >= recoveryWindow {
-			slog.Warn("dispatch tiklash oynasi to'ldi â€” undan eski osilib qolgan buyurtmalar tekshirilmadi",
-				"oyna", recoveryWindow)
-		}
-		for _, o := range recent {
-			// Shart ATAYLAB shu yerda yozilmaydi: u `routes_orders.go`
-			// dagi dispatch shartidan ajralib ketib, stol buyurtmalarini
-			// kuryerlarga yuborardi. Yagona manba â€”
-			// `orders.Order.NeedsDispatchRecovery` (izohi o'sha yerda).
-			if o.NeedsDispatchRecovery() {
-				slog.Warn("dispatch tiklanmoqda (server qayta ishga tushgandan keyin topilgan kuryersiz buyurtma)",
-					"order", o.ID, "order_number", o.OrderNumber)
-				oID, rID, prep := o.ID, o.RestaurantID, o.PreparationMinutes
-				api.RecoverDispatch(oID, rID, prep)
-			}
-		}
+		api.RunDispatchWatchdog(context.Background(), queue)
 	}
 
 	addr := ":8080"

@@ -3,21 +3,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import '../live.dart';
+import '../notification_center.dart';
 import '../pages/coming_soon_page.dart';
 import '../pages/dashboard_page.dart';
 import '../pages/help_page.dart';
 import '../pages/menu_page.dart';
+import '../pages/notifications_page.dart';
 import '../pages/orders_page.dart';
 import '../pages/promotions_page.dart';
+import '../pages/restaurant_settings_page.dart';
 import '../pages/staff_page.dart';
+import '../pages/statistics_page.dart';
+import '../pages/support_chat_page.dart';
 import '../pages/tables_page.dart';
 import '../sound.dart';
+import '../support_center.dart';
 import '../widgets/main_layout.dart';
 import 'login_screen.dart';
 
 const _iDashboard = 0;
 const _iOrders = 1;
 const _iMenu = 2;
+const _iStatistics = 5;
+const _iSettings = 7;
+const _iStaff = 8;
+const _iNotifications = 9;
+const _iTables = 4;
+const _iHelp = 10;
+const _iChat = 11;
 
 class RestaurantShell extends StatefulWidget {
   const RestaurantShell({super.key});
@@ -38,6 +51,15 @@ class _RestaurantShellState extends State<RestaurantShell> {
   int _newOrdersCount = 0;
   late final LiveRefresher _live;
 
+  /// Statistika sahifasi va uning yuqori paneldagi davr/Eksport
+  /// tugmalarining umumiy holati — shu yerda, ya'ni boshqa sahifaga o'tib
+  /// qaytganda tanlangan davr saqlanadi.
+  final _stats = StatisticsController();
+
+  /// "Restoran sozlamalari" da saqlanmagan o'zgarish bo'lsa, boshqa
+  /// sahifaga o'tishdan oldin so'raladi.
+  final _settingsGuard = SettingsLeaveGuard();
+
   @override
   void initState() {
     super.initState();
@@ -55,12 +77,27 @@ class _RestaurantShellState extends State<RestaurantShell> {
       onRefresh: _pollOrders,
       types: const {'new_order', 'order_status'},
     )..start();
+    // Bildirishnomalar markazi — o'sha jonli kanal ustida (qo'ng'iroq,
+    // yon menyu rozetkasi va "Bildirishnomalar" sahifasi).
+    notificationCenter.addListener(_onAlerts);
+    notificationCenter.start();
+    // OnDex qo'llab-quvvatlash chati: yon menyu rozetkasi va Yordam
+    // markazidagi "yangi javob" belgisi.
+    supportCenter.addListener(_onAlerts);
+    supportCenter.start();
+  }
+
+  void _onAlerts() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    notificationCenter.removeListener(_onAlerts);
+    supportCenter.removeListener(_onAlerts);
     _live.dispose();
     restaurantLive.stop();
+    _stats.dispose();
     super.dispose();
   }
 
@@ -85,11 +122,12 @@ class _RestaurantShellState extends State<RestaurantShell> {
     try {
       final list = await api.orders();
       if (!mounted) return;
-      final newCount = list
-          .cast<Map<String, dynamic>>()
-          .where((o) => o['status'] == 'created')
-          .length;
+      final orders = list.cast<Map<String, dynamic>>().toList();
+      final newCount = orders.where((o) => o['status'] == 'created').length;
       setState(() => _newOrdersCount = newCount);
+      // Statistika sahifasidagi "So'nggi buyurtmalar" jadvali shu
+      // ro'yxatdan oziqlanadi — alohida so'rov yubormaydi.
+      _stats.setRecentOrders(orders);
       // Qo'ng'iroq AYNAN shu yerdan boshqariladi — qobiq panel ochiq
       // turgan BUTUN vaqt davomida tirik, ya'ni foydalanuvchi qaysi
       // sahifada bo'lishidan qat'i nazar ovoz eshitiladi
@@ -125,6 +163,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
     // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
     // sessiya uchun qayta ulanishga urinardi (har safar 401).
     await restaurantLive.stop();
+    await notificationCenter.stop();
+    await supportCenter.stop();
     // Serverdagi sessiyani ham bekor qilamiz (bug.md 93-band) —
     // avval token 30 kun yaroqli qolib ketardi. `try/catch` SHART:
     // internet yo'q bo'lsa ham mahalliy chiqish bajarilishi kerak
@@ -158,12 +198,29 @@ class _RestaurantShellState extends State<RestaurantShell> {
     _iMenu: 'Menyu',
     3: 'Aksiyalar',
     4: 'Stollar',
+    _iStatistics: 'Statistika',
+    _iSettings: 'Sozlamalar',
     8: 'Xodimlar',
     9: 'Bildirishnomalar',
-    10: 'Yordam',
+    _iHelp: 'Yordam',
+    _iChat: 'Chat',
   };
 
-  void _goTo(int i) {
+  /// Buyurtmalar → "Tarix": to'liq tarix Statistika ichidagi "Barcha
+  /// buyurtmalar" sahifasida (davr filtri bilan, sahifalab). Qaytish
+  /// tugmasi yana Buyurtmalar sahifasiga olib boradi.
+  void _openOrderHistory() {
+    _goTo(_iStatistics);
+    _stats.openHistory(backLabel: 'Buyurtmalar', onBack: () => _goTo(_iOrders));
+  }
+
+  Future<void> _goTo(int i) async {
+    if (_index == _iSettings && i != _iSettings && _settingsGuard.hasUnsavedChanges) {
+      if (!await confirmDiscardSettings(context) || !mounted) return;
+    }
+    // Yon menyudan "Statistika" bosilsa — "Barcha buyurtmalar" ichida
+    // bo'lsa ham asosiy statistikaga qaytadi.
+    if (i == _iStatistics) _stats.closeHistory();
     setState(() => _index = i);
     final name = _pageNames[i];
     if (name != null) Analytics.instance.screen('restoran/$name');
@@ -191,7 +248,15 @@ class _RestaurantShellState extends State<RestaurantShell> {
         selectedDate: _selectedDate,
         onDateChanged: (d) => setState(() => _selectedDate = d),
         newOrdersCount: _newOrdersCount,
+        notificationsCount: notificationCenter.unread,
+        supportCount: supportCenter.unread,
+        onBellTap: () => _goTo(_iNotifications),
         onLogout: _logout,
+        // Faqat Statistika sahifasida: bir kunlik sana o'rniga davr
+        // tanlagich + Eksport. Qolgan sahifalar odatiy holida.
+        topBarActions: _index == _iStatistics
+            ? StatisticsToolbar(controller: _stats, restaurantName: _name)
+            : null,
         child: _buildPage(),
       ),
     );
@@ -206,7 +271,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
           onGoToMenu: () => _goTo(_iMenu),
         );
       case _iOrders:
-        return const OrdersPage();
+        return OrdersPage(onOpenHistory: _openOrderHistory);
       case _iMenu:
         return const MenuPage();
       case 3:
@@ -216,15 +281,10 @@ class _RestaurantShellState extends State<RestaurantShell> {
       // ro'yxati (`widgets/sidebar.dart`) va bu switch BIR XIL
       // tartibda bo'lishi SHART — aks holda foydalanuvchi "Moliya"
       // bosib "Statistika" ni ochib qo'yardi.
-      case 4:
+      case _iTables:
         return const TablesPage();
-      case 5:
-        return const ComingSoonPage(
-          title: 'Statistika',
-          icon: Icons.bar_chart_rounded,
-          description:
-              'Savdo dinamikasi, eng ko\'p sotilgan taomlar va band soatlar tahlili — tez orada. Asosiy ko\'rsatkichlar hozircha Bosh sahifada.',
-        );
+      case _iStatistics:
+        return StatisticsPage(controller: _stats);
       case 6:
         return const ComingSoonPage(
           title: 'Moliya',
@@ -232,27 +292,39 @@ class _RestaurantShellState extends State<RestaurantShell> {
           description:
               'To\'lov tarixi, komissiya tafsiloti, bank rekvizitlari — to\'lov tizimi (Payme/Click) ulanganidan keyin qo\'shiladi.',
         );
-      case 7:
-        return const ComingSoonPage(
-          title: 'Restoran sozlamalari',
-          icon: Icons.settings_rounded,
-          description:
-              'Ish vaqti jadvali, yetkazish sozlamalari — tez orada. Hozircha restoran profilini superadmin tahrirlaydi.',
+      case _iSettings:
+        return RestaurantSettingsPage(
+          guard: _settingsGuard,
+          open: _open,
+          onOpenChanged: _toggleOpen,
+          // Logo o'zgarsa yuqori panel va yon menyuda ham darhol yangilansin.
+          onSaved: _loadInfo,
         );
-      case 8:
+      case _iStaff:
         return const StaffPage();
-      case 9:
-        return const ComingSoonPage(
-          title: 'Bildirishnomalar',
-          icon: Icons.notifications_rounded,
-          description: 'Barcha o\'tgan bildirishnomalar tarixi — tez orada.',
+      case _iNotifications:
+        return NotificationsPage(
+          onOpenOrders: () => _goTo(_iOrders),
+          onOpenStaff: () => _goTo(_iStaff),
+          onOpenStatistics: () => _goTo(_iStatistics),
+          onOpenSettings: () => _goTo(_iSettings),
         );
-      case 10:
-        // Endi `ComingSoonPage` emas: huquqiy hujjatlar (ommaviy
-        // oferta, maxfiylik siyosati) shu yerda ko'rsatiladi —
-        // xodim mijozning shaxsiy ma'lumotlariga kirish huquqiga
-        // ega va shartlarni bilishi kerak (bug.md 70-band).
-        return const HelpPage();
+      case _iHelp:
+        // Savol-javob, admin kiritgan aloqa ma'lumotlari va "Onlayn
+        // yordam" (Chat markazi) — `pages/help_page.dart`.
+        return HelpPage(
+          supportUnread: supportCenter.unread,
+          onOpenChat: () => _goTo(_iChat),
+          onOpenOrders: () => _goTo(_iOrders),
+          onOpenMenu: () => _goTo(_iMenu),
+          onOpenTables: () => _goTo(_iTables),
+          onOpenStatistics: () => _goTo(_iStatistics),
+          onOpenSettings: () => _goTo(_iSettings),
+          onOpenStaff: () => _goTo(_iStaff),
+          onOpenUpdates: () => _goTo(_iNotifications),
+        );
+      case _iChat:
+        return const SupportChatPage();
       default:
         return const SizedBox.shrink();
     }

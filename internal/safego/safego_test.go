@@ -42,7 +42,7 @@ func TestGoRecoversRuntimePanic(t *testing.T) {
 	Go("nil-pointer", func() {
 		defer close(done)
 		var m map[string]int
-		m["yozib bo'lmaydi"] = 1 // panic: assignment to entry in nil map
+		m["yozib bo'lmaydi"] = 1 //nolint:staticcheck // ataylab: nil map panikasi (runtime xato) sinaladi
 	})
 
 	select {

@@ -28,8 +28,11 @@ func dialHub(t *testing.T, h *Hub, keys ...string) (*websocket.Conn, *httptest.S
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.Serve(w, r, keys...)
 	}))
-	conn, _, err := websocket.DefaultDialer.Dial(
+	conn, resp, err := websocket.DefaultDialer.Dial(
 		"ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		srv.Close()
 		t.Fatalf("ulanib bo'lmadi: %v", err)

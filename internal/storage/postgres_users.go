@@ -326,7 +326,7 @@ func (r *PgUserRepo) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// `favorites.customer_id` da FOREIGN KEY yo'q — cascade ishlamaydi.
 	if _, err := tx.Exec(ctx, `DELETE FROM favorites WHERE customer_id = $1`, id); err != nil {

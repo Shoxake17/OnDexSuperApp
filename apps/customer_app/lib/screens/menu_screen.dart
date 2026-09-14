@@ -713,8 +713,12 @@ class _MenuScreenState extends State<MenuScreen> {
       discount: discount,
       promoted: PromotionIndex(_promos).covers(p, discount),
       // Yurakcha holati `FavoritesStore` dan keladi — bu yerda
-      // saqlanmaydi (`widgets/product_grid.dart`).
-      favorited: FavoritesStore.instance.contains(id),
+      // saqlanmaydi. Kartochkaning o'zi umumiy paketda
+      // (`packages/ondex_menu`), yurak esa mijozga xos — uyaga qo'yiladi.
+      topLeft: FavoriteButton(
+        productId: id,
+        initialFavorited: FavoritesStore.instance.contains(id),
+      ),
       onAdd: () => _add(p),
       // Shaddiy "barmog'i" AYNAN shu tugmani topishi uchun.
       addKey: AgentStage.instance.addKey(id),
@@ -745,13 +749,57 @@ class _MenuScreenState extends State<MenuScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _MenuSearchScreen(
+          restaurantId: _id,
           menu: _menu,
-          buildCard: _card,
+          buildCard: _searchCard,
         ),
       ),
     );
     // Qidiruvda savat yoki yurak o'zgargan bo'lishi mumkin.
     if (mounted) setState(() {});
+  }
+
+  /// Qidiruv natijalari uchun kartochka — `_card` bilan bir xil ko'rinish,
+  /// lekin AgentStage'ning GLOBAL kalitlarisiz.
+  ///
+  /// ┌─ NEGA ALOHIDA ("RenderRepaintBoundary was mutated" xatosi) ───────┐
+  /// `_card` har bir taomga BITTA, butun menyu ekrani davomida
+  /// saqlanadigan `GlobalKey` beradi (`AgentStage.productKey`/`addKey` —
+  /// Shaddiy yordamchisining "barmog'i" aynan shu taom/tugma ustida
+  /// turishi uchun).
+  ///
+  /// Qidiruv ekrani asosiy menyu USTIGA push qilinadi — ya'ni asosiy
+  /// ro'yxat ekranda ko'rinmasa ham TIRIK qoladi. Qidiruv natijasida
+  /// asosiy ro'yxatda ALLAQACHON chizilgan taom chiqsa, bitta GlobalKey
+  /// ikkita joyda BIR VAQTDA ishlatilib qolardi. Flutter buni
+  /// RenderObject'ni noto'g'ri paytda (asosiy ro'yxat layout jarayonida
+  /// emasligida) "ko'chirish" deb hisoblab, aynan shu xatoni berardi —
+  /// va orqaga qaytishda ham (asosiy ro'yxat qayta tiklanganda) xuddi
+  /// shu sabab bilan takrorlanardi.
+  ///
+  /// Qidiruv natijalarida Shaddiy "barmog'i" umuman ishlatilmaydi (u
+  /// faqat asosiy menyuga ro'yxatdan o'tgan — `AgentStage.registerMenu`),
+  /// shuning uchun bu yerda GlobalKey'ga ehtiyoj yo'q — oddiy, faqat
+  /// shu ro'yxatga tegishli `ValueKey` yetarli.
+  /// └──────────────────────────────────────────────────────────────────┘
+  Widget _searchCard(Map<String, dynamic> p) {
+    final id = (p['id'] as String?) ?? '';
+    final discount =
+        computeProductDiscount(p, _promos, cartSubtotalTiyin: _rawSubtotal);
+    return ProductCard(
+      key: ValueKey('search_$id'),
+      product: p,
+      qty: _cart.restaurantId == _id ? _cart.qtyOf(id) : 0,
+      discount: discount,
+      promoted: PromotionIndex(_promos).covers(p, discount),
+      topLeft: FavoriteButton(
+        productId: id,
+        initialFavorited: FavoritesStore.instance.contains(id),
+      ),
+      onAdd: () => _add(p),
+      onRemove: () => _remove(p),
+      onTap: () => _openDetail(p),
+    );
   }
 
   @override
@@ -795,7 +843,9 @@ class _MenuScreenState extends State<MenuScreen> {
                           separatorBuilder: (_, __) => const SizedBox(width: 8),
                           itemBuilder: (_, i) {
                             final title = _sections[i].title;
-                            return _CategoryChip(
+                            // Chip umumiy paketdan — affitsiant ilovasining
+                            // buyurtma ekrani ham AYNI chipni ishlatadi.
+                            return MenuCategoryChip(
                               key: _chipKeys[title],
                               label: title,
                               active: title == active,
@@ -1019,53 +1069,6 @@ class _Section {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TURKUM CHIPI
-// ═══════════════════════════════════════════════════════════════════
-
-class _CategoryChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _CategoryChip({
-    super.key,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: active ? kBrand : Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: active ? kBrand : const Color(0xFFE0E0E0),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: active ? FontWeight.bold : FontWeight.normal,
-              color: active ? Colors.white : const Color(0xFF262626),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
 // SUZUVCHI SAVAT TUGMASI
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1138,10 +1141,15 @@ class _CartPill extends StatelessWidget {
 /// Kartochkani O'ZI chizmaydi: menyu ekranidan `buildCard` funksiyasi
 /// uzatiladi — savat, sevimli va aksiya mantig'i bitta joyda qoladi.
 class _MenuSearchScreen extends StatefulWidget {
+  final String restaurantId;
   final List<Map<String, dynamic>> menu;
   final Widget Function(Map<String, dynamic>) buildCard;
 
-  const _MenuSearchScreen({required this.menu, required this.buildCard});
+  const _MenuSearchScreen({
+    required this.restaurantId,
+    required this.menu,
+    required this.buildCard,
+  });
 
   @override
   State<_MenuSearchScreen> createState() => _MenuSearchScreenState();
@@ -1152,6 +1160,27 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
   final _cart = CartStore.instance;
   String _query = '';
 
+  Timer? _debounce;
+
+  /// Backend (MeiliSearch) natijasi — `null` bo'lsa hali kelmagan
+  /// (yoki so'rov muvaffaqiyatsiz bo'lgan) va quyidagi lokal filtr
+  /// ko'rsatiladi.
+  ///
+  /// ┌─ NEGA IKKALA YO'L HAM BOR ──────────────────────────────────────┐
+  /// `GET /products/search` — global, BARCHA restoranlar bo'yicha
+  /// qidiradi va endi MeiliSearch orqali xato-kechiruvchan (masalan
+  /// "mohito" yozilsa "Moxito" ham topiladi) — buni bu restoranga
+  /// tegishlilarigacha TORAYTIRAMIZ (`restaurant_id` bo'yicha).
+  ///
+  /// Lekin bu — tarmoq so'rovi, `widget.menu` esa allaqachon qo'lda
+  /// (keshdan) mavjud. Shuning uchun natija HAR SAFAR mahalliy filtr
+  /// bilan boshlanadi (bir zumda ko'rinadi), so'ngra tarmoq javobi
+  /// kelganda MeiliSearch natijasiga ALMASHADI. Tarmoq nosoz bo'lsa
+  /// (yoki sekin bo'lsa) — foydalanuvchi baribir natijasiz qolmaydi,
+  /// faqat xato-kechiruvchan qidiruvdan mahrum bo'ladi.
+  /// └────────────────────────────────────────────────────────────────┘
+  List<Map<String, dynamic>>? _remoteResults;
+
   @override
   void initState() {
     super.initState();
@@ -1160,6 +1189,7 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _cart.removeListener(_onCart);
     _controller.dispose();
     super.dispose();
@@ -1169,15 +1199,44 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
     if (mounted) setState(() {});
   }
 
+  void _onQueryChanged(String v) {
+    setState(() {
+      _query = v;
+      _remoteResults = null;
+    });
+    _debounce?.cancel();
+    final q = v.trim();
+    if (q.isEmpty) return;
+    // 300ms — har bosishda emas, yozish to'xtaganda so'raladi.
+    _debounce = Timer(const Duration(milliseconds: 300), () => _searchRemote(q));
+  }
+
+  Future<void> _searchRemote(String q) async {
+    try {
+      final list = (await api.searchProducts(q)).cast<Map<String, dynamic>>();
+      // So'rov davomida foydalanuvchi matnni o'zgartirgan bo'lishi
+      // mumkin — eskirgan javob yangi so'rovni bosib qolmasin.
+      if (!mounted || q != _query.trim()) return;
+      setState(() {
+        _remoteResults =
+            list.where((p) => p['restaurant_id'] == widget.restaurantId).toList();
+      });
+    } catch (_) {
+      // Tarmoq xatosi — jim qolamiz, lokal filtr ko'rinishda qoladi
+      // (pastdagi `results` hisoblanishiga qarang).
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _query.trim().toLowerCase();
-    final results = q.isEmpty
+    final localResults = q.isEmpty
         ? const <Map<String, dynamic>>[]
         : widget.menu
             .where((p) =>
                 ((p['name'] as String?) ?? '').toLowerCase().contains(q))
             .toList();
+    final results = _remoteResults ?? localResults;
 
     return PageSheet(
         child: Scaffold(
@@ -1192,7 +1251,7 @@ class _MenuSearchScreenState extends State<_MenuSearchScreen> {
           // tayyor bo'lishi kerak.
           autofocus: true,
           textInputAction: TextInputAction.search,
-          onChanged: (v) => setState(() => _query = v),
+          onChanged: _onQueryChanged,
         ),
         actions: [
           IconButton(

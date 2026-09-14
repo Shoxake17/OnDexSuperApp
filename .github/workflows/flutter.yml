@@ -1,0 +1,98 @@
+# OnDex — Flutter ilovalari va umumiy paketlar: analyze + test.
+#
+# ┌─ NEGA ALOHIDA WORKFLOW ─────────────────────────────────────────────┐
+# `deploy.yml` Flutter papkalarini ATAYLAB chetlab o'tadi (`paths-ignore`)
+# — ular backend deploy'iga kirmaydi. Natijada Dart kodi CI'da UMUMAN
+# tekshirilmas edi: `flutter analyze` va `flutter test` faqat ishlab
+# chiquvchining kompyuterida (yoki Shorebird relizida) ishlardi.
+#
+# Bu workflow faqat Flutter kodi o'zgarganda ishga tushadi va backend
+# deploy'ini to'xtatmaydi.
+# └─────────────────────────────────────────────────────────────────────┘
+
+name: Flutter - Analyze & Test
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/customer_app/**'
+      - 'apps/courier_app/**'
+      - 'apps/waiter_app/**'
+      - 'apps/admin_panel/**'
+      - 'apps/restaurant_panel/**'
+      - 'packages/**'
+      - 'local_packages/**'
+      - '.github/workflows/flutter.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/customer_app/**'
+      - 'apps/courier_app/**'
+      - 'apps/waiter_app/**'
+      - 'apps/admin_panel/**'
+      - 'apps/restaurant_panel/**'
+      - 'packages/**'
+      - 'local_packages/**'
+      - '.github/workflows/flutter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      # Bitta paket yiqilsa qolganlari to'xtamasin — hamma xato bir
+      # ishga tushishda ko'rinsin.
+      fail-fast: false
+      matrix:
+        package:
+          - packages/ondex_core
+          - packages/ondex_menu
+          - packages/ondex_support
+          - apps/customer_app
+          - apps/courier_app
+          - apps/waiter_app
+          - apps/restaurant_panel
+          - apps/admin_panel
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # ┌─ VERSIYA QADALGAN ────────────────────────────────────────────┐
+      # Shorebird relizi bilan AYNI versiya (`shorebird.yml`): CI'da
+      # tekshirilgan kod foydalanuvchiga chiqadigan build bilan bir xil
+      # kompilyator va analyzer'dan o'tsin.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: '3.44.9'
+          cache: true
+
+      # `--enforce-lockfile` — `pubspec.lock` dagidan BOSHQA versiya
+      # yuklab olinmaydi (ta'minot zanjiri himoyasi: repoda ko'rib
+      # chiqilgan versiya bilan CI'dagi versiya bir xil bo'ladi).
+      - name: Dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # Standart holatda info va warning ham xato hisoblanadi — kod
+      # `flutter analyze` toza bo'lganda gina o'tadi.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

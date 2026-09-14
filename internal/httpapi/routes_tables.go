@@ -1,5 +1,5 @@
-// Stollar (QR kod) va affitsiantlar — restoran o'zi boshqaradigan
-// resurslar.
+// Joylar (stol, kabina, VIP xona... — QR kod) va affitsiantlar —
+// restoran o'zi boshqaradigan resurslar.
 //
 // ┌─ HUQUQ MODELI ────────────────────────────────────────────────────┐
 // Bu yerdagi HAMMA endpoint `RoleRestaurant` yoki `RoleAdmin` uchun.
@@ -13,13 +13,14 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
-	"time"
 
 	"chustapp/internal/tables"
 	"chustapp/internal/users"
@@ -43,6 +44,31 @@ func entityIDFor(c *users.Claims, requested string) (string, bool) {
 	return c.EntityID, true
 }
 
+// recentScansWithOrders — "So'nggi skanerlangan QR kodlar" uchun oxirgi
+// buyurtmasi qo'shiladigan joylar soni (panel ulardan 4-5 tasini
+// ko'rsatadi; har biri bitta indeks qidiruvi).
+const recentScansWithOrders = 10
+
+// tableErrStatus — domen xatosini HTTP holatiga aylantiradi. Tanilmagan
+// xato (baza, tarmoq) 500: foydalanuvchi xatosi deb 400 berilsa, haqiqiy
+// nosozlik monitoringda ko'rinmay qolardi.
+func tableErrStatus(err error) int {
+	switch {
+	case errors.Is(err, tables.ErrDuplicate):
+		return http.StatusConflict
+	case errors.Is(err, tables.ErrLimitReached):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, tables.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, tables.ErrEmptyLabel), errors.Is(err, tables.ErrLabelTooLong),
+		errors.Is(err, tables.ErrEmptyZone), errors.Is(err, tables.ErrZoneTooLong),
+		errors.Is(err, tables.ErrControlChars), errors.Is(err, tables.ErrBadCapacity),
+		errors.Is(err, tables.ErrBadBatch), errors.Is(err, tables.ErrUnknownKind):
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
+}
+
 func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 	staff := []users.Role{users.RoleRestaurant, users.RoleAdmin}
 
@@ -61,8 +87,7 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 	// Stol ID'si URL'da keladi, ya'ni uni istalgan restoran taxmin
 	// qilib yoki boshqa yo'l bilan bilib olishi mumkin. Egalik
 	// tekshirilmasa, bir restoran boshqasining stolini o'chirib yoki
-	// QR tokenini yangilab yuborardi (butun zal QR kodlari bir
-	// zumda ishlamay qolardi).
+	// yopib yuborardi (butun zal QR kodlari bir zumda ishlamay qolardi).
 	ownTable := func(w http.ResponseWriter, r *http.Request) (*tables.Table, bool) {
 		t, err := s.TableSvc.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
@@ -79,9 +104,16 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 		return t, true
 	}
 
-	// ---------- Stollar ----------
+	// ---------- Joylar ----------
 
-	// GET /restaurants/{id}/tables — restoranning stollari.
+	// GET /tables/kinds — joy turlari (stol, kabina, VIP xona...).
+	mux.HandleFunc("GET /tables/kinds", s.auth(staff,
+		func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, tables.Kinds())
+		}))
+
+	// GET /restaurants/{id}/tables — restoranning joylari, JONLI holati
+	// bilan (band/bo'sh/tozalanmoqda — `tables.StatusOf`).
 	mux.HandleFunc("GET /restaurants/{id}/tables", s.auth(staff,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !requireTables(w) {
@@ -97,14 +129,31 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
+			occ, err := s.tableOccupancy(r.Context(), restaurantID, list)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
 			out := make([]map[string]any, 0, len(list))
 			for _, t := range list {
-				out = append(out, s.tableWithQR(r, t))
+				view := s.tableWithQR(r, t)
+				active := occ.active[t.ID]
+				if active == nil {
+					active = []tables.OrderSnapshot{}
+				}
+				var last *tables.OrderSnapshot
+				if o, ok := occ.latest[t.ID]; ok {
+					last = &o
+					view["last_order"] = o
+				}
+				view["status"] = tables.StatusOf(t, active, last)
+				view["active_orders"] = active
+				out = append(out, view)
 			}
 			writeJSON(w, http.StatusOK, out)
 		}))
 
-	// POST /restaurants/{id}/tables  {"label":"5"}
+	// POST /restaurants/{id}/tables  {"label":"5","zone":"Ayvon","kind":"cabin","capacity":6}
 	mux.HandleFunc("POST /restaurants/{id}/tables", s.auth(staff,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !requireTables(w) {
@@ -116,26 +165,75 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 				return
 			}
 			var req struct {
-				Label string `json:"label"`
-				Zone  string `json:"zone"`
+				Label    string `json:"label"`
+				Zone     string `json:"zone"`
+				Kind     string `json:"kind"`
+				Capacity *int   `json:"capacity"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}
-			t, err := s.TableSvc.CreateInZone(r.Context(), restaurantID, req.Zone, req.Label)
+			t, err := s.TableSvc.CreateTable(r.Context(), restaurantID, tables.Spec{
+				Zone: req.Zone, Kind: req.Kind, Label: req.Label, Capacity: req.Capacity,
+			})
 			if err != nil {
-				status := http.StatusBadRequest
-				if errors.Is(err, tables.ErrDuplicate) {
-					status = http.StatusConflict
-				}
-				httpError(w, status, err)
+				httpError(w, tableErrStatus(err), err)
 				return
 			}
 			writeJSON(w, http.StatusCreated, s.tableWithQR(r, t))
 		}))
 
-	// PATCH /tables/{id}  {"label":"6"} yoki {"active":false}
+	// POST /restaurants/{id}/tables/batch
+	//   {"kind":"cabin","zone":"Asosiy zal","prefix":"","from":1,"count":10,"capacity":4}
+	//
+	// Bir nechta ketma-ket raqamli joy BIRDANIGA: hammasi yoki hech biri
+	// (`tables.Service.CreateBatch`). Chegara — bitta so'rovda
+	// `tables.MaxBatch`, restoranda jami `tables.MaxTablesPerRestaurant`.
+	mux.HandleFunc("POST /restaurants/{id}/tables/batch", s.auth(staff,
+		func(w http.ResponseWriter, r *http.Request) {
+			if !requireTables(w) {
+				return
+			}
+			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
+			if !ok {
+				httpError(w, http.StatusNotFound, tables.ErrNotFound)
+				return
+			}
+			var req struct {
+				Zone     string `json:"zone"`
+				Kind     string `json:"kind"`
+				Prefix   string `json:"prefix"`
+				Capacity *int   `json:"capacity"`
+				From     int    `json:"from"`
+				Count    int    `json:"count"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				httpError(w, http.StatusBadRequest, err)
+				return
+			}
+			created, err := s.TableSvc.CreateBatch(r.Context(), restaurantID, tables.BatchSpec{
+				Zone: req.Zone, Kind: req.Kind, Prefix: req.Prefix,
+				Capacity: req.Capacity, From: req.From, Count: req.Count,
+			})
+			if err != nil {
+				httpError(w, tableErrStatus(err), err)
+				return
+			}
+			out := make([]map[string]any, 0, len(created))
+			for _, t := range created {
+				out = append(out, s.tableWithQR(r, t))
+			}
+			writeJSON(w, http.StatusCreated, out)
+		}))
+
+	// PATCH /tables/{id}
+	//   {"label":"6","zone":"Ayvon","kind":"cabin","capacity":8,"active":false,"cleaning":true}
+	//
+	// Hamma o'zgarish BITTA yozuvda (`tables.Service.Edit`): avval
+	// maydonma-maydon saqlanardi va ikkinchisi xato bersa birinchisi
+	// allaqachon yozilib qolardi. `"capacity": null` — sig'imni olib
+	// tashlash.
 	mux.HandleFunc("PATCH /tables/{id}", s.auth(staff,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !requireTables(w) {
@@ -146,45 +244,39 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 				return
 			}
 			var req struct {
-				Label  *string `json:"label"`
-				Zone   *string `json:"zone"`
-				Active *bool   `json:"active"`
+				Label    *string         `json:"label"`
+				Zone     *string         `json:"zone"`
+				Kind     *string         `json:"kind"`
+				Capacity json.RawMessage `json:"capacity"`
+				Active   *bool           `json:"active"`
+				Cleaning *bool           `json:"cleaning"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
 				return
 			}
-			var err error
-			if req.Label != nil {
-				t, err = s.TableSvc.Rename(r.Context(), t.ID, *req.Label)
-				if err != nil {
-					status := http.StatusBadRequest
-					if errors.Is(err, tables.ErrDuplicate) {
-						status = http.StatusConflict
+			patch := tables.Patch{
+				Label: req.Label, Zone: req.Zone, Kind: req.Kind,
+				Active: req.Active, Cleaning: req.Cleaning,
+			}
+			if len(req.Capacity) > 0 {
+				if string(req.Capacity) == "null" {
+					patch.ClearCapacity = true
+				} else {
+					var c int
+					if err := json.Unmarshal(req.Capacity, &c); err != nil {
+						httpError(w, http.StatusBadRequest, tables.ErrBadCapacity)
+						return
 					}
-					httpError(w, status, err)
-					return
+					patch.Capacity = &c
 				}
 			}
-			if req.Zone != nil {
-				t, err = s.TableSvc.SetZone(r.Context(), t.ID, *req.Zone)
-				if err != nil {
-					status := http.StatusBadRequest
-					if errors.Is(err, tables.ErrDuplicate) {
-						status = http.StatusConflict
-					}
-					httpError(w, status, err)
-					return
-				}
+			updated, err := s.TableSvc.Edit(r.Context(), t.ID, patch)
+			if err != nil {
+				httpError(w, tableErrStatus(err), err)
+				return
 			}
-			if req.Active != nil {
-				t, err = s.TableSvc.SetActive(r.Context(), t.ID, *req.Active)
-				if err != nil {
-					httpError(w, http.StatusBadRequest, err)
-					return
-				}
-			}
-			writeJSON(w, http.StatusOK, s.tableWithQR(r, t))
+			writeJSON(w, http.StatusOK, s.tableWithQR(r, updated))
 		}))
 
 	// Eslatma: `POST /tables/{id}/regenerate` endpointi ATAYLAB YO'Q.
@@ -202,6 +294,22 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			t, ok := ownTable(w, r)
 			if !ok {
 				return
+			}
+			// Band joy o'chirilmaydi: undagi mehmonlarning buyurtmasi yo'q
+			// joyga bog'lanib qolardi va QR yana ishlatilmay turib yo'qolardi.
+			if s.TableOrders != nil {
+				active, err := s.TableOrders.ActiveDineInOrders(r.Context(), t.RestaurantID)
+				if err != nil {
+					httpError(w, http.StatusInternalServerError, err)
+					return
+				}
+				for _, o := range active {
+					if o.TableID == t.ID {
+						httpError(w, http.StatusConflict,
+							errors.New("band joyni o'chirib bo'lmaydi — avval undagi buyurtmalarni yakunlang"))
+						return
+					}
+				}
 			}
 			if err := s.TableSvc.Delete(r.Context(), t.ID); err != nil {
 				httpError(w, http.StatusInternalServerError, err)
@@ -233,12 +341,19 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 				httpError(w, status, err)
 				return
 			}
+			// Skanerlash vaqti — panelning "So'nggi skanerlangan QR
+			// kodlar" bloki uchun. Faqat MUVAFFAQIYATLI yechilgan token
+			// yoziladi (soxta tokenlar hech narsa qoldirmaydi). Xato
+			// mijozni to'xtatmaydi: bu yordamchi ma'lumot.
+			_ = s.TableSvc.MarkScanned(r.Context(), t.ID)
+
 			// Javobda token QAYTMAYDI — chaqiruvchi uni allaqachon
 			// biladi, qaytarish esa uni loglarga/keshlarga yoyardi.
 			resp := map[string]any{
 				"table_id":      t.ID,
 				"table_label":   t.DisplayLabel(),
 				"table_number":  t.Label,
+				"table_kind":    t.Kind.Normalized(),
 				"zone":          t.Zone,
 				"restaurant_id": t.RestaurantID,
 			}
@@ -249,145 +364,73 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, resp)
 		}))
 
-	// ---------- Affitsiantlar ----------
-
-	// GET /restaurants/{id}/waiters
-	mux.HandleFunc("GET /restaurants/{id}/waiters", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			list, err := s.waitersOf(r, restaurantID)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, list)
-		}))
-
-	// POST /restaurants/{id}/waiters  {"phone":"+998...","name":"Ali"}
-	//
-	// Akkaunt YARATILADI, lekin parol o'rnatilmaydi: affitsiant o'z
-	// ilovasida SMS kod bilan kiradi (mavjud oqim). Shu sababli
-	// restoran hech qachon xodimning parolini bilmaydi.
-	mux.HandleFunc("POST /restaurants/{id}/waiters", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			var req struct {
-				Phone string `json:"phone"`
-				Name  string `json:"name"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			phone, err := users.NormalizePhone(req.Phone)
-			if err != nil {
-				httpError(w, http.StatusBadRequest, err)
-				return
-			}
-			name := strings.TrimSpace(req.Name)
-			if name == "" {
-				httpError(w, http.StatusBadRequest, errors.New("ism bo'sh bo'lishi mumkin emas"))
-				return
-			}
-			// ┌─ MAVJUD AKKAUNT ─────────────────────────────────────┐
-			// Raqam allaqachon ro'yxatda bo'lsa YANGI akkaunt
-			// yaratilmaydi va MAVJUDI ham o'zgartirilmaydi.
-			//
-			// Nega: aks holda restoran istalgan telefon raqamini
-			// kiritib, o'sha odamning akkauntini o'z affitsiantiga
-			// AYLANTIRIB yuborardi — jabrlanuvchi o'z buyurtmalari
-			// o'rniga restoran buyurtmalarini ko'rib qolardi. Bu
-			// akkauntni egallashning to'g'ridan-to'g'ri yo'li.
-			// └───────────────────────────────────────────────────────┘
-			if existing, err := s.UserRepo.GetByPhone(r.Context(), phone); err == nil {
-				if existing.Role == users.RoleWaiter && existing.EntityID == restaurantID {
-					httpError(w, http.StatusConflict,
-						errors.New("bu affitsiant allaqachon qo'shilgan"))
-					return
-				}
-				httpError(w, http.StatusConflict,
-					errors.New("bu telefon raqam boshqa akkauntga biriktirilgan"))
-				return
-			}
-			account := users.User{
-				ID: NewID(), Phone: phone, Name: name,
-				Role: users.RoleWaiter, EntityID: restaurantID,
-				CreatedAt: time.Now(),
-			}
-			if err := s.UserRepo.Create(r.Context(), &account); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, account)
-		}))
-
-	// DELETE /restaurants/{id}/waiters/{waiterID}
-	mux.HandleFunc("DELETE /restaurants/{id}/waiters/{waiterID}", s.auth(staff,
-		func(w http.ResponseWriter, r *http.Request) {
-			restaurantID, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
-			if !ok {
-				httpError(w, http.StatusNotFound, errors.New("restoran topilmadi"))
-				return
-			}
-			waiterID := r.PathValue("waiterID")
-			u, err := s.UserRepo.GetByID(r.Context(), waiterID)
-			if err != nil || u.Role != users.RoleWaiter || u.EntityID != restaurantID {
-				httpError(w, http.StatusNotFound, errors.New("affitsiant topilmadi"))
-				return
-			}
-			// ┌─ O'CHIRISH EMAS, ROLNI QAYTARISH ────────────────────┐
-			// Affitsiantni ishdan bo'shatish uning SHAXSIY
-			// akkauntini yo'q qilmasligi kerak: o'sha odam bir
-			// vaqtning o'zida oddiy mijoz ham bo'lishi mumkin va
-			// uning buyurtmalar tarixi, manzili, sevimlilari
-			// akkauntga bog'langan.
-			//
-			// Shuning uchun rol `customer` ga qaytariladi va
-			// `EntityID` tozalanadi — restoran ma'lumotlariga
-			// kirish shu zahoti yopiladi.
-			// └───────────────────────────────────────────────────────┘
-			if err := s.UserRepo.UpdateRole(r.Context(), waiterID, users.RoleCustomer, ""); err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
-			// Rolni bazada o'zgartirish YETARLI EMAS: `auth()` faqat
-			// imzoni tekshiradi va ESKI tokendagi rol `waiter` bo'lib
-			// qolaveradi — u 30 kun ishlayverardi. Sessiyani bekor
-			// qilish uni darhol to'xtatadi (restoran o'chirilganda
-			// ham xuddi shu qadam qo'yiladi — routes_admin.go).
-			s.Revoked.Revoke(r.Context(), waiterID)
-			writeJSON(w, http.StatusOK, map[string]bool{"removed": true})
-		}))
+	// Affitsiantlar endi "Xodimlar" bo'limida boshqariladi
+	// (`routes_staff.go`, `internal/staff`): ilovaga kirish xodim
+	// yozuviga ergashadi va ta'til/ishdan bo'shatishda darhol yopiladi.
 }
 
-// waitersOf — restoranning affitsiantlari.
-//
-// `ListByRole` + filtr: bitta restoranda affitsiantlar soni o'nlab,
-// shuning uchun alohida repository metodi va migratsiya shart emas
-// (`restaurantPhoneFor` bilan bir xil mulohaza — authz.go).
-func (s *Server) waitersOf(r *http.Request, restaurantID string) ([]*users.User, error) {
-	all, err := s.UserRepo.ListByRole(r.Context(), users.RoleWaiter)
-	if err != nil {
-		return nil, err
+// tableOccupancy — joylar holati uchun buyurtmalar.
+type tableOccupancy struct {
+	active map[string][]tables.OrderSnapshot
+	latest map[string]tables.OrderSnapshot
+}
+
+// tableOccupancy — faol stol buyurtmalari (hamma joy uchun bitta so'rov)
+// va KERAKLI joylarning oxirgi buyurtmasi: "tozalanmoqda" belgisi
+// borlar (belgi eskirganini bilish uchun) va eng so'nggi
+// skanerlanganlar. `TableOrders` ulanmagan bo'lsa bo'sh — holatlar
+// buyurtmasiz hisoblanadi.
+func (s *Server) tableOccupancy(ctx context.Context, restaurantID string, list []*tables.Table) (tableOccupancy, error) {
+	occ := tableOccupancy{
+		active: map[string][]tables.OrderSnapshot{},
+		latest: map[string]tables.OrderSnapshot{},
 	}
-	out := make([]*users.User, 0, 4)
-	for _, u := range all {
-		if u.EntityID == restaurantID {
-			out = append(out, u)
+	if s.TableOrders == nil || len(list) == 0 {
+		return occ, nil
+	}
+	active, err := s.TableOrders.ActiveDineInOrders(ctx, restaurantID)
+	if err != nil {
+		return occ, err
+	}
+	for _, o := range active {
+		occ.active[o.TableID] = append(occ.active[o.TableID], o)
+	}
+
+	seen := map[string]bool{}
+	var ids []string
+	for _, t := range list {
+		if t.CleaningSince != nil {
+			seen[t.ID] = true
+			ids = append(ids, t.ID)
 		}
 	}
-	return out, nil
+	scanned := make([]*tables.Table, 0, len(list))
+	for _, t := range list {
+		if t.LastScannedAt != nil {
+			scanned = append(scanned, t)
+		}
+	}
+	sort.Slice(scanned, func(i, j int) bool { return scanned[i].LastScannedAt.After(*scanned[j].LastScannedAt) })
+	for i, t := range scanned {
+		if i >= recentScansWithOrders {
+			break
+		}
+		if !seen[t.ID] {
+			seen[t.ID] = true
+			ids = append(ids, t.ID)
+		}
+	}
+	if len(ids) > 0 {
+		latest, err := s.TableOrders.LatestDineInOrders(ctx, restaurantID, ids)
+		if err != nil {
+			return occ, err
+		}
+		occ.latest = latest
+	}
+	return occ, nil
 }
 
-// tableWithQR — stolga QR havolasini qo'shib qaytaradi.
+// tableWithQR — joyga QR havolasini qo'shib qaytaradi.
 //
 // ┌─ QR ICHIDA NIMA BO'LADI ──────────────────────────────────────────┐
 //
@@ -403,19 +446,30 @@ func (s *Server) waitersOf(r *http.Request, restaurantID string) ([]*users.User,
 // (`start_param`) joylaydi, ya'ni server uni qalbakilashtirib
 // bo'lmaydigan manba sifatida qabul qiladi.
 //
+// Havolaning o'zgaruvchan qismi faqat token — u esa abadiy. Ya'ni
+// joyning nomi, turi, zali yoki sig'imi o'zgarsa ham QR tasviri
+// piksel-piksel bir xil qoladi.
+//
 // Token AYNAN shu javobda beriladi (`Table.QRToken` da `json:"-"`
 // turadi) — chunki bu endpoint faqat restoran egasiga ochiq va u
 // tokenni QR chop etish uchun bilishi SHART.
 // └───────────────────────────────────────────────────────────────────┘
 func (s *Server) tableWithQR(r *http.Request, t *tables.Table) map[string]any {
+	kind := t.Kind.Normalized()
 	out := map[string]any{
-		"id":            t.ID,
-		"restaurant_id": t.RestaurantID,
-		"zone":          t.Zone,
-		"label":         t.Label,
-		"active":        t.Active,
-		"created_at":    t.CreatedAt,
-		"qr_token":      t.QRToken,
+		"id":              t.ID,
+		"restaurant_id":   t.RestaurantID,
+		"zone":            t.Zone,
+		"kind":            kind,
+		"kind_title":      kind.Title(),
+		"label":           t.Label,
+		"display_label":   t.DisplayLabel(),
+		"capacity":        t.Capacity,
+		"active":          t.Active,
+		"cleaning_since":  t.CleaningSince,
+		"last_scanned_at": t.LastScannedAt,
+		"created_at":      t.CreatedAt,
+		"qr_token":        t.QRToken,
 	}
 	if s.Telegram != nil {
 		if bot, err := s.Telegram.BotUsername(r.Context()); err == nil && bot != "" {

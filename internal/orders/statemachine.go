@@ -51,8 +51,11 @@ var deliveryTransitions = func() map[Status]map[Status][]Actor {
 		// tekshirilmaydi (kamroq ishqalanish — restoran xodimi doim
 		// tugma bosib turishga majbur bo'lmaydi); bu ataylab tanlangan
 		// murosaga kelish, xavfsizlikdan qulaylik foydasiga.
-		StatusPickedUp:  {ActorCourier},
-		StatusCancelled: {ActorAdmin},
+		StatusPickedUp: {ActorCourier},
+		// Restoran va tizim FAQAT kuryer topilmaganda bekor qila oladi.
+		// Bu shart buyurtma maydonlariga bog'liq va jadvalda
+		// ifodalanmaydi — `ValidateOrderTransition` da tekshiriladi.
+		StatusCancelled: {ActorAdmin, ActorRestaurant, ActorSystem},
 	}
 	t[StatusPickedUp] = map[Status][]Actor{
 		StatusDelivered: {ActorCourier},
@@ -126,4 +129,36 @@ func ValidateTransition(orderType Type, from, to Status, by Actor) error {
 		}
 	}
 	return &TransitionError{from, to, by, "bu aktor uchun ruxsat yo'q"}
+}
+
+// ValidateOrderTransition — `ValidateTransition` + buyurtma maydonlariga
+// bog'liq qoidalar. `Service.ChangeStatus` FAQAT shuni chaqiradi.
+func ValidateOrderTransition(o *Order, to Status, by Actor) error {
+	if err := ValidateTransition(o.Type, o.Status, to, by); err != nil {
+		return err
+	}
+	return checkCourierNotFoundCancel(o, to, by)
+}
+
+// checkCourierNotFoundCancel — tayyor YETKAZISH buyurtmasini restoran
+// yoki tizim faqat "kuryer topilmadi" holatida bekor qila oladi.
+//
+// ┌─ NEGA ────────────────────────────────────────────────────────────┐
+// Usiz restoran kuryer kelayotgan (yoki hali qidirilayotgan) buyurtmani
+// ham bekor qila olardi: kuryer bo'sh qo'l bilan qaytardi, mijoz esa
+// sababsiz bekor qilingan buyurtma olardi. Admin cheklanmaydi — u
+// nizolarni hal qiladi.
+// └───────────────────────────────────────────────────────────────────┘
+func checkCourierNotFoundCancel(o *Order, to Status, by Actor) error {
+	if to != StatusCancelled || o.Status != StatusReady || o.IsDineIn() {
+		return nil
+	}
+	if by != ActorRestaurant && by != ActorSystem {
+		return nil
+	}
+	if o.CourierID == "" && o.DispatchState == DispatchNotFound {
+		return nil
+	}
+	return &TransitionError{o.Status, to, by,
+		"tayyor buyurtmani faqat kuryer topilmaganda bekor qilish mumkin"}
 }

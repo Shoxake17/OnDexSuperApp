@@ -18,6 +18,16 @@ import 'serve_action.dart';
 /// Hamma kartochka bir xil ko'rinsa, u har safar o'qib chiqishga majbur
 /// bo'ladi.
 /// └───────────────────────────────────────────────────────────────────┘
+///
+/// ┌─ TUZATILGAN NOSOZLIKLAR (telefon screenshoti) ────────────────────┐
+///  1. Stol nomi "Asosiy zal · ..." bo'lib kesilardi: belgi `Flexible`,
+///     ortidagi `Spacer` esa bo'sh joyning YARMINI olib qo'yardi. Endi
+///     stol nomi o'z qatorida, kartochkaning BUTUN kengligida turadi —
+///     affitsiant uchun eng muhim ma'lumot shu.
+///  2. Pastki qator (summa + raqam + "Yetkazdim") qat'iy edi va tor
+///     ekranda yoki katta shriftda o'ngga toshardi. Endi summa va raqam
+///     joy yetmasa ikkinchi qatorga o'tadi, tugma esa doim to'liq.
+/// └───────────────────────────────────────────────────────────────────┘
 class OrderCard extends StatelessWidget {
   const OrderCard({
     super.key,
@@ -60,41 +70,33 @@ class OrderCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (showTable) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: ready ? kReadyColor : kSurfaceRaised,
+                      borderRadius: BorderRadius.circular(kRadiusChip),
+                    ),
+                    child: Text(
+                      tableText(order.tableLabel),
+                      key: const ValueKey('order-card-table'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        height: 1.25,
+                        color: ready ? Colors.white : kInk,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Row(
                   children: [
-                    if (showTable) ...[
-                      // `Flexible` — uzun stol nomi ("Terastadagi katta
-                      // stol") telefon ekranida qatordan chiqib
-                      // ketmasin: Flutter'ning sariq-qora "overflow"
-                      // chizig'i restoran panelida aynan shu sababdan
-                      // chiqqan edi.
-                      Flexible(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: ready
-                                ? kReadyColor
-                                : kSurfaceRaised,
-                            borderRadius: BorderRadius.circular(kRadiusChip),
-                          ),
-                          child: Text(
-                            tableText(order.tableLabel),
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: ready ? Colors.white : kInk,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
                     if (order.partySize > 0) ...[
                       const Icon(Icons.people_outline, size: 14, color: kInkFaint),
                       const SizedBox(width: 3),
@@ -104,6 +106,15 @@ class OrderCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                     ],
+                    if (order.placedByWaiter)
+                      const Flexible(
+                        child: Text(
+                          'Affitsiant kiritgan',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: kInkGhost, fontSize: 12),
+                        ),
+                      ),
                     const Spacer(),
                     StatusChip(status: order.status, dense: true),
                   ],
@@ -122,12 +133,14 @@ class OrderCard extends StatelessWidget {
                         color: _waitColor(wait),
                       ),
                       const SizedBox(width: 5),
-                      Text(
-                        waitBadge(wait),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _waitColor(wait),
+                      Expanded(
+                        child: Text(
+                          waitBadge(wait),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _waitColor(wait),
+                          ),
                         ),
                       ),
                     ],
@@ -182,22 +195,33 @@ class OrderCard extends StatelessWidget {
 
                 const SizedBox(height: 12),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      formatSum(order.totalTiyin),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: kInk,
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            formatSum(order.totalTiyin),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: kInk,
+                            ),
+                          ),
+                          Text(
+                            order.shortNumber,
+                            style: const TextStyle(color: kInkGhost, fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      order.shortNumber,
-                      style: const TextStyle(color: kInkGhost, fontSize: 12),
-                    ),
-                    const Spacer(),
-                    if (ready) ServeButton(order: order, store: store),
+                    if (ready) ...[
+                      const SizedBox(width: 8),
+                      ServeButton(order: order, store: store),
+                    ],
                   ],
                 ),
               ],

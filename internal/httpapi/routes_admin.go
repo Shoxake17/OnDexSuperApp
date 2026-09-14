@@ -217,6 +217,9 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				LogoURL  string  `json:"logo_url"`
 				CoverURL string  `json:"cover_url"`
 				Tags     string  `json:"tags"`
+				// Kind — muassasa turi. Ko'rsatkich: eski admin panel uni
+				// yubormaydi va mavjud tur jimgina o'chib ketmasin.
+				Kind *string `json:"kind"`
 				// 0 = ko'rsatkich yo'q (mijoz tomonida chip chizilmaydi).
 				Rating        float64 `json:"rating"`
 				RatingCount   int     `json:"rating_count"`
@@ -305,6 +308,14 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			rest.LogoURL = req.LogoURL
 			rest.CoverURL = req.CoverURL
 			rest.Tags = req.Tags
+			if req.Kind != nil {
+				kind, err := catalog.ParseRestaurantKind(*req.Kind)
+				if err != nil {
+					httpError(w, http.StatusBadRequest, err)
+					return
+				}
+				rest.Kind = kind
+			}
 			rest.Rating = req.Rating
 			rest.RatingCount = req.RatingCount
 			rest.ETAMinMinutes = req.ETAMinMinutes
@@ -442,7 +453,9 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			}
 			// Blok qilinganda darhol offline ham qilamiz
 			if !req.Approved {
-				s.CourierRepo.SetAvailable(r.Context(), courierID, false)
+				if err := s.CourierRepo.SetAvailable(r.Context(), courierID, false); err != nil {
+					slog.Error("bloklangan kuryerni offline qilib bo'lmadi", "courier", courierID, "err", err)
+				}
 				// ...va sessiyasini bekor qilamiz. Busiz "blokladim"
 				// degan amal yarim choraki bo'lardi: kuryer offline
 				// qilinsa ham, qo'lidagi token bilan API'ga murojaat

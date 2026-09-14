@@ -71,7 +71,8 @@ func TestHashCodeSeparatesTargetFromCode(t *testing.T) {
 // tasdiqlash umuman ishlamasdi).
 func TestHashCodeIsDeterministic(t *testing.T) {
 	s := otpTestService("test-secret")
-	if s.hashCode("+998900000001", "123456") != s.hashCode("+998900000001", "123456") {
+	a, b := s.hashCode("+998900000001", "123456"), s.hashCode("+998900000001", "123456")
+	if a != b {
 		t.Fatal("hash deterministik emas")
 	}
 }

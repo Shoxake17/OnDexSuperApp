@@ -1,0 +1,21 @@
+# OSV-Scanner — tekshirilgan va asoslangan istisnolar.
+#
+# Qoida (`.gitleaks.toml` bilan bir xil): har bir istisnoda NEGA bu bizga
+# tegishli emasligi yoziladi. Izohsiz istisno vaqt o'tib "o'chirib
+# qo'yilgan tekshiruv"ga aylanadi.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+# `golang.org/x/crypto/openpgp` — qo'llab-quvvatlanmaydigan va xavfli paket.
+# Tuzatilgan versiyasi YO'Q, shuning uchun OSV modul darajasida HAR QANDAY
+# `x/crypto` versiyasini belgilaydi.
+#
+# Tekshirildi (2026-09-15): `go list -deps -test ./...` — `openpgp` loyiha
+# kodida ham, bog'liqliklar grafida ham import qilinmaydi (ishlatiladi:
+# argon2, chacha20poly1305, hkdf, scrypt, pbkdf2, ocsp).
+#
+# Himoya shu istisnodan keyin ham saqlanadi:
+#   * `govulncheck` (deploy.yml) chaqiriladigan kod bo'yicha tekshiradi —
+#     `openpgp` ishlatilsa u o'zi yiqiladi;
+#   * `.golangci.yml` dagi `depguard` bu paketni import qilishni taqiqlaydi.
+reason = "x/crypto/openpgp import qilinmaydi (go list -deps bilan tekshirilgan); govulncheck va depguard qo'riqlaydi"

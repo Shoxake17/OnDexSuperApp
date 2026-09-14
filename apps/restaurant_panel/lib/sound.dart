@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 
+import 'panel_prefs.dart';
+
 /// Yangi buyurtma qo'ng'irog'i uchun yagona (global) pleyer.
 ///
 /// `audioplayers` — bir kodni web'da ham, kelajakda desktop (`.exe`,
@@ -93,9 +95,23 @@ class RingSound {
   /// soket xabarini kutadi. Ikkalasi birga: tez va ishonchli.
   /// └─────────────────────────────────────────────────────────────────┘
   static Future<void> setPending(bool hasNew) async {
-    if (hasNew == _ringing) return;
-    _ringing = hasNew;
-    if (hasNew) {
+    _pending = hasNew;
+    await _apply();
+  }
+
+  /// Qabul qilinmagan buyurtma bormi (ovoz sozlamasidan qat'i nazar).
+  static bool _pending = false;
+
+  /// "Yangi buyurtma ovozi" sozlamasi o'zgarganda chaqiriladi
+  /// (`PanelPrefs.newOrderSound`): o'chirilsa jiringlash DARHOL to'xtaydi,
+  /// yoqilsa va kutayotgan buyurtma bo'lsa — boshlanadi.
+  static Future<void> refresh() => _apply();
+
+  static Future<void> _apply() async {
+    final ring = _pending && PanelPrefs.newOrderSound.value;
+    if (ring == _ringing) return;
+    _ringing = ring;
+    if (ring) {
       await start();
     } else {
       await stop();

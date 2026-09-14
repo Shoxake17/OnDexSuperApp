@@ -411,9 +411,32 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
     super.dispose();
   }
 
+  /// Taomlar bo'yicha qidiruvga o'tadi — `CategoryProductsScreen` ni
+  /// AYNAN turkum doiralari ishlatadigan yo'l bilan (`GET
+  /// /products/search?q=...`, endi MeiliSearch orqali xato-kechiruvchan),
+  /// faqat "turkum" o'rniga foydalanuvchi erkin yozgan matn beriladi.
+  ///
+  /// ┌─ NEGA ALOHIDA EKRANGA O'TILADI, SHU YERDA CHIZILMAYDI ────────────┐
+  /// Bu ekrandagi restoran natijalari — LOKAL, tarmoqqa chiqmaydi
+  /// (allaqachon keshdagi ro'yxatni filtrlaydi). Taom qidiruvi esa har
+  /// bosishda tarmoqqa so'rov yuborishni talab qiladi — buni shu
+  /// ekranda debounce bilan qayta qurish o'rniga, aynan shu ishni
+  /// allaqachon to'g'ri bajaradigan ekranga (`CategoryProductsScreen` —
+  /// yuklanish/xato holatlari, "Sevimlilar" bilan bir xil kartochka)
+  /// qayta ishlatiladi.
+  /// └────────────────────────────────────────────────────────────────────┘
+  void _searchProducts(String value) {
+    final q = value.trim();
+    if (q.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CategoryProductsScreen(category: q)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final q = _query.trim().toLowerCase();
+    final rawQuery = _query.trim();
+    final q = rawQuery.toLowerCase();
     final results = q.isEmpty
         ? const <Map<String, dynamic>>[]
         : widget.restaurants
@@ -428,11 +451,14 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
         titleSpacing: 0,
         titleWidget: AppTextField(
           controller: _controller,
-          hint: 'Restoran qidirish...',
+          hint: 'Restoran yoki taom qidirish...',
           icon: Icons.search,
           autofocus: true,
           textInputAction: TextInputAction.search,
           onChanged: (v) => setState(() => _query = v),
+          // Klaviaturadagi "Qidirish" — taomlar bo'yicha (restoranlar
+          // yuqorida allaqachon jonli ko'rinadi).
+          onSubmitted: _searchProducts,
         ),
         actions: [
           IconButton(
@@ -442,25 +468,97 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
           ),
         ],
       ),
-      body: results.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          if (rawQuery.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(
                 child: Text(
-                  q.isEmpty
-                      ? 'Restoran nomini yozing'
-                      : 'Mos restoran topilmadi',
-                  style: const TextStyle(color: Color(0xFF757575)),
+                  'Restoran yoki taom nomini yozing',
+                  style: TextStyle(color: Color(0xFF757575)),
                 ),
               ),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              itemCount: results.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
-              itemBuilder: (_, i) => _RestaurantCard(r: results[i]),
+          else ...[
+            // ┌─ TAOMLAR — HAR DOIM TAKLIF QILINADI ────────────────────┐
+            // Restoran nomi mos kelmasa ham, xuddi shu matn taom nomi
+            // bo'lishi mumkin ("mohito" — restoran emas, ichimlik).
+            // Foydalanuvchi klaviaturada "Qidirish" bosishi shart
+            // emas — qator har doim ko'rinadi va bosilishi mumkin.
+            // └────────────────────────────────────────────────────────┘
+            _ProductSearchPrompt(
+              query: rawQuery,
+              onTap: () => _searchProducts(rawQuery),
             ),
+            const SizedBox(height: 16),
+            if (results.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'Mos restoran topilmadi',
+                    style: TextStyle(color: Color(0xFF757575)),
+                  ),
+                ),
+              )
+            else
+              ...results.map((r) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: _RestaurantCard(r: r),
+                  )),
+          ],
+        ],
+      ),
     ));
+  }
+}
+
+/// "'<so'rov>' bo'yicha taomlarni qidirish" qatori — `_RestaurantCard`
+/// bilan bir xil uslubda, lekin taomlarga olib boradi.
+class _ProductSearchPrompt extends StatelessWidget {
+  final String query;
+  final VoidCallback onTap;
+
+  const _ProductSearchPrompt({required this.query, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF7F7F7),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.restaurant_menu, size: 20, color: kBrand),
+              const SizedBox(width: 10),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                        fontSize: 14, color: Color(0xFF1A1A1A)),
+                    children: [
+                      const TextSpan(text: '"'),
+                      TextSpan(
+                          text: query,
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const TextSpan(text: '" bo\'yicha taomlarni qidirish'),
+                    ],
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  size: 20, color: Color(0xFF9E9E9E)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

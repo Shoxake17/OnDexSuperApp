@@ -303,6 +303,31 @@ func isUploadsPath(path string) bool {
 	return path == "/uploads" || strings.HasPrefix(path, "/uploads/")
 }
 
+// isSupportImageUpload — qo'llab-quvvatlash chatiga RASM yuborish so'rovimi.
+//
+// Faqat POST + multipart + AYNAN ikki yo'l (restoran va admin). Bunday
+// so'rovga 1 MB umumiy chegara qo'llanmaydi — ekran rasmi undan katta
+// bo'ladi; o'rniga handler o'z qat'iy chegarasini qo'yadi
+// (`support.MaxUploadBytes`). Xuddi shu yo'ldagi JSON so'rov esa umumiy
+// chegarada QOLADI.
+func isSupportImageUpload(r *http.Request) bool {
+	if r.Method != http.MethodPost ||
+		!strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+		return false
+	}
+	p := r.URL.Path
+	var id string
+	switch {
+	case strings.HasPrefix(p, "/restaurants/") && strings.HasSuffix(p, "/support/messages"):
+		id = strings.TrimSuffix(strings.TrimPrefix(p, "/restaurants/"), "/support/messages")
+	case strings.HasPrefix(p, "/admin/support/threads/") && strings.HasSuffix(p, "/messages"):
+		id = strings.TrimSuffix(strings.TrimPrefix(p, "/admin/support/threads/"), "/messages")
+	default:
+		return false
+	}
+	return supportRestaurantIDRe.MatchString(id)
+}
+
 func withBodyLimit(next http.Handler) http.Handler {
 	const maxJSONBody = 1 << 20 // 1 MB — JSON so'rovlar uchun yetarlicha katta
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -318,7 +343,7 @@ func withBodyLimit(next http.Handler) http.Handler {
 		// Endi FAQAT aynan `/uploads` va uning ostidagi yo'llar
 		// istisno (`/uploads/...`).
 		// └────────────────────────────────────────────────────────┘
-		if r.Body != nil && !isUploadsPath(r.URL.Path) {
+		if r.Body != nil && !isUploadsPath(r.URL.Path) && !isSupportImageUpload(r) {
 			r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 		}
 		next.ServeHTTP(w, r)

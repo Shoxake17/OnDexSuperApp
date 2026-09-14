@@ -100,6 +100,20 @@ type Service struct {
 	// ishlaydigan status API ham bo'lmaganda callback'ga ISHONISH.
 	// Production'da HECH QACHON yoqilmaydi (`NewService` tekshiradi).
 	trustCallbackWithoutProof bool
+
+	// onPaid — pul HAQIQATAN yechilganda (restoran bildirishnomasi).
+	// Chaqiruvchi uni o'z goroutine'ida bajarishi kerak — to'lov oqimi
+	// kutmaydi.
+	onPaid func(p Payment)
+}
+
+// OnPaid — "pul yechildi" kuzatuvchisi (`alerts.Service.PaymentReceived`).
+func (s *Service) OnPaid(fn func(p Payment)) { s.onPaid = fn }
+
+func (s *Service) emitPaid(p *Payment) {
+	if s.onPaid != nil && p != nil {
+		s.onPaid(*p)
+	}
 }
 
 type Options struct {
@@ -371,8 +385,8 @@ type CallbackData struct {
 // Shuning uchun to'lov FAQAT quyidagi dalillardan biri bo'lganda
 // tasdiqlanadi:
 //
-//	1) imzo tekshirildi va TO'G'RI (`unique_key` sozlangan bo'lsa);
-//	2) yoki provayderning O'Z API'sidan holat so'raldi va u tasdiqladi.
+//  1. imzo tekshirildi va TO'G'RI (`unique_key` sozlangan bo'lsa);
+//  2. yoki provayderning O'Z API'sidan holat so'raldi va u tasdiqladi.
 //
 // Ikkalasi ham bo'lmasa — to'lov `NeedsReview` bilan belgilanadi va
 // buyurtma OSHXONAGA TUSHMAYDI. Bu holat jimgina o'tkazib
@@ -539,6 +553,9 @@ func (s *Service) applyStatus(ctx context.Context, p *Payment, status Status, ra
 	}
 	slog.Info("to'lov holati o'zgardi", "payment", p.ID, "order", p.OrderID,
 		"dan", prev, "ga", status, "dalil", proof)
+	if status == StatusPaid {
+		s.emitPaid(p)
+	}
 
 	switch status {
 	case StatusHeld, StatusPaid:
@@ -569,6 +586,7 @@ func (s *Service) CaptureForOrder(ctx context.Context, orderID string, amountTiy
 	if err := s.repo.Update(ctx, p); err != nil {
 		return err
 	}
+	s.emitPaid(p)
 	// ┌─ ORTIQCHA BLOKLAR BO'SHATILADI ───────────────────────────────┐
 	// Mijoz qayta urinib, ikkala havolani ham to'lagan bo'lishi mumkin
 	// (eski va yangi). Bitta buyurtma uchun bitta to'lov yechiladi,
@@ -577,7 +595,8 @@ func (s *Service) CaptureForOrder(ctx context.Context, orderID string, amountTiy
 	// └───────────────────────────────────────────────────────────────┘
 	others, err := s.repo.ListByOrder(ctx, orderID)
 	if err != nil {
-		return nil // pul yechildi; ortiqcha bloklarni keyin tozalaymiz
+		slog.Warn("ortiqcha to'lov bloklarini o'qib bo'lmadi", "order", orderID, "err", err)
+		return nil //nolint:nilerr // pul yechildi: ortiqcha bloklarni bo'shatish asosiy natijani bekor qilmaydi
 	}
 	for _, other := range others {
 		if other.ID == p.ID || other.Status != StatusHeld || other.ProviderPaymentID == "" {

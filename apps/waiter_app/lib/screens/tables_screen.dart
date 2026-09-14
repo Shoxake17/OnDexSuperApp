@@ -1,26 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:ondex_core/ondex_core.dart' show formatSum;
 
 import '../format.dart';
 import '../models/waiter_order.dart';
+import '../models/waiter_table.dart';
 import '../state/waiter_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'table_detail_screen.dart';
 
-/// Band stollar — zaldagi holat bir qarashda.
+/// Restoranning BARCHA joylari — zallar bo'yicha, jonli holati bilan.
 ///
-/// ┌─ NEGA "BARCHA STOLLAR" EMAS ──────────────────────────────────────┐
-/// Backend affitsiantga stollar ro'yxatini BERMAYDI: `/restaurants/{id}/
-/// tables` faqat restoran va admin uchun (`routes_tables.go` boshidagi
-/// izoh — affitsiant stollarning QR TOKENLARINI ko'ra olmasligi kerak,
-/// aks holda u istalgan stol nomidan buyurtma bera olardi).
+/// ┌─ MA'LUMOT MANBAI ─────────────────────────────────────────────────┐
+/// Avval bu ekran faqat FAOL BUYURTMALARDAN yig'ilardi, chunki server
+/// affitsiantga joylar ro'yxatini bermasdi — bo'sh stollar umuman
+/// ko'rinmasdi va affitsiant ularga buyurtma kirita olmasdi.
 ///
-/// Shuning uchun bu ekran FAOL BUYURTMALARDAN yig'iladi: ustida hozir
-/// buyurtmasi bor stol — band stol. Bo'sh stollar ko'rinmaydi, chunki
-/// ilova ularning borligini bilmaydi. Bu yolg'on ma'lumot ko'rsatishdan
-/// ko'ra halolroq: "bo'sh" deb ko'rsatilgan stol aslida boshqa
-/// affitsiantning mijozlari o'tirgan stol bo'lishi mumkin edi.
+/// Endi `GET /waiter/tables` joylarni holati bilan beradi (QR tokensiz),
+/// ya'ni "bo'sh" degani serverdagi haqiqiy holat — taxmin emas.
 /// └───────────────────────────────────────────────────────────────────┘
 class TablesScreen extends StatelessWidget {
   const TablesScreen({super.key, required this.store});
@@ -29,185 +25,245 @@ class TablesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (store.loading) {
+    if (!store.tablesLoaded) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final groups = store.tables;
+    final tables = [...store.allTables]..sort(_compareTables);
+    if (tables.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: store.refresh,
+        color: kBrandColor,
+        backgroundColor: kSurface,
+        child: ListView(
+          children: [
+            if (store.tablesError != null)
+              ErrorRetry(message: store.tablesError!, onRetry: store.refresh)
+            else
+              const EmptyState(
+                icon: Icons.table_restaurant_outlined,
+                title: 'Joylar hali qo\'shilmagan',
+                subtitle: 'Restoran panelidagi "Stollar (QR)" bo\'limida '
+                    'joy qo\'shilgach, u shu yerda ko\'rinadi.',
+              ),
+          ],
+        ),
+      );
+    }
+
+    final zones = <String, List<WaiterTable>>{};
+    for (final t in tables) {
+      zones.putIfAbsent(t.zone.isEmpty ? 'Asosiy zal' : t.zone, () => []).add(t);
+    }
+    // Katak balandligi shrift o'lchamiga moslanadi: telefonda katta
+    // shrift yoqilgan bo'lsa ham yozuvlar kataklardan chiqib ketmasin.
+    final extent = 64 + MediaQuery.textScalerOf(context).scale(70);
 
     return RefreshIndicator(
       onRefresh: store.refresh,
       color: kBrandColor,
       backgroundColor: kSurface,
-      child: groups.isEmpty
-          ? ListView(
-              children: const [
-                EmptyState(
-                  icon: Icons.table_restaurant_outlined,
-                  title: 'Band stol yo\'q',
-                  subtitle: 'Mijoz stoldagi QR kodni skanerlab buyurtma '
-                      'berganda, stol shu yerda paydo bo\'ladi.',
-                ),
-              ],
-            )
-          : GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                // ┌─ NEGA `childAspectRatio` EMAS ────────────────────┐
-                // Nisbat katak balandligini EKRAN KENGLIGIDAN
-                // hisoblaydi, ya'ni balandlik telefondan telefonga
-                // o'zgaradi. Katak ichidagi matn esa o'zgarmaydi va
-                // ustiga "tayyor" holatida BITTA QATOR qo'shiladi
-                // (kutish vaqti) — shu sababli tor ekranda "BOTTOM
-                // OVERFLOWED" chizig'i chiqqan edi.
-                //
-                // `mainAxisExtent` — aniq balandlik: eng baland
-                // variant (stol nomi + holat + kutish vaqti + sanoq +
-                // summa) uchun o'lchangan, qolgan hamma holatda ortiqcha
-                // joy qoladi.
-                // └───────────────────────────────────────────────────┘
-                mainAxisExtent: 150,
+      child: CustomScrollView(
+        slivers: [
+          if (store.tablesError != null)
+            SliverToBoxAdapter(child: _StaleBanner(message: store.tablesError!)),
+          for (final entry in zones.entries) ...[
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+              sliver: SliverToBoxAdapter(
+                child: SectionHeader(title: entry.key, count: entry.value.length),
               ),
-              itemCount: groups.length,
-              itemBuilder: (_, i) => _TableTile(
-                group: groups[i],
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => TableDetailScreen(
-                      label: groups[i].label,
-                      store: store,
-                    ),
-                  ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 240,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: extent,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final table = entry.value[i];
+                    return _TableTile(
+                      table: table,
+                      orders: store.ordersForTable(table),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TableDetailScreen(
+                            tableId: table.id,
+                            store: store,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: entry.value.length,
                 ),
               ),
             ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
+    );
+  }
+
+  /// Tartib: tur (stol, kabina...), keyin nom INSON tartibida
+  /// ("2" < "10").
+  static int _compareTables(WaiterTable a, WaiterTable b) {
+    final byZone = a.zone.toLowerCase().compareTo(b.zone.toLowerCase());
+    if (byZone != 0) return byZone;
+    final byKind = a.kind.compareTo(b.kind);
+    if (byKind != 0) return byKind;
+    return TableGroup.compareLabels(a.label, b.label);
+  }
+}
+
+class _StaleBanner extends StatelessWidget {
+  const _StaleBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: kWaitingColor.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(kRadiusButton),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off, size: 16, color: kWaitingColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Ro\'yxat yangilanmadi: $message',
+              style: const TextStyle(color: kWaitingColor, fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _TableTile extends StatelessWidget {
-  const _TableTile({required this.group, required this.onTap});
+  const _TableTile({
+    required this.table,
+    required this.orders,
+    required this.onTap,
+  });
 
-  final TableGroup group;
+  final WaiterTable table;
+  final List<WaiterOrder> orders;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    // Rang ustuvorligi: TAYYOR (harakat kerak) > tayyorlanmoqda
-    // (kutish) > oddiy band. Maketda "berildi" holati eng yorqin
-    // yashil edi — ya'ni ALLAQACHON tugagan ish eng ko'p e'tibor
-    // tortardi; bu teskari ustuvorlik.
-    final ready = group.hasReady;
-    final preparing = !ready && group.hasPreparing;
-    final accent = ready
-        ? kReadyColor
-        : preparing
-            ? kWaitingColor
-            : kInkGhost;
-    final wait = group.longestReadyWait;
+    // Rang ustuvorligi: TAYYOR (harakat kerak) > band > tozalanmoqda >
+    // bo'sh > yopiq. Affitsiant birinchi navbatda "qayerga borishim
+    // kerak"ni ko'rishi kerak.
+    final ready = orders.any((o) => o.isReady);
+    final (String statusText, Color accent) = ready
+        ? ('Yetkazish kerak', kReadyColor)
+        : table.isOccupied
+            ? ('Band', kWaitingColor)
+            : table.isCleaning
+                ? ('Tozalanmoqda', kInkFaint)
+                : table.isInactive
+                    ? ('Yopiq', kInkGhost)
+                    : ('Bo\'sh', kReadyColor);
+    final dim = table.isInactive && !table.isOccupied;
 
-    return Material(
-      color: ready ? const Color(0x142E9E4F) : kSurface,
-      borderRadius: BorderRadius.circular(kRadiusCard),
-      child: InkWell(
-        onTap: onTap,
+    return Opacity(
+      opacity: dim ? 0.55 : 1,
+      child: Material(
+        color: ready ? const Color(0x142E9E4F) : kSurface,
         borderRadius: BorderRadius.circular(kRadiusCard),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(kRadiusCard),
-            border: Border.all(
-              color: ready ? kReadyColor : kBorder,
-              width: ready ? 1.6 : 1,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(kRadiusCard),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(kRadiusCard),
+              border: Border.all(
+                color: ready ? kReadyColor : kBorder,
+                width: ready ? 1.6 : 1,
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      tableText(group.label),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: kInk,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tableText(table.shortName),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          height: 1.2,
+                          fontWeight: FontWeight.bold,
+                          color: kInk,
+                        ),
                       ),
                     ),
-                  ),
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: accent,
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: accent,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                ready
-                    ? 'Yetkazish kerak'
-                    : preparing
-                        ? 'Tayyorlanmoqda'
-                        : 'Kutilmoqda',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: ready ? kReadyColor : kInkFaint,
+                  ],
                 ),
-              ),
-              if (ready && wait != null) ...[
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
-                  waitBadge(wait),
+                  statusText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11.5,
-                    color: wait.inMinutes >= 10 ? kDangerColor : kInkFaint,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: accent,
                   ),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    if (table.capacity != null) ...[
+                      const Icon(Icons.people_outline, size: 13, color: kInkFaint),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${table.capacity}',
+                        style: const TextStyle(color: kInkFaint, fontSize: 12),
+                      ),
+                      const SizedBox(width: 10),
+                    ],
+                    if (orders.isNotEmpty) ...[
+                      const Icon(Icons.receipt_long, size: 13, color: kInkFaint),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${orders.length}',
+                        style: const TextStyle(color: kInkFaint, fontSize: 12),
+                      ),
+                    ],
+                  ],
                 ),
               ],
-              const Spacer(),
-              Row(
-                children: [
-                  if (group.partySize > 0) ...[
-                    const Icon(Icons.people_outline,
-                        size: 13, color: kInkGhost),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${group.partySize}',
-                      style: const TextStyle(color: kInkGhost, fontSize: 12),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  const Icon(Icons.receipt_long, size: 13, color: kInkGhost),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${group.orders.length}',
-                    style: const TextStyle(color: kInkGhost, fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                formatSum(group.totalTiyin),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: kInkDim,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

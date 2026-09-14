@@ -9,6 +9,9 @@ environment:
 dependencies:
   ondex_core:
     path: ../../packages/ondex_core
+  # Yordam markazi va Chat markazi — admin paneli bilan AYNI chat mantiqi.
+  ondex_support:
+    path: ../../packages/ondex_support
   flutter:
     sdk: flutter
   http: ^1.2.0
@@ -29,6 +32,27 @@ dev_dependencies:
   # "overflow" bermasligi (`test/order_card_header_test.dart`).
   flutter_test:
     sdk: flutter
+  # Ilova belgisi: `dart run flutter_launcher_icons`
+  # `assets/app_icon.png` dan web favicon/PWA va Windows `.ico`.
+  # Android/iOS papkalari bu loyihada yo'q.
+  flutter_launcher_icons: ^0.14.4
+
+# Brauzer tab, PWA va Windows exe — Flutter default emas, OnDex.
+# Manba: `image/ondex.png` (gitda `assets/ondex.png`). Asl 692x749;
+# `app_icon.png` — qora fonda cho'zilmagan 1024x1024 kvadrat.
+flutter_launcher_icons:
+  android: false
+  ios: false
+  image_path: "assets/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/app_icon.png"
+    background_color: "#000000"
+    theme_color: "#F2650F"
+  windows:
+    generate: true
+    image_path: "assets/app_icon.png"
+    icon_size: 256
 
 flutter:
   uses-material-design: true
@@ -38,3 +62,7 @@ flutter:
     # CHIZILARDI (rangli kvadrat + ikonka + "Ondex" matni), ya'ni
     # haqiqiy logotipga o'xshamasdi.
     - assets/ondex.png
+    # To'lov tizimlari brend logotiplari (mijoz ilovasidagi bilan bir xil
+    # fayllar) — "Restoran sozlamalari" → "To'lov usullari".
+    - assets/payments/click.png
+    - assets/payments/payme.png

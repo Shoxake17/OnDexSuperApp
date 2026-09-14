@@ -11,6 +11,10 @@ dependencies:
   # Har bir tuzatish BIR marta qilinadi va hamma ilovaga yetadi.
   ondex_core:
     path: ../../packages/ondex_core
+  # Buyurtma kiritish ekrani — mijoz ilovasidagi menyu bilan AYNI
+  # ko'rinish va narx mantig'i (taom kartochkasi, to'r, chiplar).
+  ondex_menu:
+    path: ../../packages/ondex_menu
   flutter:
     sdk: flutter
   http: ^1.2.0

@@ -55,12 +55,12 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		// Argumentsiz Exec simple protocol ishlatadi — bitta faylda bir nechta
 		// SQL statement bo'lishi mumkin.
 		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			return fmt.Errorf("migratsiya %s xato: %w", name, err)
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			return err
 		}
 		if err := tx.Commit(ctx); err != nil {

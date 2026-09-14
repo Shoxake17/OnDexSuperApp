@@ -24,11 +24,10 @@ import (
 // yashasa, tasodifan ulashilgan havola keyinroq ishlatilishi mumkin.
 const pendingTTL = 10 * time.Minute
 
-// returnDeepLink — ilovani ochuvchi havola sxemasi.
-//
-// Mos keluvchi `intent-filter`:
-// `apps/customer_app/android/app/src/main/AndroidManifest.xml`.
-const returnDeepLink = "ondex://auth"
+// Ilovani ochuvchi havola sxemasi — `ondex://auth` (mos `intent-filter`:
+// `apps/customer_app/android/app/src/main/AndroidManifest.xml`). Uni shu
+// paket emas, `httpapi` dagi qaytish endpointi quradi (`routes_auth.go`),
+// shuning uchun bu yerda alohida konstanta saqlanmaydi.
 
 // returnPath — serverdagi yo'naltiruvchi endpoint.
 //
@@ -347,7 +346,6 @@ func (s *pendingStore) markLoggedIn(token, phone string) {
 		s.persistLocked(p)
 	}
 }
-
 
 func (s *pendingStore) drop(token string) {
 	s.mu.Lock()

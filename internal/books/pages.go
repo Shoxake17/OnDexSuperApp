@@ -88,10 +88,13 @@ func ExtractPageImages(rs io.ReadSeeker) (pages []PageImage, err error) {
 		if img.Width*img.Height < minPageImagePixels {
 			return nil
 		}
-		data, rerr := io.ReadAll(img)
+		// Chegaradan ORTIQ o'qilmaydi: PDF ichidagi siqilgan oqim ochilganda
+		// fayl hajmidan ko'p marta katta bo'lishi mumkin, tekshiruv esa
+		// o'qishdan KEYIN bo'lsa xotira allaqachon sarflangan bo'lardi.
+		data, rerr := io.ReadAll(io.LimitReader(img, int64(MaxPageImagesBytes-total)+1))
 		if rerr != nil {
 			// Bitta rasm o'qilmasa butun kitob yo'qotilmaydi.
-			return nil
+			return nil //nolint:nilerr // ataylab: buzuq rasm o'tkazib yuboriladi, kitob davom etadi
 		}
 		total += len(data)
 		if total > MaxPageImagesBytes {

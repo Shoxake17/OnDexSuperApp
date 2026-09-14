@@ -64,7 +64,8 @@ func TestWaitNeverZeroWhenDenied(t *testing.T) {
 // ishlatiladi).
 func TestAllowStillWorks(t *testing.T) {
 	l := New(0.05, 2)
-	if !l.Allow("k") || !l.Allow("k") {
+	first, second := l.Allow("k"), l.Allow("k")
+	if !first || !second {
 		t.Fatal("portlash ichidagi urinishlar rad etildi")
 	}
 	if l.Allow("k") {

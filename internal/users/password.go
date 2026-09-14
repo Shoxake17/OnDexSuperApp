@@ -211,7 +211,7 @@ func VerifyPassword(ctx context.Context, password, encoded string) (bool, error)
 	}
 	var got []byte
 	if err := withArgonSlot(ctx, func() {
-		got = argon2.IDKey([]byte(password), salt, iters, mem, threads, uint32(len(want)))
+		got = argon2.IDKey([]byte(password), salt, iters, mem, threads, uint32(len(want))) //nolint:gosec // decodeHash uzunlikni maxHashPartLen bilan cheklaydi
 	}); err != nil {
 		return false, err
 	}
@@ -234,8 +234,14 @@ func NeedsRehash(encoded string) bool {
 		return true
 	}
 	return mem < argonMemory || t < argonTime ||
-		threads < argonThreads || uint32(len(key)) < argonKeyLen
+		threads < argonThreads || uint32(len(key)) < argonKeyLen //nolint:gosec // decodeHash uzunlikni maxHashPartLen bilan cheklaydi
 }
+
+// maxHashPartLen — hash ichidagi tuz va kalitning eng katta uzunligi.
+// Haqiqiy qiymatlar 16/32 bayt; chegara bazadagi buzilgan yozuv ulkan kalit
+// bilan Argon2'ni ortiqcha ishlatishiga yo'l qo'ymaydi va uzunlikni
+// uint32 ga o'girishni xavfsiz qiladi.
+const maxHashPartLen = 1024
 
 func decodeHash(encoded string) (mem, time uint32, threads uint8, salt, key []byte, err error) {
 	parts := strings.Split(encoded, "$")
@@ -256,7 +262,7 @@ func decodeHash(encoded string) (mem, time uint32, threads uint8, salt, key []by
 	if key, err = base64.RawStdEncoding.Strict().DecodeString(parts[5]); err != nil {
 		return 0, 0, 0, nil, nil, ErrInvalidHash
 	}
-	if len(salt) == 0 || len(key) == 0 {
+	if len(salt) == 0 || len(key) == 0 || len(salt) > maxHashPartLen || len(key) > maxHashPartLen {
 		return 0, 0, 0, nil, nil, ErrInvalidHash
 	}
 	return mem, time, threads, salt, key, nil

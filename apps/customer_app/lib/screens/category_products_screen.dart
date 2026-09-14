@@ -142,8 +142,11 @@ class _CategoryCard extends StatelessWidget {
       opacity: open ? 1 : 0.4,
       child: ProductCard(
         product: product,
-        favorited: favorited,
         onTap: open ? onTap : null,
+        topLeft: FavoriteButton(
+          productId: (product['id'] as String?) ?? '',
+          initialFavorited: favorited,
+        ),
         footer: Row(
           children: [
             if (logo.isNotEmpty)

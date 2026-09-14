@@ -1,0 +1,11 @@
+-- Restoran paneli "Statistika" sahifasi (`GET /restaurants/{id}/stats`)
+-- buyurtmalarni restoran VA sana oralig'i bo'yicha o'qiydi.
+--
+-- Mavjud `idx_orders_restaurant` (0024) faqat restoranni topadi — keyin
+-- o'sha restoranning BUTUN tarixi sana bo'yicha qatorma-qator
+-- filtrlanardi. Kompozit indeks davrni to'g'ridan-to'g'ri kesadi.
+--
+-- `CONCURRENTLY` ishlatilmaydi: migratsiyalar tranzaksiya ichida
+-- bajariladi (`storage.Migrate`), u yerda esa CONCURRENTLY taqiqlangan.
+-- Jadval hozircha kichik, ya'ni qisqa yozuv qulfi amalda sezilmaydi.
+CREATE INDEX IF NOT EXISTS idx_orders_restaurant_created ON orders (restaurant_id, created_at);

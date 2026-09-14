@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"chustapp/internal/agentapi"
+	"chustapp/internal/alerts"
 	"chustapp/internal/assistant"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
@@ -40,6 +41,9 @@ import (
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/scenes"
+	"chustapp/internal/staff"
+	"chustapp/internal/stats"
+	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
 	"chustapp/internal/users"
@@ -62,6 +66,14 @@ type Deps struct {
 	BookRepo       catalog.BookRepository
 	PromotionsRepo promotions.Repository
 	FavoritesRepo  favorites.Repository
+	// StatsSource — restoran paneli "Statistika" sahifasi uchun buyurtma
+	// qatorlari (`internal/stats`). `nil` bo'lsa `/restaurants/{id}/stats`
+	// 503 qaytaradi, qolgan API ishlayveradi.
+	StatsSource stats.Source
+	// HistorySource — "Barcha buyurtmalar" sahifasi (restoran ochilgandan
+	// beri, sahifalab). `nil` bo'lsa `/restaurants/{id}/orders/history`
+	// 503 qaytaradi.
+	HistorySource stats.HistorySource
 
 	Cache      *cache.Cache
 	Tokens     *users.TokenIssuer
@@ -97,6 +109,19 @@ type Deps struct {
 	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
 	// â€” bu funksiyani bosqichma-bosqich yoqish uchun.
 	TableSvc *tables.Service
+	// TableOrders — joylar holati (band/bo'sh) uchun stol buyurtmalari.
+	// `nil` bo'lsa holatlar buyurtmasiz hisoblanadi (hamma joy "bo'sh").
+	TableOrders tables.OrdersSource
+
+	// StaffSvc — "Xodimlar" bo'limi (`internal/staff`). `nil` bo'lsa
+	// xodim endpointlari 503 qaytaradi.
+	StaffSvc *staff.Service
+	// AlertsSvc — restoran "Bildirishnomalar" markazi (`internal/alerts`).
+	// `nil` bo'lsa tegishli endpointlar 503 qaytaradi.
+	AlertsSvc *alerts.Service
+	// SupportSvc — aloqa ma'lumotlari va restoran ↔ OnDex admin chati
+	// (`internal/support`). `nil` bo'lsa tegishli endpointlar 503 qaytaradi.
+	SupportSvc *support.Service
 
 	// Payments â€” karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
 	// 503 qaytaradi va buyurtmalar faqat NAQD bo'ladi (tizimning
@@ -230,10 +255,31 @@ type Server struct {
 	// speedGate â€” kuryer koordinatasining "teleport" qilishini
 	// aniqlaydi (GPS soxtalashtirishga qarshi).
 	speedGate *delivery.SpeedGate
+
+	// statsLimiter — statistika uchun xodim bo'yicha chegara (faqat kesh
+	// o'tkazib yuborilganda, ya'ni haqiqiy baza ishi bo'lganda sanaladi).
+	// 30 ta so'rovga bir zumda ruxsat, keyin daqiqasiga 30 ta.
+	statsLimiter *ratelimit.Limiter
+
+	// historyLimiter — buyurtmalar tarixi sahifalari uchun xodim bo'yicha
+	// chegara. Sahifa arzon (indeks + LIMIT), lekin har biriga mijoz
+	// telefonlari qo'shiladi: 60 ta bir zumda, keyin soniyasiga 2 ta.
+	historyLimiter *ratelimit.Limiter
+
+	// supportLimiter — chat xabarlari uchun akkaunt bo'yicha chegara:
+	// 10 ta bir zumda, keyin 2 soniyada bitta. Odam yozishi uchun yetarli,
+	// o'g'irlangan token bilan admin kanalini xabarga ko'mib tashlash uchun emas.
+	supportLimiter *ratelimit.Limiter
 }
 
 func New(d Deps) *Server {
-	s := &Server{Deps: d, speedGate: delivery.NewSpeedGate()}
+	s := &Server{
+		Deps:           d,
+		speedGate:      delivery.NewSpeedGate(),
+		statsLimiter:   ratelimit.New(0.5, 30),
+		historyLimiter: ratelimit.New(2, 60),
+		supportLimiter: ratelimit.New(0.5, 10),
+	}
 
 	// 3D model holati o'zgarganda ikki ish qilinadi. Ikkalasi ham
 	// SHART:
@@ -275,6 +321,11 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerCatalogRoutes(mux)
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
+	s.registerStatsRoutes(mux)
+	s.registerRestaurantSettingsRoutes(mux)
+	s.registerStaffRoutes(mux)
+	s.registerAlertRoutes(mux)
+	s.registerSupportRoutes(mux)
 	s.registerTableRoutes(mux)
 	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)

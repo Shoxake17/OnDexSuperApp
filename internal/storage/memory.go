@@ -4,8 +4,9 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"sort"
 	"sync"
 	"time"
@@ -74,7 +75,13 @@ func (r *MemoryOrderRepo) Save(_ context.Context, o *orders.Order) error {
 	// imkonsiz) bo'lsa qayta generatsiya qilinadi.
 	if o.OrderNumber == "" {
 		for {
-			randPart := 1_000_000 + rand.Intn(9_000_000)
+			// `crypto/rand` — Postgres implementatsiyasi bilan bir xil:
+			// buyurtma raqamini oldindan taxmin qilib bo'lmasin.
+			n, err := rand.Int(rand.Reader, big.NewInt(9_000_000))
+			if err != nil {
+				return fmt.Errorf("buyurtma raqamini yaratib bo'lmadi: %w", err)
+			}
+			randPart := 1_000_000 + int(n.Int64())
 			candidate := fmt.Sprintf("%s-%07d", o.CreatedAt.Format("020106"), randPart)
 			collision := false
 			for _, other := range r.data {
@@ -156,6 +163,12 @@ func (r *MemoryOrderRepo) GetActiveByCourier(_ context.Context, courierID string
 
 func (r *MemoryOrderRepo) ListRecent(_ context.Context, limit int) ([]*orders.Order, error) {
 	return r.listFiltered(limit, func(*orders.Order) bool { return true })
+}
+
+// ListAwaitingCourier — kuryer kutayotgan yetkazish buyurtmalari.
+// PgOrderRepo bilan bir xil qoida: `orders.Order.AwaitsCourier`.
+func (r *MemoryOrderRepo) ListAwaitingCourier(_ context.Context, limit int) ([]*orders.Order, error) {
+	return r.listFiltered(limit, (*orders.Order).AwaitsCourier)
 }
 
 // ListByRestaurant — to'lanmagan KARTA buyurtmalari ro'yxatga

@@ -18,7 +18,7 @@ import (
 func init() {
 	// Ba'zi tizimlarda .webp uchun mime turi ro'yxatdan o'tmagan bo'ladi —
 	// aniq belgilab qo'yamiz (lokal disk rejimida FileServer shunga tayanadi).
-	mime.AddExtensionType(".webp", "image/webp")
+	_ = mime.AddExtensionType(".webp", "image/webp") // xato faqat noto'g'ri kengaytmada bo'ladi
 }
 
 const (
@@ -230,6 +230,42 @@ func ProcessPageImage(r io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("webp kodlashda xato: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// maxChatImageSide — chat rasmining uzun tomoni. Ekran rasmidagi matn
+// o'qiladigan darajada aniq qoladi, fayl esa bazada saqlashga yarasha kichik.
+const maxChatImageSide = 1600
+
+// ProcessChatImage — qo'llab-quvvatlash chatiga yuborilgan rasm.
+//
+// KESILMAYDI (ekran rasmi — hujjat, cheti kesilsa ma'lumot yo'qoladi).
+// Uzun tomoni 1600 px gacha kichraytiriladi va WebP ga QAYTA KODLANADI:
+// EXIF (GPS joylashuv, qurilma modeli) kabi metama'lumotlar tushib qoladi,
+// rasm ichiga yashirilgan boshqa fayl (polyglot) yangi faylga o'tmaydi.
+// Natijaning eni va bo'yi ham qaytadi — panel rasm yuklanmasdan oldin
+// joyini to'g'ri nisbatda ajratadi.
+func ProcessChatImage(r io.Reader) ([]byte, int, int, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	b := src.Bounds()
+	if w, h := b.Dx(), b.Dy(); w > maxChatImageSide || h > maxChatImageSide {
+		if w >= h {
+			src = scaleToWidth(src, maxChatImageSide)
+		} else {
+			src = scaleToWidth(src, max(1, int(float64(w)*float64(maxChatImageSide)/float64(h))))
+		}
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, src, &webp.Options{
+		Compression: webp.CompressionLossy,
+		Quality:     webpQuality,
+	}); err != nil {
+		return nil, 0, 0, fmt.Errorf("webp kodlashda xato: %w", err)
+	}
+	nb := src.Bounds()
+	return buf.Bytes(), nb.Dx(), nb.Dy(), nil
 }
 
 // ProcessBookCoverImage — kitob muqovasini qayta ishlaydi.

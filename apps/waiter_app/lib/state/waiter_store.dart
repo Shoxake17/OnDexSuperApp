@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import '../models/activity.dart';
 import '../models/waiter_order.dart';
+import '../models/waiter_table.dart';
 import '../push.dart';
 
 /// Butun ilovaning yagona holat manbai.
@@ -25,6 +26,7 @@ class WaiterStore extends ChangeNotifier {
 
   // ── Jonli ma'lumot ──
   List<WaiterOrder> _orders = [];
+  String _restaurantId = '';
   String _restaurantName = '';
   String _userName = '';
   String _userPhone = '';
@@ -32,6 +34,11 @@ class WaiterStore extends ChangeNotifier {
   bool _online = false;
   String? _error;
   final Set<String> _busy = {};
+
+  // ── Restoran joylari ──
+  List<WaiterTable> _tables = [];
+  bool _tablesLoaded = false;
+  String? _tablesError;
 
   // ── Qurilmada saqlanadigan ──
   List<FeedItem> _feed = [];
@@ -55,6 +62,7 @@ class WaiterStore extends ChangeNotifier {
 
   // ── O'qish uchun ──
   List<WaiterOrder> get orders => _orders;
+  String get restaurantId => _restaurantId;
   String get restaurantName => _restaurantName;
   String get userName => _userName;
   String get userPhone => _userPhone;
@@ -64,6 +72,11 @@ class WaiterStore extends ChangeNotifier {
   bool get soundEnabled => _soundEnabled;
   List<FeedItem> get feed => _feed;
   List<ServedRecord> get history => _history;
+
+  /// Restoranning BARCHA joylari (`GET /waiter/tables`).
+  List<WaiterTable> get allTables => _tables;
+  bool get tablesLoaded => _tablesLoaded;
+  String? get tablesError => _tablesError;
 
   bool isBusy(String orderId) => _busy.contains(orderId);
 
@@ -79,9 +92,24 @@ class WaiterStore extends ChangeNotifier {
     return null;
   }
 
-  /// Bitta stolning faol buyurtmalari.
-  List<WaiterOrder> ordersForTable(String label) =>
-      _orders.where((o) => o.tableLabel == label).toList();
+  /// Joy ID'si bo'yicha (jonli ro'yxatdan).
+  WaiterTable? tableById(String id) {
+    for (final t in _tables) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  /// Bitta joyning faol buyurtmalari.
+  ///
+  /// Moslik joy ID'si bo'yicha: joy qayta nomlansa ham eski buyurtmalar
+  /// o'z stolida qoladi. ID'siz (eski server javobi) buyurtma nom
+  /// bo'yicha solishtiriladi.
+  List<WaiterOrder> ordersForTable(WaiterTable table) => _orders
+      .where((o) => o.tableId.isNotEmpty
+          ? o.tableId == table.id
+          : o.tableLabel == table.displayLabel)
+      .toList();
 
   /// Tayyor buyurtmalar — affitsiantning yagona shoshilinch ishi.
   /// Eng uzoq kutgani birinchi (taom sovimoqda).
@@ -130,6 +158,7 @@ class WaiterStore extends ChangeNotifier {
     // umuman bog'liq emas.
     try {
       final me = await api.waiterMe();
+      _restaurantId = me['restaurant_id'] as String? ?? '';
       _restaurantName = me['restaurant_name'] as String? ?? '';
     } catch (_) {}
     try {
@@ -183,6 +212,38 @@ class WaiterStore extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+    // Joylar holati (band/bo'sh) buyurtmalardan hisoblanadi, shuning
+    // uchun ular BIRGA yangilanadi.
+    await refreshTables();
+  }
+
+  /// Joylar ro'yxatini yangilaydi. Xato buyurtmalar ro'yxatiga TA'SIR
+  /// QILMAYDI — oxirgi muvaffaqiyatli ro'yxat ekranda qoladi.
+  Future<void> refreshTables() async {
+    try {
+      final raw = await api.tables();
+      _tables = raw.map(WaiterTable.fromJson).where((t) => t.id.isNotEmpty).toList();
+      _tablesError = null;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) return;
+      _tablesError = e.message;
+    } catch (_) {
+      _tablesError = 'Joylar ro\'yxatini yuklab bo\'lmadi';
+    } finally {
+      _tablesLoaded = true;
+      notifyListeners();
+    }
+  }
+
+  /// Restoran ID'si — menyu uchun. Ilova ochilganda `waiterMe`
+  /// muvaffaqiyatsiz bo'lgan bo'lsa, shu yerda qayta so'raladi.
+  Future<String> ensureRestaurantId() async {
+    if (_restaurantId.isNotEmpty) return _restaurantId;
+    final me = await api.waiterMe();
+    _restaurantId = me['restaurant_id'] as String? ?? '';
+    _restaurantName = me['restaurant_name'] as String? ?? _restaurantName;
+    notifyListeners();
+    return _restaurantId;
   }
 
   /// Yangi ro'yxatni qo'llaydi va "tayyor bo'ldi" hodisasini aniqlaydi.
@@ -210,7 +271,14 @@ class WaiterStore extends ChangeNotifier {
             body: '${tableText(o.tableLabel)} · ${o.shortNumber}',
             at: o.readyAt ?? DateTime.now(),
           );
-          if (_soundEnabled) playReadySound();
+          // Signal: 5 soniyalik ovoz + vibratsiya (`push.dart`). Push
+          // ham kelsa, shu buyurtma uchun IKKINCHI marta chalinmaydi —
+          // kalit buyurtma ID'si.
+          alertReady(
+            key: o.id,
+            title: 'Buyurtma tayyor',
+            body: '${tableText(o.tableLabel)} · ${o.shortNumber}',
+          );
         }
       }
     }
@@ -268,6 +336,47 @@ class WaiterStore extends ChangeNotifier {
     )..connect();
   }
 
+  // ── Harakat: buyurtma kiritish ──
+
+  /// Affitsiant stolga buyurtma kiritadi.
+  ///
+  /// Narxni SERVER hisoblaydi; ilova faqat taom ID'si va miqdorini
+  /// yuboradi. `idempotencyKey` — chaqiruvchi ekran savat o'zgarmaguncha
+  /// AYNI kalitni beradi, ya'ni zaif tarmoqda qayta bosish oshxonaga
+  /// ikkinchi buyurtma yubormaydi.
+  ///
+  /// Xato bo'lsa `ApiException` chaqiruvchiga o'tadi — ekran uni
+  /// ko'rsatadi va savat saqlanib qoladi.
+  Future<WaiterOrder> placeOrder({
+    required WaiterTable table,
+    required int partySize,
+    required Map<String, int> quantities,
+    required String idempotencyKey,
+  }) async {
+    final items = [
+      for (final e in quantities.entries)
+        if (e.value > 0) {'product_id': e.key, 'qty': e.value},
+    ];
+    final raw = await api.createOrder(
+      tableId: table.id,
+      partySize: partySize,
+      items: items,
+      idempotencyKey: idempotencyKey,
+    );
+    final created = WaiterOrder.fromJson(raw);
+    // Kalit WS'dagi `new_order` yozuvi bilan bir xil — tasmada bitta
+    // buyurtma ikki marta ko'rinmaydi.
+    _pushFeed(
+      id: 'new:${created.id}',
+      kind: 'new',
+      title: 'Buyurtma oshxonaga yuborildi',
+      body: '${tableText(created.tableLabel)} · ${created.shortNumber}',
+      at: DateTime.now(),
+    );
+    await refresh();
+    return created;
+  }
+
   // ── Harakat: yetkazish ──
 
   /// "Yetkazdim" — taom stolga olib borildi (terminal holat).
@@ -276,7 +385,8 @@ class WaiterStore extends ChangeNotifier {
   /// buyurtmasi uchun ruxsat beradi (`statemachine.go`), shuning uchun
   /// bu yerda qayta tekshirish shart emas — lekin tugma ham faqat
   /// `ready` da ko'rsatiladi, ya'ni odam imkonsiz amalni umuman
-  /// ko'rmaydi.
+  /// ko'rmaydi. Mijozga "Buyurtmangiz keldi" bildirishnomasini server
+  /// yuboradi.
   Future<String?> markServed(WaiterOrder order) async {
     if (_busy.contains(order.id)) return null;
     _busy.add(order.id);

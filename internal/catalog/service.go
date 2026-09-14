@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"chustapp/internal/orders"
 )
@@ -17,9 +18,28 @@ type ItemRequest struct {
 
 type Service struct {
 	repo Repository
+	// now — soat; testlarda almashtiriladi.
+	now func() time.Time
 }
 
-func NewService(repo Repository) *Service { return &Service{repo: repo} }
+func NewService(repo Repository) *Service { return &Service{repo: repo, now: time.Now} }
+
+// CheckPayment — restoran shu to'lov usulini qabul qiladimi. Buyurtma
+// yaratiladigan HAR BIR yo'lda chaqiriladi: sozlama faqat panelda
+// ko'rinib, serverda tekshirilmasa, u bezak bo'lib qolardi.
+func (s *Service) CheckPayment(ctx context.Context, restaurantID string, m orders.PaymentMethod) error {
+	rest, err := s.repo.GetRestaurant(ctx, restaurantID)
+	if err != nil {
+		return err
+	}
+	if rest.AcceptsPayment(m) {
+		return nil
+	}
+	if m == orders.PaymentCard {
+		return fmt.Errorf("%w: onlayn karta to'lovi o'chirilgan — joyida to'lang", ErrPaymentNotAccepted)
+	}
+	return fmt.Errorf("%w: faqat onlayn karta orqali oldindan to'lanadi", ErrPaymentNotAccepted)
+}
 
 // PriceOrder — buyurtma tarkibini katalog bo'yicha tekshiradi va narxlaydi.
 // Qoidalar: hamma taom mavjud va bitta restoranniki, restoran ochiq bo'lishi kerak.
@@ -104,6 +124,11 @@ func (s *Service) PriceOrder(ctx context.Context, reqs []ItemRequest) (restauran
 	}
 	if !rest.Open {
 		return "", nil, ErrRestaurantClosed
+	}
+	// Ish vaqti — HAMMA buyurtma yo'li (ilova, stol QR, agent, yordamchi)
+	// shu funksiyadan o'tadi, shuning uchun tekshiruv bitta joyda.
+	if !rest.WorkingHours.IsOpenAt(s.now()) {
+		return "", nil, ErrOutsideHours
 	}
 	return restaurantID, items, nil
 }

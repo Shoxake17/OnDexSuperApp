@@ -222,8 +222,11 @@ class AdminApi extends ApiClient {
     String logoUrl = '',
     String coverUrl = '',
     String tags = '',
+    // Restoran turi (`catalog.RestaurantKinds`). null — o'zgartirilmaydi.
+    String? kind,
   }) async =>
       Map<String, dynamic>.from(await send('POST', '/admin/restaurants/$id', {
+        if (kind != null) 'kind': kind,
         'name': name,
         'address': address,
         'lat': lat,
@@ -238,6 +241,58 @@ class AdminApi extends ApiClient {
       }));
 
 
+  // ── Qo'llab-quvvatlash: aloqa ma'lumotlari va restoranlar bilan chat ──
+
+  /// Barcha panellarda ko'rinadigan aloqa ma'lumotlari.
+  Future<Map<String, dynamic>> supportContacts() async =>
+      Map<String, dynamic>.from(await send('GET', '/support/contacts') as Map);
+
+  /// Saqlaydi. Server har maydonni QAT'IY tekshiradi va normallashtirilgan
+  /// qiymatni qaytaradi (masalan Telegram "@" siz).
+  Future<Map<String, dynamic>> saveSupportContacts(Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(await send('PUT', '/admin/support/contacts', body) as Map);
+
+  /// Suhbatlar (oxirgi xabar bo'yicha) + `unread_total`.
+  Future<Map<String, dynamic>> supportThreads() async =>
+      Map<String, dynamic>.from(await send('GET', '/admin/support/threads') as Map);
+
+  Future<Map<String, dynamic>> supportSummary() async =>
+      Map<String, dynamic>.from(await send('GET', '/admin/support/summary') as Map);
+
+  Future<Map<String, dynamic>> supportMessages(String restaurantId,
+      {int? before, int? after, int limit = 50}) async {
+    final q = [
+      'limit=$limit',
+      if (before != null && before > 0) 'before=$before',
+      if (after != null && after > 0) 'after=$after',
+    ].join('&');
+    return Map<String, dynamic>.from(await send(
+        'GET', '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages?$q') as Map);
+  }
+
+  /// [clientId] — qayta urinishda AYNI qiymat: server ikkinchi xabar yaratmaydi.
+  Future<Map<String, dynamic>> sendSupportMessage(String restaurantId, String body, String clientId) async =>
+      Map<String, dynamic>.from(await send('POST',
+          '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages',
+          {'body': body, 'client_id': clientId}) as Map);
+
+  Future<Map<String, dynamic>> markSupportRead(String restaurantId, int upToSeq) async =>
+      Map<String, dynamic>.from(await send('POST',
+          '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/read', {'up_to_seq': upToSeq}) as Map);
+
+  /// Rasm + ixtiyoriy izoh (multipart). Server rasmni tekshiradi va qayta kodlaydi.
+  Future<Map<String, dynamic>> sendSupportImage(
+      String restaurantId, String body, String clientId, List<int> bytes, String filename) async {
+    final data = await sendMultipart(
+        'POST', '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages', bytes, filename,
+        fields: {'client_id': clientId, if (body.isNotEmpty) 'body': body},
+        errorText: 'Rasm yuborilmadi — internetni tekshiring');
+    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+  }
+
+  /// Chatdagi rasm manzili — faqat admin tokeni bilan ochiladi.
+  String supportAttachmentUrl(String restaurantId, String attachmentId) =>
+      '$baseUrl/admin/support/threads/${Uri.encodeComponent(restaurantId)}/attachments/${Uri.encodeComponent(attachmentId)}';
 }
 
 final api = AdminApi();

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,32 +13,53 @@ import (
 	"chustapp/internal/tables"
 )
 
-// Migration 0032'dagi unikal indeks nomlari. Save/Create ularni
-// pgconn.PgError.ConstraintName orqali aniqlab, domen xatosiga
-// aylantiradi — chaqiruvchi "23505" degan xom Postgres kodini
-// bilishi shart emas.
+// Unikal indeks nomlari. Create/Update ularni pgconn.PgError.ConstraintName
+// orqali aniqlab, domen xatosiga aylantiradi — chaqiruvchi "23505" degan
+// xom Postgres kodini bilishi shart emas.
 const (
-	idxTablesToken     = "idx_restaurant_tables_token"
-	idxTablesLabel     = "idx_restaurant_tables_label" // 0032, 0042 dan keyin tushadi
-	idxTablesZoneLabel = "idx_restaurant_tables_zone_label"
+	idxTablesToken         = "idx_restaurant_tables_token"
+	idxTablesLabel         = "idx_restaurant_tables_label"      // 0032, 0042 da tushgan
+	idxTablesZoneLabel     = "idx_restaurant_tables_zone_label" // 0042, 0044 da tushgan
+	idxTablesZoneKindLabel = "idx_restaurant_tables_zone_kind_label"
 )
 
 type PgTableRepo struct{ pool *pgxpool.Pool }
 
 func NewPgTableRepo(pool *pgxpool.Pool) *PgTableRepo { return &PgTableRepo{pool: pool} }
 
-const tableColumns = `id, restaurant_id, zone, label, qr_token, active, created_at`
+const tableColumns = `id, restaurant_id, zone, kind, label, capacity, qr_token, active,
+	cleaning_since, last_scanned_at, created_at`
 
-func (r *PgTableRepo) Create(ctx context.Context, t *tables.Table) error {
+func tableArgs(t *tables.Table) []any {
 	zone := t.Zone
 	if strings.TrimSpace(zone) == "" {
 		zone = tables.DefaultZone
 	}
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO restaurant_tables (`+tableColumns+`)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		t.ID, t.RestaurantID, zone, t.Label, t.QRToken, t.Active, t.CreatedAt)
+	return []any{t.ID, t.RestaurantID, zone, string(t.Kind.Normalized()), t.Label, t.Capacity,
+		t.QRToken, t.Active, t.CleaningSince, t.LastScannedAt, t.CreatedAt}
+}
+
+const insertTableSQL = `INSERT INTO restaurant_tables (` + tableColumns + `)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
+
+func (r *PgTableRepo) Create(ctx context.Context, t *tables.Table) error {
+	_, err := r.pool.Exec(ctx, insertTableSQL, tableArgs(t)...)
 	return mapTableErr(err)
+}
+
+// CreateMany — bitta tranzaksiyada: biror qator yiqilsa hech biri qolmaydi.
+func (r *PgTableRepo) CreateMany(ctx context.Context, list []*tables.Table) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // Commit'dan keyin no-op
+	for _, t := range list {
+		if _, err := tx.Exec(ctx, insertTableSQL, tableArgs(t)...); err != nil {
+			return mapTableErr(err)
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // mapTableErr — Postgres unikallik buzilishini domen xatosiga
@@ -49,7 +71,7 @@ func mapTableErr(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		switch pgErr.ConstraintName {
-		case idxTablesLabel, idxTablesZoneLabel:
+		case idxTablesLabel, idxTablesZoneLabel, idxTablesZoneKindLabel:
 			return tables.ErrDuplicate
 		case idxTablesToken:
 			// Amalda imkonsiz (32 tasodifiy bayt), lekin jimgina
@@ -61,9 +83,19 @@ func mapTableErr(err error) error {
 	return err
 }
 
+func scanTableInto(row pgx.Row, t *tables.Table) error {
+	var kind string
+	if err := row.Scan(&t.ID, &t.RestaurantID, &t.Zone, &kind, &t.Label, &t.Capacity, &t.QRToken,
+		&t.Active, &t.CleaningSince, &t.LastScannedAt, &t.CreatedAt); err != nil {
+		return err
+	}
+	t.Kind = tables.Kind(kind)
+	return nil
+}
+
 func scanTable(row pgx.Row) (*tables.Table, error) {
 	var t tables.Table
-	err := row.Scan(&t.ID, &t.RestaurantID, &t.Zone, &t.Label, &t.QRToken, &t.Active, &t.CreatedAt)
+	err := scanTableInto(row, &t)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, tables.ErrNotFound
 	}
@@ -86,7 +118,7 @@ func (r *PgTableRepo) GetByToken(ctx context.Context, token string) (*tables.Tab
 func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string) ([]*tables.Table, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+tableColumns+` FROM restaurant_tables
-		 WHERE restaurant_id = $1 ORDER BY zone, label`, restaurantID)
+		 WHERE restaurant_id = $1 ORDER BY zone, kind, label`, restaurantID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,8 +127,7 @@ func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string)
 	var list []*tables.Table
 	for rows.Next() {
 		var t tables.Table
-		if err := rows.Scan(&t.ID, &t.RestaurantID, &t.Zone, &t.Label, &t.QRToken,
-			&t.Active, &t.CreatedAt); err != nil {
+		if err := scanTableInto(rows, &t); err != nil {
 			return nil, err
 		}
 		list = append(list, &t)
@@ -104,7 +135,7 @@ func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string)
 	return list, rows.Err()
 }
 
-// Update — nom va faollikni yangilaydi.
+// Update — zona, tur, nom, sig'im, faollik va tozalash holatini yozadi.
 //
 // ┌─ `qr_token` ATAYLAB RO'YXATDA YO'Q ───────────────────────────────┐
 // QR kod menyu varaqasiga chop etilgan va stolda abadiy turadi
@@ -115,12 +146,15 @@ func (r *PgTableRepo) ListByRestaurant(ctx context.Context, restaurantID string)
 // tekshiruv SHU YERDA ham takrorlanadi: kelajakda kimdir
 // `t.QRToken` ni o'zgartirib `Update` chaqirsa, o'zgarish jimgina
 // E'TIBORSIZ qoldiriladi — bazadagi qiymat tegilmaydi.
+// `last_scanned_at` ham bu yerda yozilmaydi: tahrir paytidagi eski
+// nusxa yangi skanerlash vaqtini bosib qolmasin.
 // └───────────────────────────────────────────────────────────────────┘
 func (r *PgTableRepo) Update(ctx context.Context, t *tables.Table) error {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE restaurant_tables
-		SET zone = $2, label = $3, active = $4
-		WHERE id = $1`, t.ID, t.Zone, t.Label, t.Active)
+		SET zone = $2, kind = $3, label = $4, capacity = $5, active = $6, cleaning_since = $7
+		WHERE id = $1`,
+		t.ID, t.Zone, string(t.Kind.Normalized()), t.Label, t.Capacity, t.Active, t.CleaningSince)
 	if err != nil {
 		return mapTableErr(err)
 	}
@@ -128,6 +162,16 @@ func (r *PgTableRepo) Update(ctx context.Context, t *tables.Table) error {
 		return tables.ErrNotFound
 	}
 	return nil
+}
+
+// TouchScanned — shart bazada: parallel skanerlashlar orasida "o'qib,
+// keyin yozish" poygasi yo'q.
+func (r *PgTableRepo) TouchScanned(ctx context.Context, id string, at time.Time, minInterval time.Duration) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE restaurant_tables SET last_scanned_at = $2
+		WHERE id = $1 AND (last_scanned_at IS NULL OR last_scanned_at <= $3)`,
+		id, at, at.Add(-minInterval))
+	return err
 }
 
 func (r *PgTableRepo) Delete(ctx context.Context, id string) error {
