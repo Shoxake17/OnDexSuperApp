@@ -1,0 +1,22 @@
+name: ondex_menu
+description: OnDex — restoran menyusining UMUMIY ko'rinish qismi (taom kartochkasi, to'r, turkum chiplari, chegirma hisobi). Mijoz va affitsiant ilovalari AYNI kodni ishlatadi.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # formatSum, fullImageUrl, formatWeightUnit — pul va rasm ko'rinishi
+  # barcha ilovalarda bir xil bo'lishi kerak.
+  ondex_core:
+    path: ../ondex_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:

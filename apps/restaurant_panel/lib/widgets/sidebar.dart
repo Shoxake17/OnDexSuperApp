@@ -30,6 +30,9 @@ const List<_NavEntry> _sidebarNavEntries = [
   _NavEntry(Icons.groups_rounded, 'Xodimlar'),
   _NavEntry(Icons.notifications_rounded, 'Bildirishnomalar'),
   _NavEntry(Icons.help_rounded, 'Yordam markazi'),
+  // OnDex qo'llab-quvvatlash bilan yozishma. Oxirida — oldingi
+  // indekslar surilmaydi (`shell.dart` dagi switch bilan bir xil tartib).
+  _NavEntry(Icons.forum_rounded, 'Chat markazi'),
 ];
 
 class Sidebar extends StatelessWidget {
@@ -39,6 +42,10 @@ class Sidebar extends StatelessWidget {
   final String restaurantAddress;
   final String restaurantLogoUrl;
   final int newOrdersCount;
+  final int notificationsCount;
+
+  /// O'qilmagan OnDex qo'llab-quvvatlash javoblari ("Chat markazi").
+  final int supportCount;
   final VoidCallback onLogout;
 
   const Sidebar({
@@ -49,6 +56,8 @@ class Sidebar extends StatelessWidget {
     required this.restaurantAddress,
     required this.restaurantLogoUrl,
     required this.newOrdersCount,
+    this.notificationsCount = 0,
+    this.supportCount = 0,
     required this.onLogout,
   });
 
@@ -69,12 +78,18 @@ class Sidebar extends StatelessWidget {
               itemCount: _sidebarNavEntries.length,
               itemBuilder: (context, i) {
                 final entry = _sidebarNavEntries[i];
-                // Faqat "Buyurtmalar" (index 1) haqiqiy hisoblangan
-                // rozetkaga ega — yangi ("created" holatidagi) buyurtmalar
-                // soni. Boshqa bo'limlarga soxta/o'ylab topilgan raqam
-                // qo'yilmaydi (masalan "Bildirishnomalar"da hozircha
-                // haqiqiy bildirishnoma tizimi yo'q).
-                final badge = i == 1 && newOrdersCount > 0 ? newOrdersCount : null;
+                // Faqat HAQIQIY hisoblangan rozetkalar: "Buyurtmalar"
+                // (index 1) — yangi ("created") buyurtmalar,
+                // "Bildirishnomalar" (index 9) — o'qilmagan restoran
+                // bildirishnomalari (jonli). Boshqa bo'limlarga soxta
+                // raqam qo'yilmaydi.
+                final count = switch (i) {
+                  1 => newOrdersCount,
+                  9 => notificationsCount,
+                  11 => supportCount,
+                  _ => 0,
+                };
+                final badge = count > 0 ? count : null;
                 return _NavItem(
                   icon: entry.icon,
                   label: entry.label,

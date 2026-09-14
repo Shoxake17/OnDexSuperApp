@@ -9,6 +9,9 @@ environment:
 dependencies:
   ondex_core:
     path: ../../packages/ondex_core
+  # Yordam markazi va Chat markazi — admin paneli bilan AYNI chat mantiqi.
+  ondex_support:
+    path: ../../packages/ondex_support
   flutter:
     sdk: flutter
   http: ^1.2.0

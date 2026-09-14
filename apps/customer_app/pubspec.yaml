@@ -11,6 +11,10 @@ dependencies:
   # 4 ta ilovada takrorlangan kod shu yerda BIR marta yozilgan.
   ondex_core:
     path: ../../packages/ondex_core
+  # Menyu ko'rinishi (taom kartochkasi, to'r, chiplar, chegirma hisobi) —
+  # affitsiant ilovasi bilan AYNI kod.
+  ondex_menu:
+    path: ../../packages/ondex_menu
   flutter:
     sdk: flutter
   http: ^1.2.0
@@ -108,5 +112,8 @@ flutter:
     # emas va JPEG artefaktlari ko'rinmaydi.
     - assets/shaddiy/
     - assets/google_logo.png
+    # PIN ekranidagi "yuz yoki barmoq izi" belgisi (image/facetouchid.png
+    # dan nusxa — image/ papkasi ilova bilan birga yig'ilmaydi).
+    - assets/security/
     - assets/uz_flag.png
     - shorebird.yaml

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
@@ -33,9 +34,10 @@ void main() async {
         ..sessionReplay = true
         ..sessionReplayConfig.maskAllTexts = true
         ..sessionReplayConfig.maskAllImages = true
-        ..captureScreenViews = true
-        ..captureApplicationLifecycleEvents = true
-        ..debouncerTimeSecs = 5;
+        // posthog_flutter 5.39 da `captureScreenViews`/`debouncerTimeSecs`
+        // YO'Q (build aynan shu sababli yiqilardi). Ekran nomlari
+        // `Analytics.instance.screen(...)` orqali yuboriladi.
+        ..captureApplicationLifecycleEvents = true;
       await Posthog().setup(cfg);
       Analytics.instance.onIdentify = ({
         required String userId,
@@ -44,7 +46,7 @@ void main() async {
         String? role,
       }) async {
         try {
-          final props = <String, Object?>{};
+          final props = <String, Object>{};
           if (phone != null && phone.isNotEmpty) props['phone'] = phone;
           if (name != null && name.isNotEmpty) props['name'] = name;
           if (role != null && role.isNotEmpty) props['role'] = role;

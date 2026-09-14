@@ -9,31 +9,72 @@ import (
 
 	"chustapp/internal/couriers"
 	"chustapp/internal/geo"
+	"chustapp/internal/orders"
 	"chustapp/internal/safego"
 )
 
-// RecoverDispatch — server ishga tushganda topilgan "accepted, lekin
-// kuryersiz" buyurtma uchun dispatch'ni QAYTA boshlaydi.
+// launchDispatch — kuryer kutayotgan buyurtma uchun qidiruvni fon
+// rejimida boshlaydi (qayta qidirish va nazoratchi tiklashi).
 //
-// Alohida eksport qilingan metod: `main()` faqat shu nomni biladi,
-// `dispatchOrder` ning ichki tafsilotlarini emas.
-func (s *Server) RecoverDispatch(orderID, restaurantID string, prepMinutes int) {
-	safeGo("dispatch-recovery:"+orderID, func() {
-		s.dispatchOrder(orderID, restaurantID, prepMinutes)
-	})
+// Tayyorlash vaqtining faqat QOLGAN qismi beriladi: taom allaqachon
+// tayyor bo'lsa kuryer ETA'si o'tib ketgan vaqtga emas, "hozir"ga
+// moslanishi kerak (nol — moslashtirish yo'q, eng yaqini yaxshi).
+func (s *Server) launchDispatch(o *orders.Order) {
+	if s.Dispatcher == nil || o == nil || !o.NeedsDispatchRecovery() {
+		return
+	}
+	prep := 0
+	if o.Status != orders.StatusReady && o.ReadyAt != nil {
+		if left := time.Until(*o.ReadyAt); left > 0 {
+			prep = int(left.Minutes())
+		}
+	}
+	oID, rID := o.ID, o.RestaurantID
+	safeGo("dispatch:"+oID, func() { s.dispatchOrder(oID, rID, prep) })
 }
 
-// dispatchOrder — ETA-asoslangan matching engine'ni fon rejimida ishga
-// tushiradi: restoran koordinatasini oladi, s.Dispatcher orqali ENG MOS
-// (ETA/reyting/tajriba bo'yicha saralangan) kuryerlarga ketma-ket
-// taklif yuboradi. TO'LIQ AVTOMATLASHTIRILGAN (foydalanuvchi so'rovi,
-// 2026-07-30): restoranda "kuryer chaqirish" tugmasi UMUMAN yo'q —
-// `s.Dispatcher.Dispatch` biror kuryer qabul qilguncha ICHKI TOMONDAN
-// CHEKSIZ qayta uradi (`internal/couriers/dispatch.go`ga qarang),
-// shuning uchun bu yerda muddat (timeout) YO'Q — faqat buyurtma
-// boshqa sabab bilan (mijoz/admin bekor qilsa) terminal holatga
-// o'tsa, `IsOrderCancelled` orqali to'xtaydi (aks holda zombie
-// goroutine bo'lib qolar edi).
+// stopDispatch — ishlayotgan qidiruvni DARHOL to'xtatadi: kuryerlardagi
+// ochiq takliflar ham yopiladi. Qidiruv bo'lmasa hech narsa qilmaydi.
+func (s *Server) stopDispatch(orderID string) {
+	if s.Dispatcher != nil {
+		s.Dispatcher.Cancel(orderID)
+	}
+}
+
+// dispatchStateEvent — qidiruv holati o'zgarganda panellarga ketadigan
+// xabar. Faqat holat va muddat — mijoz ma'lumoti yo'q.
+func dispatchStateEvent(eventType string, o *orders.Order) map[string]any {
+	event := map[string]any{
+		"type":           eventType,
+		"order_id":       o.ID,
+		"order_number":   o.OrderNumber,
+		"dispatch_state": o.DispatchState,
+	}
+	if o.DispatchDeadline != nil {
+		event["dispatch_deadline"] = o.DispatchDeadline.UTC()
+	}
+	return event
+}
+
+// publishDispatchState — restoran va superadmin panellariga jonli xabar.
+func (s *Server) publishDispatchState(eventType string, o *orders.Order) {
+	if s.Hub == nil || o == nil {
+		return
+	}
+	event := dispatchStateEvent(eventType, o)
+	s.Hub.Send(restaurantTopic(o.RestaurantID), event)
+	s.Hub.Send(adminTopic(), event)
+}
+
+// dispatchOrder — ETA-asoslangan matching engine'ni ishga tushiradi:
+// restoran koordinatasini oladi, s.Dispatcher orqali ENG MOS
+// (ETA/reyting/tajriba bo'yicha saralangan) kuryerlarga taklif yuboradi.
+//
+// Bu yerda muddat YO'Q: qidiruvni vaqt bo'yicha to'xtatish
+// nazoratchining ishi (`dispatch_watchdog.go`) — u buyurtmani "kuryer
+// topilmadi" qilgach `stopDispatch` chaqiradi. Qidiruv yana har tsiklda
+// buyurtmani bazadan tekshiradi (`IsOrderCancelled`), ya'ni boshqa
+// server nusxasi yoki qo'lda o'zgartirish ham uni to'xtatadi.
 func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 	ctx := context.Background()
 
@@ -41,6 +82,9 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 	if err != nil {
 		slog.Error("dispatch: restoran topilmadi", "order", orderID, "err", err)
 		s.Hub.Send(restaurantTopic(restaurantID), map[string]any{"type": "dispatch_failed", "order_id": orderID})
+		if s.AlertsSvc != nil {
+			s.AlertsSvc.DispatchFailed(restaurantID, orderID)
+		}
 		return
 	}
 
@@ -51,28 +95,39 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 		RestaurantName:     rest.Name,
 		RestaurantAddress:  rest.Address,
 		RestaurantLogoURL:  rest.LogoURL,
+		// Qidiruv davom etishi kerakmi: buyurtma yakunlanmagan, kuryer
+		// biriktirilmagan va "kuryer topilmadi" holatiga o'tmagan.
 		IsOrderCancelled: func(ctx context.Context) (bool, error) {
 			o, err := s.OrderSvc.Get(ctx, orderID)
 			if err != nil {
 				return false, err
 			}
-			return o.IsTerminal(), nil
+			return !o.NeedsDispatchRecovery(), nil
 		},
 	})
 	if err != nil {
-		if errors.Is(err, couriers.ErrOrderCancelled) {
-			slog.Info("dispatch: buyurtma bekor qilingani uchun to'xtatildi", "order", orderID)
+		switch {
+		case errors.Is(err, couriers.ErrOrderCancelled), errors.Is(err, context.Canceled):
+			slog.Info("dispatch: qidiruv to'xtatildi (buyurtma endi kuryer kutmayapti)", "order", orderID)
+			return
+		case errors.Is(err, couriers.ErrAlreadyRunning):
+			// Shu buyurtma uchun qidiruv allaqachon ishlayapti (masalan
+			// nazoratchi va restoran bir vaqtda boshladi) — ikkinchisi
+			// kerak emas va bu xato EMAS.
 			return
 		}
 		slog.Error("dispatch muvaffaqiyatsiz (haqiqiy infratuzilma xatosi)", "order", orderID, "err", err)
-		// Restoranga jonli xabar — bu ENDI faqat haqiqiy xato (masalan
-		// repo/DB xatosi) holatida keladi, oddiy "hozircha kuryer yo'q"
-		// holatida EMAS (o'sha holatda Dispatch o'zi ichkarida cheksiz
-		// qayta urinishda davom etadi va bu yerga umuman qaytmaydi).
+		// Restoranga jonli xabar — faqat haqiqiy xato (masalan DB xatosi)
+		// holatida. Qidiruvni nazoratchi keyinroq qayta boshlaydi.
 		s.Hub.Send(restaurantTopic(restaurantID), map[string]any{
 			"type":     "dispatch_failed",
 			"order_id": orderID,
 		})
+		// Bildirishnomalar tarixida ham qolsin: panel yopiq bo'lsa
+		// jonli xabar yo'qolardi.
+		if s.AlertsSvc != nil {
+			s.AlertsSvc.DispatchFailed(restaurantID, orderID)
+		}
 		return
 	}
 	assigned, err := s.OrderSvc.AssignCourier(ctx, orderID, courierID)

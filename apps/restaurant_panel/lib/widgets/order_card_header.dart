@@ -3,7 +3,8 @@ import 'package:ondex_core/ondex_core.dart' show tableText;
 
 import '../theme.dart';
 
-/// Buyurtma kartochkasining yuqori qatori: raqam, stol belgisi va vaqt.
+/// Buyurtma kartochkasining yuqori qismi: raqam va vaqt, stol
+/// buyurtmasida esa ULARNING OSTIDA katta stol belgisi.
 ///
 /// ┌─ NEGA ALOHIDA FAYLDA VA OCHIQ (public) ───────────────────────────┐
 /// Bu qator bir marta Flutter'ning sariq-qora "RIGHT OVERFLOWED BY 15
@@ -13,8 +14,8 @@ import '../theme.dart';
 /// Bunday xato TEST bilan qulflanishi kerak, test esa faqat OCHIQ
 /// widget'ni ko'ra oladi — sahifa ichidagi maxfiy (`_`) sinfni
 /// import qilib bo'lmaydi. Shuning uchun qator shu yerga chiqarildi
-/// va `test/order_card_header_test.dart` uni juda tor (60 px)
-/// kenglikda chizib, hech qanday overflow bo'lmasligini tekshiradi.
+/// va `test/order_card_header_test.dart` uni tor kenglikda chizib,
+/// hech qanday overflow bo'lmasligini tekshiradi.
 /// └───────────────────────────────────────────────────────────────────┘
 class OrderCardHeader extends StatelessWidget {
   final Map<String, dynamic> order;
@@ -23,61 +24,27 @@ class OrderCardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final createdAt = parseOrderAt(order['created_at']);
-    // Stol buyurtmasi — oshxona uchun MUHIM farq: taom qayerga ketishi
-    // (kuryerga emas, zalga) va nechta kishiga tayyorlash kerakligi shu
-    // yerdan ko'rinadi.
-    final dineIn = order['type'] == 'dine_in';
+    final dineIn = isDineInOrder(order);
     final tableLabel = order['table_label'] as String? ?? '';
     final partySize = order['party_size'] as int? ?? 0;
 
-    // ┌─ TARTIB QANDAY QURILGAN ──────────────────────────────────────┐
-    // Avval bu qator qat'iy edi: raqam + stol belgisi + `Spacer` +
-    // vaqt. Ustun torayganda belgi qisqara olmasdi va Flutter
-    // kartochka ustiga sariq-qora chiziq chizardi.
-    //
-    // Endi:
-    //   * tashqi `Row` — `spaceBetween`: vaqt HAR DOIM o'ng chekkada
-    //     (`Spacer` bilan bo'lgani kabi), lekin u bo'sh joyni
-    //     "egallab" turmaydi;
-    //   * chap guruh (`raqam` + `stol belgisi`) — `Flexible`, ya'ni
-    //     qolgan joyga sig'adi;
-    //   * guruh ichidagi HAR IKKI element ham qisqara oladi (uch
-    //     nuqta bilan), shuning uchun juda tor joyda ham overflow
-    //     bo'lmaydi.
-    //
-    // Bu `test/order_card_header_test.dart` bilan qulflangan: 60 px
-    // kenglikda ham xato chiqmasligi tekshiriladi.
-    // └───────────────────────────────────────────────────────────────┘
-    return Row(
+    // Raqam chapda (qisqara oladi), vaqt HAR DOIM o'ng chekkada.
+    final numberRow = Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Flexible(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  shortOrderNumber(order),
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: OnDexColors.ink),
-                ),
-              ),
-              if (dineIn)
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8, right: 8),
-                    child:
-                        TableChip(tableLabel: tableLabel, partySize: partySize),
-                  ),
-                ),
-            ],
+          child: Text(
+            shortOrderNumber(order),
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: OnDexColors.ink),
           ),
         ),
+        const SizedBox(width: 8),
         Text(orderTimeOfDay(createdAt),
             maxLines: 1,
             softWrap: false,
@@ -87,12 +54,32 @@ class OrderCardHeader extends StatelessWidget {
                 fontWeight: FontWeight.w600)),
       ],
     );
+    if (!dineIn) return numberRow;
+
+    // ┌─ NEGA STOL ALOHIDA QATORDA ─────────────────────────────────────┐
+    // Avval stol belgisi raqam YONIDA, kichik (12 px) yozilardi va tor
+    // Kanban ustunida yana kichraytirilardi — oshxonada uzoqdan
+    // o'qib bo'lmasdi. Stol buyurtmasida xodim uchun eng muhim narsa
+    // taom QAYSI STOLGA ketishi, shuning uchun u raqamdan keyin, alohida
+    // qatorda va katta shriftda turadi. Tartib: raqam → stol → taomlar
+    // → mijoz raqami → jami summa.
+    // └─────────────────────────────────────────────────────────────────┘
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        numberRow,
+        const SizedBox(height: 8),
+        TableChip(tableLabel: tableLabel, partySize: partySize),
+      ],
+    );
   }
 }
 
-/// Stol buyurtmasi belgisi: "🍽 5-stol · 4 kishi".
+/// Stol buyurtmasi belgisi: "Asosiy zal · 5-stol · 4 kishi" — ikonkasiz,
+/// raqamdan keyin alohida qatorda.
 ///
-/// Tor joyda stol nomi uch nuqtaga qisqaradi, lekin belgi HECH QACHON
+/// Tor joyda butun belgi proporsional kichrayadi, lekin HECH QACHON
 /// ota-elementdan chiqib ketmaydi.
 class TableChip extends StatelessWidget {
   final String tableLabel;
@@ -103,10 +90,11 @@ class TableChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      key: const ValueKey('order-table-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: OnDexColors.primaryTint,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       // ┌─ NEGA `FittedBox` ────────────────────────────────────────┐
       // Uch nuqta (`ellipsis`) bilan qisqartirish YETARLI EMAS edi:
@@ -115,10 +103,8 @@ class TableChip extends StatelessWidget {
       // pastga tusha olmasdi — test aynan shu 3-7 pikselni ushladi.
       //
       // `FittedBox(scaleDown)` esa kerak bo'lganda BUTUN belgini
-      // proporsional kichraytiradi: matn o'qilishda qoladi, ustun
-      // qanchalik tor bo'lmasin overflow bo'lmaydi. Joy yetarli
-      // bo'lsa (odatiy holat) hech narsa o'zgarmaydi — `scaleDown`
-      // faqat kichraytiradi, kattalashtirmaydi.
+      // proporsional kichraytiradi: joy yetarli bo'lsa (odatiy holat)
+      // hech narsa o'zgarmaydi — `scaleDown` faqat kichraytiradi.
       // └───────────────────────────────────────────────────────────┘
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -126,9 +112,9 @@ class TableChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.table_restaurant_rounded,
-                size: 13, color: OnDexColors.primary),
-            const SizedBox(width: 4),
+            // Ikonka ATAYLAB yo'q (foydalanuvchi talabi): stol nomi
+            // o'zi yetarlicha aniq, ikonka esa tor ustunda joy yeb,
+            // yozuvni kichraytirib yuborardi.
             Text(
               // `tableText` — `ondex_core` da. Ilgari bu yerda
               // "$tableLabel-stol" deb yozilardi va restoran stolni
@@ -136,10 +122,9 @@ class TableChip extends StatelessWidget {
               tableText(tableLabel),
               maxLines: 1,
               softWrap: false,
-              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
                   color: OnDexColors.primary),
             ),
             if (partySize > 0) ...[
@@ -148,7 +133,9 @@ class TableChip extends StatelessWidget {
                   maxLines: 1,
                   softWrap: false,
                   style: const TextStyle(
-                      fontSize: 11.5, color: OnDexColors.primary)),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: OnDexColors.primary)),
             ],
           ],
         ),

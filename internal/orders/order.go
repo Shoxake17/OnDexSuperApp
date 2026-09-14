@@ -161,11 +161,11 @@ type Order struct {
 	// bo'ladi va hech qachon tekshiruvga tushmaydi.
 	PaymentState PaymentState `json:"payment_state,omitempty"`
 
-	TotalTiyin int64          `json:"total_tiyin"`
-	Status                 Status         `json:"status"`
-	History                []StatusChange `json:"history"`
-	DeliveryLat            float64        `json:"delivery_lat"`
-	DeliveryLng            float64        `json:"delivery_lng"`
+	TotalTiyin  int64          `json:"total_tiyin"`
+	Status      Status         `json:"status"`
+	History     []StatusChange `json:"history"`
+	DeliveryLat float64        `json:"delivery_lat"`
+	DeliveryLng float64        `json:"delivery_lng"`
 	// DeliveryAddress — buyurtma berilgan PAYTDAGI manzil tafsilotlari
 	// SURATI (podyezd/qavat/kvartira/domofon/izoh). Foydalanuvchining
 	// profilidagi manzilga HAVOLA emas, nusxa — mijoz keyin manzilini
@@ -196,6 +196,12 @@ type Order struct {
 	// ma'lumot uchun: idish-tovoq, non, joy tayyorlash. Narxga
 	// TA'SIR QILMAYDI.
 	PartySize int `json:"party_size,omitempty"`
+	// PlacedBy — buyurtmani MIJOZ emas, restoran XODIMI (affitsiant)
+	// kiritgan bo'lsa, o'sha xodimning foydalanuvchi ID'si. Bunday
+	// buyurtmada `CustomerID` bo'sh: mijoz ilovadan foydalanmagan, stolda
+	// og'zaki buyurtma bergan. Faqat yaratishda yoziladi, keyin
+	// o'zgarmaydi (`PgOrderRepo.Save` — DO UPDATE ro'yxatida yo'q).
+	PlacedBy string `json:"placed_by,omitempty"`
 
 	// PreparationMinutes/ReadyAt — restoran "Qabul qilindi" bosgan payt
 	// kiritadigan taxminiy tayyorlash vaqti. ReadyAt = qabul qilingan payt +
@@ -204,6 +210,12 @@ type Order struct {
 	// na juda kech kelsin).
 	PreparationMinutes int        `json:"preparation_minutes,omitempty"`
 	ReadyAt            *time.Time `json:"ready_at,omitempty"`
+
+	// DispatchState/DispatchDeadline — kuryer qidiruvi holati va uning
+	// muddati (faqat yetkazish). Qoidalari va nega bazada saqlanishi —
+	// `dispatch_state.go` da.
+	DispatchState    DispatchState `json:"dispatch_state,omitempty"`
+	DispatchDeadline *time.Time    `json:"dispatch_deadline,omitempty"`
 
 	// IdempotencyKey — mijoz ilovasi buyurtma yaratishda yuboradigan
 	// ixtiyoriy, bir martalik tasodifiy kalit (masalan
@@ -358,8 +370,17 @@ func (o *Order) AwaitingPayment() bool {
 //     (bu holat `routes_orders.go` da ATAYLAB kechiriladi) restartdan
 //     keyin abadiy kuryersiz qolardi.
 //
+//  3. `preparing`/`ready` holatidagi buyurtma TIKLANMASDI. Shart faqat
+//     `accepted` ni ko'rardi — restart paytida oshxonada turgan har bir
+//     buyurtma panelda "Kuryer qidirilmoqda..." bo'lib ABADIY qolardi,
+//     qidiruvning o'zi esa yo'q edi. Endi kuryer kutayotgan HAR QANDAY
+//     holat qamraladi, "kuryer topilmadi" dan tashqari: u restoran
+//     qarorini kutadi, qidiruv ataylab to'xtatilgan.
+//
 // Endi qaror bitta joyda va u uchun buzishga urinadigan testlar bor.
+// Shu funksiya "qidiruv davom etishi kerakmi" savoliga ham javob beradi
+// (`httpapi.dispatchOrder`).
 // └────────────────────────────────────────────────────────────────────┘
 func (o *Order) NeedsDispatchRecovery() bool {
-	return o.Status == StatusAccepted && o.CourierID == "" && !o.IsDineIn()
+	return o.AwaitsCourier() && o.DispatchState != DispatchNotFound
 }

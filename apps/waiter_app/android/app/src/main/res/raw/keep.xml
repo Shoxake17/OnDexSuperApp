@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Server push xabari bu tovushni NOM bilan chaqiradi (waiter_ready):
+     koddan to'g'ridan-to'g'ri havola yo'q, shuning uchun release build'dagi
+     resurslarni qisqartirish uni o'chirib yubormasligi kerak. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/waiter_ready" />

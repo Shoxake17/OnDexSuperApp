@@ -116,7 +116,7 @@ func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
 	l.svc.Notify(ctx, o.CustomerID, Event{
 		Module: ModuleFood,
 		Kind:   "order_status",
-		Title:  "Buyurtma holati",
+		Title:  orderStatusTitle(o),
 		Body:   orderStatusText(o),
 		Data: map[string]string{
 			"order_id": o.ID,
@@ -169,6 +169,18 @@ func (l *Live) notifyWaiters(o *orders.Order) {
 }
 
 // orderStatusText — foydalanuvchi ko'radigan matn (push'da ham shu).
+// orderStatusTitle — mijoz bildirishnomasining sarlavhasi.
+//
+// Affitsiant "Yetkazdim" bosganda mijoz telefonida umumiy "Buyurtma
+// holati" emas, aniq "Buyurtmangiz keldi" chiqadi — bu eng kutilgan
+// xabar.
+func orderStatusTitle(o *orders.Order) string {
+	if o.IsDineIn() && o.Status == orders.StatusServed {
+		return "Buyurtmangiz keldi"
+	}
+	return "Buyurtma holati"
+}
+
 func orderStatusText(o *orders.Order) string {
 	// Stolda ovqatlanishda "yetkazish" atamalari ma'nosiz — mijoz
 	// restoranning o'zida o'tiribdi.
@@ -181,7 +193,7 @@ func orderStatusText(o *orders.Order) string {
 		case orders.StatusReady:
 			return "Buyurtmangiz tayyor — hozir olib kelishadi"
 		case orders.StatusServed:
-			return "Yoqimli ishtaha!"
+			return "Buyurtmangiz stolingizga olib kelindi. Yoqimli ishtaha!"
 		}
 	}
 	switch o.Status {

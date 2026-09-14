@@ -85,6 +85,19 @@ func PublicEntity(module, entityID string) string {
 	return "pub:" + module + ":" + entityID
 }
 
+// Manager — tashkilot RAHBARIYATI kanali (restoran akkaunti).
+//
+// `Entity(...)` dan farqi: unga affitsiant (xodim ilovasi) obuna
+// BO'LMAYDI. Restoran bildirishnomalari — to'lov summalari, xodimlar
+// o'zgarishi, kunlik savdo hisoboti — faqat restoran egasiga tegishli
+// (`httpapi.managerTopicIfRestaurant`).
+func Manager(module, entityID string) string {
+	if module == "" || entityID == "" {
+		return ""
+	}
+	return "m:" + module + ":" + entityID
+}
+
 // Admin — platforma ma'muriyati kanali (superadmin paneli).
 //
 // ┌─ NEGA ALOHIDA KANAL ──────────────────────────────────────────────┐

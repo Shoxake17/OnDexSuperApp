@@ -439,6 +439,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  ondex_support:
+    dependency: "direct main"
+    description:
+      path: "../../packages/ondex_support"
+      relative: true
+    source: path
+    version: "0.1.0"
   package_config:
     dependency: transitive
     description:

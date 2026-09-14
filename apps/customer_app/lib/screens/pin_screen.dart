@@ -4,28 +4,38 @@ import 'package:flutter/services.dart';
 import '../services/app_pin.dart';
 import '../widgets/auth_ui.dart';
 
-/// Barmoq izi VA yuz tanish belgisi — bitta tugmada.
+/// Yuz tanish VA barmoq izi belgisi — bitta tugmada.
 ///
-/// Flutter'da "face + fingerprint" uchun yagona ikonka yo'q, shuning
-/// uchun ikkalasi yonma-yon chiziladi. Bu ataylab: qurilmada qaysi biri
-/// sozlanganini ilova oldindan bila olmaydi (`isDeviceSupported` faqat
-/// "biror himoya bor" deydi), shuning uchun ikkala imkoniyat ham
-/// ko'rsatiladi — Click/Payme'dagi kabi.
+/// Qurilmada qaysi biri sozlanganini ilova oldindan bila olmaydi
+/// (`isDeviceSupported` faqat "biror himoya bor" deydi), shuning uchun
+/// ikkala imkoniyat ham bitta belgida ko'rsatiladi — Click/Payme'dagi
+/// kabi.
+///
+/// Avval bu yerda ikkita alohida Material ikonka (`face_outlined` +
+/// `fingerprint`) yonma-yon chizilardi. Endi OnDex'ning o'z belgisi
+/// (`assets/security/facetouchid.png`, brend rangida).
 class BiometricIcon extends StatelessWidget {
-  const BiometricIcon({super.key, this.size = 26, this.color = authBrand});
+  const BiometricIcon({super.key, this.size = 32});
 
+  /// Belgining balandligi; kenglik rasm nisbatidan hisoblanadi.
   final double size;
-  final Color color;
+
+  /// Rasmning asl o'lchami 767x726 — nisbat buzilmasin.
+  static const _aspect = 767 / 726;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.face_outlined, size: size * 0.92, color: color),
-        SizedBox(width: size * 0.16),
-        Icon(Icons.fingerprint, size: size, color: color),
-      ],
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return Image.asset(
+      'assets/security/facetouchid.png',
+      height: size,
+      width: size * _aspect,
+      fit: BoxFit.contain,
+      // Asl rasm 767 px — 32 px belgi uchun uni to'liq xotiraga ochish
+      // behuda. Ekran zichligiga mos o'lchamda dekodlanadi.
+      cacheHeight: (size * dpr).ceil(),
+      filterQuality: FilterQuality.medium,
+      semanticLabel: 'Yuz yoki barmoq izi bilan kirish',
     );
   }
 }

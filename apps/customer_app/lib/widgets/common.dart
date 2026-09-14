@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../api.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 import 'auth_flow.dart' show authSnack;
+
+// Dumaloq ikon tugmasi va tarmoq rasmi endi `packages/ondex_menu` da —
+// affitsiant ilovasining menyusi ham AYNI vidjetlarni ishlatadi. Mavjud
+// importlar (`widgets/common.dart`) buzilmasin deb shu yerdan qayta
+// eksport qilinadi.
+export 'package:ondex_menu/ondex_menu.dart' show RoundIconButton, RemoteImage;
 
 // ═══════════════════════════════════════════════════════════════════
 // XABAR CHIQARISH
@@ -29,68 +34,6 @@ extension SnackMessenger on State {
 /// Bu yerdagi har bir vidjet ilgari 2–4 ekranda alohida yozilgan edi
 /// va nusxalar bir-biridan asta-sekin uzoqlashib ketgandi (rang,
 /// o'lcham, matn farqi). Endi o'zgartirish faqat shu faylda qilinadi.
-
-// ═══════════════════════════════════════════════════════════════════
-// DUMALOQ IKON TUGMASI
-// ═══════════════════════════════════════════════════════════════════
-
-/// Oq doiradagi ikon tugmasi — xarita boshqaruvi, kartochkadagi
-/// "+/−" va miqdor boshqaruvi shuni ishlatadi.
-///
-/// Ilgari uchta fayl (`address_screen`, `product_grid`, `qty_stepper`)
-/// o'zining `_RoundButton` klassini saqlardi. Ular bir xil edi, faqat
-/// soya va o'lcham farq qilardi — endi ular parametr.
-class RoundIconButton extends StatelessWidget {
-  const RoundIconButton({
-    super.key,
-    required this.icon,
-    required this.onTap,
-    this.size = 34,
-    this.iconSize,
-    this.elevation = 3,
-    this.tooltip,
-    this.iconColor = Colors.black,
-  });
-
-  final IconData icon;
-
-  /// `null` — tugma o'chirilgan (bosilmaydi).
-  final VoidCallback? onTap;
-
-  final double size;
-
-  /// Berilmasa o'lchamdan hisoblanadi.
-  final double? iconSize;
-
-  final double elevation;
-  final String? tooltip;
-  final Color iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    const disabled = Color(0xFFBDBDBD);
-
-    final btn = Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: elevation,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(
-            icon,
-            size: iconSize ?? size * 0.56,
-            color: onTap == null ? disabled : iconColor,
-          ),
-        ),
-      ),
-    );
-    return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // OFLAYN BELGISI
@@ -263,53 +206,3 @@ class AppCard extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// TARMOQDAN KELADIGAN RASM
-// ═══════════════════════════════════════════════════════════════════
-
-/// Serverdagi rasm. Yo'l bo'sh yoki rasm yuklanmasa — EKRAN BUZILMAYDI,
-/// o'rniga [placeholder] chiziladi.
-///
-/// `Image.network(..., errorBuilder: ...)` naqshi o'nta faylda qo'lda
-/// takrorlanardi va ba'zilarida `errorBuilder` umuman yo'q edi — ya'ni
-/// yiqilgan rasm qizil xato quticha bo'lib chiqardi.
-class RemoteImage extends StatelessWidget {
-  const RemoteImage({
-    super.key,
-    required this.url,
-    this.width,
-    this.height,
-    this.fit = BoxFit.cover,
-    this.placeholder,
-  });
-
-  /// Server bergan yo'l — nisbiy ham, to'liq URL ham bo'lishi mumkin
-  /// ([fullImageUrl] ikkalasini ham to'g'ri ishlaydi).
-  final String url;
-
-  final double? width;
-  final double? height;
-  final BoxFit fit;
-  final Widget? placeholder;
-
-  @override
-  Widget build(BuildContext context) {
-    final empty = placeholder ?? const SizedBox.shrink();
-    if (url.trim().isEmpty) {
-      return SizedBox(width: width, height: height, child: empty);
-    }
-    return Image.network(
-      fullImageUrl(url),
-      width: width,
-      height: height,
-      fit: fit,
-      // Rasm kelguncha JOY EGALLANADI — aks holda ro'yxatlar yuklanish
-      // paytida sakrab qolardi. Ilgari bu faqat kartochkada bor edi.
-      loadingBuilder: (context, child, progress) => progress == null
-          ? child
-          : SizedBox(width: width, height: height),
-      errorBuilder: (_, __, ___) =>
-          SizedBox(width: width, height: height, child: empty),
-    );
-  }
-}

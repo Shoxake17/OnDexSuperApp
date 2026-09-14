@@ -41,6 +41,7 @@ class WaiterOrder {
   const WaiterOrder({
     required this.id,
     required this.orderNumber,
+    required this.tableId,
     required this.tableLabel,
     required this.partySize,
     required this.items,
@@ -48,10 +49,15 @@ class WaiterOrder {
     required this.status,
     required this.createdAt,
     required this.readyAt,
+    this.placedByWaiter = false,
   });
 
   final String id;
   final String orderNumber;
+
+  /// Joy ID'si — stol sahifasida buyurtmalar SHU bo'yicha guruhlanadi
+  /// (nom qayta nomlanishi mumkin, ID o'zgarmaydi).
+  final String tableId;
   final String tableLabel;
   final int partySize;
   final List<WaiterOrderItem> items;
@@ -59,6 +65,9 @@ class WaiterOrder {
   final String status;
   final DateTime? createdAt;
   final DateTime? readyAt;
+
+  /// Buyurtmani affitsiant kiritgan (mijoz QR orqali emas).
+  final bool placedByWaiter;
 
   /// Affitsiant harakat qilishi kerakmi (yagona harakat — "Yetkazdim").
   bool get isReady => status == 'ready';
@@ -102,6 +111,7 @@ class WaiterOrder {
     return WaiterOrder(
       id: j['id'] as String? ?? '',
       orderNumber: j['order_number'] as String? ?? '',
+      tableId: j['table_id'] as String? ?? '',
       tableLabel: j['table_label'] as String? ?? '',
       partySize: _int(j['party_size']),
       items: rawItems is List
@@ -116,17 +126,15 @@ class WaiterOrder {
       status: j['status'] as String? ?? '',
       createdAt: _time(j['created_at']),
       readyAt: _time(j['ready_at']),
+      placedByWaiter: j['placed_by_waiter'] == true,
     );
   }
 }
 
 /// Bitta stol — o'sha stolning barcha FAOL buyurtmalari.
 ///
-/// Backend affitsiantga stollar ro'yxatini bermaydi (`routes_tables.go`
-/// dagi endpointlar faqat restoran/admin uchun — ataylab, affitsiant QR
-/// tokenlarini ko'ra olmasligi kerak). Shuning uchun "stollar ekrani"
-/// FAOL BUYURTMALARDAN yig'iladi: bandligi ko'rinadigan stol — ustida
-/// hozir buyurtmasi bor stol.
+/// Buyurtmalar ekranidagi guruhlash uchun. "Stollar" bo'limi esa endi
+/// restoranning BARCHA joylarini serverdan oladi (`WaiterTable`).
 class TableGroup {
   TableGroup({required this.label, required this.orders});
 
@@ -185,18 +193,18 @@ class TableGroup {
         if (cmp != 0) return cmp;
       }
       if (a.hasPreparing != b.hasPreparing) return a.hasPreparing ? -1 : 1;
-      return _compareLabels(a.label, b.label);
+      return compareLabels(a.label, b.label);
     });
     return groups;
   }
 
-  /// Stol nomlarini INSON tartibida solishtiradi: "Stol 2" < "Stol 10".
+  /// Nomlarni INSON tartibida solishtiradi: "Stol 2" < "Stol 10".
   /// Oddiy matn solishtiruvida "10" "2" dan oldin kelib qolardi.
-  static int _compareLabels(String a, String b) {
+  static int compareLabels(String a, String b) {
     final na = int.tryParse(RegExp(r'\d+').firstMatch(a)?.group(0) ?? '');
     final nb = int.tryParse(RegExp(r'\d+').firstMatch(b)?.group(0) ?? '');
-    if (na != null && nb != null) return na.compareTo(nb);
-    return a.compareTo(b);
+    if (na != null && nb != null && na != nb) return na.compareTo(nb);
+    return a.toLowerCase().compareTo(b.toLowerCase());
   }
 }
 

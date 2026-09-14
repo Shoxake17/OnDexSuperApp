@@ -17,6 +17,22 @@ type Service struct {
 	repo     Repository
 	accounts Accounts
 	now      func() time.Time
+	// observer — saqlangan hodisalar (restoran bildirishnomalari uchun).
+	observer func(m Member, events []Event)
+}
+
+// WithObserver — yozuv SAQLANGANDAN keyin hodisalarni oladi. Kuzatuvchi
+// uzoq ish qilmasligi kerak (o'z goroutine'ida bajaradi).
+func (s *Service) WithObserver(fn func(m Member, events []Event)) *Service {
+	s.observer = fn
+	return s
+}
+
+func (s *Service) emit(m *Member, events []Event) {
+	if s.observer == nil || m == nil || len(events) == 0 {
+		return
+	}
+	s.observer(Clone(*m), append([]Event(nil), events...))
 }
 
 // NewService — `accounts` nil bo'lsa ilovaga kirishni ochib bo'lmaydi
@@ -172,6 +188,7 @@ func (s *Service) Create(ctx context.Context, restaurantID, actorID string, in I
 		rollback()
 		return nil, err
 	}
+	s.emit(m, events)
 	return m, nil
 }
 
@@ -355,6 +372,7 @@ func (s *Service) save(ctx context.Context, old, m *Member, actorID string, even
 		rollback()
 		return nil, err
 	}
+	s.emit(m, events)
 	return m, nil
 }
 

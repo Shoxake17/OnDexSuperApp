@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../widgets/common.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/sheet_scaffold.dart';
@@ -157,14 +156,17 @@ class _FavoriteCard extends StatelessWidget {
       opacity: restaurantOpen ? 1 : 0.4,
       child: ProductCard(
         product: product,
-        favorited: true,
         onTap: restaurantOpen ? onTap : null,
-        onFavoriteChanged: (fav) {
-          // Bu yerda faqat "olib tashlash" (fav=false) ma'noga ega —
-          // "Istaklarim" sahifasidagi barcha kartochka allaqachon
-          // saqlangan.
-          if (!fav) onRemoved();
-        },
+        topLeft: FavoriteButton(
+          productId: (product['id'] as String?) ?? '',
+          initialFavorited: true,
+          onChanged: (fav) {
+            // Bu yerda faqat "olib tashlash" (fav=false) ma'noga ega —
+            // "Istaklarim" sahifasidagi barcha kartochka allaqachon
+            // saqlangan.
+            if (!fav) onRemoved();
+          },
+        ),
         footer: Row(
           children: [
             if (restaurantLogo.isNotEmpty)

@@ -713,8 +713,12 @@ class _MenuScreenState extends State<MenuScreen> {
       discount: discount,
       promoted: PromotionIndex(_promos).covers(p, discount),
       // Yurakcha holati `FavoritesStore` dan keladi — bu yerda
-      // saqlanmaydi (`widgets/product_grid.dart`).
-      favorited: FavoritesStore.instance.contains(id),
+      // saqlanmaydi. Kartochkaning o'zi umumiy paketda
+      // (`packages/ondex_menu`), yurak esa mijozga xos — uyaga qo'yiladi.
+      topLeft: FavoriteButton(
+        productId: id,
+        initialFavorited: FavoritesStore.instance.contains(id),
+      ),
       onAdd: () => _add(p),
       // Shaddiy "barmog'i" AYNAN shu tugmani topishi uchun.
       addKey: AgentStage.instance.addKey(id),
@@ -788,7 +792,10 @@ class _MenuScreenState extends State<MenuScreen> {
       qty: _cart.restaurantId == _id ? _cart.qtyOf(id) : 0,
       discount: discount,
       promoted: PromotionIndex(_promos).covers(p, discount),
-      favorited: FavoritesStore.instance.contains(id),
+      topLeft: FavoriteButton(
+        productId: id,
+        initialFavorited: FavoritesStore.instance.contains(id),
+      ),
       onAdd: () => _add(p),
       onRemove: () => _remove(p),
       onTap: () => _openDetail(p),
@@ -836,7 +843,9 @@ class _MenuScreenState extends State<MenuScreen> {
                           separatorBuilder: (_, __) => const SizedBox(width: 8),
                           itemBuilder: (_, i) {
                             final title = _sections[i].title;
-                            return _CategoryChip(
+                            // Chip umumiy paketdan — affitsiant ilovasining
+                            // buyurtma ekrani ham AYNI chipni ishlatadi.
+                            return MenuCategoryChip(
                               key: _chipKeys[title],
                               label: title,
                               active: title == active,
@@ -1057,53 +1066,6 @@ class _Section {
   final String title;
   final List<Map<String, dynamic>> items;
   const _Section(this.title, this.items);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TURKUM CHIPI
-// ═══════════════════════════════════════════════════════════════════
-
-class _CategoryChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _CategoryChip({
-    super.key,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: active ? kBrand : Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: active ? kBrand : const Color(0xFFE0E0E0),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: active ? FontWeight.bold : FontWeight.normal,
-              color: active ? Colors.white : const Color(0xFF262626),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

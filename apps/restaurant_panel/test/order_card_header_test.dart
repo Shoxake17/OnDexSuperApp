@@ -50,23 +50,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Ekstremal holat. 120 px — haqiqiy panelda hech qachon uchramaydi
-  // (eng tor Kanban ustuni ~220 px, chunki oyna kengligi va ustunlar
-  // soni cheklangan), lekin bu yerda ATAYLAB ikki barobar kichik
-  // qiymat olingan: kelajakda yangi element qo'shilsa, xato
-  // foydalanuvchi ekranida emas, shu testda ko'rinsin.
-  //
-  // Undan ham kichik kenglik sinalmaydi: belgining chetlari va
-  // ikonkasi qat'iy o'lchamda va ular qanchalik kichraytirilmasin,
-  // ma'lum eng kichik joyni egallaydi — 60 px da matematik jihatdan
-  // hech qanday tartib sig'maydi.
+  // Ekstremal holat — haqiqiy paneldagi eng tor ustundan ikki barobar
+  // kichik: kelajakda yangi element qo'shilsa, xato foydalanuvchi
+  // ekranida emas, shu testda ko'rinsin.
   testWidgets('juda tor joyda ham overflow yo\'q', (tester) async {
     await _pumpHeader(tester, width: 120, order: _dineInOrder());
     expect(tester.takeException(), isNull);
   });
 
-  // Uzun stol nomi — chiziq o'rniga uch nuqta.
-  testWidgets('uzun stol nomi qisqaradi, overflow bermaydi', (tester) async {
+  // Uzun stol nomi — chiziq o'rniga proporsional kichrayish.
+  testWidgets('uzun stol nomi overflow bermaydi', (tester) async {
     await _pumpHeader(
       tester,
       width: 160,
@@ -75,8 +68,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Yetkazib berish buyurtmasi (stol belgisi yo'q) — vaqt o'ngda
-  // qolishi kerak, ya'ni bo'sh joyni `Flexible` egallaydi.
+  // Yetkazib berish buyurtmasi (stol belgisi yo'q) — vaqt o'ngda.
   testWidgets('yetkazish buyurtmasida vaqt o\'ng chekkada', (tester) async {
     final order = {
       'order_number': '150826-5273845',
@@ -84,11 +76,31 @@ void main() {
     };
     await _pumpHeader(tester, width: 300, order: order);
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('order-table-chip')), findsNothing);
 
-    final rowBox = tester.getRect(find.byType(SizedBox).first);
-    final timeBox = tester.getRect(find.text('14:41').hitTestable());
-    // Vaqt matni qatorning o'ng yarmida bo'lishi kerak.
-    expect(timeBox.right, greaterThan(rowBox.center.dx));
+    final numberBox = tester.getRect(find.text('#5273845'));
+    final timeBox = tester.getRect(find.text(orderTimeOfDay(
+        parseOrderAt('2026-08-15T09:41:00Z'))));
+    expect(timeBox.left, greaterThan(numberBox.right));
+    expect(timeBox.right, greaterThan(150));
+  });
+
+  // Foydalanuvchi talablari: stol raqami buyurtma raqamidan KEYIN, alohida
+  // qatorda; ikonkasiz va o'rtacha (juda katta emas) shriftda.
+  testWidgets('stol raqami buyurtma raqamidan keyin, ikonkasiz',
+      (tester) async {
+    await _pumpHeader(tester, width: 260, order: _dineInOrder(table: '5'));
+    final number = tester.getRect(find.text('#5273845'));
+    final chip = find.byKey(const ValueKey('order-table-chip'));
+    expect(chip, findsOneWidget);
+    expect(tester.getRect(chip).top, greaterThanOrEqualTo(number.bottom));
+    expect(find.descendant(of: chip, matching: find.byType(Icon)),
+        findsNothing);
+
+    final label = tester.widget<Text>(find
+        .descendant(of: chip, matching: find.byType(Text))
+        .first);
+    expect(label.style!.fontSize, inInclusiveRange(13, 15));
   });
 
   // Odam soni KO'RSATILISHI shart — oshxona shu raqamga qarab

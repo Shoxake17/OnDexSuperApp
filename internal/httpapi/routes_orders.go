@@ -302,7 +302,11 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					restaurantCache[o.RestaurantID] = rest
 				}
 				entry := map[string]any{
-					"id":             o.ID,
+					"id": o.ID,
+					// Buyurtma raqami — "Buyurtmalarim" kartochkasining
+					// tepasida ko'rsatiladi. Bu maydon YETISHMAS EDI va
+					// mijoz ilovasi raqam o'rniga "—" chizardi.
+					"order_number":   o.OrderNumber,
 					"restaurant_id":  o.RestaurantID,
 					"items":          o.Items,
 					"subtotal_tiyin": o.SubtotalTiyin,
@@ -480,6 +484,11 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					safeGo("dispatch:"+oID, func() { s.dispatchOrder(oID, rID, prep) })
 				}
 			}
+			// Buyurtma yakunlandi — ochiq qidiruv va kuryerlardagi
+			// takliflar DARHOL yopiladi (keyingi tsiklni kutmasdan).
+			if o.IsTerminal() {
+				s.stopDispatch(o.ID)
+			}
 			// Buyurtma yakunlandi — kuryer yana bo'sh
 			if o.IsTerminal() && o.CourierID != "" {
 				if err := s.CourierRepo.SetAvailable(r.Context(), o.CourierID, true); err != nil {
@@ -493,6 +502,48 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					}
 				}
 			}
+			writeJSON(w, http.StatusOK, o)
+		}))
+
+	// POST /orders/{id}/dispatch/retry — "Kuryer topilmadi" holatida
+	// restoran kuryer qidiruvini QAYTA boshlaydi (yangi muddat bilan).
+	//
+	// Bekor qilish uchun alohida endpoint YO'Q: oddiy
+	// `transition {"to":"cancelled"}` — holat mashinasi tayyor yetkazish
+	// buyurtmasini restoranga FAQAT shu holatda bekor qildiradi
+	// (`orders.ValidateOrderTransition`). Ikki yo'l bo'lsa, qoidalar
+	// ajralib ketardi.
+	mux.HandleFunc("POST /orders/{id}/dispatch/retry", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			o, err := s.OrderSvc.Get(r.Context(), r.PathValue("id"))
+			if err != nil {
+				if errors.Is(err, orders.ErrNotFound) {
+					httpError(w, http.StatusNotFound, orders.ErrNotFound)
+					return
+				}
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			if !ownsOrderAction(claimsFrom(r), o) {
+				// 404 — begona buyurtmaning mavjudligi oshkor bo'lmasin
+				// (GET /orders/{id} dagi izoh).
+				httpError(w, http.StatusNotFound, orders.ErrNotFound)
+				return
+			}
+			o, err = s.OrderSvc.RestartCourierSearch(r.Context(), o.ID)
+			switch {
+			case errors.Is(err, orders.ErrDispatchNotRestartable), errors.Is(err, orders.ErrConflict):
+				// Holat shu oraliqda o'zgargan (kuryer topildi, bekor
+				// qilindi, boshqa xodim allaqachon bosdi) — panel
+				// ro'yxatni yangilaydi.
+				httpError(w, http.StatusConflict, err)
+				return
+			case err != nil:
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			s.launchDispatch(o)
+			s.publishDispatchState("dispatch_state", o)
 			writeJSON(w, http.StatusOK, o)
 		}))
 }

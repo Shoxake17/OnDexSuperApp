@@ -158,6 +158,12 @@ func (r *MemoryOrderRepo) ListRecent(_ context.Context, limit int) ([]*orders.Or
 	return r.listFiltered(limit, func(*orders.Order) bool { return true })
 }
 
+// ListAwaitingCourier — kuryer kutayotgan yetkazish buyurtmalari.
+// PgOrderRepo bilan bir xil qoida: `orders.Order.AwaitsCourier`.
+func (r *MemoryOrderRepo) ListAwaitingCourier(_ context.Context, limit int) ([]*orders.Order, error) {
+	return r.listFiltered(limit, (*orders.Order).AwaitsCourier)
+}
+
 // ListByRestaurant — to'lanmagan KARTA buyurtmalari ro'yxatga
 // tushmaydi (Postgres implementatsiyasidagi bilan bir xil qoida —
 // izohi o'sha yerda).

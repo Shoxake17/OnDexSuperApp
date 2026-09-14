@@ -8,6 +8,7 @@ import '../api.dart';
 import '../live.dart';
 import '../panel_prefs.dart';
 import '../sound.dart';
+import '../widgets/courier_status_box.dart';
 import '../widgets/order_card_header.dart';
 import '../widgets/page_header.dart';
 import '../theme.dart';
@@ -83,6 +84,10 @@ class _OrdersPageState extends State<OrdersPage> {
         'order_status',
         'courier_assigned',
         'dispatch_failed',
+        // Kuryer qidiruvi holati: "Kuryer topilmadi" tugmalari va qayta
+        // qidirish boshqa xodim kompyuterida ham DARHOL ko'rinsin.
+        'courier_not_found',
+        'dispatch_state',
       },
       offlineInterval: const Duration(seconds: 15),
     )..start();
@@ -138,11 +143,24 @@ class _OrdersPageState extends State<OrdersPage> {
               'YANGI BUYURTMA! ${formatSum((e['total_tiyin'] ?? 0) as int)}'),
           backgroundColor: Colors.green,
         ));
+      case 'courier_not_found':
+        // Taom tayyor, lekin belgilangan muddatda kuryer topilmadi —
+        // restoran qaror qilishi kerak. Tugmalar kartochkada; bu xabar
+        // faqat e'tiborni tortadi (xodim boshqa ustunga qarab turgan
+        // bo'lishi mumkin).
+        if (!PanelPrefs.courierAlerts.value) return;
+        final number = shortOrderNumber(e);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '$number buyurtmaga kuryer topilmadi — bekor qiling yoki kuryerni qayta qidiring.'),
+          backgroundColor: OnDexColors.danger,
+          duration: const Duration(seconds: 8),
+        ));
       case 'dispatch_failed':
-        // Tizim o'zi ONLAYN kuryer topilguncha CHEKSIZ qayta uradi — bu
-        // xabar faqat haqiqiy infratuzilma xatosida keladi (masalan
+        // Bu xabar faqat haqiqiy infratuzilma xatosida keladi (masalan
         // server ichki xatosi), oddiy "hozircha kuryer yo'q" holatida
-        // EMAS. Qo'lda qayta urinish tugmasi yo'q — kerak ham emas.
+        // EMAS — u uchun `courier_not_found` bor. To'xtab qolgan
+        // qidiruvni server nazoratchisi o'zi qayta boshlaydi.
         if (!PanelPrefs.courierAlerts.value) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
@@ -176,6 +194,8 @@ class _OrdersPageState extends State<OrdersPage> {
   /// ta'sir qilmaydi.
   Future<void> _do(String orderId, Future<void> Function() action,
       {String? label}) async {
+    if (_busy.contains(orderId)) return;
+    setState(() => _busy.add(orderId));
     try {
       await action();
       if (label != null) {
@@ -186,13 +206,60 @@ class _OrdersPageState extends State<OrdersPage> {
           'buyurtma': orderId,
         });
       }
-      _load();
     } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Xato: ${e.message}')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Xato: ${e.message}')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(orderId));
     }
+    // Xatoda ham yangilanadi: 409 — holat shu oraliqda o'zgargan (boshqa
+    // xodim bosdi, kuryer topildi), kartochka eskirgan holatda qolmasin.
+    await _load();
   }
+
+  /// Hozir serverga amal yuborilayotgan buyurtmalar — kartochka
+  /// tugmalari shu vaqtda o'chiq (ikki marta bosish ikkita so'rov
+  /// yubormasin).
+  final Set<String> _busy = {};
+
+  /// "Kuryer topilmadi" → "Bekor qilish". Tasdiq so'raladi: amalni
+  /// qaytarib bo'lmaydi, mijozga xabar boradi, karta to'lovi qaytariladi.
+  ///
+  /// Server bekor qilishni FAQAT "kuryer topilmadi" holatida qabul
+  /// qiladi — oraliqda kuryer topilgan bo'lsa 409 keladi va ro'yxat
+  /// yangilanadi.
+  Future<void> _cancelNoCourier(Map<String, dynamic> order) async {
+    final id = order['id'] as String;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${shortOrderNumber(order)} bekor qilinsinmi?'),
+        content: const Text(
+            'Kuryer topilmadi. Buyurtma bekor qilinadi, mijozga xabar boradi, '
+            'karta orqali to\'langan bo\'lsa pul qaytariladi.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Yo\'q')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: OnDexColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Ha, bekor qilish')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    await _do(id, () => api.transition(id, 'cancelled'),
+        label: 'kuryer_topilmadi_bekor');
+  }
+
+  /// "Kuryer topilmadi" → "Kuryer qidirish": server qidiruvni yangi
+  /// muddat bilan qaytadan boshlaydi.
+  Future<void> _retryCourier(String id) => _do(
+      id, () => api.retryCourierSearch(id),
+      label: 'kuryer_qayta_qidirish');
 
   /// Qabul qilish — taxminiy tayyorlash vaqtini so'raydi va shu ZAHOTI
   /// kuryer qidirishni AVTOMATIK boshlaydi (qo'lda "Kuryer chaqirish"
@@ -349,6 +416,9 @@ class _OrdersPageState extends State<OrdersPage> {
                     label: 'tayyorlashni_boshladi'),
                   onReady: (id) =>
               _do(id, () => api.transition(id, 'ready'), label: 'tayyor'),
+                  onCancelNoCourier: _cancelNoCourier,
+                  onRetryCourier: _retryCourier,
+                  busy: _busy,
                 )
               else
                 _ActiveOrdersList(orders: [
@@ -689,6 +759,11 @@ class _KanbanBoard extends StatelessWidget {
   final void Function(String id) onReject;
   final void Function(String id) onStartPreparing;
   final void Function(String id) onReady;
+  final void Function(Map<String, dynamic> order) onCancelNoCourier;
+  final void Function(String id) onRetryCourier;
+
+  /// Hozir serverga amal yuborilayotgan buyurtmalar.
+  final Set<String> busy;
 
   const _KanbanBoard({
     required this.tab,
@@ -700,6 +775,9 @@ class _KanbanBoard extends StatelessWidget {
     required this.onReject,
     required this.onStartPreparing,
     required this.onReady,
+    required this.onCancelNoCourier,
+    required this.onRetryCourier,
+    required this.busy,
   });
 
   @override
@@ -743,7 +821,15 @@ class _KanbanBoard extends StatelessWidget {
         title: 'Tayyor',
         dotColor: OnDexColors.success,
         count: tayyor.length,
-        children: [for (final o in tayyor) _ReadyCard(order: o)],
+        children: [
+          for (final o in tayyor)
+            _ReadyCard(
+              order: o,
+              busy: busy.contains(o['id']),
+              onCancel: () => onCancelNoCourier(o),
+              onRetry: () => onRetryCourier(o['id'] as String),
+            ),
+        ],
       ),
     );
     addColumn(
@@ -756,17 +842,54 @@ class _KanbanBoard extends StatelessWidget {
       ),
     );
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // ┌─ RESPONSIV TARTIB ───────────────────────────────────────────────┐
+    // Avval ustunlar `IntrinsicHeight` ichida QAT'IY 4 tadan yonma-yon
+    // turardi. Ikki muammo bor edi:
+    //   1. tor oynada (kichik noutbuk, yarim ekran) har ustun ~200 px
+    //      gacha torayib, kartochka matnlari sig'masdi;
+    //   2. `IntrinsicHeight` bolalar balandligini OLDINDAN taxmin
+    //      qiladi, qatorga o'raladigan matnni esa noto'g'ri hisoblashi
+    //      mumkin — bu ham toshishga olib keladi (ustiga har kadrda
+    //      ikki marta o'lchash — sekin).
+    // Endi ustunlar soni kenglikdan: keng oynada 4 ta, o'rtada 2 ta,
+    // torda 1 ta; har ustun o'z mazmunicha balandlikda.
+    // └───────────────────────────────────────────────────────────────────┘
+    if (columns.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(builder: (context, constraints) {
+      const gap = 16.0;
+      const minColumnWidth = 250.0;
+      var perRow = ((constraints.maxWidth + gap) / (minColumnWidth + gap)).floor();
+      if (perRow < 1) perRow = 1;
+      if (perRow > columns.length) perRow = columns.length;
+      // 3 ta ustun 4 tadan birini yolg'iz pastki qatorga tushirardi —
+      // ikkitadan juft qatorlar tartibliroq ko'rinadi.
+      if (perRow == 3 && columns.length == 4) perRow = 2;
+
+      final rows = <Widget>[];
+      for (var start = 0; start < columns.length; start += perRow) {
+        rows.add(Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = start; i < start + perRow; i++) ...[
+              if (i > start) const SizedBox(width: gap),
+              // Oxirgi qator to'lmasa bo'sh joy qoladi — ustunlar
+              // kengligi qatordan qatorga o'zgarmasin.
+              Expanded(
+                  child: i < columns.length ? columns[i] : const SizedBox.shrink()),
+            ],
+          ],
+        ));
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < columns.length; i++) ...[
-            if (i > 0) const SizedBox(width: 16),
-            Expanded(child: columns[i]),
+          for (var r = 0; r < rows.length; r++) ...[
+            if (r > 0) const SizedBox(height: gap),
+            rows[r],
           ],
         ],
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -999,16 +1122,30 @@ class _PreparingCard extends StatelessWidget {
           _PhoneRow(phone: order['customer_phone'] as String?),
           if (isPreparing) ...[
             const SizedBox(height: 8),
+            // ┌─ TUZATILGAN NOSOZLIK: "RIGHT OVERFLOWED BY 26 PIXELS" ────┐
+            // Matn qatorga `Expanded`siz qo'yilgan edi. Kechikish
+            // qo'shilganda ("49 daqiqa kechikdi") yozuv uzayib, tor Kanban
+            // ustuniga sig'masdi va kartochka ustida sariq-qora chiziq
+            // chiqardi. Endi matn qolgan kenglikni oladi va kerak bo'lsa
+            // ikkinchi qatorga o'tadi — kenglik qanchalik tor bo'lmasin.
+            // └───────────────────────────────────────────────────────────┘
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.timer_outlined,
-                    size: 14, color: overdue ? OnDexColors.danger : OnDexColors.inkFaint),
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(Icons.timer_outlined,
+                      size: 14, color: overdue ? OnDexColors.danger : OnDexColors.inkFaint),
+                ),
                 const SizedBox(width: 7),
-                Text('Tayyor bo\'lish vaqti: $countdownText',
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        color: overdue ? OnDexColors.danger : OnDexColors.inkDim,
-                        fontWeight: overdue ? FontWeight.w700 : FontWeight.w400)),
+                Expanded(
+                  child: Text('Tayyor bo\'lish vaqti: $countdownText',
+                      key: const ValueKey('ready-countdown'),
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: overdue ? OnDexColors.danger : OnDexColors.inkDim,
+                          fontWeight: overdue ? FontWeight.w700 : FontWeight.w400)),
+                ),
               ],
             ),
           ],
@@ -1020,10 +1157,12 @@ class _PreparingCard extends StatelessWidget {
               onPressed: isPreparing ? onReady : onStartPreparing,
               style: FilledButton.styleFrom(
                 backgroundColor: OnDexColors.ink,
-                padding: const EdgeInsets.symmetric(vertical: 11),
+                padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
               ),
               icon: Icon(isPreparing ? Icons.check_circle_rounded : Icons.soup_kitchen_rounded, size: 16),
-              label: Text(isPreparing ? 'Tayyorlandi' : 'Tayyorlashni boshlash'),
+              // Tor ustunda tugma yozuvi ham chiqib ketmasin.
+              label: Text(isPreparing ? 'Tayyorlandi' : 'Tayyorlashni boshlash',
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ),
         ],
@@ -1034,97 +1173,45 @@ class _PreparingCard extends StatelessWidget {
 
 class _ReadyCard extends StatelessWidget {
   final Map<String, dynamic> order;
-  const _ReadyCard({required this.order});
+  final VoidCallback onCancel;
+  final VoidCallback onRetry;
+  final bool busy;
+  const _ReadyCard({
+    required this.order,
+    required this.onCancel,
+    required this.onRetry,
+    required this.busy,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final courierId = order['courier_id'] as String? ?? '';
-    final courierName = order['courier_name'] as String? ?? '';
-    // Stol buyurtmasiga kuryer UMUMAN tegishli emas — taomni affitsiant
-    // zalga olib boradi. Bu tekshiruvsiz kartochka "Kuryer
-    // qidirilmoqda..." deb abadiy aylanib turardi (izohi:
-    // `isDineInOrder`).
-    final dineIn = isDineInOrder(order);
     return _CardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Tartib: raqam → stol (stol buyurtmasida) → taomlar → mijoz
+          // raqami → jami summa → kuryer holati.
           OrderCardHeader(order: order),
           const SizedBox(height: 8),
           _ItemsList(order: order),
-          // Stol buyurtmasida mijoz telefoni saqlanmaydi (u zalda
-          // o'tiribdi) — bo'sh qator chizmaymiz.
-          if (!dineIn) _PhoneRow(phone: order['customer_phone'] as String?),
+          // Raqam bo'lmasa qator umuman chizilmaydi (`_PhoneRow`), bor
+          // bo'lsa stol buyurtmasida ham ko'rsatiladi.
+          _PhoneRow(phone: order['customer_phone'] as String?),
           _TotalRow(totalTiyin: (order['total_tiyin'] ?? 0) as int),
           const SizedBox(height: 10),
           // MUHIM: bu yerda "Kuryerga topshirish" tugmasi ATAYLAB YO'Q —
-          // ChustApp arxitekturasida (2026-07-30dagi ikkinchi, qat'iy
-          // qarordan keyin) buyurtmani "picked_up" holatiga o'tkazishni
-          // FAQAT KURYER o'zi, o'z ilovasida "Slide to confirm" orqali
-          // qiladi (restoran raqamning oxirgi 4 xonasini og'zaki aytadi).
-          // Namunadagi rasm buni hisobga olmagan (eski/boshqa arxitektura
-          // g'oyasi) — bu yerda ataylab moslashtirildi.
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            decoration: BoxDecoration(
-              color: dineIn
-                  ? OnDexColors.primaryTint
-                  : (courierId.isEmpty
-                      ? OnDexColors.pageBg
-                      : OnDexColors.successBg),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: dineIn
-                // Kutish indikatori YO'Q: bu yerda kutiladigan hech
-                // narsa yo'q. Taom tayyor bo'lishi bilan affitsiant
-                // ilovasiga (`apps/waiter_app`) darhol chiqadi va u
-                // "Yetkazdim" bosgach buyurtma yopiladi.
-                ? const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.room_service_rounded,
-                          size: 15, color: OnDexColors.primary),
-                      SizedBox(width: 8),
-                      Text('Affitsiant zalga olib boradi',
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: OnDexColors.primary,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  )
-                : courierId.isEmpty
-                    ? const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 13,
-                            height: 13,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: OnDexColors.inkFaint),
-                          ),
-                          SizedBox(width: 9),
-                          Text('Kuryer qidirilmoqda...',
-                              style: TextStyle(
-                                  fontSize: 12.5, color: OnDexColors.inkDim)),
-                        ],
-                      )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.pedal_bike_rounded,
-                              size: 15, color: OnDexColors.success),
-                          const SizedBox(width: 8),
-                          Text(
-                              courierName.isEmpty
-                                  ? 'Kuryer biriktirildi, kutilmoqda'
-                                  : '$courierName kelmoqda',
-                              style: const TextStyle(
-                                  fontSize: 12.5,
-                                  color: OnDexColors.success,
-                                  fontWeight: FontWeight.w700)),
-                        ],
-                      ),
+          // buyurtmani "picked_up" holatiga FAQAT KURYER o'zi, o'z
+          // ilovasida o'tkazadi (restoran raqamning oxirgi 4 xonasini
+          // og'zaki aytadi).
+          //
+          // Kuryer topilmasa esa abadiy "Kuryer qidirilmoqda..." emas,
+          // "Bekor qilish" / "Kuryer qidirish" tugmalari chiqadi
+          // (`CourierStatusBox`, qaror serverda).
+          CourierStatusBox(
+            order: order,
+            busy: busy,
+            onCancel: onCancel,
+            onRetry: onRetry,
           ),
         ],
       ),
@@ -1212,7 +1299,18 @@ class _ActiveListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, color, bg) = orderStatusStyle(order['status'] as String? ?? '');
+    var (label, color, bg) = orderStatusStyle(order['status'] as String? ?? '');
+    // Kuryer topilmagan tayyor buyurtma ro'yxatda ham ajralib tursin —
+    // qaror tugmalari Kanban kartochkasida.
+    if (isCourierNotFound(order)) {
+      (label, color, bg) = ('Kuryer topilmadi', OnDexColors.danger, OnDexColors.dangerBg);
+    }
+    // Stol buyurtmasida stol raqami taomlardan OLDIN — xodim uchun eng
+    // muhim ma'lumot.
+    final tableLabel = order['table_label'] as String? ?? '';
+    final summary = isDineInOrder(order)
+        ? '${tableText(tableLabel)} · ${_itemsSummary(order)}'
+        : _itemsSummary(order);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       child: Row(
@@ -1226,7 +1324,7 @@ class _ActiveListRow extends StatelessWidget {
               child: Text(_timeOfDay(_parseAt(order['created_at'])),
                   style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkFaint))),
           Expanded(
-            child: Text(_itemsSummary(order),
+            child: Text(summary,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: OnDexColors.ink)),

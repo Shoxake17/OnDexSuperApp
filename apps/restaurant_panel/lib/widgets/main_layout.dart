@@ -27,6 +27,13 @@ class MainLayout extends StatelessWidget {
   final ValueChanged<DateTime> onDateChanged;
 
   final int newOrdersCount;
+
+  /// O'qilmagan restoran bildirishnomalari (qo'ng'iroq va yon menyu).
+  final int notificationsCount;
+
+  /// O'qilmagan qo'llab-quvvatlash javoblari (yon menyudagi "Chat markazi").
+  final int supportCount;
+  final VoidCallback onBellTap;
   final VoidCallback onLogout;
 
   /// Yuqori paneldagi sahifaga xos amallar (`TopBar.actions` ga qarang).
@@ -49,6 +56,9 @@ class MainLayout extends StatelessWidget {
     required this.selectedDate,
     required this.onDateChanged,
     required this.newOrdersCount,
+    required this.notificationsCount,
+    this.supportCount = 0,
+    required this.onBellTap,
     required this.onLogout,
     required this.child,
   });
@@ -67,6 +77,8 @@ class MainLayout extends StatelessWidget {
             restaurantAddress: restaurantAddress,
             restaurantLogoUrl: restaurantLogoUrl,
             newOrdersCount: newOrdersCount,
+            notificationsCount: notificationsCount,
+            supportCount: supportCount,
             onLogout: onLogout,
           ),
           Expanded(
@@ -83,8 +95,8 @@ class MainLayout extends StatelessWidget {
                   staffRole: staffRole,
                   selectedDate: selectedDate,
                   onDateChanged: onDateChanged,
-                  newOrdersCount: newOrdersCount,
-                  onBellTap: () => onSelect(1), // Buyurtmalar
+                  notificationsCount: notificationsCount,
+                  onBellTap: onBellTap,
                   actions: topBarActions,
                 ),
                 Expanded(child: child),

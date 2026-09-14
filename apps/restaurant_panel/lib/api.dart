@@ -60,6 +60,12 @@ class RestaurantApi extends ApiClient {
           'preparation_minutes': preparationMinutes,
       });
 
+  /// "Kuryer topilmadi" holatida kuryer qidiruvini qayta boshlaydi (yangi
+  /// 10 daqiqa). Bekor qilish — oddiy `transition(id, 'cancelled')`:
+  /// server uni tayyor buyurtmada FAQAT shu holatda ruxsat etadi.
+  Future<void> retryCourierSearch(String orderId) =>
+      send('POST', '/orders/$orderId/dispatch/retry', <String, Object?>{});
+
   // ---------- Stollar (QR kod) ----------
   //
   // Javobdagi `qr_token` — SIR. U faqat shu endpointlarda beriladi
@@ -138,6 +144,39 @@ class RestaurantApi extends ApiClient {
   Future<Map<String, dynamic>> setStaffStatus(String id, String status) async =>
       Map<String, dynamic>.from(
           await send('POST', '/restaurants/$rid/staff/$id/status', {'status': status}) as Map);
+
+  /// "Bildirishnomalar" ro'yxati. `after` — jonli kanal uzilganda
+  /// o'tkazib yuborilganlar (o'sish tartibida), `before` — sahifalash.
+  Future<Map<String, dynamic>> notifications({
+    String category = '',
+    String period = '',
+    String query = '',
+    int? before,
+    int? after,
+    int limit = 30,
+  }) async {
+    final params = <String, String>{
+      if (category.isNotEmpty) 'category': category,
+      if (period.isNotEmpty) 'period': period,
+      if (query.trim().isNotEmpty) 'q': query.trim(),
+      if (before != null && before > 0) 'before': '$before',
+      if (after != null && after > 0) 'after': '$after',
+      'limit': '$limit',
+    };
+    final qs = Uri(queryParameters: params).query;
+    return Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/notifications?$qs') as Map);
+  }
+
+  /// O'qilmaganlar soni va oxirgi tartib raqami (qo'ng'iroq belgisi).
+  Future<Map<String, dynamic>> notificationsSummary() async =>
+      Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/notifications/summary') as Map);
+
+  Future<Map<String, dynamic>> markNotificationRead(String id) async => Map<String, dynamic>.from(
+      await send('POST', '/restaurants/$rid/notifications/${Uri.encodeComponent(id)}/read') as Map);
+
+  /// Faqat `upToSeq` gacha — bosish paytida kelgan yangi xabar o'qilmagan qoladi.
+  Future<Map<String, dynamic>> markAllNotificationsRead(int upToSeq) async => Map<String, dynamic>.from(
+      await send('POST', '/restaurants/$rid/notifications/read-all', {'up_to_seq': upToSeq}) as Map);
 
   Future<List<dynamic>> staffActivity(String id) async {
     final res = await send('GET', '/restaurants/$rid/staff/$id/activity');
@@ -332,6 +371,48 @@ class RestaurantApi extends ApiClient {
     return d as Map<String, dynamic>;
   }
 
+  // ---------- Qo'llab-quvvatlash: Yordam markazi va Chat markazi ----------
+
+  /// OnDex admini kiritgan aloqa ma'lumotlari (barcha panellarda bir xil).
+  Future<Map<String, dynamic>> supportContacts() async =>
+      Map<String, dynamic>.from(await send('GET', '/support/contacts') as Map);
+
+  /// Chat xabarlari (eskisidan yangisiga) + suhbat xulosasi. [before] —
+  /// eskiroq sahifa, [after] — uzilishdan keyingi to'ldirish.
+  Future<Map<String, dynamic>> supportMessages({int? before, int? after, int limit = 50}) async {
+    final q = [
+      'limit=$limit',
+      if (before != null && before > 0) 'before=$before',
+      if (after != null && after > 0) 'after=$after',
+    ].join('&');
+    return Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/support/messages?$q') as Map);
+  }
+
+  Future<Map<String, dynamic>> supportSummary() async =>
+      Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/support/summary') as Map);
+
+  /// [clientId] — qayta urinishda AYNI qiymat: server ikkinchi xabar yaratmaydi.
+  Future<Map<String, dynamic>> sendSupportMessage(String body, String clientId) async =>
+      Map<String, dynamic>.from(await send('POST', '/restaurants/$rid/support/messages',
+          {'body': body, 'client_id': clientId}) as Map);
+
+  Future<Map<String, dynamic>> markSupportRead(int upToSeq) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/restaurants/$rid/support/read', {'up_to_seq': upToSeq}) as Map);
+
+  /// Rasm + ixtiyoriy izoh (multipart). Server rasmni tekshiradi va qayta
+  /// kodlaydi; [clientId] qayta urinishda AYNI qiymat.
+  Future<Map<String, dynamic>> sendSupportImage(
+      String body, String clientId, List<int> bytes, String filename) async {
+    final data = await sendMultipart('POST', '/restaurants/$rid/support/messages', bytes, filename,
+        fields: {'client_id': clientId, if (body.isNotEmpty) 'body': body},
+        errorText: 'Rasm yuborilmadi — internetni tekshiring');
+    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+  }
+
+  /// Chatdagi rasm manzili — faqat token bilan ochiladi (ommaviy emas).
+  String supportAttachmentUrl(String attachmentId) =>
+      '$baseUrl/restaurants/$rid/support/attachments/${Uri.encodeComponent(attachmentId)}';
 }
 
 /// Sana `YYYY-MM-DD` shaklida (server `internal/stats.ParseQuery` shuni kutadi).

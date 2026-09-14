@@ -179,5 +179,6 @@ func (s *Server) wsSubscriptionKeys(r *http.Request, userID, entityID, role stri
 			keys = append(keys, orderTopic(orderID))
 		}
 	}
+	keys = append(keys, managerTopicIfRestaurant(role, entityID)...)
 	return append(keys, adminTopicIfAdmin(role)...)
 }

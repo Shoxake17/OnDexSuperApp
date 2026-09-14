@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../widgets/common.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/favorites_store.dart';
@@ -338,7 +337,10 @@ class _CartScreenState extends State<CartScreen> {
                 qty: _cart.qtyOf(id),
                 discount: discount,
                 promoted: PromotionIndex(_promos).covers(p, discount),
-                favorited: FavoritesStore.instance.contains(id),
+                topLeft: FavoriteButton(
+                  productId: id,
+                  initialFavorited: FavoritesStore.instance.contains(id),
+                ),
                 onAdd: () => _cart.increment(
                   restaurantId: restaurantId,
                   productId: id,

@@ -101,6 +101,13 @@ class ApiClient {
           r = await http
               .patch(uri, headers: _headers, body: jsonEncode(body ?? {}))
               .timeout(timeout);
+        case 'PUT':
+          // To'liq almashtirish (masalan `PUT /admin/support/contacts`).
+          // Avval bu shox yo'q edi va PUT jimgina POST bo'lib ketardi
+          // (server 405 qaytarardi).
+          r = await http
+              .put(uri, headers: _headers, body: jsonEncode(body ?? {}))
+              .timeout(timeout);
         default:
           r = await http
               .post(uri, headers: _headers, body: jsonEncode(body ?? {}))

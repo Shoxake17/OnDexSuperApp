@@ -192,6 +192,8 @@ type waveOffer struct {
 	// almashtiriladi). Javob faqat SHU to'plamdagi kuryerdan qabul
 	// qilinadi — eskirgan to'lqindan kechikib kelgan javob rad etiladi.
 	wave map[string]struct{}
+	// cancel — shu qidiruv kontekstini bekor qiladi (`Cancel`).
+	cancel context.CancelFunc
 }
 
 // inWave — mutex chaqiruvchida ushlab turiladi.
@@ -287,6 +289,13 @@ func formatCoord(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
 // `params.IsOrderCancelled` true qaytarsa to'xtaydi. Chaqiruvchi buni
 // goroutine'da ishga tushiradi.
 func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params DispatchParams) (string, error) {
+	// Har qidiruvning O'Z konteksti: `Cancel(orderID)` uni tashqaridan
+	// DARHOL to'xtatadi (kuryer topilmadi, buyurtma bekor qilindi) —
+	// keyingi tsiklni yoki taklif muddatini kutmasdan. Ochiq takliflar
+	// ham yopiladi (`awaitWave` dagi `ctx.Done`).
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	d.mu.Lock()
 	if _, exists := d.pending[orderID]; exists {
 		d.mu.Unlock()
@@ -298,12 +307,18 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 	offer := &waveOffer{
 		respCh: make(chan Response, waveSize),
 		wave:   make(map[string]struct{}, waveSize),
+		cancel: cancel,
 	}
 	d.pending[orderID] = offer
 	d.mu.Unlock()
 	defer func() {
 		d.mu.Lock()
-		delete(d.pending, orderID)
+		// Faqat O'ZIMIZNI o'chiramiz: `Cancel` bizni allaqachon olib
+		// tashlagan va shu buyurtma uchun YANGI qidiruv boshlangan
+		// bo'lishi mumkin (restoran "Kuryer qidirish" bosdi).
+		if d.pending[orderID] == offer {
+			delete(d.pending, orderID)
+		}
 		d.mu.Unlock()
 	}()
 
@@ -712,4 +727,33 @@ func (d *Dispatcher) HandleResponse(orderID string, resp Response) bool {
 	default:
 		return false
 	}
+}
+
+// Cancel — shu buyurtma uchun ishlayotgan qidiruvni DARHOL to'xtatadi:
+// kuryerlardagi ochiq takliflar yopiladi, `Dispatch` esa
+// `context.Canceled` qaytaradi. Qidiruv bo'lmasa `false` (xato emas).
+//
+// Yozuv shu zahoti olib tashlanadi: shu buyurtma uchun YANGI `Dispatch`
+// eski goroutine to'liq chiqishini kutmasdan boshlana oladi, eski
+// to'lqindan kechikkan javob esa yangisiga tushmaydi.
+func (d *Dispatcher) Cancel(orderID string) bool {
+	d.mu.Lock()
+	offer, ok := d.pending[orderID]
+	if ok {
+		delete(d.pending, orderID)
+	}
+	d.mu.Unlock()
+	if !ok {
+		return false
+	}
+	offer.cancel()
+	return true
+}
+
+// IsRunning — shu buyurtma uchun qidiruv hozir ishlayaptimi.
+func (d *Dispatcher) IsRunning(orderID string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	_, ok := d.pending[orderID]
+	return ok
 }
