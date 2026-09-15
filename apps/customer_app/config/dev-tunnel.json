@@ -4,7 +4,7 @@
   "_android": "Cleartext (http) bloki ham shu bilan chetlab o'tiladi - tunnel HTTPS, ya'ni release build uchun network_security_config.xml ga tegish shart emas.",
   "_xavf": "Tunnel ishlab turganda dev API OMMAVIY internetda bo'ladi (hostname Certificate Transparency loglariga tushadi) va .env dagi HAQIQIY Telegram/Resend/R2 kalitlari ishlatiladi. Sinov tugagach cloudflared'ni Ctrl+C bilan to'xtating.",
 
-  "ONDEX_APP_VERSION": "0.2.0-dev",
+  "ONDEX_APP_VERSION": "0.2.2-dev",
 
   "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"
