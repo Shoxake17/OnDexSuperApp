@@ -1,0 +1,7 @@
+Bu papka `go run ./cmd/voicegen` bilan yasalgan ovozli yo'l ko'rsatish
+iboralarini saqlaydi ("Kore" ovozi). Fayllar hali generatsiya
+qilinmagan (Gemini kunlik kvotasi kutilmoqda) — shu sabab git bo'sh
+papkani saqlamasligi uchun bu belgi fayli qo'yilgan.
+
+Generatsiya qilingandan keyin bu fayl olib tashlanmasin — u yerda
+.mp3 fayllar bilan birga qolaveradi, hech kimga xalaqit bermaydi.
