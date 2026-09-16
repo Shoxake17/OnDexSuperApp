@@ -39,14 +39,25 @@ export default function DesktopNavbar({
   /** Yorliqdagi ✕ bosilganda (odatda bosh sahifaga qaytish). */
   onClearScope,
   placeholder = "OnDex'dan qidirish",
+  initialQuery = "",
 }: {
   signedIn: boolean;
   scopeLabel?: string;
   onClearScope?: () => void;
   placeholder?: string;
+  /** Qidiruv sahifasida — maydonda joriy so'rov turadi. */
+  initialQuery?: string;
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  // Qidiruv sahifasida yangi so'rov bilan qayta chizilganda komponent
+  // saqlanib qoladi — maydon ham yangi so'rovni ko'rsatsin (effekt emas,
+  // render paytida moslash: bir kadr eski qiymat ko'rinmaydi).
+  const [syncedQuery, setSyncedQuery] = useState(initialQuery);
+  if (syncedQuery !== initialQuery) {
+    setSyncedQuery(initialQuery);
+    setQuery(initialQuery);
+  }
   const [addressOpen, setAddressOpen] = useState(false);
   // Saqlangan manzil nomi — yo'q bo'lsa shahar nomi ko'rsatiladi
   // (platforma faqat Chust uchun, ya'ni bu doim to'g'ri zaxira).

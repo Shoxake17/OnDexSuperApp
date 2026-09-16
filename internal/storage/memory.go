@@ -288,6 +288,18 @@ func (r *MemoryCourierRepo) SetApproved(_ context.Context, id string, approved b
 	return nil
 }
 
+func (r *MemoryCourierRepo) SetName(_ context.Context, id, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.data[id]
+	if !ok {
+		return couriers.ErrNoCourier
+	}
+	c.Name = name
+	r.data[id] = c
+	return nil
+}
+
 // SoftDelete — xotira rejimida yozuv shunchaki O'CHIRILADI.
 //
 // Postgres variantidan farqi ataylab: u yerda yozuv qoladi, chunki
@@ -338,7 +350,7 @@ func (r *MemoryCourierRepo) ListAvailable(_ context.Context) ([]*couriers.Courie
 // Masofa `geo.HaversineMeters` bilan — Postgres tomonda PostGIS
 // ellipsoid bo'yicha hisoblaydi, farq ~0.5% (bitta shahar ichida bir
 // necha metr, kuryer tanlashda ahamiyatsiz).
-func (r *MemoryCourierRepo) ListAvailableNear(_ context.Context, lat, lng float64,
+func (r *MemoryCourierRepo) ListAvailableNear(_ context.Context, pool string, lat, lng float64,
 	radiusMeters float64, maxAge time.Duration, limit int) ([]*couriers.Courier, error) {
 
 	if limit <= 0 {
@@ -357,7 +369,9 @@ func (r *MemoryCourierRepo) ListAvailableNear(_ context.Context, lat, lng float6
 	}
 	var found []scored
 	for _, c := range r.data {
-		if !c.Available || !c.Approved {
+		// Havuz QAT'IY: restoran kuryeri faqat o'z restoraniga, platforma
+		// kuryeri faqat platforma havuziga (Postgres bilan bir xil).
+		if !c.Available || !c.Approved || c.RestaurantID != pool {
 			continue
 		}
 		if maxAge > 0 {

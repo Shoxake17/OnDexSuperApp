@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bike, MapPin, Send, ShieldCheck, Smartphone } from "lucide-react";
 import { getTelegramWebApp } from "@/lib/telegram";
+import {
+  AUTH_BORDER as BORDER,
+  AUTH_BRAND as BRAND,
+  AUTH_MUTED as MUTED,
+  AUTH_TEXT as TEXT,
+  AuthButton,
+  CODE_LENGTH,
+  ErrorNote,
+  PHONE_DIGITS,
+  groupPhone,
+} from "@/lib/auth-widgets";
 
 // ─────────────────────────────────────────────────────────────────────
 // Kirish sahifasi.
@@ -28,16 +39,9 @@ import { getTelegramWebApp } from "@/lib/telegram";
 // alohida qadam emas — kod tasdiqlansa akkaunt o'zi yaratiladi.
 // ─────────────────────────────────────────────────────────────────────
 
-// Ranglar — `auth_ui.dart` dagi qiymatlar (bitta manba, ikki platforma).
-const BRAND = "#F64E03";
+// `BG` — bu sahifaga xos fon (o'chirish sahifasi boshqacha fonda),
+// shuning uchun umumiy modulda emas, shu yerda qoladi.
 const BG = "#FDFBFA";
-const BORDER = "#EDE5DF";
-const TEXT = "#1A1A1A";
-const MUTED = "#7C7671";
-const HINT = "#A8A29D";
-
-const CODE_LENGTH = 6; // users.randomCode — "%06d"
-const PHONE_DIGITS = 9; // +998 dan keyingi qism
 
 type Step = "phone" | "code";
 
@@ -155,8 +159,10 @@ export default function LoginClient({
               >
                 On<span style={{ color: BRAND }}>Dex</span>
               </p>
+              {/* Mijoz ilovasidagi kirish ekrani bilan AYNI shior —
+                  `apps/customer_app/lib/widgets/auth_ui.dart`. */}
               <p className="text-xs font-medium" style={{ color: MUTED }}>
-                Super App
+                Xalq ilovasi
               </p>
 
               <h1
@@ -521,54 +527,5 @@ function CodeStep({
   );
 }
 
-// ── Umumiy qismlar (ilovadagi `AuthButton` o'lchamlarida) ────────────
-
-function AuthButton({
-  busy,
-  disabled,
-  onClick,
-  children,
-}: {
-  busy: boolean;
-  disabled: boolean;
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type={onClick ? "button" : "submit"}
-      onClick={onClick}
-      disabled={disabled}
-      className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl text-[15.5px] font-bold text-white transition-opacity active:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-      style={{ background: BRAND }}
-    >
-      {busy && (
-        <span className="h-[18px] w-[18px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
-      )}
-      {children}
-    </button>
-  );
-}
-
-function ErrorNote({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      role="alert"
-      className="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-600"
-    >
-      {children}
-    </p>
-  );
-}
-
-/** "901234567" -> "90 123 45 67" (o'qish uchun guruhlash). */
-function groupPhone(digits: string): string {
-  return [
-    digits.slice(0, 2),
-    digits.slice(2, 5),
-    digits.slice(5, 7),
-    digits.slice(7, 9),
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
+// `AuthButton`/`ErrorNote`/`groupPhone` — `@/lib/auth-widgets` dan
+// (yuqoridagi import; "Akkauntni o'chirish" sahifasi bilan umumiy).

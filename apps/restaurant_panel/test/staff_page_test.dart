@@ -501,7 +501,7 @@ void main() {
       // Alohida "ko'rish" belgisi yo'q — qatorni bosish kartochkani ochadi.
       await _tap(tester, find.byKey(const ValueKey('row-m2')));
       expect(find.text('Xodim ma\'lumotlari'), findsOneWidget);
-      expect(find.text('Ochiq — OnDex Affitsiant'), findsOneWidget);
+      expect(find.text('Ochiq — OnDexPro'), findsOneWidget);
       expect(find.text('Yakshanba'), findsOneWidget);
       expect(find.text('Kiritilmagan'), findsWidgets);
       expect(requests.where((r) => r.url.path == '/restaurants/rest-a/staff/m2/activity'), hasLength(1));

@@ -462,7 +462,7 @@ func (s *Service) toolRestaurants(ctx context.Context) any {
 		out = append(out, map[string]any{
 			"restaurant_id": r.ID,
 			"name":          r.Name,
-			"open":          r.Open,
+			"open":          r.AcceptingOrdersNow(),
 			"eta_minutes":   fmt.Sprintf("%d-%d", r.ETAMinMinutes, r.ETAMaxMinutes),
 		})
 	}
@@ -498,7 +498,7 @@ func (s *Service) toolMenu(ctx context.Context, restaurantID string) any {
 		out = append(out, item)
 	}
 	return map[string]any{
-		"ok": true, "restaurant": rest.Name, "open": rest.Open, "menu": out,
+		"ok": true, "restaurant": rest.Name, "open": rest.AcceptingOrdersNow(), "menu": out,
 	}
 }
 

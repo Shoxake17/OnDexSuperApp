@@ -72,7 +72,10 @@ class AuthHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const Text('Super App',
+              // Logotip ostidagi kichik tavsif — brend shiori. Ilovaning
+              // BIRINCHI ko'rinadigan ekrani shu, ya'ni bu yozuv OnDex
+              // nima ekanini bir qatorda aytadi.
+              const Text('Xalq ilovasi',
                   style: TextStyle(
                       fontSize: 12,
                       color: authMuted,

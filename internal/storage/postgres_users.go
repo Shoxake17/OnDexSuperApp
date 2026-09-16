@@ -33,14 +33,14 @@ const userColumns = `id, phone, name, role, entity_id, created_at,
 	address_lat, address_lng, address_text, address_entrance, address_floor,
 	address_apartment, address_intercom, address_comment,
 	first_name, last_name, email, password_hash, phone_verified, email_verified,
-	COALESCE(telegram_id, 0)`
+	COALESCE(telegram_id, 0), deleted_at`
 
 func scanUser(row pgx.Row, u *users.User) error {
 	return row.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt,
 		&u.Address.Lat, &u.Address.Lng, &u.Address.Text, &u.Address.Entrance,
 		&u.Address.Floor, &u.Address.Apartment, &u.Address.Intercom, &u.Address.Comment,
 		&u.FirstName, &u.LastName, &u.Email, &u.PasswordHash, &u.PhoneVerified,
-		&u.EmailVerified, &u.TelegramID)
+		&u.EmailVerified, &u.TelegramID, &u.DeletedAt)
 }
 
 // GetByTelegramID — Telegram Mini App kirishi (migration 0031).
@@ -344,6 +344,34 @@ func (r *PgUserRepo) Delete(ctx context.Context, id string) error {
 	return tx.Commit(ctx)
 }
 
+// SoftDelete — `deleted_at = now()`. Boshqa hech qanday ustunga
+// tegmaydi (`Repository.SoftDelete` izohiga qarang: ma'lumot saqlanadi).
+func (r *PgUserRepo) SoftDelete(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET deleted_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+// Reactivate — `deleted_at = NULL`. Ma'lumot allaqachon saqlangan
+// bo'lgani uchun boshqa hech narsa tiklashga hojat yo'q.
+func (r *PgUserRepo) Reactivate(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET deleted_at = NULL WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *PgUserRepo) UpdateAddress(ctx context.Context, id string, a users.AddressDetails) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE users SET address_lat = $2, address_lng = $3, address_text = $4,
@@ -358,6 +386,21 @@ func (r *PgUserRepo) UpdateAddress(ctx context.Context, id string, a users.Addre
 		return users.ErrUserNotFound
 	}
 	return nil
+}
+
+func (r *PgUserRepo) GetByRoleEntity(ctx context.Context, role users.Role, entityID string) (*users.User, error) {
+	var u users.User
+	err := scanUser(r.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users
+		 WHERE role = $1 AND entity_id = $2
+		 ORDER BY created_at LIMIT 1`, role, entityID), &u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, users.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 func (r *PgUserRepo) ListByRole(ctx context.Context, role users.Role) ([]*users.User, error) {

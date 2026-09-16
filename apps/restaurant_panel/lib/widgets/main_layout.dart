@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ondex_core/ondex_core.dart' show RestaurantOpenStatus;
 
 import '../theme.dart';
 import 'sidebar.dart';
@@ -18,6 +19,9 @@ class MainLayout extends StatelessWidget {
   final String restaurantAddress;
   final String restaurantLogoUrl;
   final bool restaurantOpen;
+
+  /// Mijozlar ko'radigan holat (ish vaqti bilan). `null` — faqat tugma.
+  final RestaurantOpenStatus? restaurantOpenStatus;
   final ValueChanged<bool> onOpenChanged;
 
   final String staffName;
@@ -50,6 +54,7 @@ class MainLayout extends StatelessWidget {
     required this.restaurantAddress,
     required this.restaurantLogoUrl,
     required this.restaurantOpen,
+    this.restaurantOpenStatus,
     required this.onOpenChanged,
     required this.staffName,
     required this.staffRole,
@@ -90,6 +95,7 @@ class MainLayout extends StatelessWidget {
                   restaurantAddress: restaurantAddress,
                   restaurantLogoUrl: restaurantLogoUrl,
                   open: restaurantOpen,
+                  openStatus: restaurantOpenStatus,
                   onOpenChanged: onOpenChanged,
                   staffName: staffName,
                   staffRole: staffRole,

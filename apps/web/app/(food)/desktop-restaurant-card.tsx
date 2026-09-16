@@ -1,7 +1,10 @@
+"use client";
+
 import { Clock, Star, Store } from "lucide-react";
 import Link from "next/link";
 import { fullImageUrl } from "@/lib/images";
 import type { Restaurant } from "@/lib/types";
+import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
 
 // Desktop to'ri uchun restoran kartasi.
 //
@@ -26,12 +29,14 @@ export default function DesktopRestaurantCard({
   const hasRating = r.rating > 0;
   const hasEta = r.eta_min_minutes > 0 && r.eta_max_minutes > 0;
   const tags = r.tags.trim();
+  // "Ochiq/Yopiq" — qo'lda tugma emas, ish vaqti bilan (server hisobi).
+  const { status, detail } = useRestaurantOpenStatus(r);
 
   const body = (
     <>
       <div
         className={`relative overflow-hidden rounded-2xl bg-white/5 ${
-          r.open ? "" : "opacity-50"
+          status.open ? "" : "opacity-50"
         }`}
       >
         {/* ┌─ QAT'IY NISBAT: 267×133 (= 2:1) ─────────────────────────┐
@@ -68,9 +73,15 @@ export default function DesktopRestaurantCard({
         {/* Yopiq bo'lsa — ANIQ belgi. Ochiq holat uchun belgi
             QO'YILMAYDI: u standart holat va har kartada takrorlanganda
             faqat shovqin qo'shadi (namunada ham yo'q). */}
-        {!r.open && (
-          <span className="absolute left-3 top-3 rounded-full bg-black/75 px-2.5 py-1 text-xs font-bold text-white">
-            Yopiq
+        {!status.open && (
+          <span className="absolute left-3 top-3 max-w-[85%] truncate rounded-full bg-black/75 px-2.5 py-1 text-xs font-bold text-white">
+            Yopiq{detail ? ` · ${detail}` : ""}
+          </span>
+        )}
+        {/* Ochiq, lekin yopilishga oz qoldi — mijoz buyurtmani kechiktirmasin. */}
+        {status.open && detail && (
+          <span className="absolute left-3 top-3 rounded-full bg-black/75 px-2.5 py-1 text-xs font-bold text-amber-300">
+            {detail}
           </span>
         )}
       </div>
@@ -96,7 +107,7 @@ export default function DesktopRestaurantCard({
     </>
   );
 
-  if (!r.open) return <div className="block">{body}</div>;
+  if (!status.open) return <div className="block">{body}</div>;
   return (
     <Link href={`/restaurants/${r.id}`} className="group block">
       {body}

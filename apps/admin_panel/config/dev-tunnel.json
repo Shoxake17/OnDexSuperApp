@@ -4,7 +4,7 @@
   "_referrer": "Google Cloud Console kalit cheklovida 'https://dev-api-ondex.shoxpro.uz/*' bo'lishi SHART.",
   "_xavf": "Tunnel ishlab turganda dev API OMMAVIY internetda bo'ladi (hostname Certificate Transparency loglariga tushadi) va .env dagi HAQIQIY Telegram/Resend/R2 kalitlari ishlatiladi. Sinov tugagach cloudflared'ni Ctrl+C bilan to'xtating.",
 
-  "ONDEX_APP_VERSION": "0.1.1-dev",
+  "ONDEX_APP_VERSION": "0.1.1-dev+1",
 
   "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"

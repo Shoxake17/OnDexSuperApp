@@ -91,6 +91,8 @@ func (a *fakeAccounts) Enable(_ context.Context, m *Member) (string, error) {
 	return id, nil
 }
 
+func (a *fakeAccounts) Refresh(context.Context, *Member) error { return nil }
+
 func (a *fakeAccounts) Disable(_ context.Context, _, userID string) error {
 	if a.disableErr != nil {
 		return a.disableErr
@@ -187,6 +189,45 @@ func TestAccessFailsClosed(t *testing.T) {
 	upd, err := svc.Update(ctx, "r1", m.ID, "actor", Patch{Phone: &phone})
 	if err != nil || upd.UserID != "acc-+998909999999" || acc.enabled["acc-+998901234567"] {
 		t.Fatalf("telefon almashganda: %+v %v %+v", upd, err, acc.enabled)
+	}
+}
+
+// Ilovali ikki lavozim o'rtasidagi almashuv (ofitsiant -> yetkazib
+// beruvchi) akkauntni QAYTA bog'laydi: eski rol yopiladi, yangisi
+// ochiladi. Avval bu "o'zgarish yo'q" deb o'tkazib yuborilardi.
+func TestPositionSwitchRelinksAccount(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	acc := &fakeAccounts{enabled: map[string]bool{}}
+	svc := NewService(repo, acc)
+	m, err := svc.Create(ctx, "r1", "actor", Input{FirstName: "Ali", Phone: "+998901234567", Position: "waiter", AppAccess: true})
+	if err != nil || acc.enableCalls != 1 {
+		t.Fatalf("%+v %v", m, err)
+	}
+
+	courier := "courier"
+	upd, err := svc.Update(ctx, "r1", m.ID, "actor", Patch{Position: &courier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(acc.disabled) != 1 || acc.enableCalls != 2 {
+		t.Fatalf("almashuvda eski rol yopilib yangisi ochilishi kerak: disabled=%v enable=%d", acc.disabled, acc.enableCalls)
+	}
+	if !upd.AppAccess || upd.UserID == "" || !acc.enabled[upd.UserID] || !upd.AccessEffective() {
+		t.Fatalf("yetkazib beruvchida kirish ochiq bo'lishi kerak: %+v", upd)
+	}
+
+	// Ilovasiz lavozimga o'tsa kirish yopiladi va tanlov o'chadi.
+	chef := "chef"
+	upd, err = svc.Update(ctx, "r1", m.ID, "actor", Patch{Position: &chef})
+	if err != nil || upd.AppAccess || acc.enabled[upd.UserID] {
+		t.Fatalf("oshpazga o'tganda kirish yopilishi kerak: %+v %v", upd, err)
+	}
+}
+
+func TestCourierPositionAllowsApp(t *testing.T) {
+	if !PositionCourier.AllowsAppAccess() || !PositionWaiter.AllowsAppAccess() || PositionChef.AllowsAppAccess() {
+		t.Fatal("ilovali lavozimlar: faqat ofitsiant va yetkazib beruvchi")
 	}
 }
 

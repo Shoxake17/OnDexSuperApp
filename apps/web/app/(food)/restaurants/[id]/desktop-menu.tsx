@@ -17,7 +17,9 @@ import { useCart } from "@/lib/cart-context";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
 import { categoryOf, computeProductDiscount } from "@/lib/promotions";
+import { closedMessage } from "@/lib/restaurant-status";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
+import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
 import { useDesktopCheckout } from "../../desktop-checkout-context";
 import DesktopNavbar from "../../desktop-navbar";
 import FavoriteButton from "./favorite-button";
@@ -90,6 +92,12 @@ export default function DesktopMenu({
   const hasRating = restaurant.rating > 0;
   const hasEta =
     restaurant.eta_min_minutes > 0 && restaurant.eta_max_minutes > 0;
+
+  // HOZIR buyurtma qabul qiladimi — ish vaqti bilan (mobil menyu bilan
+  // bitta hook). Avval `restaurant.open` (qo'lda tugma) ishlatilardi.
+  const { status: openStatus, detail: openDetail, now } =
+    useRestaurantOpenStatus(restaurant);
+  const orderable = openStatus.open;
 
   return (
     // ┌─ SAHIFA FONI — NAVBAR BILAN BIR XIL KULRANG ─────────────────┐
@@ -173,8 +181,7 @@ export default function DesktopMenu({
               <p className="mt-2 text-[15px] text-white/45">{restaurant.tags}</p>
             )}
 
-            {(hasRating || hasEta || restaurant.address) && (
-              <div className="mt-3.5 flex flex-wrap gap-2.5">
+            <div className="mt-3.5 flex flex-wrap gap-2.5">
                 {hasRating && (
                   <Chip>
                     <Star size={15} className="fill-brand text-brand" />
@@ -195,15 +202,31 @@ export default function DesktopMenu({
                     {restaurant.address}
                   </Chip>
                 )}
+                {/* Holat chipi DOIM chiziladi (avval reyting/manzil
+                    bo'lmasa u ham yo'qolardi). */}
                 <Chip>
                   <span
                     className={`h-2 w-2 rounded-full ${
-                      restaurant.open ? "bg-green-500" : "bg-red-500"
+                      orderable ? "bg-green-500" : "bg-red-500"
                     }`}
                   />
-                  {restaurant.open ? "Ochiq" : "Yopiq"}
+                  {orderable ? "Ochiq" : "Yopiq"}
+                  {openDetail && (
+                    <span className="font-medium text-white/55">· {openDetail}</span>
+                  )}
                 </Chip>
-              </div>
+            </div>
+
+            {!orderable && (
+              <p
+                role="status"
+                className="mt-3.5 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-[14px] font-semibold text-amber-200"
+              >
+                {closedMessage(openStatus, now)}
+                <span className="font-normal text-amber-100/70">
+                  {" — menyuni ko'rish mumkin, buyurtma restoran ochilgach qabul qilinadi."}
+                </span>
+              </p>
             )}
           </div>
 
@@ -240,6 +263,7 @@ export default function DesktopMenu({
                       favorited={favoriteIds.has(p.id)}
                       onFavoriteChange={onFavoriteChange}
                       onQty={(qty) => cart.setQty(restaurant.id, p.id, qty)}
+                      orderable={orderable}
                     />
                   ))}
                 </div>
@@ -251,7 +275,7 @@ export default function DesktopMenu({
 
         {/* ── O'ng ustun: savat ─────────────────────────────────────── */}
         <CartPanel
-          restaurant={restaurant}
+          orderable={orderable}
           items={items}
           productsById={productsById}
           promotions={promotions}
@@ -400,6 +424,7 @@ function MenuCard({
   favorited,
   onFavoriteChange,
   onQty,
+  orderable,
 }: {
   product: Product;
   qty: number;
@@ -407,6 +432,8 @@ function MenuCard({
   favorited: boolean;
   onFavoriteChange: (productId: string, favorited: boolean) => void;
   onQty: (qty: number) => void;
+  /** Restoran HOZIR buyurtma qabul qiladimi — yo'q bo'lsa qo'shib bo'lmaydi. */
+  orderable: boolean;
 }) {
   const price = discount?.discountedPriceTiyin ?? product.price_tiyin ?? 0;
   const available = product.available;
@@ -462,14 +489,15 @@ function MenuCard({
                 <button
                   type="button"
                   onClick={() => onQty(qty + 1)}
+                  disabled={!orderable}
                   aria-label="Ko'paytirish"
-                  className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5"
+                  className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5 disabled:opacity-35"
                 >
                   <Plus size={16} />
                 </button>
               </div>
             ) : (
-              <button
+              orderable && <button
                 type="button"
                 onClick={() => onQty(1)}
                 aria-label={`${product.name} — savatga qo'shish`}
@@ -502,14 +530,15 @@ function MenuCard({
 
 // ── O'ngdagi savat paneli ────────────────────────────────────────────
 function CartPanel({
-  restaurant,
+  orderable,
   items,
   productsById,
   promotions,
   onQty,
   onCheckout,
 }: {
-  restaurant: Restaurant;
+  /** Restoran HOZIR buyurtma qabul qiladimi (ish vaqti bilan). */
+  orderable: boolean;
   items: Record<string, number>;
   productsById: Map<string, Product>;
   promotions: ActivePromotion[];
@@ -609,8 +638,9 @@ function CartPanel({
                     <button
                       type="button"
                       onClick={() => onQty(id, qty + 1)}
+                      disabled={!orderable}
                       aria-label="Ko'paytirish"
-                      className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/10"
+                      className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-white/10 disabled:opacity-35"
                     >
                       <Plus size={14} />
                     </button>
@@ -636,10 +666,10 @@ function CartPanel({
             <button
               type="button"
               onClick={onCheckout}
-              disabled={!restaurant.open}
+              disabled={!orderable}
               className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-brand text-[15px] font-bold text-white transition-colors hover:bg-brand-light disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
             >
-              {restaurant.open ? "Buyurtma berish" : "Restoran yopiq"}
+              {orderable ? "Buyurtma berish" : "Restoran yopiq"}
             </button>
           </div>
         </>

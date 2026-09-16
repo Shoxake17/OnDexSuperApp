@@ -42,6 +42,17 @@ type directionsResponse struct {
 			Duration struct {
 				Value int `json:"value"` // soniya
 			} `json:"duration"`
+			// Steps — ovozli yo'l ko'rsatish uchun manevrlar.
+			Steps []struct {
+				Maneuver      string `json:"maneuver"`
+				StartLocation struct {
+					Lat float64 `json:"lat"`
+					Lng float64 `json:"lng"`
+				} `json:"start_location"`
+				Distance struct {
+					Value int `json:"value"`
+				} `json:"distance"`
+			} `json:"steps"`
 		} `json:"legs"`
 	} `json:"routes"`
 }

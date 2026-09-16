@@ -26,12 +26,20 @@ func (v VehicleType) Valid() bool {
 	return false
 }
 
+// PlatformPool — OnDex platforma kuryerlari havuzi (`Courier.RestaurantID`
+// bo'sh). Restoran havuzi — restoran ID'sining o'zi.
+const PlatformPool = ""
+
 type Courier struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Lat       float64 `json:"lat"`
-	Lng       float64 `json:"lng"`
-	Available bool    `json:"available"` // online va bo'sh
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// RestaurantID — restoranning O'Z kuryeri bo'lsa o'sha restoran ID'si
+	// ("Xodimlar" bo'limi, `staff.UserAccounts`); bo'sh — OnDex platforma
+	// kuryeri. Dispatch havuzi shu maydon bo'yicha QAT'IY ajratiladi.
+	RestaurantID string  `json:"restaurant_id"`
+	Lat          float64 `json:"lat"`
+	Lng          float64 `json:"lng"`
+	Available    bool    `json:"available"` // online va bo'sh
 	// Approved — superadmin tasdiqlagach true. Tasdiqlanmagan kuryer
 	// online bo'la olmaydi va unga taklif yuborilmaydi.
 	Approved bool `json:"approved"`
@@ -80,8 +88,15 @@ type Repository interface {
 	// `maxAge` — joylashuv shundan eski bo'lsa kuryer TASHLAB
 	// YUBORILADI (ilovasi qotib qolgan yoki tarmoqdan uzilgan).
 	// Nol bo'lsa eskilik tekshirilmaydi.
-	ListAvailableNear(ctx context.Context, lat, lng float64,
+	//
+	// `pool` — QAT'IY havuz: restoran ID'si bo'lsa FAQAT shu restoranning
+	// o'z kuryerlari, `PlatformPool` bo'lsa FAQAT platforma kuryerlari.
+	// Aralashmaydi: restoran kuryeri boshqa restoran buyurtmasini ko'rmaydi,
+	// platforma qidiruvi ham restoranlarning xodimlarini olib ketmaydi.
+	ListAvailableNear(ctx context.Context, pool string, lat, lng float64,
 		radiusMeters float64, maxAge time.Duration, limit int) ([]*Courier, error)
+	// SetName — kuryer ismi (restoran xodim yozuvini tahrirlaganda).
+	SetName(ctx context.Context, id, name string) error
 	SetAvailable(ctx context.Context, id string, available bool) error
 	// ClaimIfAvailable — kuryerni ATOMIK ravishda band qiladi: faqat u
 	// HOZIR bo'sh bo'lsa `available=false` qiladi va `true` qaytaradi;

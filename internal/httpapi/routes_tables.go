@@ -359,7 +359,9 @@ func (s *Server) registerTableRoutes(mux *http.ServeMux) {
 			}
 			if rest, err := s.CatalogRepo.GetRestaurant(r.Context(), t.RestaurantID); err == nil {
 				resp["restaurant_name"] = rest.Name
-				resp["restaurant_open"] = rest.Open
+				// Ish vaqti bilan — stol QR orqali ham yopiq restoranga
+				// buyurtma berib bo'lmaydi (`Restaurant.OrderableAt`).
+				resp["restaurant_open"] = rest.AcceptingOrdersNow()
 			}
 			writeJSON(w, http.StatusOK, resp)
 		}))

@@ -83,7 +83,7 @@ func VerificationEmail(code string, ttlMinutes int) (subject, text, htmlBody str
 		`<div style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:bold;`+
 		`letter-spacing:-0.5px;color:%s;">On<span style="color:%s;">Dex</span></div>`+
 		`<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:%s;`+
-		`margin-top:2px;">Super App</div></td></tr>`,
+		`margin-top:2px;">Xalq ilovasi</div></td></tr>`,
 		brandText, brandOrange, brandMuted)
 
 	// Asosiy matn

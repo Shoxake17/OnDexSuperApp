@@ -21,6 +21,10 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "9.0.1" apply false
     id("org.jetbrains.kotlin.android") version "2.3.20" apply false
+    // Firebase (taklif push'i). Versiya mijoz va affitsiant ilovalari bilan
+    // BIR XIL. Plagin `app/build.gradle.kts` da faqat `google-services.json`
+    // bor bo'lsa qo'llanadi.
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
 include(":app")

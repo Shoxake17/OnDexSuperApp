@@ -119,15 +119,37 @@ func (s *R2Store) PublicURL(key string) string {
 }
 
 func (s *R2Store) Upload(ctx context.Context, key string, r io.Reader, size int64, contentType string) (string, error) {
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+	return s.UploadWithOptions(ctx, key, r, size, UploadOptions{ContentType: contentType})
+}
+
+// UploadOptions — yuklanadigan obyektning HTTP sarlavhalari.
+type UploadOptions struct {
+	ContentType string
+	// ContentDisposition — brauzer faylni ochmasdan YUKLAB olishi uchun
+	// (masalan APK: `attachment; filename="OnDex-1.0.0.apk"`).
+	ContentDisposition string
+	// CacheControl — CDN va brauzer keshi (o'zgarmas reliz fayli uzoq,
+	// "eng so'nggi" manifesti qisqa keshlanadi).
+	CacheControl string
+}
+
+// UploadWithOptions — `Upload` ning sarlavhalar bilan varianti.
+func (s *R2Store) UploadWithOptions(ctx context.Context, key string, r io.Reader, size int64, opt UploadOptions) (string, error) {
+	in := &s3.PutObjectInput{
 		Bucket:        aws.String(s.bucket),
 		Key:           aws.String(key),
 		Body:          r,
 		ContentLength: aws.Int64(size),
-		ContentType:   aws.String(contentType),
-	})
-	if err != nil {
+		ContentType:   aws.String(opt.ContentType),
+	}
+	if opt.ContentDisposition != "" {
+		in.ContentDisposition = aws.String(opt.ContentDisposition)
+	}
+	if opt.CacheControl != "" {
+		in.CacheControl = aws.String(opt.CacheControl)
+	}
+	if _, err := s.client.PutObject(ctx, in); err != nil {
 		return "", err
 	}
-	return s.publicBaseURL + "/" + key, nil
+	return s.PublicURL(key), nil
 }

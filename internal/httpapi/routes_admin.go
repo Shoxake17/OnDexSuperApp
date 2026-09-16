@@ -447,6 +447,24 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				return
 			}
 			courierID := r.PathValue("id")
+			// ┌─ RESTORANNING O'Z KURYERI — BU YERDA BOSHQARILMAYDI ──────┐
+			// Uning tasdig'i restoran "Xodimlar" bo'limidagi yozuvga
+			// ergashadi (`staff.UserAccounts`). Admin bu yerda yoqsa,
+			// ishdan bo'shatilgan xodim yana taklif olardi; o'chirsa,
+			// yozuv "kirish ochiq" deb turib ilova ishlamasdi — ikki
+			// haqiqat manbai paydo bo'lardi. Suiiste'mol bo'lsa admin
+			// akkauntni o'chiradi (`DELETE /admin/users/{id}`).
+			// └───────────────────────────────────────────────────────────┘
+			c, err := s.CourierRepo.GetByID(r.Context(), courierID)
+			if err != nil {
+				httpError(w, http.StatusNotFound, err)
+				return
+			}
+			if c.RestaurantID != "" {
+				httpError(w, http.StatusConflict,
+					errors.New("bu restoranning o'z yetkazib beruvchisi — kirishi restoran \"Xodimlar\" bo'limida boshqariladi"))
+				return
+			}
 			if err := s.CourierRepo.SetApproved(r.Context(), courierID, req.Approved); err != nil {
 				httpError(w, http.StatusNotFound, err)
 				return

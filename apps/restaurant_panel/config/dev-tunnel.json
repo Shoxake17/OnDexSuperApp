@@ -3,7 +3,7 @@
   "_nega": "Telegram kirish oqimi (deep link va inline tugma) localhost'ni rad etadi. Shu oqimni production'ga push qilmasdan sinash uchun.",
   "_xavf": "Tunnel ishlab turganda dev API OMMAVIY internetda bo'ladi (hostname Certificate Transparency loglariga tushadi) va .env dagi HAQIQIY Telegram/Resend/R2 kalitlari ishlatiladi. Sinov tugagach cloudflared'ni Ctrl+C bilan to'xtating.",
 
-  "ONDEX_APP_VERSION": "0.1.1-dev",
+  "ONDEX_APP_VERSION": "0.1.3-dev+3",
 
   "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"

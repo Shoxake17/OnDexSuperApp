@@ -116,6 +116,12 @@ class _CouriersPageState extends State<CouriersPage> {
     );
   }
 
+  /// Restoranning o'z yetkazib beruvchisimi (`restaurant_id` to'ldirilgan).
+  /// Uning kirishi restoran "Xodimlar" bo'limida boshqariladi — bu yerda
+  /// tasdiqlash/bloklash tugmasi ko'rsatilmaydi.
+  bool _isRestaurantCourier(Map<String, dynamic> c) =>
+      (c['restaurant_id'] as String? ?? '').isNotEmpty;
+
   Future<void> _setApproved(String id, bool approved) async {
     try {
       await api.approveCourier(id, approved);
@@ -154,8 +160,12 @@ class _CouriersPageState extends State<CouriersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pending =
-        _list.where((c) => c['approved'] != true).length;
+    // Restoranning o'z yetkazib beruvchisi tasdiq KUTMAYDI: uning kirishi
+    // restoran "Xodimlar" bo'limidagi yozuvga ergashadi (server shu
+    // kuryerlar uchun tasdiqlash/bloklashni 409 bilan rad etadi).
+    final pending = _list
+        .where((c) => c['approved'] != true && !_isRestaurantCourier(c))
+        .length;
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -177,7 +187,8 @@ class _CouriersPageState extends State<CouriersPage> {
           ),
           const SizedBox(height: 8),
           Text(
-              'Kuryerlar ilovada o\'zi ro\'yxatdan o\'tadi, lekin siz tasdiqlamaguningizcha ishlay olmaydi.',
+              'OnDex kuryerlari hozircha to\'xtatilgan: yetkazib beruvchilarni restoranlar o\'zi qo\'shadi '
+              '("Xodimlar" bo\'limi) va ularning kirishi o\'sha yerda boshqariladi. Bu yerdan akkauntni o\'chirish mumkin.',
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 16),
           Expanded(
@@ -201,15 +212,22 @@ class _CouriersPageState extends State<CouriersPage> {
                                 DataRow(cells: [
                                   DataCell(Text(c['name'] ?? '')),
                                   DataCell(Text(c['phone'] ?? '—')),
-                                  DataCell(c['approved'] == true
-                                      ? const Chip(
-                                          label: Text('Tasdiqlangan'),
+                                  DataCell(_isRestaurantCourier(c)
+                                      ? Chip(
+                                          label: Text(c['approved'] == true
+                                              ? 'Restoran kuryeri'
+                                              : 'Restoran kuryeri · yopiq'),
                                           backgroundColor:
-                                              Color(0xFFD0F0D8))
-                                      : const Chip(
-                                          label: Text('Kutilmoqda'),
-                                          backgroundColor:
-                                              Color(0xFFFFE0B2))),
+                                              const Color(0xFFE3F2FD))
+                                      : c['approved'] == true
+                                          ? const Chip(
+                                              label: Text('Tasdiqlangan'),
+                                              backgroundColor:
+                                                  Color(0xFFD0F0D8))
+                                          : const Chip(
+                                              label: Text('Kutilmoqda'),
+                                              backgroundColor:
+                                                  Color(0xFFFFE0B2))),
                                   DataCell(Icon(
                                     c['available'] == true
                                         ? Icons.circle
@@ -223,17 +241,28 @@ class _CouriersPageState extends State<CouriersPage> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _posthogButton(c),
-                                      c['approved'] == true
-                                          ? TextButton(
-                                              onPressed: () =>
-                                                  _setApproved(c['id'], false),
-                                              child: const Text('Bloklash',
-                                                  style: TextStyle(
-                                                      color: Colors.red)))
-                                          : FilledButton(
-                                              onPressed: () =>
-                                                  _setApproved(c['id'], true),
-                                              child: const Text('Tasdiqlash')),
+                                      // Restoran kuryerini server bu yerda
+                                      // tasdiqlash/bloklashni 409 bilan rad
+                                      // etadi — tugma ko'rsatilmaydi.
+                                      if (_isRestaurantCourier(c))
+                                        const Tooltip(
+                                          message:
+                                              'Kirishi restoran "Xodimlar" bo\'limida boshqariladi',
+                                          child: Icon(Icons.storefront_outlined,
+                                              color: Colors.grey),
+                                        )
+                                      else if (c['approved'] == true)
+                                        TextButton(
+                                            onPressed: () =>
+                                                _setApproved(c['id'], false),
+                                            child: const Text('Bloklash',
+                                                style: TextStyle(
+                                                    color: Colors.red)))
+                                      else
+                                        FilledButton(
+                                            onPressed: () =>
+                                                _setApproved(c['id'], true),
+                                            child: const Text('Tasdiqlash')),
                                       const SizedBox(width: 4),
                                       // `user_id` bo'lmasligi mumkin: kuryer
                                       // yozuvi bor, unga bog'langan akkaunt

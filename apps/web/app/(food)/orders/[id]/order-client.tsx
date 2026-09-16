@@ -9,15 +9,17 @@ import { fullImageUrl } from "@/lib/images";
 import { goBack } from "@/lib/nav";
 import { discountLineLabel } from "@/lib/promotions";
 import { DetailedOrderProgress, stageOf, statusStyleOf, extractStageTimes } from "@/lib/order-status";
-import CourierMap from "./courier-map";
+import { deliveryMapVisible } from "@/lib/delivery-tracking";
+import DeliveryMap from "./delivery-map";
 import MobileSheet from "../../mobile-sheet";
 import { AppButtonLink, BackButton } from "../../ui";
 
 
 // tracking_screen.dart bilan parity: avval GET bilan hozirgi holat, keyin
 // WebSocket orqali jonli yangilanish (order_status/courier_assigned/
-// courier_location), 15s zaxira polling. Xarita FAQAT "picked_up"
-// bosqichida (kuryer yo'lga chiqqanda) ko'rsatiladi.
+// courier_location), 15s zaxira polling. Kuzatuv xaritasi kuryer
+// biriktirilgandan boshlab va yetkazilgandan keyin ham ko'rinadi
+// (`delivery-map.tsx`, mobil ilova bilan bir xil).
 export default function OrderTrackingPage({
   params,
 }: {
@@ -29,8 +31,16 @@ export default function OrderTrackingPage({
   // to'lovini qayta ochish) `lib/use-order-tracking.ts` da — kompyuter
   // ko'rinishi ham AYNAN shu hook'dan foydalanadi, ya'ni bir joyda
   // tuzatilgan nosozlik ikkalasida ham tuzaladi.
-  const { order, loading, address, courierLatLng, paying, payError, payAgain } =
-    useOrderTracking(id);
+  const {
+    order,
+    loading,
+    address,
+    courierLatLng,
+    tracking,
+    paying,
+    payError,
+    payAgain,
+  } = useOrderTracking(id);
 
   if (loading) {
     return (
@@ -64,10 +74,6 @@ export default function OrderTrackingPage({
   const createdAt = new Date(order.created_at);
   const stageTimes = extractStageTimes(createdAt, order.history);
   const totalItems = order.items.reduce((a, i) => a + i.qty, 0);
-  const destination =
-    order.delivery_lat && order.delivery_lng
-      ? { lat: order.delivery_lat, lng: order.delivery_lng }
-      : null;
 
   return (
     <MobileSheet maxWidthClassName="max-w-lg" className="px-4 pb-10 pt-3">
@@ -128,9 +134,12 @@ export default function OrderTrackingPage({
               : "Buyurtma bekor qilindi"}
           </p>
         )}
-        {/* Kuryer ID — stol buyurtmasida ma'nosiz (kuryer yo'q). */}
+        {/* Kuryer ISMI — xodim ID si ("staff-…") mijozga ko'rsatilmaydi.
+            Stol buyurtmasida kuryer yo'q. */}
         {!dineIn && order.courier_id && (
-          <p className="mt-1 text-sm text-neutral-500">Kuryer: {order.courier_id}</p>
+          <p className="mt-1 text-sm text-neutral-500">
+            Kuryer: {order.courier_name?.trim() || "biriktirilgan"}
+          </p>
         )}
         {dineIn && order.table_label && (
           <p className="mt-1 text-sm text-neutral-500">
@@ -151,13 +160,18 @@ export default function OrderTrackingPage({
         )}
       </div>
 
-      {/* Kuryer xaritasi FAQAT yetkazib berishda. Stol buyurtmasida
-          `picked_up` holati umuman uchramaydi, lekin shart ANIQ
-          yozilgan — kelajakda holat qo'shilsa xarita tasodifan
-          chiqib qolmasin. */}
-      {!dineIn && order.status === "picked_up" && courierLatLng && (
+      {/* Kuzatuv xaritasi FAQAT yetkazib berishda (`deliveryMapVisible`
+          stol buyurtmasini ham, kuryersiz buyurtmani ham chiqarib
+          tashlaydi): kuryer biriktirilgach — mashina va manzil, yo'lda —
+          A→B yo'li va qolgan vaqt, yetkazilgach — yo'l buyurtmada qoladi. */}
+      {!dineIn && deliveryMapVisible(order) && (
         <div className="mt-5">
-          <CourierMap courier={courierLatLng} destination={destination} />
+          <DeliveryMap
+            order={order}
+            courier={courierLatLng}
+            tracking={tracking}
+            variant="light"
+          />
         </div>
       )}
 

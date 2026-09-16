@@ -2,6 +2,16 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Onlayn kuryer joylashuvi FONDA ham yuboriladi: geolocator
+         foreground service (`lib/location_reporter.dart`). Android 14+ da
+         FOREGROUND_SERVICE_LOCATION bo'lmasa xizmat ishga TUSHMAYDI —
+         plaginning o'z manifesti uni e'lon qilmaydi. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Android 13+: yangi buyurtma taklifi push bildirishnomasi
+         (`lib/push.dart`) — ilova yopiq bo'lsa ham kuryer ko'rsin. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

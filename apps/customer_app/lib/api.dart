@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:ondex_core/ondex_core.dart';
 
+import 'delivery_tracking.dart';
+
 // Umumiy yadro qayta eksport qilinadi — mavjud ekranlar `api.dart` ni
 // import qilgani uchun ular tegilmasdan ishlashda davom etadi.
 export 'package:ondex_core/ondex_core.dart';
@@ -45,6 +47,11 @@ class CustomerApi extends ApiClient {
   CustomerApi() : super(baseUrl: apiBaseUrl);
   Future<List<dynamic>> restaurants() async =>
       (await send('GET', '/restaurants')) as List<dynamic>? ?? [];
+
+  /// Bitta restoran. Menyu ekrani holatni ("Ochiq/Yopiq", ish vaqti) shu
+  /// bilan YANGI oladi — katalog keshi eskirgan bo'lishi mumkin.
+  Future<Map<String, dynamic>> restaurant(String id) async => Map<String, dynamic>.from(
+      await send('GET', '/restaurants/${Uri.encodeComponent(id)}') as Map);
 
   /// Barcha restoranlar uchun umumiy, standart taom turkumlari (backend'da
   /// bitta joyda saqlanadi — restoran paneli ham xuddi shu ro'yxatdan
@@ -194,6 +201,21 @@ class CustomerApi extends ApiClient {
       body['delivery_lng'] = lng;
     }
     return Map<String, dynamic>.from(await send('POST', '/orders', body));
+  }
+
+  /// Buyurtma kuzatuvi: yetkazish yo'li (A→B), kuryer va qolgan vaqt.
+  /// Kuzatuv yo'q bo'lsa (masalan stol buyurtmasi) `null`.
+  ///
+  /// [withPlanned] `false` — A→B yo'li (yuzlab nuqta) javobga qo'shilmaydi:
+  /// u o'zgarmaydi va ekranda allaqachon bor (mobil trafik tejaladi).
+  Future<DeliveryTracking?> orderTracking(String orderId, {bool withPlanned = true}) async {
+    try {
+      final d = await send('GET', '/orders/$orderId/tracking${withPlanned ? '' : '?planned=0'}');
+      return d is Map<String, dynamic> ? DeliveryTracking.fromJson(d) : null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> getOrder(String id) async =>
@@ -386,6 +408,25 @@ class CustomerApi extends ApiClient {
     if (d is Map && d['token'] is String) {
       token = d['token'] as String;
     }
+  }
+
+  /// "Akkauntni o'chirish" (Google Play/App Store talabi — veb nusxasi
+  /// https://ondex.uz/delete-account).
+  ///
+  /// MA'LUMOT O'CHIRILMAYDI: buyurtmalar, sevimlilar, manzil — hammasi
+  /// saqlanadi. Faqat kirish yopiladi va server BARCHA sessiyalarni
+  /// bekor qiladi. O'sha telefon/email bilan qaytadan tasdiqlansa
+  /// (SMS/Telegram/Google), akkaunt avtomatik tiklanadi
+  /// (`internal/users/service.go` dagi `reactivateIfDeleted`).
+  ///
+  /// `currentPassword`: akkauntda parol bo'lsa va bu sessiya SMS kod
+  /// bilan yaqinda (15 daq) tasdiqlanmagan bo'lsa SHART — server
+  /// `ErrCurrentPasswordWrong` (matni: "joriy parol noto'g'ri")
+  /// qaytaradi, chaqiruvchi shu matndan parol maydonini ko'rsatishi
+  /// kerakligini bilib oladi (`SetPassword` bilan bir xil qoida).
+  Future<void> deleteAccount({String currentPassword = ''}) async {
+    await send('POST', '/me/delete-account',
+        {'current_password': currentPassword});
   }
 
   /// Ism/familiyani saqlash (profil).

@@ -6,6 +6,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// +- FIREBASE (TAKLIF PUSH'I) ----------------------------------------+
+// `google-services.json` (Firebase Console -> com.ondex.courier va
+// com.ondex.courier.dev) shu papkada bo'lsa plagin qo'llanadi. Fayl
+// `.gitignore` da. Yo'q bo'lsa build YIQILMAYDI: ilova push'siz
+// ishlaydi (taklif WebSocket va ilova ochilganda tiklash orqali keladi),
+// `lib/push.dart` Firebase xatosini yutadi.
+// +------------------------------------------------------------------+
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // +- RELIZ IMZOSI ---------------------------------------------------+
 // Kalit `android/key.properties` dan o'qiladi. U `.gitignore` da -
 // imzolash kaliti repoga HECH QACHON tushmasligi kerak.
@@ -39,6 +50,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // `flutter_local_notifications` 19.x talabi (affitsiant ilovasi
+        // bilan bir xil).
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -103,4 +117,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

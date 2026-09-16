@@ -294,6 +294,9 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				return
 			}
 			restaurantCache := map[string]*catalog.Restaurant{}
+			// Kuryer ismi — "Buyurtmalarim" ro'yxatida ham ID emas, ism
+			// (faqat ismi, `courierPublicName`).
+			courierNames := map[string]string{}
 			out := make([]map[string]any, 0, len(list))
 			for _, o := range list {
 				rest, ok := restaurantCache[o.RestaurantID]
@@ -340,6 +343,16 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					entry["restaurant_name"] = rest.Name
 					entry["restaurant_logo_url"] = rest.LogoURL
 				}
+				if o.CourierID != "" && !o.IsDineIn() && s.CourierRepo != nil {
+					name, ok := courierNames[o.CourierID]
+					if !ok {
+						if c, err := s.CourierRepo.GetByID(r.Context(), o.CourierID); err == nil {
+							name = courierPublicName(c.Name)
+						}
+						courierNames[o.CourierID] = name
+					}
+					entry["courier_name"] = name
+				}
 				out = append(out, entry)
 			}
 			writeJSON(w, http.StatusOK, out)
@@ -364,7 +377,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusNotFound, orders.ErrNotFound)
 				return
 			}
-			out := redactForCourierBeforePickup(claims, o)
+			out := s.withCourierInfo(r.Context(), claims, o, redactForCourierBeforePickup(claims, o))
 			// restaurant_phone/customer_phone — kuryer ilovasida "Qo'ng'iroq
 			// qilish" tugmalari uchun. FAQAT kuryer/admin'ga qo'shiladi
 			// (restoran o'zi, mijoz esa hozircha bu funksiyani so'ramagan) va

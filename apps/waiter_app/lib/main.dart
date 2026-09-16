@@ -80,7 +80,7 @@ class WaiterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OnDex Affitsiant',
+      title: 'OnDexPro',
       debugShowCheckedModeBanner: false,
       // Mavzu BITTA joyda (`theme.dart`) — ekranlar rang/radiusni o'zi
       // belgilamaydi. Mijoz va kuryer ilovalari bilan bir xil qorong'i

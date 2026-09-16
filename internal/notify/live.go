@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
+	"time"
 
 	"chustapp/internal/couriers"
 	"chustapp/internal/orders"
@@ -36,9 +39,39 @@ type Live struct {
 	// Bu `Verifier.ContactHook` bilan bir xil naqsh.
 	// └───────────────────────────────────────────────────────────────┘
 	waiterLookup func(ctx context.Context, restaurantID string) ([]string, error)
+	// courierUser — kuryer ID'sidan uning akkaunti (push tokenlari
+	// akkauntga bog'langan). `waiterLookup` bilan bir xil sabab.
+	courierUser func(ctx context.Context, courierID string) (string, error)
 }
 
 func NewLive(svc *Service) *Live { return &Live{svc: svc} }
+
+// WithCourierUserLookup — kuryer akkauntini topish funksiyasini ulaydi.
+// Ulanmasa taklif push'i yuborilmaydi va ilovasi yopiq kuryerlar
+// "yetib bormaydi" deb hisoblanadi (`CanPush`).
+func (l *Live) WithCourierUserLookup(fn func(ctx context.Context, courierID string) (string, error)) *Live {
+	l.courierUser = fn
+	return l
+}
+
+// ---------- couriers.Reachability ----------
+
+// Online — kuryer ilovasi ochiq (kuryerning ish kanaliga ulangan).
+func (l *Live) Online(courierID string) bool {
+	return l.svc.Online(Entity(ModuleFood, courierID))
+}
+
+// CanPush — ilova yopiq bo'lsa ham push bilan uyg'otsa bo'ladi.
+func (l *Live) CanPush(ctx context.Context, courierID string) bool {
+	if l.courierUser == nil || !l.svc.PushEnabled() {
+		return false
+	}
+	userID, err := l.courierUser(ctx, courierID)
+	if err != nil || userID == "" {
+		return false
+	}
+	return l.svc.HasPushTokens(ctx, userID)
+}
 
 // WithWaiterLookup — affitsiantlarni topish funksiyasini ulaydi.
 // Ulanmasa, stol buyurtmalari uchun push shunchaki yuborilmaydi
@@ -226,24 +259,112 @@ func orderStatusText(o *orders.Order) string {
 func (l *Live) SendOffer(courierID string, info couriers.OfferInfo) {
 	LogNotifier{}.SendOffer(courierID, info.OrderID, info.ExpiresIn)
 
-	// Jonli kanal — taklif kartochkasi uchun to'liq kontekst.
-	l.svc.Broadcast(Entity(ModuleFood, courierID), map[string]any{
-		"type":                "offer",
-		"order_id":            info.OrderID,
-		"expires_in_sec":      int(info.ExpiresIn.Seconds()),
-		"restaurant_id":       info.RestaurantID,
-		"restaurant_name":     info.RestaurantName,
-		"restaurant_address":  info.RestaurantAddress,
-		"restaurant_lat":      info.RestaurantLat,
-		"restaurant_lng":      info.RestaurantLng,
-		"restaurant_logo_url": info.RestaurantLogoURL,
+	// Jonli kanal — taklif kartochkasi uchun to'liq kontekst (shakl
+	// `GET /couriers/{id}/offer` bilan bir xil).
+	topic := Entity(ModuleFood, courierID)
+	l.svc.Broadcast(topic, info.Payload(info.ExpiresIn))
+
+	// ┌─ ILOVA YOPIQ — PUSH (2026-09-15) ─────────────────────────────┐
+	// Avval faqat WebSocket bor edi: kuryer ilovani yopsa (liniyada
+	// bo'lsa ham) taklif hech qayerga yetmasdi. Endi ilova ulanmagan
+	// bo'lsa push yuboriladi; kuryer bosganda ilova taklifni serverdan
+	// tiklaydi. Ilova ochiq bo'lsa push YO'Q — ekranda allaqachon bor.
+	// └───────────────────────────────────────────────────────────────┘
+	if l.courierUser == nil || l.svc.Online(topic) || !l.svc.PushEnabled() {
+		return
+	}
+	safeGo("notify.courier_offer", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		userID, err := l.courierUser(ctx, courierID)
+		if err != nil || userID == "" {
+			if err != nil {
+				slog.Warn("notify: kuryer akkaunti topilmadi — taklif push'i yuborilmadi",
+					"courier", courierID, "err", err)
+			}
+			return
+		}
+		l.svc.Push(ctx, userID, courierOfferEvent(info))
 	})
+}
+
+// courierOfferEvent — taklif push'i. Matnda faqat restoran nomi (qulflangan
+// ekranda ham ko'rinadi — mijoz haqida hech narsa yo'q).
+func courierOfferEvent(info couriers.OfferInfo) Event {
+	body := "Qabul qilish uchun ilovani oching"
+	if name := strings.TrimSpace(info.RestaurantName); name != "" {
+		body = name + " — qabul qilish uchun ilovani oching"
+	}
+	return Event{
+		Module: ModuleFood,
+		Kind:   courierOfferKind,
+		Title:  "Yangi buyurtma",
+		Body:   body,
+		Data: map[string]string{
+			"order_id": info.OrderID,
+			// Ilova signalni shu paytgacha chaladi (muddat telefonga
+			// kechikib yetsa ham ortiqcha chalinmaydi).
+			"expires_at": strconv.FormatInt(time.Now().Add(info.ExpiresIn).UnixMilli(), 10),
+		},
+		TTL: info.ExpiresIn,
+	}
 }
 
 func (l *Live) CancelOffer(courierID, orderID string) {
 	LogNotifier{}.CancelOffer(courierID, orderID)
-	l.svc.Broadcast(Entity(ModuleFood, courierID), map[string]any{
+	topic := Entity(ModuleFood, courierID)
+	l.svc.Broadcast(topic, map[string]any{
 		"type":     "offer_cancelled",
 		"order_id": orderID,
+	})
+	// Ilova yopiq bo'lsa takrorlanayotgan signal o'chirilsin: taklifni
+	// boshqa kuryer olgan yoki muddati tugagan.
+	if l.courierUser == nil || l.svc.Online(topic) || !l.svc.PushEnabled() {
+		return
+	}
+	safeGo("notify.courier_offer_cancelled", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		userID, err := l.courierUser(ctx, courierID)
+		if err != nil || userID == "" {
+			return
+		}
+		l.svc.Push(ctx, userID, Event{
+			Module: ModuleFood,
+			Kind:   courierOfferCancelledKind,
+			Data:   map[string]string{"order_id": orderID},
+			TTL:    30 * time.Second,
+		})
+	})
+}
+
+// CourierAutoOffline — kuryer ketma-ket javobsiz takliflardan keyin liniyadan
+// chiqarildi (`couriers/missed.go`). Ilova ochiq bo'lsa jonli kanal holatni
+// darhol yangilaydi; push esa yopiq/fondagi ilovada kuryerga sababini
+// aytadi — aks holda u "nega buyurtma kelmayapti" deb kutib o'tirardi.
+// Oddiy (data-only emas) bildirishnoma: bir marta ko'rinadi, jiringlamaydi.
+func (l *Live) CourierAutoOffline(courierID string, missed int) {
+	l.svc.Broadcast(Entity(ModuleFood, courierID), map[string]any{
+		"type":   "auto_offline",
+		"missed": missed,
+	})
+	if l.courierUser == nil || !l.svc.PushEnabled() {
+		return
+	}
+	safeGo("notify.courier_auto_offline", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		userID, err := l.courierUser(ctx, courierID)
+		if err != nil || userID == "" {
+			return
+		}
+		l.svc.Push(ctx, userID, Event{
+			Module: ModuleFood,
+			Kind:   courierAutoOfflineKind,
+			Title:  "Liniyadan chiqarildingiz",
+			Body: fmt.Sprintf("Ketma-ket %d ta taklifga javob berilmadi. "+
+				"Ishlashga tayyor bo'lsangiz, ilovada qayta liniyaga chiqing.", missed),
+			TTL: time.Hour,
+		})
 	})
 }

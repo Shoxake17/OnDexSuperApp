@@ -144,6 +144,14 @@ type DispatchParams struct {
 	RestaurantLocation geo.LatLng
 	PreparationTime    time.Duration // restoran "Qabul qilindi" bosganda kiritgan taxminiy tayyorlash vaqti
 
+	// CourierPool — taklif KIMLARGA ketadi: restoran ID'si — FAQAT shu
+	// restoranning o'z kuryerlari; `PlatformPool` ("") — OnDex platforma
+	// kuryerlari. Havuzlar qat'iy ajratilgan (`Repository.ListAvailableNear`).
+	//
+	// `RestaurantID` dan ATAYLAB alohida: u faqat taklif kartochkasi uchun,
+	// bu esa xavfsizlik chegarasi — ikkalasi bitta maydonga tayanmasin.
+	CourierPool string
+
 	// Taklif kartochkasida ko'rsatish uchun (OfferInfo'ga shunchaki
 	// o'tkaziladi — ballashda ishtirok etmaydi).
 	RestaurantID      string
@@ -169,6 +177,14 @@ type Dispatcher struct {
 
 	mu      sync.Mutex
 	pending map[string]*waveOffer
+
+	// reach — taklif kuryerga yetib boradimi (`reach.go`). `nil` —
+	// tekshirilmaydi.
+	reach Reachability
+
+	// missed — kuryer KETMA-KET nechta taklifga javob bermadi (`missed.go`).
+	// Mutex ostida.
+	missed map[string]int
 }
 
 // waveOffer — bitta buyurtma uchun HOZIR ochiq turgan TO'LQIN.
@@ -194,6 +210,12 @@ type waveOffer struct {
 	wave map[string]struct{}
 	// cancel — shu qidiruv kontekstini bekor qiladi (`Cancel`).
 	cancel context.CancelFunc
+	// info/expiresAt — joriy to'lqin taklifi va muddati; declined — shu
+	// to'lqinda rad etganlar. `PendingOffer` (ilova qayta ochilganda
+	// tiklash) shulardan o'qiydi. Mutex ostida.
+	info      OfferInfo
+	expiresAt time.Time
+	declined  map[string]struct{}
 }
 
 // inWave — mutex chaqiruvchida ushlab turiladi.
@@ -209,6 +231,7 @@ func NewDispatcher(repo Repository, notifier OfferNotifier, geoClient GeoClient,
 		geoClient: geoClient,
 		offerTTL:  offerTTL,
 		pending:   make(map[string]*waveOffer),
+		missed:    make(map[string]int),
 	}
 }
 
@@ -354,9 +377,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 		// Jonli o'lchov (50 000 kuryer): eski usul 50 002 qator,
 		// yangisi 20 qator — 2500 barobar kam nomzod.
 		// └───────────────────────────────────────────────────────────┘
-		candidates, err := d.repo.ListAvailableNear(ctx,
-			params.RestaurantLocation.Lat, params.RestaurantLocation.Lng,
-			searchRadiusMeters, locationMaxAge, maxCandidates)
+		// Yetib bormaydigan kuryerlar (ilova yopiq, push yo'q) tashlanadi,
+		// push bilan uyg'otiladiganlar qo'shiladi (`reach.go`).
+		candidates, err := d.candidates(ctx, params)
 		if err != nil {
 			return "", err
 		}
@@ -370,7 +393,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 			cachedKey = key
 			failedCycles = 0
 		}
-		ranked := cachedRank
+		// Ilovasi ochiqlar oldinda — holati tsikllar orasida o'zgarishi
+		// mumkin, shuning uchun keshdagi tartibga har safar qo'llanadi.
+		ranked := d.preferOnline(cachedRank)
 
 		// Nomzodlar TO'LQINLARGA bo'linadi: har to'lqinda `waveSize` ta
 		// eng yaxshi nomzodga BIR VAQTDA taklif ketadi.
@@ -384,8 +409,21 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 			// To'lqinni ro'yxatga olamiz — `HandleResponse` faqat shu
 			// to'plamdagi kuryerdan javob qabul qiladi.
 			ids := make([]string, 0, len(batch))
+			info := OfferInfo{
+				OrderID:           orderID,
+				RestaurantID:      params.RestaurantID,
+				RestaurantName:    params.RestaurantName,
+				RestaurantAddress: params.RestaurantAddress,
+				RestaurantLat:     params.RestaurantLocation.Lat,
+				RestaurantLng:     params.RestaurantLocation.Lng,
+				RestaurantLogoURL: params.RestaurantLogoURL,
+				ExpiresIn:         d.offerTTL,
+			}
 			d.mu.Lock()
 			offer.wave = make(map[string]struct{}, len(batch))
+			offer.info = info
+			offer.expiresAt = time.Now().Add(d.offerTTL)
+			offer.declined = make(map[string]struct{}, len(batch))
 			for _, cand := range batch {
 				offer.wave[cand.Courier.ID] = struct{}{}
 				ids = append(ids, cand.Courier.ID)
@@ -397,16 +435,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, orderID string, params Dispat
 			d.mu.Unlock()
 
 			for _, cand := range batch {
-				d.notifier.SendOffer(cand.Courier.ID, OfferInfo{
-					OrderID:           orderID,
-					RestaurantID:      params.RestaurantID,
-					RestaurantName:    params.RestaurantName,
-					RestaurantAddress: params.RestaurantAddress,
-					RestaurantLat:     params.RestaurantLocation.Lat,
-					RestaurantLng:     params.RestaurantLocation.Lng,
-					RestaurantLogoURL: params.RestaurantLogoURL,
-					ExpiresIn:         d.offerTTL,
-				})
+				d.notifier.SendOffer(cand.Courier.ID, info)
 			}
 			slog.Info("dispatch: to'lqin yuborildi",
 				"order", orderID, "couriers", ids, "size", len(batch))
@@ -638,10 +667,15 @@ func (d *Dispatcher) awaitWave(ctx context.Context, orderID string,
 	// rejected — nechta kuryer ANIQ rad etdi. Hammasi rad etsa,
 	// muddat tugashini kutish ma'nosiz — darhol keyingi to'lqinga.
 	rejected := 0
+	// answered — shu to'lqinda javob bergan (qabul yoki rad) kuryerlar.
+	// Muddat tugaganda qolganlari "javobsiz" hisoblanadi (`missed.go`).
+	answered := make(map[string]struct{}, len(ids))
 
 	for {
 		select {
 		case resp := <-offer.respCh:
+			answered[resp.CourierID] = struct{}{}
+			d.resetMissed(resp.CourierID)
 			if !resp.Accepted {
 				rejected++
 				slog.Info("dispatch: rad etildi",
@@ -679,6 +713,13 @@ func (d *Dispatcher) awaitWave(ctx context.Context, orderID string,
 			slog.Info("dispatch: to'lqin muddati tugadi",
 				"order", orderID, "couriers", ids)
 			cancelRest("")
+			// Faqat TO'LIQ muddat davomida jim turganlar — g'olib chiqqanda
+			// yoki qidiruv bekor qilinganda hech kim "javobsiz" emas.
+			for _, id := range ids {
+				if _, ok := answered[id]; !ok {
+					d.recordMissed(ctx, id)
+				}
+			}
 			return "", nil
 
 		case <-ctx.Done():
@@ -720,6 +761,10 @@ func (d *Dispatcher) HandleResponse(orderID string, resp Response) bool {
 	}
 	if !offer.inWave(resp.CourierID) {
 		return false // eskirgan to'lqin yoki noto'g'ri nomzoddan javob
+	}
+	if !resp.Accepted && offer.declined != nil {
+		// Ilova qayta ochilganda rad etilgan taklif qaytarilmasin.
+		offer.declined[resp.CourierID] = struct{}{}
 	}
 	select {
 	case offer.respCh <- resp:

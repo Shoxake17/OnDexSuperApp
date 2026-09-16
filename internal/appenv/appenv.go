@@ -80,6 +80,9 @@ var Registry = []Var{
 	{Name: "JWT_SECRET", Effect: "server ishga tushmaydi", ProdRequired: true, DeployRequired: true},
 	{Name: "ALLOWED_ORIGINS", Effect: "server ishga tushmaydi", ProdRequired: true, DeployRequired: true},
 	{Name: "TRUSTED_PROXIES", Effect: "IP cheklovlari proksi ortida NOTO'G'RI ishlaydi (bug.md 18-band)", DeployRequired: true},
+	// Faqat DEV: `ondex run` API logini faylga ham yozadi (o'lchov/tahlil).
+	// Prod'da Docker loglari stdout'dan olinadi — compose'ga qo'shilmaydi.
+	{Name: "API_LOG_FILE", Effect: "log faqat konsolga yoziladi (faylga saqlanmaydi)"},
 
 	// ---------- Manzillar ----------
 	// ┌─ IKKI O'XSHASH NOM ───────────────────────────────────────────┐
@@ -169,6 +172,10 @@ var Registry = []Var{
 	{Name: "SHADDIY_API_KEY", Effect: "AI yordamchisi butunlay o'chiq", DeployRequired: true},
 	{Name: "GEMINI_API_KEY", Effect: "ovozli rejim o'chiq", DeployRequired: true},
 	{Name: "GEMINI_LIVE_MODEL", Effect: "standart Gemini modeli ishlatiladi", DeployRequired: true},
+	// Kuryerning ovozli yo'l ko'rsatishi (`internal/voice`). Bo'sh — egasi
+	// tanlagan standart: gemini-2.5-flash-preview-tts, "Kore".
+	{Name: "GEMINI_TTS_MODEL", Effect: "ovozli yo'l ko'rsatishda standart TTS modeli ishlatiladi"},
+	{Name: "GEMINI_TTS_VOICE", Effect: "ovozli yo'l ko'rsatishda standart ovoz (Kore) ishlatiladi"},
 
 	// ---------- 3D model (Tripo) ----------
 	{Name: "TRIPO_API_KEY", Effect: "rasmdan 3D model yaratish o'chiq (endpointlar 503)", DeployRequired: true},

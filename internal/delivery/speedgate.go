@@ -41,6 +41,23 @@ const minInterval = 3 * time.Second
 // mashinada boshqa joyga borgan bo'lishi mumkin — bu firibgarlik emas).
 const staleAfter = 5 * time.Minute
 
+// confirmAfter — rad etilgan joy shuncha vaqt IZCHIL kelib tursa, xato
+// oldingi ASOS nuqtada deb hisoblanadi va yangi joy qabul qilinadi.
+//
+// ┌─ NEGA (2026-09-15, jonli log) ────────────────────────────────────┐
+// Telefon haqiqiy joy bilan aralash ~1,6 km naridagi AYNAN bir xil
+// (tarmoq/kesh) nuqtani yubordi. Shu XATO nuqta asos bo'lib, o'zi qayta
+// kelib asosni yangilab turdi va kuryerning HAQIQIY joylashuvi 21:30–21:55
+// oralig'ida qayta-qayta "imkonsiz tezlik" deb rad etildi. Joylashuv
+// eskirdi, dispatch kuryerni ko'rmay qo'ydi. Soxtalashtiruvchi uchun farq kichik: avval 5 daqiqa jim
+// turib o'tardi, endi 1 daqiqa davomida bir joyni izchil yuborishi kerak;
+// `InOperationalRange` baribir ishlaydi.
+// └───────────────────────────────────────────────────────────────────┘
+const confirmAfter = time.Minute
+
+// confirmRadiusKM — izchillikda "o'sha joy" deb hisoblanadigan tarqoqlik.
+const confirmRadiusKM = 0.15
+
 type lastFix struct {
 	lat, lng float64
 	at       time.Time
@@ -56,9 +73,13 @@ type lastFix struct {
 type SpeedGate struct {
 	mu   sync.Mutex
 	last map[string]lastFix
+	// suspect — rad etilgan joy va u BIRINCHI marta kelgan vaqt.
+	suspect map[string]lastFix
 }
 
-func NewSpeedGate() *SpeedGate { return &SpeedGate{last: make(map[string]lastFix)} }
+func NewSpeedGate() *SpeedGate {
+	return &SpeedGate{last: make(map[string]lastFix), suspect: make(map[string]lastFix)}
+}
 
 // Accept — nuqtani qabul qilish mumkinmi. `false` bo'lsa oxirgi ma'lum
 // nuqta O'ZGARTIRILMAYDI (soxta qiymat keyingi hisob uchun asos bo'lib
@@ -67,24 +88,15 @@ func (g *SpeedGate) Accept(courierID string, lat, lng float64, now time.Time) bo
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	prev, ok := g.last[courierID]
-	if ok {
-		gap := now.Sub(prev.at)
-		switch {
-		case gap >= staleAfter || gap <= 0:
-			// juda eski (yoki soat orqaga ketgan) — tekshirmaymiz
-		case gap < minInterval:
-			// juda tez-tez — GPS shovqini tezlikni buzadi, o'tkazamiz
-		default:
-			km := distanceKM(prev.lat, prev.lng, lat, lng)
-			if km/gap.Hours() > maxSpeedKMH {
-				return false
-			}
-		}
+	if prev, ok := g.last[courierID]; ok && !g.plausible(courierID, prev, lat, lng, now) {
+		return false
 	}
 	g.last[courierID] = lastFix{lat: lat, lng: lng, at: now}
+	if s, ok := g.suspect[courierID]; ok && distanceKM(s.lat, s.lng, lat, lng) <= confirmRadiusKM {
+		delete(g.suspect, courierID)
+	}
 
-	// Oddiy tozalash: xarita o'smasligi uchun eskirganlarni olib tashlaymiz.
+	// Oddiy tozalash: xaritalar o'smasligi uchun eskirganlarni olib tashlaymiz.
 	if len(g.last) > 1000 {
 		for id, f := range g.last {
 			if now.Sub(f.at) > staleAfter {
@@ -92,5 +104,31 @@ func (g *SpeedGate) Accept(courierID string, lat, lng float64, now time.Time) bo
 			}
 		}
 	}
+	if len(g.suspect) > 1000 {
+		for id, f := range g.suspect {
+			if now.Sub(f.at) > staleAfter {
+				delete(g.suspect, id)
+			}
+		}
+	}
 	return true
+}
+
+// plausible — mutex chaqiruvchida ushlab turiladi.
+func (g *SpeedGate) plausible(courierID string, prev lastFix, lat, lng float64, now time.Time) bool {
+	gap := now.Sub(prev.at)
+	if gap >= staleAfter || gap <= 0 || gap < minInterval {
+		// juda eski (yoki soat orqaga ketgan) yoki juda tez-tez (GPS
+		// shovqini tezlikni buzadi) — tekshirmaymiz
+		return true
+	}
+	if distanceKM(prev.lat, prev.lng, lat, lng)/gap.Hours() <= maxSpeedKMH {
+		return true
+	}
+	s, ok := g.suspect[courierID]
+	if !ok || now.Sub(s.at) >= staleAfter || distanceKM(s.lat, s.lng, lat, lng) > confirmRadiusKM {
+		g.suspect[courierID] = lastFix{lat: lat, lng: lng, at: now}
+		return false
+	}
+	return now.Sub(s.at) >= confirmAfter
 }

@@ -36,8 +36,17 @@ type Restaurant struct {
 	// PaymentMethods — `nil` — standart (`DefaultPaymentMethods`).
 	PaymentMethods *PaymentMethods `json:"payment_methods"`
 	// OpenNow — HISOBLANADIGAN, saqlanmaydi: hozir buyurtma qabul
-	// qilinadimi (`Open` VA ish vaqti). Faqat ochiq javoblarda to'ldiriladi.
+	// qilinadimi (`Open` VA ish vaqti, `OrderableAt`). Faqat ochiq
+	// javoblarda to'ldiriladi (`WithOpenState`). Mijoz ilovalari
+	// "Ochiq/Yopiq" ni FAQAT shundan oladi — `Open` restoranning qo'lda
+	// bosadigan tugmasi, xolos.
 	OpenNow *bool `json:"open_now,omitempty"`
+	// ClosedReason — HISOBLANADIGAN: yopiq bo'lsa "manual" yoki "hours".
+	ClosedReason string `json:"closed_reason,omitempty"`
+	// OpenChangesAt — HISOBLANADIGAN, UTC: holat o'z-o'zidan o'zgaradigan
+	// payt. Ilovalar shu bilan "22:00 da yopiladi" / "09:00 da ochiladi"
+	// ni ko'rsatadi va sahifa ochiq tursa ham holatni o'z vaqtida almashtiradi.
+	OpenChangesAt *time.Time `json:"open_changes_at,omitempty"`
 
 	// ┌─ 0 = "MA'LUMOT YO'Q", "yomon" EMAS ────────────────────────────┐
 	// Mijoz tomonida 0 bo'lganda tegishli chip UMUMAN chizilmaydi —
@@ -264,7 +273,20 @@ type ProductSearchResult struct {
 	Product
 	RestaurantName    string `json:"restaurant_name"`
 	RestaurantLogoURL string `json:"restaurant_logo_url"`
-	RestaurantOpen    bool   `json:"restaurant_open"`
+	// RestaurantOpen — HOZIR buyurtma qabul qiladimi (ish vaqti bilan).
+	RestaurantOpen bool `json:"restaurant_open"`
+}
+
+// AttachRestaurant — natijaga restoran ma'lumotini qo'shadi.
+//
+// YAGONA yig'uvchi: qidiruv (Mongo, Meilisearch, xotira) va sevimlilar shu
+// yerdan o'tadi. Avval to'rt joyda qo'lda yozilgan va hammasida
+// `RestaurantOpen = rest.Open` edi — ish vaqti tugagan restoran taomi
+// "ochiq" ko'rinardi.
+func (res *ProductSearchResult) AttachRestaurant(rest *Restaurant) {
+	res.RestaurantName = rest.Name
+	res.RestaurantLogoURL = rest.LogoURL
+	res.RestaurantOpen = rest.AcceptingOrdersNow()
 }
 
 // PredefinedCategories — BARCHA restoranlar uchun umumiy, standart taom

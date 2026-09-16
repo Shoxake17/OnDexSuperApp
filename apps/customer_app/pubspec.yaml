@@ -1,7 +1,7 @@
 name: chust_customer
 description: ChustApp — mijoz ilovasi
 publish_to: "none"
-version: 0.2.2+14
+version: 0.2.3+15
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -80,7 +80,18 @@ flutter_launcher_icons:
   # iOS kerak bo'lganda avval `flutter create --platforms=ios .`
   # bajariladi, keyin bu yerda `true` qilinadi.
   ios: false
+  # Manba: `image/ondex.png`, bo'sh chetlarsiz kvadratga joylangan.
+  # Legacy belgi — shaffof; Android 8+ adaptive belgi — QORA fon ustida
+  # xavfsiz zonaga (62%) sig'dirilgan old qatlam (launcher logoni
+  # doiraga qirqib yubormasin).
+  #
+  # Fon uchala OnDex ilovasida bir xil (#121212) — oq fonda to'q sariq
+  # logo "yuvilib" ketardi va ilovalar bir oilaga o'xshamasdi.
   image_path: "assets/logo.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/launcher_foreground.png"
+  # Xavfsiz zona rasmning o'zida — generatorning 16% chekinishi kerak emas.
+  adaptive_icon_foreground_inset: 0
 
 flutter:
   uses-material-design: true
@@ -116,4 +127,6 @@ flutter:
     # dan nusxa — image/ papkasi ilova bilan birga yig'ilmaydi).
     - assets/security/
     - assets/uz_flag.png
+    # Buyurtma kuzatuvi xaritasi: kuryer mashinasi (yuqoridan ko'rinish).
+    - assets/map/
     - shorebird.yaml

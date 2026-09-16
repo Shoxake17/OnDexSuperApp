@@ -22,9 +22,15 @@ export default function ProductCard({
   onRemove,
   onQtyChange,
   onFavoriteChange,
+  orderable = true,
 }: {
   product: Product;
   qty: number;
+  /**
+   * Restoran HOZIR buyurtma qabul qiladimi. `false` — "+" tugmasi yo'q,
+   * savatga qo'shib bo'lmaydi (savatdagisini kamaytirish mumkin).
+   */
+  orderable?: boolean;
   // promoted — HOZIR faol biror aksiya shu mahsulotni/turkumni yoki butun
   // buyurtmani qamrab olganini bildiradi (ribbon uchun). `discount` esa
   // ANIQ narx hisoblanganda TO'LDIRILADI (faqat mahsulot/turkum darajasidagi
@@ -96,7 +102,7 @@ export default function ProductCard({
           </div>
         )}
 
-        {available && qty === 0 && (
+        {available && orderable && qty === 0 && (
           <button
             onClick={onAdd}
             className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-md active:scale-95"
@@ -117,7 +123,9 @@ export default function ProductCard({
             </span>
             <button
               onClick={onAdd}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-md active:scale-95"
+              disabled={!orderable}
+              aria-label="Ko'paytirish"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-md active:scale-95 disabled:opacity-40"
             >
               <Plus size={20} />
             </button>
@@ -159,6 +167,11 @@ export default function ProductCard({
           onFavoriteChange={onFavoriteChange}
           onClose={() => setDetailOpen(false)}
           onConfirm={(newQty) => {
+            // Yopiq restoranga qo'shib bo'lmaydi — faqat kamaytirish.
+            if (!orderable && newQty > qty) {
+              setDetailOpen(false);
+              return;
+            }
             if (onQtyChange) onQtyChange(newQty);
             else for (let i = 0; i < newQty; i++) onAdd();
             setDetailOpen(false);

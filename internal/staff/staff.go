@@ -35,6 +35,9 @@ var (
 	ErrLimitReached     = fmt.Errorf("bitta restoranda %d tadan ortiq xodim bo'lishi mumkin emas", MaxMembersPerRestaurant)
 	ErrAccountConflict  = errors.New("bu telefon raqam boshqa OnDex akkauntiga biriktirilgan — ilovaga kirishni ochib bo'lmaydi")
 	ErrAccountsDisabled = errors.New("ilova akkauntlari xizmati ulanmagan")
+	// ErrCourierBusy — yetkazma o'rtasida kuryerning kirishini yopish
+	// buyurtmani egasiz qoldirardi: "yetkazdim" deb bosadigan odam qolmaydi.
+	ErrCourierBusy = errors.New("bu yetkazib beruvchida yakunlanmagan buyurtma bor — avval u yetkazib berilsin, keyin o'zgartiring")
 
 	ErrFirstNameRequired = invalid("xodimning ismini kiriting")
 	ErrNameTooLong       = invalid(fmt.Sprintf("ism va familiya %d belgidan oshmasligi kerak", MaxNameLen))
@@ -45,7 +48,7 @@ var (
 	ErrBadHiredOn        = invalid("ishga kirgan sana noto'g'ri (YYYY-MM-DD)")
 	ErrNoteTooLong       = invalid(fmt.Sprintf("izoh %d belgidan oshmasligi kerak", MaxNoteLen))
 	ErrNoteChars         = invalid("izohda ko'rinmas boshqaruv belgilari bo'lishi mumkin emas")
-	ErrAccessNotAllowed  = invalid("bu lavozim uchun OnDex ilovasi yo'q — ilovaga kirishni faqat ofitsiantga ochish mumkin")
+	ErrAccessNotAllowed  = invalid("bu lavozim uchun OnDex ilovasi yo'q — ilovaga kirishni faqat ofitsiant va yetkazib beruvchiga ochish mumkin")
 	ErrBadSalary         = invalid("oylik maosh 0 dan katta va 1 mlrd so'mdan oshmasligi kerak")
 )
 
@@ -279,6 +282,8 @@ type Accounts interface {
 	Enable(ctx context.Context, m *Member) (string, error)
 	// Disable — akkauntni restorandan uzadi va sessiyalarini bekor qiladi.
 	Disable(ctx context.Context, restaurantID, userID string) error
+	// Refresh — bog'langan akkaunt ma'lumotini (ism) yozuvga moslaydi.
+	Refresh(ctx context.Context, m *Member) error
 }
 
 // ─── Kiritmani tekshirish ──────────────────────────────────────────────

@@ -74,8 +74,8 @@ export default function PrivacyPage() {
         </Clause>
         <ul className="ml-5 list-disc space-y-1 text-neutral-800">
           <li>OnDex — mijoz ilovasi (Android, iOS);</li>
-          <li>OnDex Kuryer — kuryerlar uchun ilova;</li>
-          <li>OnDex Affitsiant — restoran zali uchun ilova;</li>
+          <li>OnDexGO — kuryerlar uchun ilova;</li>
+          <li>OnDexPro — restoran zali (affitsiantlar) uchun ilova;</li>
           <li>OnDex Restoran — restoran boshqaruv paneli;</li>
           <li>OnDex Admin — platforma ma’muriyati paneli;</li>
           <li>

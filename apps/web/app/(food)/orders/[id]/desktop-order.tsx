@@ -11,9 +11,10 @@ import {
   statusStyleOf,
 } from "@/lib/order-status";
 import { discountLineLabel } from "@/lib/promotions";
+import { deliveryMapVisible } from "@/lib/delivery-tracking";
 import { useOrderTracking } from "@/lib/use-order-tracking";
 import DesktopNavbar from "../../desktop-navbar";
-import CourierMap from "./courier-map";
+import DeliveryMap from "./delivery-map";
 
 // Buyurtma holati — KOMPYUTER ko'rinishi.
 //
@@ -34,8 +35,16 @@ export default function DesktopOrder({
   id: string;
   signedIn: boolean;
 }) {
-  const { order, loading, address, courierLatLng, paying, payError, payAgain } =
-    useOrderTracking(id);
+  const {
+    order,
+    loading,
+    address,
+    courierLatLng,
+    tracking,
+    paying,
+    payError,
+    payAgain,
+  } = useOrderTracking(id);
 
   if (loading || !order) {
     return (
@@ -63,10 +72,13 @@ export default function DesktopOrder({
   const createdAt = new Date(order.created_at);
   const stageTimes = extractStageTimes(createdAt, order.history);
 
-  // Xarita yetkazib berish buyurtmasida DOIM (koordinata bo'lsa):
-  // manzil buyurtma holatining bir qismi. Kuryer koordinatasi kelgach
-  // xaritada uning belgisi ham paydo bo'ladi.
-  const showMap = !dineIn && Boolean(order.delivery_lat && order.delivery_lng);
+  // Xarita yetkazib berish buyurtmasida DOIM (koordinata yoki kuzatuv
+  // bo'lsa): manzil buyurtma holatining bir qismi. Kuryer biriktirilgach
+  // mashina, yo'lda — A→B yo'li va qolgan vaqt (`delivery-map.tsx`).
+  const showMap =
+    !dineIn &&
+    !cancelled &&
+    (deliveryMapVisible(order) || Boolean(order.delivery_lat && order.delivery_lng));
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#302F2D] text-white">
@@ -158,13 +170,12 @@ export default function DesktopOrder({
               └─────────────────────────────────────────────────────────┘ */}
           {showMap && (
             <div className="mt-6">
-              <CourierMap
+              <DeliveryMap
+                order={order}
                 courier={courierLatLng}
-                destination={{
-                  lat: order.delivery_lat!,
-                  lng: order.delivery_lng!,
-                }}
-                heightClassName="h-[300px]"
+                tracking={tracking}
+                variant="dark"
+                mapHeightClassName="h-[340px]"
               />
               <p className="mt-3 flex items-start gap-2 text-[14px] text-white/55">
                 <MapPin size={16} className="mt-0.5 shrink-0 text-white/35" />

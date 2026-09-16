@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -22,11 +21,10 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   bool _busy = false;
   String? _error;
 
-  /// Botning bir martalik havolasi. Ekranda KO'RSATILADI, chunki
-  /// `launchUrl` ishonchli emas: web'da brauzer qalqib chiquvchi oynani
-  /// to'sishi mumkin, desktopda esa Telegram Desktop o'rnatilmagan
-  /// bo'lishi mumkin. Havola ko'rinib turgani uchun foydalanuvchi uni
-  /// har doim qo'lda nusxalab ocha oladi.
+  /// Botning bir martalik havolasi. Ekranda KO'RSATILMAYDI — faqat
+  /// "Telegramni ochish" tugmasi uni qayta ochish uchun saqlaydi, chunki
+  /// avtomatik `launchUrl` ishlamasligi mumkin (brauzer qalqib chiquvchi
+  /// oynani to'sishi yoki Telegram Desktop o'rnatilmagan bo'lishi).
   String? _deepLink;
 
   Future<void> _run(Future<void> Function() action) async {
@@ -67,7 +65,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         }
         if (!opened && mounted) {
           setState(() => _error = 'Telegram avtomatik ochilmadi — '
-              'pastdagi havolani nusxalab oching');
+              '"Telegramni ochish" tugmasini bosing');
         }
       });
 
@@ -120,24 +118,31 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                // NEGA `Center`: ustun `CrossAxisAlignment.stretch` bilan
+                // bolasiga to'liq kenglikni MAJBURLAYDI va `Image` dagi
+                // `width: 56` e'tiborsiz qoladi. Rasm ~336x56 ga cho'zilib,
+                // `BoxFit.cover` "O" harfining faqat o'rta yo'lagini
+                // ko'rsatardi — ikki chetda ikkita to'q sariq kvadrat.
+                // `Center` rasmga o'z o'lchamini qaytaradi, `contain` esa
+                // logotipni kesmaydi.
+                Center(
                   child: Image.asset(
-                    'assets/ondex.png',
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
+                    // OnDex Merchant logotipi — KENG (nisbati ~1.66:1),
+                    // shuning uchun balandlik emas, KENGLIK cheklanadi.
+                    'assets/merchant_logo.png',
+                    width: 240,
+                    fit: BoxFit.contain,
                     filterQuality: FilterQuality.medium,
                     errorBuilder: (_, __, ___) =>
                         const Icon(Icons.storefront, size: 56),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text('OnDex Restoran',
+                const SizedBox(height: 12),
+                Text('OnDex Merchant Panel',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: 4),
-                Text('Buyurtmalar va menyu boshqaruvi',
+                Text('O\'z biznesingizni boshqaring',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 24),
@@ -197,7 +202,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   }
 }
 
-/// Telegram oqimining ko'rsatmasi va zaxira havolasi.
+/// Telegram oqimi: botni qayta ochish va raqamni almashtirish tugmalari.
 ///
 /// Admin panelidagi ayni vidjet bilan bir xil — ikkala panel mustaqil
 /// Flutter ilova bo'lgani uchun umumiy vidjet `packages/ondex_core` ga
@@ -231,23 +236,18 @@ class _TelegramHint extends StatelessWidget {
           // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
           if (deepLink != null) ...[
             const SizedBox(height: 8),
-            SelectableText(
-              deepLink!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.primary),
-            ),
-            const SizedBox(height: 4),
             Row(
               children: [
+                // Havola MATNI ko'rsatilmaydi va nusxalanmaydi
+                // (foydalanuvchi qarori, 2026-09-15): u odam uchun
+                // ma'nosiz uzun URL. Telegram avtomatik ochilmasa shu
+                // tugma uni qayta ochadi; desktopda `https://t.me`
+                // havolasi Telegram Desktop bo'lmasa brauzerda ochiladi.
                 TextButton.icon(
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Havolani nusxalash'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: deepLink!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Havola nusxalandi')),
-                    );
-                  },
+                  icon: const Icon(Icons.send, size: 16),
+                  label: const Text('Telegramni ochish'),
+                  onPressed: () => launchUrl(Uri.parse(deepLink!),
+                      mode: LaunchMode.externalApplication),
                 ),
                 const Spacer(),
                 // Havola BIR MARTALIK: bot uni ishlatgach server tokenni

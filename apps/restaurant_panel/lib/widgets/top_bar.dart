@@ -36,7 +36,11 @@ class TopBar extends StatelessWidget {
   final String restaurantName;
   final String restaurantAddress;
   final String restaurantLogoUrl;
+  /// Qo'lda bosiladigan tugma.
   final bool open;
+
+  /// Mijozlar ko'radigan holat (ish vaqti bilan). `null` — faqat tugma.
+  final RestaurantOpenStatus? openStatus;
   final ValueChanged<bool> onOpenChanged;
   final String staffName;
   final String staffRole;
@@ -57,6 +61,7 @@ class TopBar extends StatelessWidget {
     required this.restaurantAddress,
     required this.restaurantLogoUrl,
     required this.open,
+    this.openStatus,
     required this.onOpenChanged,
     required this.staffName,
     required this.staffRole,
@@ -138,7 +143,7 @@ class TopBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _OpenPill(open: open, onChanged: onOpenChanged),
+                    _OpenPill(open: open, status: openStatus, onChanged: onOpenChanged),
                   ],
                 ),
                 if (restaurantAddress.isNotEmpty)
@@ -188,25 +193,51 @@ class TopBar extends StatelessWidget {
   }
 }
 
+/// Uch holat: ochiq; tugma yoqilgan, lekin ish vaqti emas (mijozlar buyurtma
+/// bera olmaydi); qo'lda yopilgan. Bosilganda FAQAT qo'lda tugma almashadi.
 class _OpenPill extends StatelessWidget {
   final bool open;
+  final RestaurantOpenStatus? status;
   final ValueChanged<bool> onChanged;
-  const _OpenPill({required this.open, required this.onChanged});
+  const _OpenPill({required this.open, required this.status, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    final color = open ? OnDexColors.success : OnDexColors.danger;
-    return GestureDetector(
-      onTap: () => onChanged(!open),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-          borderRadius: BorderRadius.circular(999),
+    final now = DateTime.now();
+    final st = status?.at(now);
+    final outsideHours = open && st != null && !st.open;
+    final detail = st?.detail(now);
+    final color = !open
+        ? OnDexColors.danger
+        : outsideHours
+            ? OnDexColors.warning
+            : OnDexColors.success;
+    final label = !open
+        ? 'Yopiq'
+        : outsideHours
+            ? 'Ish vaqti emas'
+            : 'Ochiq';
+    final tooltip = !open
+        ? 'Restoran yopiq — mijozlar buyurtma bera olmaydi. Bosib oching.'
+        : outsideHours
+            ? 'Ish vaqtidan tashqari — mijozlar buyurtma bera olmaydi'
+                '${detail == null ? '' : ' · $detail'}. Bosib butunlay yopish mumkin.'
+            : 'Buyurtmalar qabul qilinmoqda${detail == null ? '' : ' · $detail'}. Bosib yopish mumkin.';
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        key: const ValueKey('restaurant-open-pill'),
+        onTap: () => onChanged(!open),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            border: Border.all(color: color.withValues(alpha: 0.4)),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(outsideHours && detail != null ? '$label · $detail' : label,
+              style: TextStyle(
+                  fontSize: 11.5, color: color, fontWeight: FontWeight.w700)),
         ),
-        child: Text(open ? 'Ochiq' : 'Yopiq',
-            style: TextStyle(
-                fontSize: 11.5, color: color, fontWeight: FontWeight.w700)),
       ),
     );
   }

@@ -86,13 +86,11 @@ func (s *Server) restaurantSettings(ctx context.Context, rest *catalog.Restauran
 	}
 }
 
-// withOpenNow — ochiq restoran javobiga "hozir buyurtma qabul qiladimi"
-// qo'shadi. Keshdan KEYIN hisoblanadi: vaqtga bog'liq qiymat keshda
-// eskirmasin.
-func withOpenNow(v catalog.Restaurant) catalog.Restaurant {
-	open := v.AcceptingOrdersAt(time.Now())
-	v.OpenNow = &open
-	return v
+// withOpenState — ochiq restoran javobiga "hozir buyurtma qabul qiladimi",
+// sababi va holat o'zgaradigan payt qo'shiladi (`Restaurant.WithOpenState`).
+// Keshdan KEYIN hisoblanadi: vaqtga bog'liq qiymat keshda eskirmasin.
+func withOpenState(v catalog.Restaurant) catalog.Restaurant {
+	return v.WithOpenState(time.Now())
 }
 
 // isOwnUploadURL — manzil AYNAN bizning yuklash endpointimiz bergan rasm

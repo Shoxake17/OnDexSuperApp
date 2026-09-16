@@ -334,7 +334,9 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
               letterSpacing: -0.8),
         ),
         SizedBox(height: 1),
-        Text('Super App',
+        // Kirish ekranidagi (`widgets/auth_ui.dart`) shior bilan AYNAN
+        // bir xil bo'lishi kerak — ikki joyda ikki xil tavsif turmasin.
+        Text('Xalq ilovasi',
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.w500, color: _muted)),
       ],
@@ -708,7 +710,8 @@ class _RestaurantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = (restaurant['name'] ?? '').toString();
-    final open = restaurant['open'] == true;
+    // "Ochiq/Yopiq" — ish vaqti bilan (server hisobi, `ondex_core`).
+    final open = RestaurantOpenStatus.fromJson(restaurant).at(DateTime.now()).open;
     final cover = fullImageUrl((restaurant['cover_url'] ?? '').toString());
 
     return InkWell(

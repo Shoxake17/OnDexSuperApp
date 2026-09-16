@@ -196,8 +196,52 @@ class _GameBanner extends StatelessWidget {
   }
 }
 
+/// Restoran yopiq — menyu ustidagi ogohlantirish (veb `menu-content.tsx`
+/// bilan bir xil matn).
+class _ClosedBanner extends StatelessWidget {
+  const _ClosedBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('menu-closed-banner'),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E6),
+        border: Border.all(color: const Color(0xFFF5C26B)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF92400E))),
+          const SizedBox(height: 2),
+          const Text(
+            'Menyuni ko\'rishingiz mumkin — buyurtma restoran ochilgach qabul qilinadi.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF78350F)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MenuScreenState extends State<MenuScreen> {
   final _scroll = ScrollController();
+
+  /// Restoran HOZIR buyurtma qabul qiladimi — ish vaqti bilan (`ondex_core`).
+  ///
+  /// Avval menyu buni umuman tekshirmasdi: ish vaqti tugagan restoranda
+  /// ham savat to'lib, rad javobi faqat savatda kelardi. `ValueNotifier` —
+  /// holat almashganda faqat ogohlantirish qayta chiziladi, menyu emas.
+  late final _openStatus =
+      ValueNotifier<RestaurantOpenStatus>(RestaurantOpenStatus.fromJson(widget.restaurant));
+  Timer? _openTicker;
   final _chipsScroll = ScrollController();
   final _chipsListKey = GlobalKey();
   final _cart = CartStore.instance;
@@ -265,6 +309,40 @@ class _MenuScreenState extends State<MenuScreen> {
     FavoritesStore.instance.load(force: true);
     _refreshQuote();
     _checkGame();
+    _refreshOpenStatus();
+    // Ekran ochiq turganda ish vaqti chegarasi (masalan 22:00) o'tsa ham
+    // holat o'zi almashadi.
+    _openTicker = Timer.periodic(const Duration(seconds: 30), (_) => _tickOpenStatus());
+  }
+
+  /// Katalogdagi nusxa eskirgan bo'lishi mumkin — holat serverdan.
+  Future<void> _refreshOpenStatus() async {
+    try {
+      final r = await api.restaurant(_id);
+      if (mounted) _openStatus.value = RestaurantOpenStatus.fromJson(r);
+    } catch (_) {
+      // Tarmoq yo'q — mavjud holat qoladi; server baribir savatda tekshiradi.
+    }
+  }
+
+  void _tickOpenStatus() {
+    if (!mounted) return;
+    final next = _openStatus.value.at(DateTime.now());
+    if (next.open == _openStatus.value.open) return;
+    _openStatus.value = next;
+    // Keyingi o'zgarish vaqti — serverdan.
+    _refreshOpenStatus();
+  }
+
+  /// Yopiq restoranga qo'shib bo'lmaydi — sababi va ochilish vaqti aytiladi.
+  bool _ensureOrderable() {
+    final now = DateTime.now();
+    final st = _openStatus.value.at(now);
+    if (st.open) return true;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(st.closedMessage(now))));
+    return false;
   }
 
   /// ┌─ 3D MAKET ───────────────────────────────────────────────────┐
@@ -454,6 +532,8 @@ class _MenuScreenState extends State<MenuScreen> {
     _chipsScroll.dispose();
     _activeCategory.dispose();
     _headerScrolled.dispose();
+    _openTicker?.cancel();
+    _openStatus.dispose();
     super.dispose();
   }
 
@@ -671,7 +751,7 @@ class _MenuScreenState extends State<MenuScreen> {
   /// chaqiradi. Ikki xil yo'l bo'lsa, ulardan biri (masalan restoran
   /// almashtirish tekshiruvi) e'tibordan chetda qolardi.
   void _addById(String productId) {
-    if (productId.isEmpty) return;
+    if (productId.isEmpty || !_ensureOrderable()) return;
     _cart.increment(
       restaurantId: _id,
       productId: productId,
@@ -684,12 +764,18 @@ class _MenuScreenState extends State<MenuScreen> {
         productId: (p['id'] as String?) ?? '',
       );
 
-  void _setQty(Map<String, dynamic> p, int qty) => _cart.setQty(
-        restaurantId: _id,
-        productId: (p['id'] as String?) ?? '',
-        qty: qty,
-        restaurantName: _name,
-      );
+  void _setQty(Map<String, dynamic> p, int qty) {
+    final id = (p['id'] as String?) ?? '';
+    final current = _cart.restaurantId == _id ? _cart.qtyOf(id) : 0;
+    // Kamaytirish har doim mumkin; ko'paytirish — faqat ochiq restoranda.
+    if (qty > current && !_ensureOrderable()) return;
+    _cart.setQty(
+      restaurantId: _id,
+      productId: id,
+      qty: qty,
+      restaurantName: _name,
+    );
+  }
 
   // ── Chizish ───────────────────────────────────────────────────────
 
@@ -878,6 +964,15 @@ class _MenuScreenState extends State<MenuScreen> {
                             margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
                           ),
                         ),
+
+            SliverToBoxAdapter(
+              child: ValueListenableBuilder<RestaurantOpenStatus>(
+                valueListenable: _openStatus,
+                builder: (_, st, __) => st.open
+                    ? const SizedBox.shrink()
+                    : _ClosedBanner(message: st.closedMessage(DateTime.now())),
+              ),
+            ),
 
             // Banner FAQAT maketi bor restoranda. `_sceneInfo` restoran
             // yozuvidan olinadi, ya'ni ulanmagan kafeda u `null` va

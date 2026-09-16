@@ -372,6 +372,15 @@ func (s *Service) save(ctx context.Context, old, m *Member, actorID string, even
 		rollback()
 		return nil, err
 	}
+	// Ism o'zgarsa bog'langan akkaunt ham yangilanadi (kuryer ilovasi
+	// profili, superadmin ro'yxati). Yozuv allaqachon saqlangan — bu
+	// yerdagi xato amalni bekor qilmaydi, faqat logga tushadi.
+	if s.accounts != nil && m.UserID != "" && m.AccessEffective() && old.FullName() != m.FullName() {
+		if err := s.accounts.Refresh(ctx, m); err != nil {
+			slog.Warn("xodim: akkaunt ma'lumotini yangilab bo'lmadi",
+				"restaurant", m.RestaurantID, "staff", m.ID, "err", err)
+		}
+	}
 	s.emit(m, events)
 	return m, nil
 }
@@ -392,8 +401,15 @@ func (s *Service) syncAccess(ctx context.Context, old, m *Member, actorID string
 	want := m.AccessEffective()
 	had := old.UserID != "" && old.AccessEffective()
 	phoneChanged := old.UserID != "" && old.Phone != m.Phone
+	// Ilovali IKKI lavozim o'rtasidagi almashuv (ofitsiant ↔ yetkazib
+	// beruvchi): akkaunt BOSHQA rolga o'tadi. Avval bu holat "o'zgarish
+	// yo'q" deb o'tkazib yuborilardi — ilovali lavozim bitta bo'lganda
+	// sezilmasdi, ikkinchisi qo'shilgach esa affitsiant akkaunti kuryer
+	// yozuvida qolib ketardi.
+	positionChanged := old.UserID != "" && old.Position != m.Position
+	relink := phoneChanged || positionChanged
 
-	if old.UserID != "" && (!want || phoneChanged) {
+	if old.UserID != "" && (!want || relink) {
 		if s.accounts != nil {
 			if err := s.accounts.Disable(ctx, m.RestaurantID, old.UserID); err != nil {
 				return noop, err
@@ -411,7 +427,7 @@ func (s *Service) syncAccess(ctx context.Context, old, m *Member, actorID string
 			m.UserID = ""
 		}
 	}
-	if !want || (had && !phoneChanged) {
+	if !want || (had && !relink) {
 		return noop, nil
 	}
 	if s.accounts == nil {

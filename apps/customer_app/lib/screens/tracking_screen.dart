@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
 import '../api.dart';
 import 'ar_table_screen.dart';
 import '../live.dart';
 import '../widgets/common.dart';
+import '../delivery_tracking.dart';
+import '../widgets/courier_tracking_map.dart';
 import '../widgets/order_status.dart';
 import '../widgets/page_sheet.dart';
 import '../widgets/sheet_page.dart';
@@ -120,6 +123,25 @@ class _TrackingScreenState extends State<TrackingScreen> {
   String? _error;
   late final LiveRefresher _live;
 
+  /// Kuryerning oxirgi ma'lum joylashuvi: ekran ochilganda
+  /// `GET /orders/{id}` dan, keyin jonli `courier_location` hodisalaridan.
+  ///
+  /// `LiveRefresher` ga `courier_location` QO'SHILMAGAN: u har ~10 soniyada
+  /// keladi va butun buyurtmani qayta so'rashga arzimaydi — faqat belgi siljiydi.
+  ///
+  /// `ValueNotifier` (optimizatsiya, 2026-09-15): har ~10 soniyadagi
+  /// joylashuv faqat XARITANI yangilaydi — avval `setState` butun sahifani
+  /// (taom rasmlari ro'yxati bilan) qayta qurardi.
+  final _courierPos = ValueNotifier<LatLng?>(null);
+  StreamSubscription<Map<String, dynamic>>? _courierSub;
+
+  /// Yetkazish yo'li va qolgan vaqt (`GET /orders/{id}/tracking`) — kuryer
+  /// taomni olgandan keyin va yetkazilgach. Faqat xarita tinglaydi.
+  final _tracking = ValueNotifier<DeliveryTracking?>(null);
+  DateTime? _trackingAt;
+  String? _trackedStatus;
+  bool _trackingBusy = false;
+
   /// Karta to'lovi holati (to'lov sahifasi yopilib qolgan holat uchun).
   bool _paying = false;
   String? _payError;
@@ -151,12 +173,55 @@ class _TrackingScreenState extends State<TrackingScreen> {
       // Faqat SHU buyurtmaga tegishli hodisalar.
       types: const {'order_status', 'courier_assigned', 'dispatch_failed'},
     )..start();
+    _courierSub = customerLive.events.listen((e) {
+      final p = courierPointFromEvent(e, widget.orderId);
+      if (p == null || !mounted) return;
+      final o = _order;
+      if (o == null || !courierTrackable(o)) return;
+      _courierPos.value = p;
+      // Yo'l va qolgan vaqt ham yangilanadi (so'rov 15 soniyada bittadan
+      // oshmaydi, server esa Google'ga 30 soniyada bir boradi).
+      _refreshTracking();
+    });
   }
 
   @override
   void dispose() {
     _live.dispose();
+    _courierSub?.cancel();
+    _courierPos.dispose();
+    _tracking.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshTracking({bool force = false}) async {
+    final o = _order;
+    if (o == null || !deliveryMapVisible(o) || _trackingBusy) return;
+    final status = o['status'] as String?;
+    // Taom olinmaguncha yo'l chizilmaydi (server ham bermaydi).
+    if (status != 'picked_up' && status != 'delivered') return;
+    final previous = _tracking.value;
+    final last = _trackingAt;
+    if (!force) {
+      // Yetkazilgan buyurtmaning yo'li o'zgarmaydi — bir marta olinadi.
+      if (status == 'delivered' && previous?.phase == TrackingPhase.delivered) return;
+      if (last != null && DateTime.now().difference(last) < const Duration(seconds: 15)) return;
+    }
+    _trackingBusy = true;
+    try {
+      // A→B yo'li bir marta yuklanadi; keyin faqat kuryer, qolgan yo'l va vaqt.
+      final planned = previous?.plannedRoute;
+      final t = await api.orderTracking(widget.orderId, withPlanned: planned == null);
+      if (!mounted) return;
+      _tracking.value = t?.keepStaticFrom(previous);
+      _trackingAt = DateTime.now();
+      _trackedStatus = status;
+    } catch (_) {
+      // Tarmoq xatosi — oldingi xarita va vaqt qoladi, keyingi hodisada
+      // qayta so'raladi.
+    } finally {
+      _trackingBusy = false;
+    }
   }
 
   /// Buyurtma berilgandan keyin "Stolni kameraga tuting" taklifi.
@@ -204,7 +269,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
         _loading = false;
         _error = null;
       });
+      // Yetkazma tugagan — kuryer joylashuvi endi bu mijozga tegishli emas.
+      _courierPos.value = courierTrackable(o)
+          ? (courierPointFromOrder(o) ?? _courierPos.value)
+          : null;
       _maybePromptAr();
+      // Holat o'zgarsa (kuryer oldi / yetkazildi) — darhol, kutmasdan.
+      _refreshTracking(force: o['status'] != _trackedStatus);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -321,6 +392,20 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       _ItemsCard(order: o),
                       const SizedBox(height: 14),
                       _WhereCard(order: o),
+                      // Kuryer biriktirilgach — xarita, "Yetkazib berish"
+                      // blokining ostida. Yetkazilgandan keyin ham qoladi:
+                      // A→B yo'li buyurtmaga biriktirilgan.
+                      if (deliveryMapVisible(o)) ...[
+                        const SizedBox(height: 14),
+                        CourierTrackingMap(
+                          orderStatus: (o['status'] as String?) ?? '',
+                          courier: _courierPos,
+                          destination:
+                              parseGeoPoint(o['delivery_lat'], o['delivery_lng']),
+                          tracking: _tracking,
+                          courierName: (o['courier_name'] as String?) ?? '',
+                        ),
+                      ],
                       if (_isFinished(o)) ...[
                         const SizedBox(height: 26),
                         SizedBox(
@@ -526,6 +611,9 @@ class _StatusHeader extends StatelessWidget {
     final isDineIn = (order['type'] as String?) == 'dine_in';
     final (label, icon, color) = statusStyleOf(status, dineIn: isDineIn);
     final courierId = (order['courier_id'] as String?) ?? '';
+    // Ism serverdan (`courier_name`, faqat ismi). Ichki ID (masalan
+    // "staff-5f1c…") mijozga HECH QACHON ko'rsatilmaydi.
+    final courierName = ((order['courier_name'] as String?) ?? '').trim();
     final table = (order['table_label'] as String?) ?? '';
     final partySize = (order['party_size'] as num?)?.toInt() ?? 0;
 
@@ -550,11 +638,14 @@ class _StatusHeader extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13, color: Color(0xFF757575)),
           ),
-          // Kuryer ID — stol buyurtmasida ma'nosiz (kuryer yo'q).
+          // Stol buyurtmasida kuryer yo'q.
           if (!isDineIn && courierId.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text('Kuryer: $courierId',
+              child: Text(
+                  courierName.isEmpty
+                      ? 'Kuryer biriktirildi'
+                      : 'Kuryer: $courierName',
                   style: const TextStyle(
                       fontSize: 13, color: Color(0xFF757575))),
             ),

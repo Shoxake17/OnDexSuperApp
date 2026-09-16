@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useCart } from "@/lib/cart-context";
+import { restaurantOpenStatus } from "@/lib/restaurant-status";
 import { lines, proxy, registerTools, sum } from "@/lib/webmcp";
 import type { Product, ProductSearchResult, Restaurant } from "@/lib/types";
 import { useAgentActivity } from "./agent-activity";
@@ -103,7 +104,7 @@ export default function WebMcpTools() {
             `${list.length} restaurant(s):`,
             ...list.map(
               (x) =>
-                `- ${x.name}${x.open ? "" : " (closed)"} [restaurant_id=${x.id}]`,
+                `- ${x.name}${restaurantOpenStatus(x).open ? "" : " (closed)"} [restaurant_id=${x.id}]`,
             ),
           );
         },

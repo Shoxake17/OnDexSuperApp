@@ -1,4 +1,10 @@
+import 'dart:typed_data';
+
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:http/http.dart' as http;
 import 'package:ondex_core/ondex_core.dart';
+
+import 'voice_navigation.dart' show NavStep;
 
 // Umumiy yadro qayta eksport qilinadi — mavjud ekranlar `api.dart` ni
 // import qilgani uchun ular tegilmasdan ishlashda davom etadi.
@@ -35,6 +41,53 @@ class CourierApi extends ApiClient {
   /// Kuryerning o'z holati: approved, available, joylashuv.
   Future<Map<String, dynamic>> getCourier(String courierId) async =>
       Map<String, dynamic>.from(await send('GET', '/couriers/$courierId'));
+
+  /// Kuryerning yakunlanmagan buyurtmasi ID'si yoki `null`.
+  ///
+  /// Ilova qayta ochilganda joriy buyurtmani TIKLASH uchun: avval u faqat
+  /// xotirada turardi va Android fondagi ilovani o'ldirsa "olindi"/
+  /// "yetkazdim" tugmalari yo'qolardi (kuryer ilovasi auditi, 2-band).
+  Future<String?> activeOrderId(String courierId) async {
+    final d = await send('GET', '/couriers/$courierId/active-order');
+    return (d is Map) ? d['order_id'] as String? : null;
+  }
+
+  /// Kuryerga HOZIR ochiq turgan taklif (`WebSocket` "offer" xabari bilan bir
+  /// xil shakl) yoki `null`. Ilova qayta ochilganda, oldinga chiqqanda va push
+  /// bosilganda taklifni tiklash uchun.
+  Future<Map<String, dynamic>?> pendingOffer(String courierId) async {
+    final d = await send('GET', '/couriers/$courierId/offer');
+    final offer = d is Map ? d['offer'] : null;
+    return offer is Map ? Map<String, dynamic>.from(offer) : null;
+  }
+
+  /// "Siz `restoran` restoraniga yetib keldingiz" (WAV, serverda bir marta
+  /// yasalgan) yoki `null` — u holda ilovadagi umumiy ibora aytiladi.
+  /// Matnni ilova bermaydi: server nomni buyurtmadan oladi.
+  Future<Uint8List?> arrivalVoice(String courierId, String orderId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/couriers/$courierId/voice/arrival'
+          '?order_id=${Uri.encodeQueryComponent(orderId)}');
+      final r = await http.get(uri, headers: {
+        if (token != null) 'Authorization': 'Bearer $token',
+      }).timeout(const Duration(seconds: 60));
+      final type = r.headers['content-type'] ?? '';
+      if (r.statusCode != 200 || !type.startsWith('audio/') || r.bodyBytes.length > 4 * 1024 * 1024) {
+        return null;
+      }
+      return r.bodyBytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Push tokeni — kuryer akkauntiga bog'lanadi (`lib/push.dart`).
+  Future<void> savePushToken(String token, String platform) =>
+      send('POST', '/me/push-token', {'token': token, 'platform': platform});
+
+  /// Chiqishda: token QUERY orqali (server shu yerdan o'qiydi).
+  Future<void> deletePushToken(String token) =>
+      send('DELETE', '/me/push-token?token=${Uri.encodeQueryComponent(token)}');
 
   Future<void> setAvailable(String courierId, bool available) =>
       send('POST', '/couriers/$courierId/available', {'available': available});
@@ -85,7 +138,22 @@ class CourierApi extends ApiClient {
             '&dest_lat=$destLat&dest_lng=$destLng&mode=$mode',
       );
       final points = (d['points'] as List?) ?? [];
+      // Ovozli yo'l ko'rsatish uchun manevrlar (noto'g'ri yozuvlar tashlanadi).
+      final steps = <NavStep>[];
+      final rawSteps = d['steps'];
+      if (rawSteps is List) {
+        for (final s in rawSteps.take(200)) {
+          if (s is! Map) continue;
+          final m = s['maneuver'];
+          final lat = s['lat'];
+          final lng = s['lng'];
+          if (m is String && lat is num && lng is num && lat.isFinite && lng.isFinite) {
+            steps.add(NavStep(m, LatLng(lat.toDouble(), lng.toDouble())));
+          }
+        }
+      }
       return RouteResult(
+        steps: steps,
         points: points
             .map(
               (p) => LatLngPoint(
@@ -131,10 +199,14 @@ class RouteResult {
   final List<LatLngPoint> points;
   final int? durationSeconds;
   final int? distanceMeters;
+
+  /// Aytiladigan manevrlar (ovozli yo'l ko'rsatish).
+  final List<NavStep> steps;
   const RouteResult({
     required this.points,
     required this.durationSeconds,
     this.distanceMeters,
+    this.steps = const [],
   });
 }
 

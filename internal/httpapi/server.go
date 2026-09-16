@@ -46,7 +46,9 @@ import (
 	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
+	"chustapp/internal/tracking"
 	"chustapp/internal/users"
+	"chustapp/internal/voice"
 	"chustapp/internal/ws"
 
 	"chustapp/internal/cache"
@@ -66,6 +68,15 @@ type Deps struct {
 	BookRepo       catalog.BookRepository
 	PromotionsRepo promotions.Repository
 	FavoritesRepo  favorites.Repository
+	// RouteRepo — buyurtmaga biriktirilgan yetkazish yo'li (A→B,
+	// `internal/tracking`). `nil` bo'lsa kuzatuv faqat jonli qismini beradi.
+	RouteRepo tracking.Repository
+	// Directions — yo'l hisoblovchi. `nil` — Google Directions API
+	// (`directions.go`); testlar soxtasini beradi.
+	Directions DirectionsFunc
+	// Voice — ovozli yo'l ko'rsatish (restoran nomi bor ibora, Gemini TTS).
+	// `nil` bo'lsa endpoint 503, ilova umumiy iborani aytadi.
+	Voice *voice.Service
 	// StatsSource — restoran paneli "Statistika" sahifasi uchun buyurtma
 	// qatorlari (`internal/stats`). `nil` bo'lsa `/restaurants/{id}/stats`
 	// 503 qaytaradi, qolgan API ishlayveradi.
@@ -134,6 +145,14 @@ type Deps struct {
 	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
 	DevMode bool
+
+	// PlatformCouriers — OnDex platforma kuryerlari (o'zi ro'yxatdan
+	// o'tadigan) YOQILGANMI. Hozircha `false` (2026-09-15, foydalanuvchi
+	// qarori): yetkazishni restoranning O'Z kuryerlari bajaradi va
+	// `POST /couriers/register` yopiq. `main.go` buni o'rnatmaydi —
+	// yoqish ongli kod o'zgarishi bo'lishi kerak (dispatch'ga platforma
+	// bosqichi qo'shilgan kuni).
+	PlatformCouriers bool
 
 	// EmailConfigured â€” HAQIQIY SMTP ulanganmi.
 	//
@@ -270,6 +289,10 @@ type Server struct {
 	// 10 ta bir zumda, keyin 2 soniyada bitta. Odam yozishi uchun yetarli,
 	// o'g'irlangan token bilan admin kanalini xabarga ko'mib tashlash uchun emas.
 	supportLimiter *ratelimit.Limiter
+
+	// liveRoutes — kuryer kuzatuvidagi yo'llar keshi (`order_tracking.go`):
+	// Google Directions'ga buyurtma bo'yicha ko'pi bilan 30 soniyada bir.
+	liveRoutes *liveRouteCache
 }
 
 func New(d Deps) *Server {
@@ -279,6 +302,7 @@ func New(d Deps) *Server {
 		statsLimiter:   ratelimit.New(0.5, 30),
 		historyLimiter: ratelimit.New(2, 60),
 		supportLimiter: ratelimit.New(0.5, 10),
+		liveRoutes:     newLiveRouteCache(),
 	}
 
 	// 3D model holati o'zgarganda ikki ish qilinadi. Ikkalasi ham
@@ -321,6 +345,8 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerCatalogRoutes(mux)
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
+	s.registerTrackingRoutes(mux)
+	s.registerVoiceRoutes(mux)
 	s.registerStatsRoutes(mux)
 	s.registerRestaurantSettingsRoutes(mux)
 	s.registerStaffRoutes(mux)

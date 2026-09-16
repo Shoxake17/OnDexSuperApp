@@ -54,6 +54,24 @@ const String appVersion = String.fromEnvironment(
   defaultValue: 'dev',
 );
 
+/// Foydalanuvchiga ko'rsatiladigan versiya: `v0.2.3 (15)`, dev build'da
+/// `v0.2.3 (15) · dev`. Qiymat `scripts/version.ps1` yozadigan
+/// `ONDEX_APP_VERSION` dan — har reliz build +1 oshiradi.
+String get appVersionLabel => formatAppVersion(appVersion);
+
+/// `0.2.3+15` → `v0.2.3 (15)`; `0.2.3-dev+15` → `v0.2.3 (15) · dev`;
+/// `0.2.3` → `v0.2.3`; bo'sh → `dev`; tanilmagan shakl — o'zgarishsiz.
+String formatAppVersion(String raw) {
+  final v = raw.trim();
+  if (v.isEmpty) return 'dev';
+  final m = RegExp(r'^(\d+\.\d+\.\d+)(?:-([0-9A-Za-z.]+))?(?:\+(\d+))?$').firstMatch(v);
+  if (m == null) return v;
+  final build = m.group(3);
+  final label = 'v${m.group(1)}${build == null ? '' : ' ($build)'}';
+  final pre = m.group(2);
+  return pre == null ? label : '$label · $pre';
+}
+
 /// ┌─ POSTHOG (mahsulot tahlili va seans yozuvi) ───────────────────────┐
 /// `phc_...` kaliti — OCHIQ kalit. U ataylab klient ilovaga kiradi va
 /// sir emas: u bilan faqat HODISA YUBORISH mumkin, o'qish yoki

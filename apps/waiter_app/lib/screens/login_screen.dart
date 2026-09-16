@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -50,10 +49,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _busy = false;
   String? _error;
 
-  /// Botning bir martalik havolasi. Ekranda KO'RSATILADI, chunki
-  /// `launchUrl` ishonchli emas: Telegram o'rnatilmagan bo'lishi yoki
-  /// tizim havolani boshqa ilovaga yo'naltirishi mumkin. Havola
-  /// ko'rinib turgani uchun uni har doim qo'lda ochib bo'ladi.
+  /// Botning bir martalik havolasi. Ekranda KO'RSATILMAYDI — faqat
+  /// "Telegramni ochish" tugmasi uni qayta ochish uchun saqlaydi, chunki
+  /// avtomatik `launchUrl` ishlamasligi mumkin.
   String? _deepLink;
 
   /// Kod qaysi kanal orqali yuborilgani — faqat MATNNI to'g'ri
@@ -99,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         if (!opened && mounted) {
           setState(() => _error = 'Telegram avtomatik ochilmadi — '
-              'pastdagi havolani bosing yoki nusxalab oching');
+              '"Telegramni ochish" tugmasini bosing');
         }
         return;
       } on ApiException catch (e) {
@@ -199,8 +197,8 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Ilova logotipi (`image/affitsiant.png` dan). Ilova
-                // belgisi (launcher icon) ham AYNAN shu fayldan
+                // OnDexPro logotipi (`image/OnDexPro.png` dan). Ilova
+                // belgisi (launcher icon) ham AYNAN shu logodan
                 // generatsiya qilinadi — telefondagi belgi va ekrandagi
                 // logotip bir xil ko'rinadi.
                 Image.asset(
@@ -213,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'OnDex Affitsiant',
+                  'OnDexPro',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
@@ -307,11 +305,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// Telegram oqimining ko'rsatmasi va zaxira havolasi.
+/// Telegram oqimining ko'rsatmasi va botni qayta ochish tugmasi.
 ///
 /// Panellardagi shunga o'xshash vidjetdan farqi — bu MOBIL uchun:
-/// havola bosiladigan qilingan (telefonda uzun URL'ni qo'lda terish
-/// amalda imkonsiz) va matn Telegram ILOVASI haqida gapiradi.
+/// matn Telegram ILOVASI haqida gapiradi va raqam mosligini eslatadi.
 class _TelegramHint extends StatelessWidget {
   final String? deepLink;
 
@@ -350,26 +347,14 @@ class _TelegramHint extends StatelessWidget {
           ),
           if (deepLink != null) ...[
             const SizedBox(height: 8),
-            Row(
-              children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Botni ochish'),
-                  onPressed: () => launchUrl(Uri.parse(deepLink!),
-                      mode: LaunchMode.externalApplication),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Havola'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: deepLink!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Havola nusxalandi')),
-                    );
-                  },
-                ),
-              ],
+            // Havola MATNI ko'rsatilmaydi va nusxalanmaydi (foydalanuvchi
+            // qarori, 2026-09-15): Telegram avtomatik ochilmasa shu
+            // tugma uni qayta ochadi, bu yetarli.
+            TextButton.icon(
+              icon: const Icon(Icons.send, size: 16),
+              label: const Text('Telegramni ochish'),
+              onPressed: () => launchUrl(Uri.parse(deepLink!),
+                  mode: LaunchMode.externalApplication),
             ),
           ],
         ],

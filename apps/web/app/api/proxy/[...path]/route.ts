@@ -36,6 +36,12 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   // tomonidan tasdiqlangan (`/auth/telegram/start` oqimi).
   // └─────────────────────────────────────────────────────────────────┘
   { method: "POST", pattern: "me" },
+  // "Akkauntni o'chirish" — https://ondex.uz/delete-account.
+  //
+  // Go tomonda `POST /me/delete-account` FAQAT mijoz roliga ochiq va
+  // faqat SO'ROV EGASINING yozuviga tegadi (`claimsFrom(r).Subject`) —
+  // bu yerda ham qo'shimcha huquq oshirish imkoni yo'q.
+  { method: "POST", pattern: "me/delete-account" },
   { method: "GET", pattern: "me/address" },
   { method: "POST", pattern: "me/address" },
   { method: "GET", pattern: "me/orders" },
@@ -48,6 +54,9 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   { method: "GET", pattern: "products/search" },
   { method: "POST", pattern: "orders" },
   { method: "GET", pattern: "orders/*" },
+  // Kuzatuv xaritasi: A→B yo'li, kuryer va qolgan vaqt. Go tomonda faqat
+  // buyurtma egasiga (begonaga 404) — `internal/httpapi/order_tracking.go`.
+  { method: "GET", pattern: "orders/*/tracking" },
   // Karta orqali to'lov: havolani olish va holatni kuzatish.
   // Faqat SHU ikkitasi — callback endpointi (`payments/octo/callback`)
   // ATAYLAB ro'yxatda yo'q: uni Octo serveri to'g'ridan-to'g'ri

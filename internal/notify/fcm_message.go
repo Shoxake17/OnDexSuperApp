@@ -1,5 +1,35 @@
 package notify
 
+import (
+	"math"
+	"strconv"
+)
+
+// ┌─ KURYER TAKLIFI — FAQAT MA'LUMOT (DATA-ONLY) PUSH ────────────────┐
+// Birinchi versiyada taklif oddiy `notification` push edi: ilova yopiq
+// bo'lsa Android uni O'ZI ko'rsatardi va tovush BIR MARTA qisqa chalinardi
+// — kuryer sezmasdi (foydalanuvchi sinovi, 2026-09-15).
+//
+// Endi xabar faqat `data` bilan ketadi: telefon ilovani fonda uyg'otadi va
+// kuryer ilovasi (`apps/courier_app/lib/offer_alert.dart`) TAKRORLANUVCHI
+// (insistent) bildirishnoma chiqaradi — ilovaning o'z mp3 ovozi kuryer
+// bosguncha yoki taklif muddati tugaguncha qayta-qayta chalinadi.
+// Taklif boshqa kuryerga ketsa `courier_offer_cancelled` o'sha signalni
+// o'chiradi. Muddat (`ttl`) taklif muddatiga teng: telefon shu paytda
+// oflayn bo'lsa, eskirgan taklif keyin kelib chalg'itmaydi.
+// └───────────────────────────────────────────────────────────────────┘
+const (
+	courierOfferKind          = "courier_offer"
+	courierOfferCancelledKind = "courier_offer_cancelled"
+	courierAutoOfflineKind    = "courier_auto_offline"
+)
+
+// dataOnlyKinds — `notification` blokisiz yuboriladigan turlar (ko'rsatishni
+// ilovaning o'zi boshqaradi).
+func dataOnlyKind(kind string) bool {
+	return kind == courierOfferKind || kind == courierOfferCancelledKind
+}
+
 // ┌─ AFFITSIANTNING "TAOM TAYYOR" BILDIRISHNOMASI ────────────────────┐
 // Avval barcha push'lar bir xil yuborilardi: kanal ko'rsatilmasdi.
 // Affitsiant ilovasi fonda yoki yopiq bo'lganda Android bildirishnomani
@@ -28,7 +58,7 @@ var waiterReadyVibration = []string{"0s", "0.6s", "0.3s", "0.6s", "0.3s", "0.6s"
 // fcmMessage — bitta qurilma uchun FCM v1 `message` obyekti.
 func fcmMessage(token string, e Event) map[string]any {
 	// FCM `data` FAQAT satr qabul qiladi.
-	data := make(map[string]string, len(e.Data)+2)
+	data := make(map[string]string, len(e.Data)+4)
 	for k, v := range e.Data {
 		data[k] = v
 	}
@@ -36,19 +66,30 @@ func fcmMessage(token string, e Event) map[string]any {
 	data["kind"] = e.Kind
 
 	android := map[string]any{
-		// Buyurtma/taklif xabarlari kechiktirilmasin.
+		// Buyurtma/taklif xabarlari kechiktirilmasin. Data-only xabar
+		// yuqori ustuvorlik bilangina yopiq ilovani uyg'otadi.
 		"priority": "high",
 	}
+	if e.TTL > 0 {
+		android["ttl"] = strconv.Itoa(int(math.Ceil(e.TTL.Seconds()))) + "s"
+	}
 	msg := map[string]any{
-		"token": token,
-		"notification": map[string]any{
-			"title": e.Title,
-			"body":  e.Body,
-		},
+		"token":   token,
 		"data":    data,
 		"android": android,
 	}
 
+	if dataOnlyKind(e.Kind) {
+		// Matnni ilova o'zi ko'rsatadi.
+		data["title"] = e.Title
+		data["body"] = e.Body
+		return msg
+	}
+
+	msg["notification"] = map[string]any{
+		"title": e.Title,
+		"body":  e.Body,
+	}
 	if e.Kind == waiterReadyKind {
 		android["notification"] = map[string]any{
 			"channel_id":              waiterReadyChannel,

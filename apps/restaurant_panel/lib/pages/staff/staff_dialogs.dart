@@ -497,17 +497,18 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
               children: [
                 const Icon(Icons.phone_iphone_rounded, color: OnDexColors.info),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('OnDex Affitsiant ilovasiga kirish',
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
+                      Text('${staffAppName(_position)} ilovasiga kirish',
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: OnDexColors.ink)),
                       Text(
                         'Xodim shu raqam bilan SMS/Telegram kod orqali kiradi — parol kerak emas. '
-                        'Ta\'til yoki ishdan bo\'shatishda kirish avtomatik yopiladi.',
-                        style: TextStyle(fontSize: 11.5, color: OnDexColors.inkDim),
+                        'Ta\'til yoki ishdan bo\'shatishda kirish avtomatik yopiladi.'
+                        '${_position == 'courier' ? ' Yetkazish buyurtmalari unga faqat sizning restoraningizdan keladi.' : ''}',
+                        style: const TextStyle(fontSize: 11.5, color: OnDexColors.inkDim),
                       ),
                     ],
                   ),
@@ -638,8 +639,10 @@ class _StaffDetailsDialogState extends State<_StaffDetailsDialog> {
           ),
         );
     final access = !m.appAccessActive && !m.appAccess
-        ? (m.position == 'waiter' ? 'Yopiq' : 'Bu lavozim uchun ilova yo\'q')
-        : (m.appAccessActive ? 'Ochiq — OnDex Affitsiant' : 'Vaqtincha yopiq (${m.status == 'on_leave' ? 'ta\'tilda' : 'faol emas'})');
+        ? (m.position == 'waiter' || m.position == 'courier' ? 'Yopiq' : 'Bu lavozim uchun ilova yo\'q')
+        : (m.appAccessActive
+            ? 'Ochiq — ${staffAppName(m.position)}'
+            : 'Vaqtincha yopiq (${m.status == 'on_leave' ? 'ta\'tilda' : 'faol emas'})');
 
     final events = _events;
     final body = Column(
@@ -730,10 +733,11 @@ class _StaffDetailsDialogState extends State<_StaffDetailsDialog> {
 Future<bool> _confirmStatus(BuildContext context, StaffMember m, String status) async {
   if (status == 'active') return true;
   final dismiss = status == 'dismissed';
+  final appName = staffAppName(m.position);
   final appNote = m.appAccessActive
       ? (dismiss
-          ? '\n\nOnDex Affitsiant ilovasiga kirish va barcha sessiyalar DARHOL yopiladi.'
-          : '\n\nOnDex Affitsiant ilovasiga kirish ta\'til davomida yopiladi va ishga qaytganda qayta ochiladi.')
+          ? '\n\n$appName ilovasiga kirish va barcha sessiyalar DARHOL yopiladi.'
+          : '\n\n$appName ilovasiga kirish ta\'til davomida yopiladi va ishga qaytganda qayta ochiladi.')
       : '';
   final ok = await showDialog<bool>(
     context: context,

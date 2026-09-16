@@ -23,6 +23,7 @@ func (r *fakeUserRepo) GetByPhone(_ context.Context, phone string) (*User, error
 	}
 	return nil, ErrUserNotFound
 }
+
 // Telegram Mini App bog'lanishi (migration 0031). Xotira va Postgres
 // implementatsiyalari bilan BIR XIL semantika: eski bog'lanish avval
 // uziladi, aks holda odam Mini App'da begona hisobga tushardi.
@@ -204,6 +205,46 @@ func (r *fakeUserRepo) Delete(_ context.Context, id string) error {
 	}
 	return ErrUserNotFound
 }
+
+func (r *fakeUserRepo) SoftDelete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			now := time.Now()
+			u.DeletedAt = &now
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+
+func (r *fakeUserRepo) Reactivate(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id {
+			u.DeletedAt = nil
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
+func (r *fakeUserRepo) GetByRoleEntity(_ context.Context, role Role, entityID string) (*User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var found *User
+	for _, u := range r.data {
+		if u.Role == role && u.EntityID == entityID && (found == nil || u.CreatedAt.Before(found.CreatedAt)) {
+			found = u
+		}
+	}
+	if found == nil {
+		return nil, ErrUserNotFound
+	}
+	return found, nil
+}
+
 func (r *fakeUserRepo) ListByRole(_ context.Context, role Role) ([]*User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

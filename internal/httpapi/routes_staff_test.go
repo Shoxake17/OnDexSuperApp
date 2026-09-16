@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"chustapp/internal/catalog"
+	"chustapp/internal/orders"
 	"chustapp/internal/revoke"
 	"chustapp/internal/staff"
 	"chustapp/internal/storage"
@@ -17,10 +18,13 @@ import (
 )
 
 type staffFixture struct {
-	h       http.Handler
-	jwt     map[string]string
-	users   *storage.MemoryUserRepo
-	revoked *revoke.Store
+	h        http.Handler
+	jwt      map[string]string
+	users    *storage.MemoryUserRepo
+	revoked  *revoke.Store
+	couriers *storage.MemoryCourierRepo
+	orders   *storage.MemoryOrderRepo
+	tokens   *users.TokenIssuer
 }
 
 // staffServer — ikki restoran; tokenlar: "a", "b" (restoran), "admin",
@@ -52,20 +56,28 @@ func staffServer(t *testing.T) staffFixture {
 
 	catalogRepo := storage.NewMemoryCatalogRepo(
 		[]catalog.Restaurant{{ID: testRestA, Name: "Book Cafe", Open: true}, {ID: testRestB, Name: "B", Open: true}}, nil)
+	courierRepo := storage.NewMemoryCourierRepo()
+	orderRepo := storage.NewMemoryOrderRepo()
 	svc := staff.NewService(storage.NewMemoryStaffRepo(),
-		&staff.UserAccounts{Users: userRepo, Revoked: revoked, NewID: NewID})
+		&staff.UserAccounts{Users: userRepo, Couriers: courierRepo, Revoked: revoked, NewID: NewID,
+			CourierBusy: func(ctx context.Context, courierID string) (bool, error) {
+				return courierHasActiveOrder(ctx, orderRepo, courierID)
+			}})
 	h := New(Deps{
 		UserRepo:       userRepo,
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
-		OrderRepo:      storage.NewMemoryOrderRepo(),
+		OrderRepo:      orderRepo,
+		OrderSvc:       orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
+		CourierRepo:    courierRepo,
 		Tokens:         tokens,
 		Revoked:        revoked,
 		StaffSvc:       svc,
 		Hub:            ws.NewHub(nil),
 		DevMode:        true,
 	}).Routes(nil)
-	return staffFixture{h: h, jwt: jwt, users: userRepo, revoked: revoked}
+	return staffFixture{h: h, jwt: jwt, users: userRepo, revoked: revoked,
+		couriers: courierRepo, orders: orderRepo, tokens: tokens}
 }
 
 const staffPathA = "/restaurants/" + testRestA + "/staff"
@@ -209,8 +221,17 @@ func TestStaffWaiterAccessFollowsRecord(t *testing.T) {
 	if roleOf() != users.RoleWaiter {
 		t.Fatal("qaytganda kirish ochilmadi")
 	}
-	// Lavozim o'zgardi — kirish ham, tanlov ham o'chadi.
+	// Ilovali BOSHQA lavozimga (yetkazib beruvchi) o'tdi — o'sha akkaunt
+	// QAYTA bog'lanadi: affitsiant roli yopiladi, kuryer roli ochiladi.
 	w := do(t, f.h, "PATCH", itemPath, f.jwt["a"], `{"position":"courier"}`)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Body.String())
+	}
+	if v := decodeMember(t, w.Body.String()); !v.AppAccess || !v.AppAccessActive || roleOf() != users.RoleCourier {
+		t.Fatalf("yetkazib beruvchiga o'tganda: %+v rol=%s", v, roleOf())
+	}
+	// Ilovasiz lavozim — kirish ham, tanlov ham o'chadi.
+	w = do(t, f.h, "PATCH", itemPath, f.jwt["a"], `{"position":"cashier"}`)
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Body.String())
 	}
@@ -219,7 +240,7 @@ func TestStaffWaiterAccessFollowsRecord(t *testing.T) {
 	}
 	// Ilovasiz lavozimga kirish ochib bo'lmaydi.
 	if w := do(t, f.h, "PATCH", itemPath, f.jwt["a"], `{"app_access":true}`); w.Code != http.StatusBadRequest {
-		t.Fatalf("kuryerga ilova: %d", w.Code)
+		t.Fatalf("kassirga ilova: %d", w.Code)
 	}
 
 	// Begona akkaunt (mijoz) raqami — egallab bo'lmaydi, yozuv ham yaratilmaydi.

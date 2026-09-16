@@ -2,13 +2,14 @@ package httpapi
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"chustapp/internal/tracking"
 )
 
 func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
@@ -192,47 +193,33 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 					errors.New("origin_lat/origin_lng/dest_lat/dest_lng noto'g'ri"))
 				return
 			}
-			mode := r.URL.Query().Get("mode")
-			switch mode {
-			case "walking", "bicycling", "driving":
-				// to'g'ri qiymat — o'zgarishsiz qoladi
-			default:
-				mode = "driving"
-			}
-			// DIQQAT: bu ham server-server chaqiruv (xuddi geokodlash/Distance
-			// Matrix kabi) — shuning uchun GOOGLE_GEOCODING_API_KEY qayta
-			// ishlatiladi (Cloud Console'da shu kalitga "Directions API"ni
-			// ham yoqish kerak).
-			key := os.Getenv("GOOGLE_GEOCODING_API_KEY")
-			if key == "" {
-				httpError(w, http.StatusServiceUnavailable,
-					errors.New("geokodlash kaliti sozlanmagan (.env: GOOGLE_GEOCODING_API_KEY)"))
+			// Google so'rovi `directions.go` da — mijoz kuzatuvi
+			// (`GET /orders/{id}/tracking`) ham AYNAN shu funksiyadan o'tadi.
+			res, err := s.routeBetween(r.Context(), directionsCourierRoute, claimsFrom(r).Subject,
+				tracking.Point{Lat: originLat, Lng: originLng},
+				tracking.Point{Lat: destLat, Lng: destLng},
+				r.URL.Query().Get("mode"))
+			switch {
+			case errors.Is(err, errDirectionsKeyMissing):
+				httpError(w, http.StatusServiceUnavailable, err)
 				return
-			}
-			dirURL := "https://maps.googleapis.com/maps/api/directions/json" +
-				"?origin=" + strconv.FormatFloat(originLat, 'f', -1, 64) + "," + strconv.FormatFloat(originLng, 'f', -1, 64) +
-				"&destination=" + strconv.FormatFloat(destLat, 'f', -1, 64) + "," + strconv.FormatFloat(destLng, 'f', -1, 64) +
-				"&mode=" + mode + "&language=uz&key=" + key
-			var data directionsResponse
-			if err := fetchGeoJSON(r.Context(), dirURL, &data); err != nil {
+			case errors.Is(err, errNoRoute):
+				httpError(w, http.StatusNotFound, err)
+				return
+			case err != nil:
 				httpError(w, http.StatusBadGateway, err)
 				return
 			}
-			if data.Status != "OK" || len(data.Routes) == 0 {
-				httpError(w, http.StatusNotFound, fmt.Errorf("marshrut topilmadi (status: %s)", data.Status))
-				return
-			}
-			route := data.Routes[0]
-			points := decodePolyline(route.OverviewPolyline.Points)
-			var distanceM, durationS int
-			for _, leg := range route.Legs {
-				distanceM += leg.Distance.Value
-				durationS += leg.Duration.Value
+			steps := res.Steps
+			if steps == nil {
+				steps = []RouteStep{}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
-				"points":           points,
-				"distance_meters":  distanceM,
-				"duration_seconds": durationS,
+				"points":           res.Points,
+				"distance_meters":  res.DistanceMeters,
+				"duration_seconds": res.DurationSeconds,
+				// Kuryer ilovasining ovozli yo'l ko'rsatishi uchun.
+				"steps": steps,
 			})
 		})))
 

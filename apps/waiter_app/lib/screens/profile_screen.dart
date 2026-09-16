@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ondex_core/ondex_core.dart' show LegalSection;
+import 'package:ondex_core/ondex_core.dart' show LegalSection, appVersionLabel;
 
 import '../state/waiter_store.dart';
 import '../theme.dart';
@@ -114,10 +114,13 @@ class ProfileScreen extends StatelessWidget {
         ),
 
         const SizedBox(height: 20),
-        const Center(
+        // Avval bu yerda qo'lda yozilgan "1.0.0" turardi — haqiqiy build'ga
+        // aloqasi yo'q edi. Endi reliz versiyasi (har reliz +1).
+        Center(
           child: Text(
-            'OnDex Affitsiant · 1.0.0',
-            style: TextStyle(color: kInkGhost, fontSize: 11.5),
+            'OnDexPro $appVersionLabel',
+            key: const ValueKey('waiter-app-version'),
+            style: const TextStyle(color: kInkGhost, fontSize: 11.5),
           ),
         ),
       ],

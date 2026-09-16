@@ -91,7 +91,9 @@ var positions = []PositionInfo{
 	{PositionBarista, "Barista", GroupHall, "", false},
 	{PositionHost, "Kutib oluvchi (xostes)", GroupHall, "", false},
 	{PositionCashier, "Kassir", GroupCashier, "", false},
-	{PositionCourier, "Yetkazib beruvchi", GroupDelivery, "", false},
+	// "OnDex Kuryer" ilovasi — restoranning O'Z yetkazib beruvchisi
+	// (dispatch taklifni faqat o'z restoranining kuryerlariga yuboradi).
+	{PositionCourier, "Yetkazib beruvchi", GroupDelivery, "", true},
 	{PositionDishwasher, "Idish yuvuvchi", GroupService, "", false},
 	{PositionCleaner, "Tozalovchi", GroupService, "", false},
 	{PositionHelper, "Yordamchi", GroupService, "", false},

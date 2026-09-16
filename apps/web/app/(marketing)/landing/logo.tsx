@@ -1,38 +1,26 @@
+import Image from "next/image";
+
+/** Asl fayl: `image/OnDex.png` (692×749, shaffof fon). */
+const LOGO_SRC = "/landing/ondex-logo.png";
+const LOGO_RATIO = 692 / 749;
+
 /**
- * OnDex belgisi — SVG.
+ * OnDex belgisi — rasmiy logotip rasmi.
  *
- * ┌─ NEGA RASM EMAS, SVG ──────────────────────────────────────────────┐
- * Logotip sarlavhada (32px) ham, futerda (36px) ham, ijtimoiy
- * kartochkalarda ham ishlatiladi. PNG bo'lsa har o'lcham uchun alohida
- * fayl kerak bo'lardi va Retina ekranlarda xiralashardi.
- *
- * Rang `currentColor` EMAS, ataylab brend to'q sarig'i: logotip
- * matn rangiga ergashmasligi kerak (futerda matn kulrang).
- * └────────────────────────────────────────────────────────────────────┘
+ * Avval bu yerda qo'lda chizilgan SVG turardi va u haqiqiy logotipga
+ * o'xshamasdi. Endi sarlavha ham, futer ham AYNAN brend faylini
+ * ko'rsatadi; `next/image` uni ekran zichligiga mos o'lchamda beradi.
  */
 export function OndexMark({ size = 32 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 48 48"
-      fill="none"
+    <Image
+      src={LOGO_SRC}
+      alt=""
       aria-hidden="true"
-    >
-      <rect width="48" height="48" rx="14" fill="#F4511E" />
-      <path
-        d="M24 11.5 32.8 16.6v10.2L24 31.9l-8.8-5.1V16.6L24 11.5Z"
-        fill="#fff"
-        fillOpacity="0.18"
-      />
-      <path
-        d="M24 14.8 30 18.3v6.9L24 28.7l-6-3.5v-6.9l6-3.5Z"
-        stroke="#fff"
-        strokeWidth="2.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="24" cy="21.7" r="2.6" fill="#fff" />
-    </svg>
+      width={Math.round(size * LOGO_RATIO)}
+      height={size}
+      className="shrink-0 object-contain"
+    />
   );
 }
 
@@ -45,7 +33,7 @@ export function OndexLogo({
   className?: string;
 }) {
   return (
-    <span className={`inline-flex items-center gap-2.5 ${className}`}>
+    <span className={`inline-flex items-center gap-2 ${className}`}>
       <OndexMark size={size} />
       <span
         className="font-extrabold tracking-tight"

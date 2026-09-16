@@ -961,15 +961,16 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const version = appVersion == 'dev' ? 'OnDex Restaurant (dev)' : 'OnDex Restaurant v$appVersion';
-    return const SizedBox(
+    // Har reliz +1 (`scripts/version.ps1`): "OnDex Restaurant v0.1.2 (2)".
+    final version = 'OnDex Restaurant $appVersionLabel';
+    return SizedBox(
       width: double.infinity,
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
         runSpacing: 8,
         children: [
-          Text(version, style: TextStyle(fontSize: 12, color: OnDexColors.inkFaint)),
-          Row(
+          Text(version, style: const TextStyle(fontSize: 12, color: OnDexColors.inkFaint)),
+          const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Tor oynada matn qatorga bo'linadi, yurakcha chetdan chiqmaydi.

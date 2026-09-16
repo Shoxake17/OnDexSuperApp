@@ -48,7 +48,7 @@ type agentRestaurant struct {
 
 func toAgentRestaurant(r *catalog.Restaurant) agentRestaurant {
 	return agentRestaurant{
-		ID: r.ID, Name: r.Name, Open: r.Open, Address: r.Address,
+		ID: r.ID, Name: r.Name, Open: r.AcceptingOrdersNow(), Address: r.Address,
 		Tags: r.Tags, Rating: r.Rating,
 		ETAMin: r.ETAMinMinutes, ETAMax: r.ETAMaxMinutes,
 	}

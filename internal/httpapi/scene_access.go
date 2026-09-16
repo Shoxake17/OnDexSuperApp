@@ -51,9 +51,9 @@ func (s *Server) sceneViewOne(r *http.Request, rest *catalog.Restaurant) catalog
 		return catalog.Restaurant{}
 	}
 	if !s.hasValidSession(r) {
-		return withOpenNow(rest.PublicView())
+		return withOpenState(rest.PublicView())
 	}
-	return withOpenNow(s.signScene(r, *rest))
+	return withOpenState(s.signScene(r, *rest))
 }
 
 // sceneViewMany — ro'yxat uchun.
@@ -75,10 +75,10 @@ func (s *Server) sceneViewMany(r *http.Request, list []*catalog.Restaurant) []ca
 			continue
 		}
 		if !signed {
-			out = append(out, withOpenNow(rest.PublicView()))
+			out = append(out, withOpenState(rest.PublicView()))
 			continue
 		}
-		out = append(out, withOpenNow(s.signScene(r, *rest)))
+		out = append(out, withOpenState(s.signScene(r, *rest)))
 	}
 	return out
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -44,7 +46,14 @@ class _RestaurantShellState extends State<RestaurantShell> {
   String _name = '';
   String _address = '';
   String _logoUrl = '';
+  /// Qo'lda bosiladigan "Ochiq/Yopiq" tugmasi.
   bool _open = true;
+
+  /// Mijozlar ko'radigan HAQIQIY holat — tugma VA ish vaqti (server hisobi).
+  /// Avval yuqori panel faqat tugmani ko'rsatardi: ish vaqti tugagan
+  /// restoran ham "Ochiq" deb turardi.
+  RestaurantOpenStatus _openStatus = const RestaurantOpenStatus(open: true);
+  Timer? _openTicker;
   String _staffName = '';
   String _staffRole = '';
   DateTime _selectedDate = DateTime.now();
@@ -64,6 +73,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
   void initState() {
     super.initState();
     _loadInfo();
+    // Ish vaqti chegarasida (masalan 22:00) belgi o'zi almashsin.
+    _openTicker = Timer.periodic(const Duration(seconds: 30), (_) => _tickOpenStatus());
     _pollOrders();
     // Jonli kanal BUTUN panel uchun shu yerda ochiladi — buyurtmalar
     // sahifasi ham xuddi shunga obuna bo'ladi (`lib/live.dart`).
@@ -95,6 +106,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
   void dispose() {
     notificationCenter.removeListener(_onAlerts);
     supportCenter.removeListener(_onAlerts);
+    _openTicker?.cancel();
     _live.dispose();
     restaurantLive.stop();
     _stats.dispose();
@@ -112,10 +124,20 @@ class _RestaurantShellState extends State<RestaurantShell> {
         _address = r['address'] as String? ?? '';
         _logoUrl = r['logo_url'] as String? ?? '';
         _open = r['open'] == true;
+        _openStatus = RestaurantOpenStatus.fromJson(r);
         _staffName = (u['name'] as String?)?.trim() ?? '';
         _staffRole = _roleLabel(u['role'] as String? ?? '');
       });
     } catch (_) {}
+  }
+
+  void _tickOpenStatus() {
+    if (!mounted) return;
+    final next = _openStatus.at(DateTime.now());
+    if (next.open == _openStatus.open) return;
+    setState(() => _openStatus = next);
+    // Keyingi o'zgarish vaqti — serverdan.
+    _loadInfo();
   }
 
   Future<void> _pollOrders() async {
@@ -147,11 +169,22 @@ class _RestaurantShellState extends State<RestaurantShell> {
       // bera oladimi yo'qmi shunga bog'liq. "Nega buyurtma kelmadi"
       // degan savolga javob ko'pincha shu yerda bo'ladi.
       Analytics.instance.capture('restoran_holati', {'ochiq': v});
+      // Haqiqiy holat (ish vaqti bilan) serverdan.
+      await _loadInfo();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(v
-              ? 'Restoran OCHIQ — buyurtmalar qabul qilinadi'
-              : 'Restoran YOPIQ — yangi buyurtmalar kelmaydi')));
+      final now = DateTime.now();
+      final st = _openStatus.at(now);
+      final String message;
+      if (!v) {
+        message = 'Restoran YOPIQ — yangi buyurtmalar kelmaydi';
+      } else if (st.open) {
+        message = 'Restoran OCHIQ — buyurtmalar qabul qilinadi';
+      } else {
+        final detail = st.detail(now);
+        message = 'Tugma yoqildi, lekin hozir ish vaqti emas — '
+            '${detail ?? 'buyurtmalar ish vaqtida qabul qilinadi'}';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -242,6 +275,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
         restaurantAddress: _address,
         restaurantLogoUrl: _logoUrl,
         restaurantOpen: _open,
+        restaurantOpenStatus: _openStatus.at(DateTime.now()),
         onOpenChanged: _toggleOpen,
         staffName: _staffName,
         staffRole: _staffRole,

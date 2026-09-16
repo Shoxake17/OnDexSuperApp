@@ -713,9 +713,9 @@ class _StaffRow extends StatelessWidget {
                       Flexible(child: Text(m.positionTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: cell)),
                       if (m.appAccessActive) ...[
                         const SizedBox(width: 4),
-                        const Tooltip(
-                          message: 'OnDex Affitsiant ilovasiga kirish ochiq',
-                          child: Icon(Icons.phone_iphone_rounded, size: 14, color: OnDexColors.success),
+                        Tooltip(
+                          message: '${staffAppName(m.position)} ilovasiga kirish ochiq',
+                          child: const Icon(Icons.phone_iphone_rounded, size: 14, color: OnDexColors.success),
                         ),
                       ],
                     ],

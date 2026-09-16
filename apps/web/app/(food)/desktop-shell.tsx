@@ -24,19 +24,22 @@ export default function DesktopShell({
   signedIn,
   /** Blok kengligi — ro'yxatlar tor, to'rlar kengroq bo'ladi. */
   maxWidthClassName = "max-w-[900px]",
+  /** Navbar qidiruv maydonidagi boshlang'ich matn (qidiruv sahifasi). */
+  initialQuery,
   children,
 }: {
   title: string;
   subtitle?: string;
   signedIn: boolean;
   maxWidthClassName?: string;
+  initialQuery?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#302F2D] text-white">
-      <DesktopNavbar signedIn={signedIn} />
+      <DesktopNavbar signedIn={signedIn} initialQuery={initialQuery} />
 
       <div className="mx-auto flex w-full min-h-0 max-w-[1800px] flex-1 gap-4 px-6 py-5 xl:px-10 2xl:px-14">
         {/* Orqaga — blokdan TASHQARIDA (restoran menyusidagi bilan bir

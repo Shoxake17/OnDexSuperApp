@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  courierPointFromOrder,
+  courierTrackable,
+  deliveryMapVisible,
+  keepStaticFrom,
+  parseDeliveryTracking,
+  parseGeoPoint,
+  type DeliveryTracking,
+  type LatLng,
+} from "./delivery-tracking";
 
 // Buyurtmani JONLI kuzatish — mobil va kompyuter ko'rinishlari uchun
 // YAGONA manba.
@@ -29,6 +39,10 @@ export type Order = {
   order_number: string;
   restaurant_id: string;
   courier_id?: string;
+  /** Kuryer ismi (server qo'shadi) — "staff-…" ID ko'rsatilmaydi. */
+  courier_name?: string;
+  /** Kuryerning oxirgi ma'lum joylashuvi (yetkazish davomida). */
+  courier_location?: { lat: number; lng: number };
   items: OrderItem[];
   subtotal_tiyin: number;
   discount_tiyin: number;
@@ -52,10 +66,15 @@ export function useOrderTracking(id: string) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [address, setAddress] = useState<string | null>(null);
-  const [courierLatLng, setCourierLatLng] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [courierLatLng, setCourierLatLng] = useState<LatLng | null>(null);
+  // ┌─ KUZATUV (2026-09-15) ───────────────────────────────────────────┐
+  // Avval web xaritasi faqat WebSocket'dan kelgan kuryer nuqtasini
+  // ko'rsatardi: yo'l chizig'i, restoran nuqtasi, qolgan vaqt yo'q edi,
+  // WS xabari kelmaguncha esa xarita umuman chiqmasdi. Endi mobil ilova
+  // bilan bir xil manba — `GET /orders/{id}/tracking` va o'sha qoidalar
+  // (`tracking_screen.dart` dagi `_refreshTracking`).
+  // └──────────────────────────────────────────────────────────────────┘
+  const [tracking, setTracking] = useState<DeliveryTracking | null>(null);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -63,6 +82,49 @@ export function useOrderTracking(id: string) {
 
   useEffect(() => {
     let cancelled = false;
+    let currentOrder: Order | null = null;
+    let lastTracking: DeliveryTracking | null = null;
+    let trackingAt = 0;
+    let trackingBusy = false;
+    let trackedStatus: string | null = null;
+    setTracking(null);
+    setCourierLatLng(null);
+
+    /**
+     * Kuzatuvni yangilaydi. Server Google'ga 30 soniyada bir boradi, bu
+     * yerdan esa 15 soniyada bittadan ko'p so'ralmaydi; holat o'zgarsa
+     * (`force`) — darhol. A→B yo'li bir marta yuklanadi (`?planned=0`),
+     * yetkazilgan buyurtmaning yo'li esa o'zgarmaydi — qayta so'ralmaydi.
+     */
+    async function refreshTracking(force: boolean) {
+      const o = currentOrder;
+      if (!o || !deliveryMapVisible(o) || trackingBusy) return;
+      // Taom olinmaguncha yo'l chizilmaydi (server ham bermaydi).
+      if (o.status !== "picked_up" && o.status !== "delivered") return;
+      const previous = lastTracking;
+      if (!force) {
+        if (o.status === "delivered" && previous?.phase === "delivered") return;
+        if (Date.now() - trackingAt < 15_000) return;
+      }
+      trackingBusy = true;
+      try {
+        const query = previous?.plannedRoute ? "?planned=0" : "";
+        const res = await fetch(
+          `/api/proxy/orders/${encodeURIComponent(id)}/tracking${query}`,
+        );
+        if (!res.ok || cancelled) return;
+        const next = parseDeliveryTracking(await res.json());
+        if (!next || cancelled) return;
+        lastTracking = keepStaticFrom(next, previous);
+        setTracking(lastTracking);
+        trackingAt = Date.now();
+        trackedStatus = o.status;
+      } catch {
+        // Tarmoq xatosi — oldingi xarita va vaqt qoladi.
+      } finally {
+        trackingBusy = false;
+      }
+    }
     // ┌─ TUZATILGAN NOSOZLIK (bug.md 52-band) ────────────────────────┐
     // Avval qayta ulanish QAT'IY 2 soniyada edi, backoff ham,
     // urinishlar chegarasi ham yo'q. Prod'da WebSocket manzili
@@ -83,7 +145,17 @@ export function useOrderTracking(id: string) {
         const res = await fetch(`/api/proxy/orders/${id}`);
         if (!res.ok) return;
         const o: Order = await res.json();
-        if (!cancelled) setOrder(o);
+        if (cancelled) return;
+        currentOrder = o;
+        setOrder(o);
+        // Yetkazma tugagan — kuryer joylashuvi endi bu mijozga tegishli emas.
+        if (courierTrackable(o)) {
+          const p = courierPointFromOrder(o);
+          if (p) setCourierLatLng(p);
+        } else {
+          setCourierLatLng(null);
+        }
+        void refreshTracking(o.status !== trackedStatus);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -113,12 +185,12 @@ export function useOrderTracking(id: string) {
           if (e.order_id !== id) return;
           if (e.type === "order_status" || e.type === "courier_assigned") {
             void load();
-          } else if (
-            e.type === "courier_location" &&
-            typeof e.lat === "number" &&
-            typeof e.lng === "number"
-          ) {
-            setCourierLatLng({ lat: e.lat, lng: e.lng });
+          } else if (e.type === "courier_location") {
+            const p = parseGeoPoint(e.lat, e.lng);
+            if (!p || !currentOrder || !courierTrackable(currentOrder)) return;
+            setCourierLatLng(p);
+            // Yo'l va qolgan vaqt ham yangilanadi (so'rov cheklangan).
+            void refreshTracking(false);
           }
         };
         const reconnect = () => {
@@ -198,5 +270,14 @@ export function useOrderTracking(id: string) {
     }
   }
 
-  return { order, loading, address, courierLatLng, paying, payError, payAgain };
+  return {
+    order,
+    loading,
+    address,
+    courierLatLng,
+    tracking,
+    paying,
+    payError,
+    payAgain,
+  };
 }

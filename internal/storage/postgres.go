@@ -229,19 +229,43 @@ func (r *PgOrderRepo) HasActiveByCustomer(ctx context.Context, customerID string
 // (bo'lsa, eng so'nggisi). Kuryer GPS joylashuvini yangilaganda mijozga
 // jonli yuborish uchun (cmd/api/main.go, POST /couriers/{id}/location).
 func (r *PgOrderRepo) GetActiveByCourier(ctx context.Context, courierID string) (*orders.Order, error) {
-	var id string
-	err := r.pool.QueryRow(ctx, `
-		SELECT id FROM orders
-		WHERE courier_id = $1 AND status <> ALL($2)
-		ORDER BY created_at DESC LIMIT 1`, courierID, orders.TerminalStatusStrings(),
-	).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, orders.ErrNotFound
+	// Bitta so'rov (avval id, keyin GetByID — ikkita edi) va qisman indeks
+	// `idx_orders_courier_active` (migration 0054).
+	return scanOrderRow(r.pool.QueryRow(ctx,
+		`SELECT `+orderColumns+` FROM orders
+		 WHERE courier_id = $1 AND `+activeOrderStatusFilter+`
+		 ORDER BY created_at DESC LIMIT 1`, courierID))
+}
+
+// activeOrderStatusFilter — "yakunlanmagan" sharti SQL LITERAL sifatida.
+//
+// ┌─ NEGA PARAMETR (`status <> ALL($2)`) EMAS ─────────────────────────┐
+// `idx_orders_courier_active` QISMAN indeks: rejalashtiruvchi uni faqat
+// so'rov sharti indeks shartini kafolatlasa ishlatadi. Parametrning
+// qiymati prepared statement'ning umumiy rejasida noma'lum — indeks
+// tashlab ketilib, kuryerning butun tarixi o'qilardi. Ro'yxat
+// `orders.TerminalStatusStrings()` dan quriladi; migratsiyadagi shart
+// bilan mosligi test bilan qulflangan.
+// └────────────────────────────────────────────────────────────────────┘
+var activeOrderStatusFilter = "status NOT IN (" + sqlStatusList(orders.TerminalStatusStrings()) + ")"
+
+// sqlStatusList — holatlarni SQL literal ro'yxatiga aylantiradi. Faqat
+// kod ichidagi o'zgarmaslar keladi; baribir faqat [a-z_] ruxsat etiladi
+// (injeksiyaga yo'l qolmasin).
+func sqlStatusList(statuses []string) string {
+	out := ""
+	for i, s := range statuses {
+		for _, ch := range s {
+			if (ch < 'a' || ch > 'z') && ch != '_' {
+				panic("sqlStatusList: yaroqsiz holat nomi " + s)
+			}
+		}
+		if i > 0 {
+			out += ", "
+		}
+		out += "'" + s + "'"
 	}
-	if err != nil {
-		return nil, err
-	}
-	return r.GetByID(ctx, id)
+	return out
 }
 
 // orderColumns — buyurtma ustunlarining YAGONA ro'yxati.
@@ -393,14 +417,14 @@ type PgCourierRepo struct{ pool *pgxpool.Pool }
 
 func NewPgCourierRepo(pool *pgxpool.Pool) *PgCourierRepo { return &PgCourierRepo{pool: pool} }
 
-const courierColumns = `id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders`
+const courierColumns = `id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders, restaurant_id`
 
 func (r *PgCourierRepo) GetByID(ctx context.Context, id string) (*couriers.Courier, error) {
 	var c couriers.Courier
 	err := r.pool.QueryRow(ctx,
 		`SELECT `+courierColumns+` FROM couriers WHERE id = $1`, id,
 	).Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved,
-		&c.VehicleType, &c.Rating, &c.CompletedOrders)
+		&c.VehicleType, &c.Rating, &c.CompletedOrders, &c.RestaurantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, couriers.ErrNoCourier
 	}
@@ -418,10 +442,23 @@ func (r *PgCourierRepo) Create(ctx context.Context, c *couriers.Courier) error {
 		c.Rating = 5.0
 	}
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO couriers (id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		c.ID, c.Name, c.Lat, c.Lng, c.Available, c.Approved, c.VehicleType, c.Rating, c.CompletedOrders)
+		`INSERT INTO couriers (id, name, lat, lng, available, approved, vehicle_type, rating, completed_orders, restaurant_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		c.ID, c.Name, c.Lat, c.Lng, c.Available, c.Approved, c.VehicleType, c.Rating, c.CompletedOrders, c.RestaurantID)
 	return err
+}
+
+// SetName — restoran xodim yozuvidagi ism o'zgarganda.
+func (r *PgCourierRepo) SetName(ctx context.Context, id, name string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE couriers SET name = $2, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`, id, name)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return couriers.ErrNoCourier
+	}
+	return nil
 }
 
 func (r *PgCourierRepo) ListAll(ctx context.Context) ([]*couriers.Courier, error) {
@@ -520,7 +557,10 @@ func (r *PgCourierRepo) ListAvailable(ctx context.Context) ([]*couriers.Courier,
 //	                        soni CHEKLANISHI shart.
 //
 // └───────────────────────────────────────────────────────────────────┘
-func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
+//
+// `restaurant_id = $6` — havuz QAT'IY (`couriers.Repository` izohi):
+// restoran kuryeri boshqa restoranning buyurtmasini hech qachon ko'rmaydi.
+func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, pool string, lat, lng float64,
 	radiusMeters float64, maxAge time.Duration, limit int) ([]*couriers.Courier, error) {
 
 	// Chegaralar — chaqiruvchi xato qiymat bersa ham so'rov xavfsiz
@@ -544,6 +584,7 @@ func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
 		SELECT `+courierColumns+`
 		FROM couriers
 		WHERE available AND approved AND deleted_at IS NULL
+		  AND restaurant_id = $6
 		  AND ($5::interval IS NULL
 		       OR location_updated_at IS NULL
 		       OR location_updated_at > now() - $5::interval)
@@ -553,7 +594,7 @@ func (r *PgCourierRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
 		        $3)
 		ORDER BY location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
 		LIMIT $4`,
-		lat, lng, radiusMeters, limit, age)
+		lat, lng, radiusMeters, limit, age, pool)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +607,7 @@ func scanCouriers(rows pgx.Rows) ([]*couriers.Courier, error) {
 	for rows.Next() {
 		var c couriers.Courier
 		if err := rows.Scan(&c.ID, &c.Name, &c.Lat, &c.Lng, &c.Available, &c.Approved,
-			&c.VehicleType, &c.Rating, &c.CompletedOrders); err != nil {
+			&c.VehicleType, &c.Rating, &c.CompletedOrders, &c.RestaurantID); err != nil {
 			return nil, err
 		}
 		list = append(list, &c)

@@ -78,8 +78,21 @@ func main() {
 		// Bucket ommaviy — xato yuklangan faylni olib tashlash yo'li
 		// bo'lishi shart.
 		del = flag.String("delete", "", "bucket'dan kalitni o'chirish")
+
+		// Mijoz ilovasi relizi — saytdagi "Ilovani yuklab olish"
+		// (`android_release.go`).
+		androidRelease = flag.String("android-release", "", "mijoz ilovasi APK relizini joylash")
+		releaseVersion = flag.String("release-version", "", "reliz versiyasi X.Y.Z+N (bo'sh — pubspec.yaml dan)")
 	)
 	flag.Parse()
+
+	if *androidRelease != "" {
+		loadDotEnv(*envFile)
+		if err := publishAndroidRelease(*androidRelease, *releaseVersion); err != nil {
+			log.Fatalf("reliz joylanmadi: %v", err)
+		}
+		return
+	}
 
 	if *del != "" {
 		loadDotEnv(*envFile)
@@ -206,6 +219,7 @@ func openCatalog() (*storage.MongoCatalogRepo, func(), error) {
 	stop := func() { _ = client.Disconnect(context.Background()) }
 	return storage.NewMongoCatalogRepo(client.Database(dbName)), stop, nil
 }
+
 // showScene — restoranning maket maydonlarini bosib chiqaradi.
 func showScene(id string) error {
 	repo, disconnect, err := openCatalog()

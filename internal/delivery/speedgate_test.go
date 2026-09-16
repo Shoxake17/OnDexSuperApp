@@ -111,3 +111,49 @@ func TestSpeedGateIgnoresStaleAndRapid(t *testing.T) {
 		t.Error("eskirgan nuqtadan keyin tekshirilmasligi kerak edi")
 	}
 }
+
+// Jonli holat (2026-09-15): telefon XATO tarmoq nuqtasini haqiqiy joy bilan
+// navbatma-navbat yubordi. Xato nuqta asos bo'lib, o'zi qayta kelib asosni
+// har 10 soniyada yangilab turdi — haqiqiy joy har safar 10 s oraliqda
+// "1,6 km" sakrab, HECH QACHON o'tmasdi. Izchil kelgan joy endi bir daqiqada
+// qabul qilinadi; xato nuqta keyin yana rad etiladi.
+func TestSpeedGateRecoversFromBadBaseline(t *testing.T) {
+	g := NewSpeedGate()
+	t0 := time.Now()
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	bad := func(s int) bool { return g.Accept("c1", 41.0006327, 71.2215262, at(s)) }
+	real := func(s int) bool { return g.Accept("c1", 41.0018207, 71.2029233, at(s)) }
+
+	if !bad(0) {
+		t.Fatal("birinchi nuqta shartsiz qabul qilinishi kerak")
+	}
+	for s := 10; s < 70; s += 20 {
+		if real(s) {
+			t.Fatalf("%d s: izchillik hali tasdiqlanmagan — rad etilishi kerak edi", s)
+		}
+		if !bad(s + 10) {
+			t.Fatalf("%d s: asos bilan bir xil nuqta qabul qilinishi kerak edi", s+10)
+		}
+	}
+	if !real(70) {
+		t.Fatal("bir daqiqa izchil kelgan haqiqiy joy qabul qilinishi kerak edi")
+	}
+	if g.Accept("c1", 41.0006327, 71.2215262, t0.Add(80*time.Second)) {
+		t.Fatal("xato nuqta yana rad etilishi kerak edi")
+	}
+}
+
+// Har safar BOSHQA joyga sakrash izchillik emas — hech qachon o'tmaydi.
+func TestSpeedGateScatteredJumpsNeverConfirm(t *testing.T) {
+	g := NewSpeedGate()
+	t0 := time.Now()
+	g.Accept("c1", 41.0004, 71.2394, t0)
+	for i := 1; i <= 12; i++ {
+		// Ikki uzoq (10 va 18 km) nuqta navbatma-navbat — 2 daqiqada ham
+		// tezlik 150 km/soatdan oshadi.
+		lng := 71.36 + float64(i%2)*0.1
+		if g.Accept("c1", 41.0004, lng, t0.Add(time.Duration(i*10)*time.Second)) {
+			t.Fatalf("%d-sakrash qabul qilindi", i)
+		}
+	}
+}

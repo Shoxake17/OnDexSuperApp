@@ -4,10 +4,12 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -46,7 +48,9 @@ import (
 	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
+	"chustapp/internal/tracking"
 	"chustapp/internal/users"
+	"chustapp/internal/voice"
 	"chustapp/internal/ws"
 )
 
@@ -153,8 +157,32 @@ func firebaseServiceAccount() string {
 	return string(data)
 }
 
+// apiLogWriter — log chiqishi: doim stdout, `API_LOG_FILE` berilgan bo'lsa
+// shu faylga ham (oxiriga qo'shib yoziladi).
+//
+// `ondex run` dev'da `logs\api.log` ni beradi — konsol oynasi yopilsa ham
+// log tahlil va o'lchov uchun qoladi (masalan Google Directions so'rovlari
+// soni). Prod'da o'rnatilmaydi: Docker loglari stdout'dan olinadi.
+// Fayl ochilmasa server TO'XTAMAYDI — faqat stdout qoladi.
+func apiLogWriter() io.Writer {
+	path := strings.TrimSpace(os.Getenv("API_LOG_FILE"))
+	if path == "" {
+		return os.Stdout
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { //nolint:gosec // G703: yo'l operator sozlamasidan (env), so'rovdan emas
+		_, _ = os.Stdout.WriteString("API_LOG_FILE papkasi yaratilmadi: " + err.Error() + "\n")
+		return os.Stdout
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // G304: yo'l operator sozlamasidan (env), so'rovdan emas
+	if err != nil {
+		_, _ = os.Stdout.WriteString("API_LOG_FILE ochilmadi: " + err.Error() + "\n")
+		return os.Stdout
+	}
+	return io.MultiWriter(os.Stdout, f)
+}
+
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(apiLogWriter(), nil)))
 	loadDotEnv()
 	appEnv := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
 	devMode = appEnv == devEnvValue
@@ -648,6 +676,15 @@ func main() {
 	}
 
 	notifier := notify.NewLive(notifSvc).
+		// Kuryer taklifi ilova YOPIQ bo'lsa push bilan boradi — push
+		// tokenlari kuryerning AKKAUNTIGA bog'langan.
+		WithCourierUserLookup(func(ctx context.Context, courierID string) (string, error) {
+			u, err := userRepo.GetByRoleEntity(ctx, users.RoleCourier, courierID)
+			if err != nil {
+				return "", err
+			}
+			return u.ID, nil
+		}).
 		// Stol buyurtmasi tayyor bo'lganda push kimga ketishini
 		// shu funksiya hal qiladi. `notify` paketi `users` ga
 		// bog'lanmasligi uchun bog'liqlik shu yerda, `main` da
@@ -914,6 +951,32 @@ func main() {
 	//
 	// Ofitsiantning ilovaga kirishi `users` jadvalidagi akkaunt bilan
 	// bog'liq, shuning uchun xodimlar ham o'sha omborda (Postgres/xotira).
+	// Yetkazish yo'li (A→B) buyurtmaga biriktirilib saqlanadi — mijoz
+	// buyurtmani olgach ham kuzatuv xaritasi ko'rinib turadi.
+	var routeRepo tracking.Repository
+	if pgPool != nil {
+		routeRepo = storage.NewPgRouteRepo(pgPool)
+	} else {
+		routeRepo = storage.NewMemoryRouteRepo()
+	}
+
+	// Ovozli yo'l ko'rsatish: restoran nomi bor "yetib keldingiz" iborasi
+	// Gemini TTS'da BIR MARTA yasalib bazada saqlanadi. Burilish iboralari
+	// esa ilovaga joylangan (`cmd/voicegen`).
+	var voiceSvc *voice.Service
+	if key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY")); key != "" {
+		var clips voice.ClipStore
+		if pgPool != nil {
+			clips = storage.NewPgClipStore(pgPool)
+		} else {
+			clips = storage.NewMemoryClipStore()
+		}
+		voiceSvc = voice.NewService(
+			voice.NewGemini(key, os.Getenv("GEMINI_TTS_MODEL"), os.Getenv("GEMINI_TTS_VOICE")), clips)
+	} else {
+		slog.Warn("GEMINI_API_KEY yo'q — kuryerga restoran nomi bilan 'yetib keldingiz' aytilmaydi (umumiy ibora)")
+	}
+
 	var staffRepo staff.Repository
 	if pgPool != nil {
 		staffRepo = storage.NewPgStaffRepo(pgPool)
@@ -922,7 +985,16 @@ func main() {
 		slog.Warn("rejim: in-memory (xodimlar) — xodimlar ro'yxati server qayta ishga tushganda yo'qoladi")
 	}
 	staffSvc := staff.NewService(staffRepo, &staff.UserAccounts{
-		Users: userRepo, Revoked: revokedSessions, NewID: httpapi.NewID,
+		Users: userRepo, Couriers: courierRepo, Revoked: revokedSessions, NewID: httpapi.NewID,
+		// Yetkazma o'rtasidagi kuryerning kirishi yopilmaydi — buyurtma
+		// "yetkazdim" deb bosadigan odamsiz qolardi.
+		CourierBusy: func(ctx context.Context, courierID string) (bool, error) {
+			_, err := orderRepo.GetActiveByCourier(ctx, courierID)
+			if errors.Is(err, orders.ErrNotFound) {
+				return false, nil
+			}
+			return err == nil, err
+		},
 	}).WithObserver(alertsSvc.StaffEvents)
 
 	// â”€â”€ Tashqi AI agentlar (integratsiya sheriklari) â”€â”€
@@ -1101,7 +1173,10 @@ func main() {
 		slog.Warn("GOOGLE_GEOCODING_API_KEY berilmagan â€” dispatch har doim zaxira (to'g'ri chiziq masofa) ETA'ga tushadi")
 	}
 	geoClient := geo.NewClient(distanceMatrixKey)
-	dispatcher := couriers.NewDispatcher(courierRepo, notifier, geoClient, 20*time.Second)
+	// Taklif faqat YETIB BORADIGAN kuryerlarga: ilova ochiq yoki push bilan
+	// uyg'otsa bo'ladi (`couriers/reach.go`).
+	dispatcher := couriers.NewDispatcher(courierRepo, notifier, geoClient, 20*time.Second).
+		WithReachability(notifier)
 
 	// â”Œâ”€ NEGA BU YERDA TEKSHIRILADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 	// Yuqoridagi kalitdan FARQLI o'laroq (u brauzer kaliti, referrer
@@ -1166,6 +1241,8 @@ func main() {
 		BookRepo:           bookRepo,
 		PromotionsRepo:     promotionsRepo,
 		FavoritesRepo:      favoritesRepo,
+		RouteRepo:          routeRepo,
+		Voice:              voiceSvc,
 		Cache:              redisCache,
 		Tokens:             tokens,
 		Revoked:            revokedSessions,

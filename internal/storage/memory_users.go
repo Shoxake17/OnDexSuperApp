@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"chustapp/internal/users"
 )
@@ -277,6 +278,52 @@ func (r *MemoryUserRepo) Delete(_ context.Context, id string) error {
 	}
 	delete(r.data, id)
 	return nil
+}
+
+// SoftDelete — Postgres versiyasi bilan bir xil semantika: faqat
+// `DeletedAt` yoziladi, boshqa hech narsaga tegilmaydi.
+func (r *MemoryUserRepo) SoftDelete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.data[id]
+	if !ok {
+		return users.ErrUserNotFound
+	}
+	now := time.Now()
+	u.DeletedAt = &now
+	r.data[id] = u
+	return nil
+}
+
+func (r *MemoryUserRepo) Reactivate(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.data[id]
+	if !ok {
+		return users.ErrUserNotFound
+	}
+	u.DeletedAt = nil
+	r.data[id] = u
+	return nil
+}
+
+func (r *MemoryUserRepo) GetByRoleEntity(_ context.Context, role users.Role, entityID string) (*users.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var found *users.User
+	for _, u := range r.data {
+		if u.Role != role || u.EntityID != entityID {
+			continue
+		}
+		if found == nil || u.CreatedAt.Before(found.CreatedAt) {
+			cp := u
+			found = &cp
+		}
+	}
+	if found == nil {
+		return nil, users.ErrUserNotFound
+	}
+	return found, nil
 }
 
 func (r *MemoryUserRepo) ListByRole(_ context.Context, role users.Role) ([]*users.User, error) {

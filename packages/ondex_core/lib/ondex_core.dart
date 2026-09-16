@@ -29,5 +29,7 @@ export 'src/live_bus.dart';
 // Google Maps JS yuklovchisi — veb'da haqiqiy, qolgan nishonlarda stub.
 export 'src/maps/maps_loader.dart';
 export 'src/order_status.dart';
+// Restoran "Ochiq/Yopiq" holati — server hisobini o'qiydi (ish vaqti bilan).
+export 'src/restaurant_status.dart';
 export 'src/token_store.dart';
 export 'src/ws_client.dart';

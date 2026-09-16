@@ -4,10 +4,15 @@ import Link from "next/link";
 import {
   ArrowRight,
   Briefcase,
+  ChevronRight,
   Download,
+  FileText,
+  Headphones,
   Home,
   Mail,
   MapPin,
+  MessageCircle,
+  Navigation,
   Phone,
   PlayCircle,
   ShieldCheck,
@@ -16,7 +21,19 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { OndexLogo, OndexMark } from "./logo";
+import { LandingHeader, type LandingNavItem } from "./landing-header";
+import {
+  ANDROID_DOWNLOAD_PATH,
+  EATS_URL,
+  FACEBOOK_URL,
+  INSTAGRAM_URL,
+  SUPPORT_EMAIL,
+  SUPPORT_PHONE,
+  SUPPORT_PHONE_LABEL,
+  TELEGRAM_URL,
+  YOUTUBE_URL,
+} from "./links";
+import { OndexLogo } from "./logo";
 import { PhoneMock } from "./phone";
 import {
   FacebookIcon,
@@ -29,28 +46,18 @@ import {
  * ondex.uz — ommaviy tanishtiruv sahifasi (landing).
  *
  * ┌─ BU SAHIFA ILOVA EMAS ─────────────────────────────────────────────┐
- * Qolgan `apps/web` — Telegram Mini App va mijoz ilovasining WebView
- * qobig'i, ya'ni FAQAT tizimga kirgan foydalanuvchi uchun. Bu sahifa
- * esa aksincha: hech kim tanimaydigan mehmon uchun, sessiya ham,
- * cookie ham talab qilmaydi.
- *
- * Shu sabab u alohida `(marketing)` guruhida: kelajakda mini-ilovaga
- * qo'shiladigan qobiq (pastki menyu, avtorizatsiya devori) bu yerga
- * tasodifan tushib qolmasin.
+ * Qolgan `apps/web` — mijoz veb-ilovasi (eats.ondex.uz), Telegram Mini App
+ * va mijoz ilovasining WebView qobig'i. Bu sahifa esa hech kim tanimaydigan
+ * mehmon uchun: sessiya ham, cookie ham talab qilmaydi.
  *
  * Manzil: `ondex.uz/` -> `/landing` (qarang: `apps/web/proxy.ts`).
  * └────────────────────────────────────────────────────────────────────┘
  *
- * ┌─ MAKETDAN FARQLAR (ATAYLAB) ───────────────────────────────────────┐
- * Maketdagi uchta bo'lim TUSHIRIB QOLDIRILDI (buyurtmachi talabi):
- * "Требования к вашему сайту", "Как подключиться к OnDex оплате",
- * "Почему выбирают OnDex?" — ular savdogarlar uchun edi, bu sahifa
- * esa oddiy foydalanuvchi uchun.
- *
- * Shu sabab pastdagi to'q sariq chaqiruv lentasi ham o'zgardi:
- * maketda u "to'lovga ulaning" deb savdogarni chaqirardi va endi
- * hech qayerga olib bormasdi. Uning o'rniga ilovani yuklab olish
- * chaqiruvi turadi — ya'ni lenta o'z vazifasini bajaradi.
+ * ┌─ HAVOLALAR (2026-09-16) ───────────────────────────────────────────┐
+ * Barcha manzillar `links.ts` da. "Kirish" va "Restoranlar" veb-ilovaga
+ * (eats.ondex.uz), "Ilovani yuklab olish" eng so'nggi APK relizga
+ * (`/download/android`), yordam — telefon va Telegram. Menyudagi har bir
+ * band endi o'z bo'limiga olib boradi (`landing-header.tsx`).
  * └────────────────────────────────────────────────────────────────────┘
  */
 
@@ -67,22 +74,27 @@ export const metadata: Metadata = {
   },
 };
 
-/** Ilova do'koniga havola — bitta joyda. */
-const DOWNLOAD_URL = "#yuklab-olish";
-
-const NAV = [
-  { label: "Bosh sahifa", href: "#bosh" },
-  { label: "Xizmatlar", href: "#xizmatlar" },
-  { label: "Biz haqimizda", href: "#biz-haqimizda" },
-  { label: "Hujjatlar", href: "#hujjatlar" },
-  { label: "Yordam", href: "#yordam" },
+/** Tartib sahifadagi bo'limlar tartibi bilan BIR XIL (faol bo'limni aniqlash shunga tayanadi). */
+const NAV: LandingNavItem[] = [
+  { label: "Bosh sahifa", id: "bosh" },
+  { label: "Xizmatlar", id: "xizmatlar" },
+  { label: "Biz haqimizda", id: "biz-haqimizda" },
+  { label: "Hujjatlar", id: "hujjatlar" },
+  { label: "Yordam", id: "yordam" },
 ];
 
-const FEATURES = [
+/** `href` — faqat HAQIQATAN ishlaydigan bo'lim; qolganlari tez orada. */
+const FEATURES: {
+  icon: typeof UtensilsCrossed;
+  title: string;
+  text: string;
+  href?: string;
+}[] = [
   {
     icon: UtensilsCrossed,
     title: "Restoranlar",
     text: "Sevimli taomlaringizni toping va onlayn buyurtma bering.",
+    href: EATS_URL,
   },
   {
     icon: ShoppingBag,
@@ -112,17 +124,9 @@ const FEATURES = [
 ];
 
 /**
- * To'lov tizimlari — rasmiy logotiplar (`public/landing/`).
- *
- * ┌─ HAR BIRI BIR XIL QUTIDA ──────────────────────────────────────────┐
- * Fayllarning nisbatlari juda har xil: `mir` — 738x222 (uzun),
- * `uzcard` — 447x447 (kvadrat). Bir xil BALANDLIK berilsa kvadrat
- * logotip qo'shnilaridan ikki barobar katta ko'rinardi.
- *
- * Shuning uchun har biri bir xil o'lchamdagi qutiga solinadi va
- * `object-contain` bilan ichiga sig'diriladi — qator optik jihatdan
- * tekis chiqadi.
- * └────────────────────────────────────────────────────────────────────┘
+ * To'lov tizimlari — rasmiy logotiplar (`public/landing/`). Har biri bir
+ * xil o'lchamdagi qutiga `object-contain` bilan sig'diriladi: nisbatlari
+ * juda har xil (`mir` 738x222, `uzcard` 447x447).
  */
 const PAYMENTS = [
   { file: "visa", label: "Visa" },
@@ -134,29 +138,34 @@ const PAYMENTS = [
 ];
 
 const SOCIALS = [
-  { icon: TelegramIcon, label: "Telegram", href: "https://t.me/ondex_uz" },
+  { icon: TelegramIcon, label: "Telegram", href: TELEGRAM_URL },
+  { icon: InstagramIcon, label: "Instagram", href: INSTAGRAM_URL },
+  { icon: FacebookIcon, label: "Facebook", href: FACEBOOK_URL },
+  { icon: YoutubeIcon, label: "YouTube", href: YOUTUBE_URL },
+];
+
+const ABOUT = [
   {
-    icon: InstagramIcon,
-    label: "Instagram",
-    href: "https://instagram.com/ondex.uz",
+    icon: MapPin,
+    title: "Chust uchun, Chustda",
+    text: "Mahalliy restoranlar, kuryerlar va xizmatlar bitta ilovada — shahar bo'ylab tez yetkazib berish.",
   },
-  { icon: FacebookIcon, label: "Facebook", href: "https://facebook.com/ondex.uz" },
-  { icon: YoutubeIcon, label: "YouTube", href: "https://youtube.com/@ondex_uz" },
+  {
+    icon: Navigation,
+    title: "Jonli kuzatuv",
+    text: "Buyurtmangiz qayerdaligini, kuryer yo'lda qancha vaqtda yetib kelishini xaritada ko'rasiz.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Xavfsiz to'lov",
+    text: "Karta ma'lumotlari bank sahifasida kiritiladi — OnDex ularni ko'rmaydi va saqlamaydi.",
+  },
 ];
 
 /**
- * Footer ustunlari.
- *
- * ┌─ `href` NEGA IXTIYORIY ────────────────────────────────────────────┐
- * Avval barcha havolalar `href="#"` edi — ya'ni HECH QAYERGA olib
- * bormasdi. Huquqiy hujjatlar uchun bu yaramaydi: Play Store ham,
- * to'lov provayderi ham maxfiylik siyosatiga ISHLAYDIGAN havola
- * talab qiladi (bug.md 70-band).
- *
- * Shu sabab endi `href` bo'lgan yozuv haqiqiy havola, bo'lmagani esa
- * hali tayyor bo'lmagan bo'lim — u KO'RINADI, lekin bosilmaydi.
- * "Bosildi-yu hech narsa bo'lmadi" — eng yomon variant.
- * └────────────────────────────────────────────────────────────────────┘
+ * Futer ustunlari. `href` bo'lmagan yozuv — hali tayyor bo'lmagan bo'lim:
+ * u KO'RINADI, lekin bosilmaydi ("bosildi-yu hech narsa bo'lmadi" — eng
+ * yomon variant).
  */
 const FOOTER_COLUMNS: {
   title: string;
@@ -165,7 +174,7 @@ const FOOTER_COLUMNS: {
   {
     title: "Xizmatlar",
     links: [
-      { label: "Restoranlar" },
+      { label: "Restoranlar", href: EATS_URL },
       { label: "Do'konlar" },
       { label: "Xizmatlar" },
       { label: "Uy-joy" },
@@ -176,7 +185,7 @@ const FOOTER_COLUMNS: {
   {
     title: "Kompaniya",
     links: [
-      { label: "Biz haqimizda" },
+      { label: "Biz haqimizda", href: "#biz-haqimizda" },
       { label: "Ommaviy oferta", href: "/oferta" },
       { label: "Maxfiylik siyosati", href: "/maxfiylik" },
       { label: "Tariflar" },
@@ -186,74 +195,106 @@ const FOOTER_COLUMNS: {
   {
     title: "Yordam",
     links: [
-      { label: "Yordam markazi" },
-      { label: "Savol-javob" },
+      { label: "Yordam markazi", href: `tel:${SUPPORT_PHONE}` },
+      { label: "Savol-javob", href: TELEGRAM_URL },
       { label: "Foydalanish shartlari", href: "/oferta" },
       { label: "Maxfiylik siyosati", href: "/maxfiylik" },
     ],
   },
 ];
 
+/** Veb versiyasi — `package.json` dan (`next.config.ts`, `scripts/version.ps1`). */
+const WEB_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "";
+
 export default function LandingPage() {
   return (
     <main className="bg-white text-neutral-900">
-      <Header />
+      <LandingHeader items={NAV} />
       <Hero />
       <Features />
+      <About />
       <Payments />
+      <Documents />
+      <Help />
       <DownloadBanner />
       <Footer />
     </main>
   );
 }
 
-// ── Sarlavha ────────────────────────────────────────────────────────
+// ── Umumiy ──────────────────────────────────────────────────────────
 
-function Header() {
+const isExternal = (href: string) => /^https?:\/\//.test(href);
+
+/** Havola turi bo'yicha to'g'ri element: ichki sahifa, tashqi sayt, tel/anchor. */
+function SmartLink({
+  href,
+  className,
+  children,
+  ariaLabel,
+}: {
+  href: string;
+  className?: string;
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) {
+  if (href.startsWith("/")) {
+    return (
+      <Link href={href} className={className} aria-label={ariaLabel}>
+        {children}
+      </Link>
+    );
+  }
+  if (isExternal(href) && !href.startsWith(EATS_URL)) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        aria-label={ariaLabel}
+      >
+        {children}
+      </a>
+    );
+  }
   return (
-    <header className="sticky top-0 z-40 border-b border-neutral-100 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
-        <a href="#bosh" aria-label="OnDex — bosh sahifa">
-          <OndexLogo size={30} />
+    <a href={href} className={className} aria-label={ariaLabel}>
+      {children}
+    </a>
+  );
+}
+
+function SocialRow({ idPrefix }: { idPrefix: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      {SOCIALS.map(({ icon: Icon, label, href }) => (
+        <a
+          key={label}
+          href={href}
+          aria-label={label}
+          title={label}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full transition-transform hover:scale-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          {Icon === InstagramIcon ? (
+            <InstagramIcon className="h-7 w-7" gradientId={`${idPrefix}-instagram`} />
+          ) : (
+            <Icon className="h-7 w-7" />
+          )}
         </a>
+      ))}
+    </div>
+  );
+}
 
-        {/* Navigatsiya faqat kengroq ekranlarda: telefonda u yig'ilib
-            ketardi va asosiy tugmani (yuklab olish) siqib qo'yardi.
-            Ro'yxatning o'zi futerda to'liq takrorlanadi, ya'ni
-            hech qanday havola yo'qolmaydi. */}
-        <nav className="ml-4 hidden items-center gap-6 lg:flex">
-          {NAV.map((n, i) => (
-            <a
-              key={n.href}
-              href={n.href}
-              className={
-                i === 0
-                  ? "border-b-2 border-brand pb-1 text-sm font-semibold text-brand"
-                  : "text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900"
-              }
-            >
-              {n.label}
-            </a>
-          ))}
-        </nav>
-
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <a
-            href="/login"
-            className="hidden rounded-xl border border-neutral-200 px-4 py-2 text-sm font-semibold transition-colors hover:bg-neutral-50 sm:inline-block"
-          >
-            Kirish
-          </a>
-          <a
-            href={DOWNLOAD_URL}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-light"
-          >
-            Ilovani yuklab olish
-            <Download className="h-4 w-4" />
-          </a>
-        </div>
-      </div>
-    </header>
+function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
+  return (
+    <div className="text-center">
+      <h2 className="text-2xl font-bold tracking-tight sm:text-[28px]">{children}</h2>
+      {sub && <p className="mx-auto mt-2 max-w-2xl text-sm text-neutral-500">{sub}</p>}
+    </div>
   );
 }
 
@@ -261,7 +302,7 @@ function Header() {
 
 function Hero() {
   return (
-    <section id="bosh" className="relative overflow-hidden">
+    <section id="bosh" className="relative scroll-mt-20 overflow-hidden">
       <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-14 sm:px-6 lg:grid-cols-2 lg:py-20">
         <div>
           <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl">
@@ -276,7 +317,7 @@ function Hero() {
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <a
-              href={DOWNLOAD_URL}
+              href={ANDROID_DOWNLOAD_PATH}
               className="inline-flex items-center gap-2 rounded-2xl bg-brand px-6 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-brand/25 transition-colors hover:bg-brand-light"
             >
               Ilovani yuklab olish
@@ -295,7 +336,7 @@ function Hero() {
             <span className="text-sm text-neutral-500">
               Biz bilan bog&apos;laning:
             </span>
-            <SocialRow />
+            <SocialRow idPrefix="hero" />
           </div>
         </div>
 
@@ -307,45 +348,64 @@ function Hero() {
   );
 }
 
-function SocialRow() {
-  return (
-    <div className="flex items-center gap-3">
-      {SOCIALS.map(({ icon: Icon, label, href }) => (
-        <a
-          key={label}
-          href={href}
-          aria-label={label}
-          target="_blank"
-          rel="noreferrer"
-          className="text-neutral-400 transition-colors hover:text-brand"
-        >
-          <Icon className="h-5 w-5" />
-        </a>
-      ))}
-    </div>
-  );
-}
-
 // ── Imkoniyatlar ────────────────────────────────────────────────────
 
 function Features() {
   return (
-    <section id="xizmatlar" className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
-      <h2 className="text-center text-2xl font-bold tracking-tight sm:text-[28px]">
-        OnDex&apos;da nimalar bor?
-      </h2>
+    <section id="xizmatlar" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-4 sm:px-6">
+      <SectionTitle>OnDex&apos;da nimalar bor?</SectionTitle>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {FEATURES.map(({ icon: Icon, title, text }) => (
-          <div
-            key={title}
-            className="rounded-2xl border border-neutral-200 bg-white p-5 text-center transition-shadow hover:shadow-md"
-          >
-            <Icon className="mx-auto h-7 w-7 text-brand" />
-            <h3 className="mt-3 text-[15px] font-bold">{title}</h3>
-            <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
-              {text}
-            </p>
+        {FEATURES.map(({ icon: Icon, title, text, href }) => {
+          const body = (
+            <>
+              <Icon className="mx-auto h-7 w-7 text-brand" />
+              <h3 className="mt-3 text-[15px] font-bold">{title}</h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">{text}</p>
+              {href ? (
+                <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-brand">
+                  Ochish <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              ) : (
+                <span className="mt-3 inline-block text-[12px] text-neutral-400">
+                  Tez orada
+                </span>
+              )}
+            </>
+          );
+          const cls =
+            "block rounded-2xl border border-neutral-200 bg-white p-5 text-center transition-shadow";
+          return href ? (
+            <SmartLink key={title} href={href} className={`${cls} hover:border-brand/40 hover:shadow-md`}>
+              {body}
+            </SmartLink>
+          ) : (
+            <div key={title} className={cls}>
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ── Biz haqimizda ───────────────────────────────────────────────────
+
+function About() {
+  return (
+    <section id="biz-haqimizda" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-14 sm:px-6">
+      <SectionTitle sub="OnDex — Chust shahrida ishlab chiqilgan super ilova: kundalik ehtiyojlarni bitta joyda, tez va ishonchli hal qilish uchun.">
+        Biz haqimizda
+      </SectionTitle>
+      <div className="mt-8 grid gap-4 md:grid-cols-3">
+        {ABOUT.map(({ icon: Icon, title, text }) => (
+          <div key={title} className="rounded-2xl bg-neutral-50 p-6">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand/10">
+              <Icon className="h-5 w-5 text-brand" />
+            </span>
+            <h3 className="mt-4 text-base font-bold">{title}</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-neutral-500">{text}</p>
           </div>
         ))}
       </div>
@@ -365,10 +425,7 @@ function Payments() {
 
         <div className="mt-7 flex flex-wrap items-center justify-center gap-x-8 gap-y-6 sm:gap-x-12">
           {PAYMENTS.map((p) => (
-            <div
-              key={p.file}
-              className="relative h-9 w-24 shrink-0 sm:h-11 sm:w-28"
-            >
+            <div key={p.file} className="relative h-9 w-24 shrink-0 sm:h-11 sm:w-28">
               <Image
                 src={`/landing/${p.file}.png`}
                 alt={p.label}
@@ -379,8 +436,95 @@ function Payments() {
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
 
-        
+// ── Hujjatlar ───────────────────────────────────────────────────────
+
+function Documents() {
+  const docs = [
+    {
+      title: "Ommaviy oferta",
+      text: "Xizmatdan foydalanish shartlari, buyurtma va to'lov qoidalari.",
+      href: "/oferta",
+    },
+    {
+      title: "Maxfiylik siyosati",
+      text: "Qanday ma'lumot yig'iladi, nima uchun va qanday himoyalanadi.",
+      href: "/maxfiylik",
+    },
+  ];
+  return (
+    <section id="hujjatlar" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-4 sm:px-6">
+      <SectionTitle>Hujjatlar</SectionTitle>
+      <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
+        {docs.map((d) => (
+          <Link
+            key={d.href}
+            href={d.href}
+            className="group flex items-start gap-4 rounded-2xl border border-neutral-200 p-5 transition-colors hover:border-brand/40 hover:bg-orange-50/40"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/10">
+              <FileText className="h-5 w-5 text-brand" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-bold">{d.title}</span>
+              <span className="mt-1 block text-sm text-neutral-500">{d.text}</span>
+            </span>
+            <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-neutral-300 transition-colors group-hover:text-brand" />
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Yordam ──────────────────────────────────────────────────────────
+
+function Help() {
+  const items = [
+    {
+      icon: Headphones,
+      title: "Yordam markazi",
+      text: `Qo'ng'iroq qiling: ${SUPPORT_PHONE_LABEL}`,
+      href: `tel:${SUPPORT_PHONE}`,
+    },
+    {
+      icon: MessageCircle,
+      title: "Savol-javob",
+      text: "Telegram orqali yozing — tez javob beramiz.",
+      href: TELEGRAM_URL,
+    },
+    {
+      icon: Mail,
+      title: "Elektron pochta",
+      text: SUPPORT_EMAIL,
+      href: `mailto:${SUPPORT_EMAIL}`,
+    },
+  ];
+  return (
+    <section id="yordam" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-14 sm:px-6">
+      <SectionTitle sub="Savolingiz bormi yoki buyurtmada muammo chiqdimi — biz bilan bog'laning.">
+        Yordam
+      </SectionTitle>
+      <div className="mt-8 grid gap-4 md:grid-cols-3">
+        {items.map(({ icon: Icon, title, text, href }) => (
+          <SmartLink
+            key={title}
+            href={href}
+            className="group flex items-center gap-4 rounded-2xl border border-neutral-200 p-5 transition-colors hover:border-brand/40 hover:bg-orange-50/40"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-white">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-base font-bold">{title}</span>
+              <span className="mt-0.5 block truncate text-sm text-neutral-500">{text}</span>
+            </span>
+          </SmartLink>
+        ))}
       </div>
     </section>
   );
@@ -390,10 +534,7 @@ function Payments() {
 
 function DownloadBanner() {
   return (
-    <section
-      id="yuklab-olish"
-      className="mx-auto max-w-6xl px-4 pb-14 sm:px-6"
-    >
+    <section id="yuklab-olish" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-14 sm:px-6">
       <div className="flex flex-col items-start gap-6 rounded-3xl bg-brand px-7 py-8 text-white sm:flex-row sm:items-center sm:justify-between sm:px-10">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight sm:text-[26px]">
@@ -401,12 +542,12 @@ function DownloadBanner() {
           </h2>
           <p className="mt-2 max-w-xl text-sm text-white/85">
             Restoran, do&apos;kon, xizmatlar va yetkazib berish — barchasi
-            bitta ilovada, bir necha bosishda.
+            bitta ilovada, bir necha bosishda. Android uchun.
           </p>
         </div>
 
         <a
-          href={DOWNLOAD_URL}
+          href={ANDROID_DOWNLOAD_PATH}
           className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-[15px] font-bold text-brand shadow-sm transition-transform hover:scale-[1.02]"
         >
           Ilovani yuklab olish
@@ -420,44 +561,32 @@ function DownloadBanner() {
 // ── Futer ───────────────────────────────────────────────────────────
 
 function Footer() {
-  // Yil QO'LDA yozilmaydi: maketda "© 2024" turgan va u har yanvarda
-  // eskirib, saytni tashlab qo'yilgandek ko'rsatardi.
+  // Yil QO'LDA yozilmaydi: aks holda har yanvarda eskirib qolardi.
   const year = new Date().getFullYear();
 
   return (
-    <footer
-      id="yordam"
-      className="border-t border-neutral-100 bg-white pb-10 pt-12"
-    >
+    <footer className="border-t border-neutral-100 bg-white pb-8 pt-12">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.3fr_repeat(3,1fr)_1.4fr]">
         <div>
           <OndexLogo size={34} />
-          <p className="mt-4 text-sm text-neutral-500">
-            OnDex — barchasi bir ilovada!
-          </p>
+          <p className="mt-4 text-sm text-neutral-500">OnDex — barchasi bir ilovada!</p>
         </div>
 
         {FOOTER_COLUMNS.map((col) => (
-          <div key={col.title} id={col.title === "Kompaniya" ? "biz-haqimizda" : undefined}>
+          <div key={col.title}>
             <h3 className="text-sm font-bold">{col.title}</h3>
             <ul className="mt-4 space-y-2.5">
               {col.links.map((l) => (
-                <li key={l.label}>
+                <li key={`${col.title}-${l.label}`}>
                   {l.href ? (
-                    <Link
+                    <SmartLink
                       href={l.href}
                       className="text-[13px] text-neutral-500 transition-colors hover:text-brand"
                     >
                       {l.label}
-                    </Link>
+                    </SmartLink>
                   ) : (
-                    // Havolasiz yozuv — hali tayyor bo'lmagan bo'lim.
-                    // `<a href="#">` ATAYLAB emas: u bosiladi-yu hech
-                    // narsa qilmaydi va buzuq havola taassurotini
-                    // qoldiradi.
-                    <span className="text-[13px] text-neutral-400">
-                      {l.label}
-                    </span>
+                    <span className="text-[13px] text-neutral-400">{l.label}</span>
                   )}
                 </li>
               ))}
@@ -465,19 +594,19 @@ function Footer() {
           </div>
         ))}
 
-        <div id="hujjatlar">
+        <div>
           <h3 className="text-sm font-bold">Biz bilan bog&apos;laning</h3>
           <ul className="mt-4 space-y-3 text-[13px] text-neutral-500">
             <li className="flex items-center gap-2.5">
               <Phone className="h-4 w-4 shrink-0 text-brand" />
-              <a href="tel:+998902784207" className="hover:text-brand">
-                +998 90 278 42 07
+              <a href={`tel:${SUPPORT_PHONE}`} className="hover:text-brand">
+                {SUPPORT_PHONE_LABEL}
               </a>
             </li>
             <li className="flex items-center gap-2.5">
               <Mail className="h-4 w-4 shrink-0 text-brand" />
-              <a href="mailto:info@ondex.uz" className="hover:text-brand">
-                info@ondex.uz
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-brand">
+                {SUPPORT_EMAIL}
               </a>
             </li>
             <li className="flex items-center gap-2.5">
@@ -488,15 +617,14 @@ function Footer() {
 
           <h3 className="mt-7 text-sm font-bold">Bizga qo&apos;shiling</h3>
           <div className="mt-3">
-            <SocialRow />
+            <SocialRow idPrefix="footer" />
           </div>
         </div>
       </div>
 
-      {/* Kichik ekranlarda belgi takrorlanmaydi — yuqoridagi ustun
-          allaqachon logotip bilan boshlanadi. */}
-      <div className="sr-only">
-        <OndexMark size={16} />
+      <div className="mx-auto mt-10 flex max-w-6xl flex-wrap items-center justify-between gap-2 border-t border-neutral-100 px-4 pt-6 text-xs text-neutral-400 sm:px-6">
+        <span>© {year} OnDex. Barcha huquqlar himoyalangan.</span>
+        {WEB_VERSION && <span>Versiya v{WEB_VERSION}</span>}
       </div>
     </footer>
   );

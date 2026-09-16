@@ -1,7 +1,7 @@
 name: chust_restaurant
 description: ChustApp — Restoran paneli
 publish_to: "none"
-version: 0.1.1+1
+version: 0.1.3+3
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -49,9 +49,20 @@ flutter_launcher_icons:
     image_path: "assets/app_icon.png"
     background_color: "#000000"
     theme_color: "#F2650F"
+  # ┌─ WINDOWS BELGISI BU YERDA GENERATSIYA QILINMAYDI ────────────────┐
+  # OnDex Merchant logosi KENG va ichida "MERCHANT" yozuvi bor: generator
+  # yasagan bitta chizmali `.ico` 256px da chiroyli, 32px da (Explorer,
+  # vazifalar paneli) o'qib bo'lmaydigan dog'ga aylanardi.
+  #
+  # Shuning uchun `.ico` qo'lda, KO'P CHIZMALI qilib yasaladi:
+  #     .\scripts\windows_icon.ps1
+  # 16-48px — sof OnDex belgisi (`image/ondex.png`), 64-256px — to'liq
+  # Merchant logosi (quyidagi `app_icon_windows.png`). `generate: true`
+  # qaytarilsa, generator o'sha faylni bosib ketadi.
+  # └──────────────────────────────────────────────────────────────────┘
   windows:
-    generate: true
-    image_path: "assets/app_icon.png"
+    generate: false
+    image_path: "assets/app_icon_windows.png"
     icon_size: 256
 
 flutter:
@@ -62,6 +73,11 @@ flutter:
     # CHIZILARDI (rangli kvadrat + ikonka + "Ondex" matni), ya'ni
     # haqiqiy logotipga o'xshamasdi.
     - assets/ondex.png
+    # OnDex Merchant logotipi — kirish ekranida (`screens/login_screen.dart`).
+    # `app_icon_windows.png` dan bo'sh chetlari kesilgan, nisbati saqlangan:
+    # yon menyudagi 38x38 kvadrat joyga bu KENG logo sig'maydi, u yerda
+    # OnDex belgisi (`ondex.png`) qoladi.
+    - assets/merchant_logo.png
     # To'lov tizimlari brend logotiplari (mijoz ilovasidagi bilan bir xil
     # fayllar) — "Restoran sozlamalari" → "To'lov usullari".
     - assets/payments/click.png

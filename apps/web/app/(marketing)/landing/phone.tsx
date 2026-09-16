@@ -1,38 +1,34 @@
 import Image from "next/image";
 
 /**
- * Bosh ekrandagi ilova rasmi (`public/landing/ondexapp.png`).
+ * Bosh ekrandagi ilova rasmi (`public/landing/ondex-app.png`).
  *
- * ┌─ RASM SHAFFOF ─────────────────────────────────────────────────────┐
- * PNG ning burchaklari to'liq shaffof (alfa = 0) — ko'ruvchi
- * dasturlarda qora ko'rinishi shundan. Sahifada u oq fon ustida
- * turadi, shuning uchun hech qanday ramka yoki fon berilmagan.
+ * ┌─ MANBA VA TOZALASH (2026-09-16) ───────────────────────────────────┐
+ * Asl fayl — `image/app.png` (1875×1970). Unda o'ng telefon ORQASIDA
+ * ramkadan tashqariga chiqib turgan to'q sariq to'rtburchak fon bor edi.
+ * Sahifadagi nusxada u olib tashlangan: rasm chetidan ramkagacha bo'lgan
+ * to'q sariq piksellar shaffof qilingan (telefon ekrani ramka bilan
+ * o'ralgani uchun unga tegilmagan), ramka chetidagi aralash rangli
+ * piksellar kulranglashtirilgan. Burchaklar shaffof — oq fonda turadi.
  * └────────────────────────────────────────────────────────────────────┘
  *
- * ┌─ NEGA `next/image` ────────────────────────────────────────────────┐
- * Asl fayl 1212x1280 va ~1.1 MB. `next/image` uni ekran kengligiga
- * qarab kichraytirib, zamonaviy formatda (AVIF/WebP) beradi — bu
- * bosh ekranning eng og'ir elementi bo'lgani uchun sezilarli farq.
- *
- * `priority` — rasm sahifaning eng yuqorisida, ya'ni u kechikib
- * chizilsa foydalanuvchi bo'sh joyni ko'radi (LCP).
- * └────────────────────────────────────────────────────────────────────┘
+ * `next/image` rasmni ekran kengligiga mos kichraytirib zamonaviy
+ * formatda beradi; `priority` — u bosh ekranning eng katta elementi (LCP).
  */
 export function PhoneMock() {
   return (
     <div className="relative mx-auto w-full max-w-[520px]">
-      {/* Orqadagi yumshoq to'q sariq dog' — maketdagidek. Rasmning
-          o'zi shaffof bo'lgani uchun u atrofni yoritib turadi. */}
+      {/* Orqadagi yumshoq to'q sariq dog' — rasmning o'zi shaffof. */}
       <div
         aria-hidden
         className="absolute left-1/2 top-1/2 -z-10 h-[85%] w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/10 blur-3xl"
       />
 
       <Image
-        src="/landing/ondexapp.png"
+        src="/landing/ondex-app.png"
         alt="OnDex ilovasi — bosh sahifa va logotip ekrani"
-        width={1212}
-        height={1280}
+        width={1875}
+        height={1970}
         priority
         sizes="(max-width: 1024px) 90vw, 520px"
         className="h-auto w-full"

@@ -203,6 +203,16 @@ class _NotFound extends StatelessWidget {
           Text(leftText,
               key: const ValueKey('courier-auto-cancel'),
               style: const TextStyle(fontSize: 12, color: OnDexColors.inkDim)),
+          const SizedBox(height: 4),
+          // Taklif faqat restoranning O'Z yetkazib beruvchilariga ketadi
+          // (OnDex kuryerlari hozircha to'xtatilgan) — "topilmadi" deganda
+          // restoran nimani tekshirishi kerakligini bilishi kerak.
+          const Text(
+            'Taklif faqat restoraningizning onlayn yetkazib beruvchilariga boradi — '
+            '"OnDexGO" ilovasida onlayn ekanini tekshiring.',
+            key: ValueKey('courier-own-hint'),
+            style: TextStyle(fontSize: 11.5, color: OnDexColors.inkDim),
+          ),
           const SizedBox(height: 10),
           Row(
             children: [

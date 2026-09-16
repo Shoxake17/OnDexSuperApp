@@ -1,7 +1,7 @@
 name: ondex_waiter
-description: OnDex — Affitsiant ilovasi (stol buyurtmalari)
+description: OnDexPro — affitsiant ilovasi (stol buyurtmalari)
 publish_to: "none"
-version: 0.1.1+1
+version: 0.1.2+2
 
 environment:
   sdk: ^3.12.2
@@ -52,7 +52,14 @@ dependency_overrides:
 flutter_launcher_icons:
   android: true
   ios: true
+  # Manba: `image/OnDexPro.png`, bo'sh chetlarsiz kvadratga joylangan.
+  # Android 8+ adaptive belgi — ilova mavzusidagi qorong'i fon (#121212)
+  # ustida xavfsiz zonaga (62%) sig'dirilgan old qatlam.
   image_path: "assets/logo.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/launcher_foreground.png"
+  # Xavfsiz zona rasmning o'zida — generatorning 16% chekinishi kerak emas.
+  adaptive_icon_foreground_inset: 0
   # App Store shaffof belgini rad etadi — alfa kanal olib tashlanadi.
   remove_alpha_ios: true
   background_color_ios: "#121212"
@@ -60,7 +67,7 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   assets:
-    # Affitsiant ilovasi logotipi (image/affitsiant.png dan).
+    # OnDexPro logotipi (image/OnDexPro.png dan).
     - assets/logo.png
     # "Tayyor" signali. Ilova ochiq turganda push KELMAYDI (OS uni
     # ko'rsatmaydi), shuning uchun ovoz — affitsiantning e'tiborini

@@ -140,6 +140,14 @@ export default function ProfilePage() {
           )}
         </>
       )}
+
+      {/* Nosozlik xabarida birinchi savol — "qaysi versiya?" (mobil
+          ilovadagi profil bilan bir xil). */}
+      {process.env.NEXT_PUBLIC_APP_VERSION && (
+        <p className="tg-muted mt-8 text-center text-xs text-neutral-400">
+          OnDex web v{process.env.NEXT_PUBLIC_APP_VERSION}
+        </p>
+      )}
     </MobileSheet>
   );
 }

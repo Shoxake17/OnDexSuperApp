@@ -130,7 +130,7 @@ class RestaurantApi extends ApiClient {
   Future<Map<String, dynamic>> staffOverview() async =>
       Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/staff') as Map);
 
-  /// Yangi xodim. Ofitsiantga `app_access: true` berilsa "OnDex Affitsiant"
+  /// Yangi xodim. Ofitsiantga `app_access: true` berilsa "OnDexPro"
   /// akkaunti ochiladi — parolsiz, xodim SMS/Telegram kod bilan kiradi.
   Future<Map<String, dynamic>> createStaff(Map<String, dynamic> body) async =>
       Map<String, dynamic>.from(await send('POST', '/restaurants/$rid/staff', body) as Map);

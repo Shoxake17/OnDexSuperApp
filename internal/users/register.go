@@ -116,12 +116,12 @@ func ValidateRegisterInput(in RegisterInput) (ValidatedRegister, error) {
 // Avval parol hash'i tasdiqlanmagan yozuvga darhol yozilardi va bu
 // TO'LIQ AKKAUNT EGALLASHGA olib kelardi (jonli isbotlangan):
 //
-//	1. hujumchi qurbonning raqami bilan register qiladi, O'Z parolini
-//	   qo'yadi -> tasdiqlanmagan yozuv hujumchining hash'i bilan;
-//	   SMS esa QURBONNING telefoniga boradi;
-//	2. qurbon kodni kiritadi (o'zi kirmoqchi deb o'ylaydi) -> `Verify`
-//	   yozuvni tasdiqlangan qiladi, lekin hash'ga TEGMAYDI;
-//	3. hujumchi o'z paroli bilan kiradi -> 200.
+//  1. hujumchi qurbonning raqami bilan register qiladi, O'Z parolini
+//     qo'yadi -> tasdiqlanmagan yozuv hujumchining hash'i bilan;
+//     SMS esa QURBONNING telefoniga boradi;
+//  2. qurbon kodni kiritadi (o'zi kirmoqchi deb o'ylaydi) -> `Verify`
+//     yozuvni tasdiqlangan qiladi, lekin hash'ga TEGMAYDI;
+//  3. hujumchi o'z paroli bilan kiradi -> 200.
 //
 // Ildiz sabab: SMS "bu raqam meniki" degan dalil, lekin "bu paroldan
 // men xabardorman" degan dalil EMAS — kod ikkalasini bir deb qabul
@@ -357,6 +357,15 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 			}
 		}
 	}
+	// ┌─ O'CHIRILGAN AKKAUNT AVTOMATIK TIKLANMAYDI ────────────────────┐
+	// Parol ESKI dalil — o'g'irlangan yoki eslab qolingan parol
+	// akkauntni egasining xabarisiz tiklamasligi kerak
+	// (`reactivateIfDeleted` izohiga qarang). ENUMERATION XAVFI YO'Q:
+	// bu yerga faqat parol TO'G'RI kelgandagina yetib kelinadi.
+	// └───────────────────────────────────────────────────────────────┘
+	if u.IsDeleted() {
+		return "", nil, ErrAccountDeleted
+	}
 	// Telefon TASDIQLANISHI faqat telefonli akkauntlar uchun talab
 	// qilinadi. Email bilan ro'yxatdan o'tgan akkauntda telefon
 	// umuman yo'q, shuning uchun bu tekshiruv ularni bloklamasligi
@@ -438,6 +447,34 @@ func (s *Service) SetPassword(ctx context.Context, userID, current, password, co
 // Bu endpoint AVVAL UMUMAN YO'Q EDI: `users.name` ustuni bor edi-yu,
 // mijoz ilovasida uni to'ldirishning hech qanday yo'li yo'q edi va
 // profil har doim "Mijoz" deb ko'rsatardi.
+// DeleteAccount — mijozning O'ZI "Akkauntni o'chirish"ni bosgan payt
+// (`POST /me/delete-account`, faqat RoleCustomer).
+//
+// MA'LUMOT O'CHIRILMAYDI — faqat kirish yopiladi (`SoftDelete`
+// izohiga qarang). HTTP handler bu chaqiruvdan keyin DARHOL
+// `Revoke`ni ham bajaradi — token qo'lida qolgan bo'lsa ham keyingi
+// so'rov 401 qaytaradi.
+//
+// JORIY PAROL: `SetPassword` bilan AYNAN bir xil qoida — akkauntda
+// parol bo'lsa va token SMS/email kod bilan HOZIRGINA tasdiqlanmagan
+// bo'lsa, joriy parol talab qilinadi. Busiz o'g'irlangan/qulfsiz
+// qolgan telefon egasining ma'lumotlariga kirishni butunlay yopib
+// qo'yishi mumkin edi — parol so'rash bu ehtimolni yopadi, xuddi
+// parolni o'zgartirishda bo'lgani kabi.
+func (s *Service) DeleteAccount(ctx context.Context, userID, currentPassword string, phoneProven bool) error {
+	u, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.PasswordHash != "" && !phoneProven {
+		ok, err := VerifyPassword(ctx, currentPassword, u.PasswordHash)
+		if err != nil || !ok {
+			return ErrCurrentPasswordWrong
+		}
+	}
+	return s.users.SoftDelete(ctx, userID)
+}
+
 func (s *Service) UpdateName(ctx context.Context, userID, first, last string) error {
 	first = strings.TrimSpace(first)
 	last = strings.TrimSpace(last)

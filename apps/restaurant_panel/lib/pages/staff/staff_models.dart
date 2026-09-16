@@ -22,6 +22,11 @@ class StaffPositionInfo {
       );
 }
 
+/// Lavozimning OnDex ilovasi nomi (server `staff.appRole` bilan bir xil):
+/// ofitsiant — "OnDexPro", yetkazib beruvchi — "OnDexGO".
+String staffAppName(String? position) =>
+    position == 'courier' ? 'OnDexGO' : 'OnDexPro';
+
 IconData positionIcon(String key) => switch (key) {
       'manager' => Icons.manage_accounts_rounded,
       'administrator' => Icons.admin_panel_settings_rounded,

@@ -38,6 +38,10 @@ type Event struct {
 	// FCM `data` maydoniga ham shu ketadi, shuning uchun qiymatlar
 	// SATR bo'lishi shart.
 	Data map[string]string
+	// TTL — push qancha vaqt yetkazishga urinilsin (0 — FCM standarti).
+	// Qisqa muddatli signal (kuryer taklifi) telefon oflayn bo'lgan bo'lsa
+	// eskirgan holda kechikib kelmasin. DB'ga yozilmaydi.
+	TTL time.Duration
 }
 
 // Notification — DB'ga yozilgan bildirishnoma.

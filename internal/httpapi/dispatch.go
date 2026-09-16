@@ -91,10 +91,17 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 	courierID, err := s.Dispatcher.Dispatch(ctx, orderID, couriers.DispatchParams{
 		RestaurantLocation: geo.LatLng{Lat: rest.Lat, Lng: rest.Lng},
 		PreparationTime:    time.Duration(prepMinutes) * time.Minute,
-		RestaurantID:       rest.ID,
-		RestaurantName:     rest.Name,
-		RestaurantAddress:  rest.Address,
-		RestaurantLogoURL:  rest.LogoURL,
+		// ┌─ FAQAT RESTORANNING O'Z KURYERLARI (2026-09-15) ────────────┐
+		// OnDex platforma kuryerlari hozircha TO'XTATILGAN (foydalanuvchi
+		// qarori): taklif faqat shu restoran "Xodimlar" bo'limida qo'shgan
+		// yetkazib beruvchilarga ketadi. Kelajakdagi "5 daqiqadan keyin
+		// platformaga" bosqichi shu yerga qo'shiladi.
+		// └─────────────────────────────────────────────────────────────┘
+		CourierPool:       rest.ID,
+		RestaurantID:      rest.ID,
+		RestaurantName:    rest.Name,
+		RestaurantAddress: rest.Address,
+		RestaurantLogoURL: rest.LogoURL,
 		// Qidiruv davom etishi kerakmi: buyurtma yakunlanmagan, kuryer
 		// biriktirilmagan va "kuryer topilmadi" holatiga o'tmagan.
 		IsOrderCancelled: func(ctx context.Context) (bool, error) {

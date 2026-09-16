@@ -144,5 +144,42 @@ func (s *Service) Broadcast(topic string, payload any) {
 	s.hub.Send(topic, payload)
 }
 
+// Online — mavzuga hozir jonli (WebSocket) ulanish bormi.
+func (s *Service) Online(topic string) bool { return s.hub != nil && s.hub.Online(topic) }
+
+// PushEnabled — FCM ulanganmi.
+func (s *Service) PushEnabled() bool { return s.pusher != nil && s.tokens != nil }
+
+// HasPushTokens — foydalanuvchida push qabul qila oladigan qurilma bormi.
+func (s *Service) HasPushTokens(ctx context.Context, userID string) bool {
+	if userID == "" || !s.PushEnabled() {
+		return false
+	}
+	tokens, err := s.tokens.TokensFor(ctx, userID)
+	return err == nil && len(tokens) > 0
+}
+
+// Push — FAQAT push: DB'ga yozilmaydi, WebSocket'ga yuborilmaydi.
+//
+// Qisqa muddatli signal uchun (kuryer taklifi): 20 soniyalik taklifni
+// bildirishnomalar tarixida saqlashning ma'nosi yo'q, jonli kanalga esa
+// chaqiruvchi o'zi yuboradi. Sinxron — chaqiruvchi goroutine'da ishlatadi.
+func (s *Service) Push(ctx context.Context, userID string, e Event) {
+	if userID == "" || !s.PushEnabled() {
+		return
+	}
+	tokens, err := s.tokens.TokensFor(ctx, userID)
+	if err != nil {
+		slog.Warn("notify: push tokenlarini o'qib bo'lmadi", "user", userID, "err", err)
+		return
+	}
+	if len(tokens) == 0 {
+		return
+	}
+	if err := s.pusher.Push(ctx, tokens, e); err != nil {
+		slog.Warn("notify: push yuborilmadi", "user", userID, "kind", e.Kind, "err", err)
+	}
+}
+
 // Store/Hub — HTTP qatlami uchun (ro'yxat endpointlari).
 func (s *Service) Store() Store { return s.store }

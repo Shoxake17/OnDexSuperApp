@@ -6,7 +6,13 @@ export type Restaurant = {
   address: string;
   lat: number;
   lng: number;
+  /** Restoranning QO'LDA bosadigan tugmasi. Ko'rsatish uchun ishlatilmaydi — `lib/restaurant-status.ts`. */
   open: boolean;
+  /** HOZIR buyurtma qabul qiladimi (tugma VA ish vaqti) — server hisoblaydi. */
+  open_now?: boolean;
+  closed_reason?: "manual" | "hours";
+  /** Holat o'z-o'zidan o'zgaradigan payt (ISO, UTC). */
+  open_changes_at?: string;
   logo_url: string;
   cover_url: string;
   tags: string;

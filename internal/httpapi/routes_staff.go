@@ -109,7 +109,7 @@ func staffHTTPError(w http.ResponseWriter, err error) {
 	case errors.Is(err, staff.ErrNotFound):
 		httpError(w, http.StatusNotFound, err)
 	case errors.Is(err, staff.ErrPhoneTaken), errors.Is(err, staff.ErrAccountConflict),
-		errors.Is(err, staff.ErrLimitReached):
+		errors.Is(err, staff.ErrLimitReached), errors.Is(err, staff.ErrCourierBusy):
 		httpError(w, http.StatusConflict, err)
 	case errors.Is(err, staff.ErrAccountsDisabled):
 		httpError(w, http.StatusServiceUnavailable, err)

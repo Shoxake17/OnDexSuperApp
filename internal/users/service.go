@@ -287,6 +287,12 @@ func (s *Service) LinkTelegramPhone(ctx context.Context, telegramID int64, verif
 	} else if err != nil {
 		return nil, err
 	}
+	// Kontakt ulashish raqamga egalikni HOZIRGINA isbotladi — akkaunt
+	// avval o'chirilgan bo'lsa ham tiklanadi (`reactivateIfDeleted`
+	// izohiga qarang).
+	if err := s.reactivateIfDeleted(ctx, u); err != nil {
+		return nil, err
+	}
 	if err := s.users.LinkTelegram(ctx, u.ID, telegramID); err != nil {
 		return nil, err
 	}
@@ -313,6 +319,15 @@ func (s *Service) LoginWithTelegramID(ctx context.Context, telegramID int64) (st
 	}
 	if err != nil {
 		return "", nil, err
+	}
+	// ┌─ O'CHIRILGAN AKKAUNT AVTOMATIK TIKLANMAYDI ────────────────────┐
+	// Bu — ESKI Telegram sessiyasining qaytishi (Mini App `initData`),
+	// egalikning YANGI isboti EMAS (`reactivateIfDeleted` izohiga
+	// qarang). Tiklash uchun foydalanuvchi qaytadan telefon/email kod
+	// bilan tasdiqlashi kerak.
+	// └───────────────────────────────────────────────────────────────┘
+	if u.IsDeleted() {
+		return "", nil, ErrAccountDeleted
 	}
 	// ┌─ NEGA `PhoneProven` EMAS ─────────────────────────────────────┐
 	// Bu token bilan parol o'zgartirishga JORIY PAROL so'raladi.
@@ -373,6 +388,13 @@ func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *
 		u.PasswordHash = ""
 	}
 
+	// Akkaunt avval o'zi o'chirgan bo'lishi mumkin — raqamga egalik
+	// hozirgina isbotlandi, demak bu haqiqiy egasi (`reactivateIfDeleted`
+	// izohiga qarang).
+	if err := s.reactivateIfDeleted(ctx, u); err != nil {
+		return "", nil, err
+	}
+
 	// Raqam tasdiqlandi — token "telefon egaligi isbotlangan" deb
 	// belgilanadi. Bu FAQAT parolni joriy parolsiz o'rnatishga ruxsat
 	// beradi (parolini unutgan foydalanuvchi uchun) va 15 daqiqadan
@@ -382,6 +404,33 @@ func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *
 		return "", nil, err
 	}
 	return token, u, nil
+}
+
+// reactivateIfDeleted — akkaunt yumshoq o'chirilgan bo'lsa tiklaydi
+// (`migrations/0056`, `Repository.Reactivate`).
+//
+// ┌─ FAQAT EGALIK QAYTADAN ISBOTLANGANDA CHAQIRILADI ──────────────────┐
+// Bu funksiya `finishPhoneLogin` (SMS/Firebase telefon), `VerifyEmail`,
+// `LoginWithGoogle` va `LinkTelegramPhone` dan chaqiriladi — hammasida
+// foydalanuvchi HOZIRGINA identifikator (telefon/email) egaligini
+// isbotladi, bu esa aynan "akkaunt egasi qaytdi" degani.
+//
+// `LoginWithPassword` va `LoginWithTelegramID` BOSHQACHA: ular ESKI
+// dalilga (parol, avvalgi Telegram sessiyasi) tayanadi va o'chirilgan
+// akkauntni avtomatik TIKLAMAYDI — aksincha `ErrAccountDeleted` bilan
+// rad etadi. Aks holda o'g'irlangan/eski parol akkauntni kimningdir
+// xohishisiz tiklashi mumkin edi.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Service) reactivateIfDeleted(ctx context.Context, u *User) error {
+	if !u.IsDeleted() {
+		return nil
+	}
+	if err := s.users.Reactivate(ctx, u.ID); err != nil {
+		return err
+	}
+	slog.Info("akkaunt tiklandi — egasi qaytadan tasdiqladi", "user", u.ID)
+	u.DeletedAt = nil
+	return nil
 }
 
 // emailIsIdentity — topilgan yozuvda email KIMLIK sifatida ishlay
@@ -494,6 +543,13 @@ func (s *Service) LoginWithGoogle(ctx context.Context, verifiedEmail, fullName s
 		}
 		u.EmailVerified = true
 		u.PasswordHash = ""
+	}
+
+	// Google manzilga egalikni HOZIRGINA isbotladi — akkaunt avval
+	// o'chirilgan bo'lsa ham tiklanadi (`reactivateIfDeleted` izohiga
+	// qarang).
+	if err := s.reactivateIfDeleted(ctx, u); err != nil {
+		return "", nil, err
 	}
 
 	// Google kirish PAROL O'RNATISH huquqini bermaydi: `Issue`
@@ -651,6 +707,12 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		}
 		u.EmailVerified = true
 		u.PasswordHash = ""
+	}
+
+	// Manzilga egalik hozirgina isbotlandi — akkaunt avval o'chirilgan
+	// bo'lsa ham tiklanadi (`reactivateIfDeleted` izohiga qarang).
+	if err := s.reactivateIfDeleted(ctx, u); err != nil {
+		return "", nil, err
 	}
 
 	// Telefon oqimi bilan bir xil: kod tasdiqlangani parolni joriy

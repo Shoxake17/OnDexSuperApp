@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -19,11 +18,10 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _busy = false;
   String? _error;
 
-  /// Botning bir martalik havolasi. Ekranda KO'RSATILADI, chunki
-  /// `launchUrl` ishonchli emas: web'da brauzer qalqib chiquvchi oynani
-  /// to'sishi mumkin, desktopda esa Telegram Desktop o'rnatilmagan
-  /// bo'lishi mumkin. Havola ko'rinib turgani uchun foydalanuvchi uni
-  /// har doim qo'lda nusxalab ocha oladi.
+  /// Botning bir martalik havolasi. Ekranda KO'RSATILMAYDI — faqat
+  /// "Telegramni ochish" tugmasi uni qayta ochish uchun saqlaydi, chunki
+  /// avtomatik `launchUrl` ishlamasligi mumkin (brauzer qalqib chiquvchi
+  /// oynani to'sishi yoki Telegram Desktop o'rnatilmagan bo'lishi).
   String? _deepLink;
 
   Future<void> _run(Future<void> Function() action) async {
@@ -64,7 +62,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         }
         if (!opened && mounted) {
           setState(() => _error = 'Telegram avtomatik ochilmadi — '
-              'pastdagi havolani nusxalab oching');
+              '"Telegramni ochish" tugmasini bosing');
         }
       });
 
@@ -168,7 +166,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 }
 
-/// Telegram oqimining ko'rsatmasi va zaxira havolasi.
+/// Telegram oqimi: botni qayta ochish va raqamni almashtirish tugmalari.
 ///
 /// Ikkala panelda bir xil — nusxalanmasligi uchun alohida vidjet.
 class _TelegramHint extends StatelessWidget {
@@ -200,23 +198,18 @@ class _TelegramHint extends StatelessWidget {
           // └────────────────────────────────────────────────────────────┘
           if (deepLink != null) ...[
             const SizedBox(height: 8),
-            SelectableText(
-              deepLink!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.primary),
-            ),
-            const SizedBox(height: 4),
             Row(
               children: [
+                // Havola MATNI ko'rsatilmaydi va nusxalanmaydi
+                // (foydalanuvchi qarori, 2026-09-15): u odam uchun
+                // ma'nosiz uzun URL. Telegram avtomatik ochilmasa shu
+                // tugma uni qayta ochadi; desktopda `https://t.me`
+                // havolasi Telegram Desktop bo'lmasa brauzerda ochiladi.
                 TextButton.icon(
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Havolani nusxalash'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: deepLink!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Havola nusxalandi')),
-                    );
-                  },
+                  icon: const Icon(Icons.send, size: 16),
+                  label: const Text('Telegramni ochish'),
+                  onPressed: () => launchUrl(Uri.parse(deepLink!),
+                      mode: LaunchMode.externalApplication),
                 ),
                 const Spacer(),
                 // Havola BIR MARTALIK: bot uni ishlatgach server tokenni

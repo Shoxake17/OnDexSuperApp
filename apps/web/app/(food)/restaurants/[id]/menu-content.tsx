@@ -15,7 +15,9 @@ import type {
   Restaurant,
 } from "@/lib/types";
 import { useCart } from "@/lib/cart-context";
+import { closedMessage } from "@/lib/restaurant-status";
 import { useQuote } from "@/lib/use-quote";
+import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
 import ProductCard from "./product-card";
 import DiscountedTotal from "../../discounted-total";
 import MobileSheet from "../../mobile-sheet";
@@ -51,6 +53,12 @@ export default function MenuContent({
   // esa joyida turardi va pastdagi "Savatga o'tish" paneli ham
   // yo'qolardi.
   const cartItems = cart.itemsFor(restaurant.id);
+
+  // Restoran HOZIR buyurtma qabul qiladimi — ish vaqti bilan, sahifa ochiq
+  // tursa ham o'z vaqtida almashadi. Avval menyu buni umuman tekshirmasdi:
+  // yopiq restoranda ham savat to'lib, rad javobi faqat oxirida kelardi.
+  const { status: openStatus, now } = useRestaurantOpenStatus(restaurant);
+  const orderable = openStatus.open;
 
   // _applyPromotions bilan bir xil: order-wide/turkum darajasidagi
   // aksiyalarni oldindan hisoblab qo'yamiz (har bir kartochkada qayta
@@ -241,6 +249,7 @@ export default function MenuContent({
         onRemove={() => cart.setQty(restaurant.id, p.id, qty - 1)}
         onQtyChange={(newQty) => cart.setQty(restaurant.id, p.id, newQty)}
         onFavoriteChange={onFavoriteChange}
+        orderable={orderable}
       />
     );
   }
@@ -298,6 +307,20 @@ export default function MenuContent({
           </div>
         )}
       </div>
+
+      {!orderable && (
+        <div
+          role="status"
+          className="mx-4 mt-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/40"
+        >
+          <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+            {closedMessage(openStatus, now)}
+          </p>
+          <p className="mt-0.5 text-[13px] text-amber-900/80 dark:text-amber-200/80">
+            {"Menyuni ko'rishingiz mumkin — buyurtma restoran ochilgach qabul qilinadi."}
+          </p>
+        </div>
+      )}
 
       {categories.map((c) => {
         const items = menu.filter((p) => categoryOf(p) === c);

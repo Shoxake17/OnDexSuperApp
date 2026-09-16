@@ -80,7 +80,25 @@ type User struct {
 	// Mijozning saqlangan yetkazib berish manzili (xaritadan tanlangan).
 	// Hammasi ixtiyoriy — hali tanlanmagan bo'lsa bo'sh/0 qiymatlar.
 	Address AddressDetails `json:"address"`
+
+	// DeletedAt — mijoz "Akkauntni o'chirish" ni bosgan payt (YUMSHOQ
+	// o'chirish, `migrations/0056`). `nil` = faol akkaunt.
+	//
+	// ┌─ NEGA `json:"-"` ────────────────────────────────────────────────┐
+	// Bu holat mijozga alohida xabar sifatida KERAK EMAS: u o'chirilgan
+	// zahoti tizimdan chiqariladi (`Revoke`) va keyingi so'rovlar 401
+	// qaytaradi — bu allaqachon aniq signal. Maydonni JSON'da qoldirish
+	// esa `/me` javobini o'qiydigan HAR BIR joyga (Flutter, veb, admin
+	// panel) yangi holatni bilishni majburlagan bo'lardi.
+	// └───────────────────────────────────────────────────────────────────┘
+	//
+	// QATTIQ o'chirish (superadmin, `Repository.Delete`) BUTUNLAY BOSHQA
+	// yo'l — yozuvning o'zi bazadan yo'qoladi, bu maydonga ishi yo'q.
+	DeletedAt *time.Time `json:"-"`
 }
+
+// IsDeleted — akkaunt yumshoq o'chirilganmi (`DeletedAt != nil`).
+func (u *User) IsDeleted() bool { return u != nil && u.DeletedAt != nil }
 
 // Manzil matn maydonlarining uzunlik chegaralari.
 //
@@ -169,9 +187,9 @@ var (
 	// ErrServerBusy — parol tekshirish navbati to'lgan (Argon2 chegarasi,
 	// `password.go` dagi izohga qarang). Vaqtinchalik holat: mijoz
 	// biroz kutib qayta urinishi kerak, shuning uchun 503 + Retry-After.
-	ErrServerBusy = errors.New("server hozir band — biroz kutib qayta urinib ko'ring")
-	ErrEmailNotVerified   = errors.New("email tasdiqlanmagan — emailingizga yuborilgan kodni kiriting")
-	ErrInvalidEmail       = errors.New("email formati noto'g'ri")
+	ErrServerBusy       = errors.New("server hozir band — biroz kutib qayta urinib ko'ring")
+	ErrEmailNotVerified = errors.New("email tasdiqlanmagan — emailingizga yuborilgan kodni kiriting")
+	ErrInvalidEmail     = errors.New("email formati noto'g'ri")
 	// ErrEmailSendUnavailable — SMTP sozlanmagan. Mijozga ANIQ
 	// ko'rsatiladi; jimgina "yuborildi" deyilmaydi.
 	ErrEmailSendUnavailable = errors.New("email yuborish hali ulanmagan — telefon raqami orqali davom eting")
@@ -185,6 +203,14 @@ var (
 	// allaqachon o'z tokeni bilan kirgan, ya'ni akkauntning mavjudligi
 	// undan sir emas.
 	ErrCurrentPasswordWrong = errors.New("joriy parol noto'g'ri")
+	// ErrAccountDeleted — parol TO'G'RI, lekin akkaunt o'chirilgan
+	// (`LoginWithPassword`, `LoginWithTelegramID`).
+	//
+	// ENUMERATION XAVFI YO'Q: bu xato FAQAT parol tekshiruvidan
+	// MUVAFFAQIYATLI o'tgandan keyin qaytariladi — ya'ni javobni
+	// ko'rgan odam parolni allaqachon bilgan, akkauntning mavjudligi
+	// undan sir emas (`ErrCurrentPasswordWrong` bilan bir xil mantiq).
+	ErrAccountDeleted = errors.New("bu akkaunt o'chirilgan — telefon raqamingiz orqali SMS/Telegram kod bilan tasdiqlab, ma'lumotlaringizni tiklashingiz mumkin")
 )
 
 // TooSoonError — kod QAYTA so'rashgacha qancha qolganini ham
@@ -216,7 +242,7 @@ var userFacing = []error{
 	ErrPhoneNotVerified, ErrInvalidEmail, ErrCurrentPasswordWrong,
 	ErrPasswordTooShort, ErrPasswordTooLong, ErrPasswordTooCommon,
 	ErrPasswordMismatch, ErrEmailNotVerified, ErrEmailSendUnavailable,
-	ErrServerBusy, ErrSmsSendUnavailable,
+	ErrServerBusy, ErrSmsSendUnavailable, ErrAccountDeleted,
 }
 
 // IsUserFacing — xatoni mijozga o'zgarishsiz ko'rsatish mumkinmi.
@@ -245,6 +271,9 @@ type Repository interface {
 	// UpdateRole — mijoz kuryer bo'lganda (yoki admin rol berganda) ishlatiladi.
 	UpdateRole(ctx context.Context, id string, role Role, entityID string) error
 	ListByRole(ctx context.Context, role Role) ([]*User, error)
+	// GetByRoleEntity — obyektning (masalan restoran) ENG ESKI akkaunti;
+	// topilmasa `ErrUserNotFound`. Indeks: `idx_users_role_entity`.
+	GetByRoleEntity(ctx context.Context, role Role, entityID string) (*User, error)
 	// DeleteByRoleEntity — obyekt (restoran/kuryer) o'chirilganda unga
 	// bog'langan akkauntlarni ham o'chirish uchun. O'CHIRILGAN
 	// foydalanuvchi ID'larini qaytaradi — chaqiruvchi ularning
@@ -270,6 +299,18 @@ type Repository interface {
 	//
 	// Topilmasa `ErrUserNotFound`.
 	Delete(ctx context.Context, id string) error
+	// SoftDelete — mijozning O'ZI "Akkauntni o'chirish"ni bosganda
+	// (`POST /me/delete-account`). `Delete`dan farqli o'laroq HECH
+	// QANDAY ma'lumotga tegmaydi — faqat `deleted_at` yoziladi.
+	// Buyurtmalar, sevimlilar, manzil, xabarlar — HAMMASI saqlanadi,
+	// chunki akkaunt keyin `Reactivate` bilan tiklanishi mumkin
+	// (migration 0056 izohiga qarang).
+	SoftDelete(ctx context.Context, id string) error
+	// Reactivate — `deleted_at`ni tozalaydi. Foydalanuvchi o'chirilgan
+	// akkaunt bilan bog'langan telefon/email/Google orqali QAYTADAN
+	// egaligini isbotlaganda avtomatik chaqiriladi
+	// (`service.go` dagi `reactivateIfDeleted`).
+	Reactivate(ctx context.Context, id string) error
 	// UpdateAddress — mijoz xaritadan yetkazib berish manzilini tanlab
 	// saqlaganda ("Tayyor" tugmasi) ishlatiladi.
 	UpdateAddress(ctx context.Context, id string, addr AddressDetails) error

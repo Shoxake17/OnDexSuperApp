@@ -199,6 +199,14 @@ class _AdminShellState extends State<AdminShell> {
                                 icon: const Icon(Icons.logout),
                                 onPressed: _logout,
                               ),
+                              // Qaysi build ishlayotgani — har reliz +1
+                              // (`scripts/version.ps1`).
+                              const SizedBox(height: 6),
+                              Text(
+                                appVersionLabel,
+                                key: const ValueKey('admin-app-version'),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
                             ],
                           ),
                         ),

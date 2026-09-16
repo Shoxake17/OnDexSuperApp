@@ -696,7 +696,12 @@ class _RestaurantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final open = r['open'] == true;
+    // "Ochiq/Yopiq" — qo'lda tugma emas, ish vaqti bilan (server hisobi,
+    // `ondex_core` dagi `RestaurantOpenStatus`).
+    final now = DateTime.now();
+    final status = RestaurantOpenStatus.fromJson(r).at(now);
+    final open = status.open;
+    final openDetail = status.detail(now);
     final cover = (r['cover_url'] as String?) ?? '';
     final name = (r['name'] as String?) ?? '';
     final tags = ((r['tags'] as String?) ?? '').trim();
@@ -749,13 +754,16 @@ class _RestaurantCard extends StatelessWidget {
             right: 12,
             top: 12,
             child: Container(
+              constraints: const BoxConstraints(maxWidth: 230),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                open ? 'Ochiq' : 'Yopiq',
+                openDetail == null ? status.label : '${status.label} · $openDetail',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,

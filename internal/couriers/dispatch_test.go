@@ -95,16 +95,37 @@ func (r *fakeRepo) ListAvailable(_ context.Context) ([]*Courier, error) {
 // implementatsiyalari ustida sinaladi (`courier_geo_test.go`).
 // Bu yerda radius qo'llansa, testlar kuryerlarga soxta koordinata
 // berishga majbur bo'lardi va sinalayotgan narsa xiralashardi.
-func (r *fakeRepo) ListAvailableNear(ctx context.Context, _, _ float64,
+//
+// Havuz filtri esa SHU YERDA ham qo'llanadi: u geografiya emas,
+// xavfsizlik chegarasi (restoran kuryeri begona buyurtmani ko'rmasin).
+func (r *fakeRepo) ListAvailableNear(ctx context.Context, pool string, _, _ float64,
 	_ float64, _ time.Duration, limit int) ([]*Courier, error) {
-	out, err := r.ListAvailable(ctx)
+	all, err := r.ListAvailable(ctx)
 	if err != nil {
 		return nil, err
+	}
+	out := make([]*Courier, 0, len(all))
+	for _, c := range all {
+		if c.RestaurantID == pool {
+			out = append(out, c)
+		}
 	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (r *fakeRepo) SetName(_ context.Context, id, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.couriers {
+		if c.ID == id {
+			c.Name = name
+			return nil
+		}
+	}
+	return ErrNoCourier
 }
 
 func (r *fakeRepo) SetAvailable(_ context.Context, id string, v bool) error {

@@ -153,8 +153,128 @@ func (w *WorkingHours) IsOpenAt(t time.Time) bool {
 	return false
 }
 
-// AcceptingOrdersAt — restoran shu paytda buyurtma qabul qiladimi:
-// qo'lda "ochiq" VA (belgilangan bo'lsa) ish vaqti ichida.
+// NextChangeAfter — `t` dan keyin ish vaqti holati (ochiq↔yopiq) birinchi
+// o'zgaradigan payt, bir hafta ichida. Jadval yo'q, kun bo'yi ochiq yoki
+// butunlay yopiq bo'lsa — `false`.
+//
+// Nomzodlar — har kunning ochilish/yopilish daqiqalari va yarim tun (kun
+// bo'yi ochiq kunning chegarasi). `IsOpenAt` daqiqa aniqligida ishlagani
+// uchun chegara daqiqasining o'zida tekshirish aniq natija beradi.
+func (w *WorkingHours) NextChangeAfter(t time.Time) (time.Time, bool) {
+	if w == nil || len(w.Days) == 0 {
+		return time.Time{}, false
+	}
+	lt := t.In(Location)
+	midnight := time.Date(lt.Year(), lt.Month(), lt.Day(), 0, 0, 0, 0, Location)
+	candidates := make([]time.Time, 0, 30)
+	for i := -1; i <= 8; i++ {
+		day := midnight.AddDate(0, 0, i)
+		candidates = append(candidates, day)
+		d, ok := w.day(isoDay(day.Weekday()))
+		if !ok || !d.Enabled {
+			continue
+		}
+		o, okO := parseClock(d.Open)
+		c, okC := parseClock(d.Close)
+		if !okO || !okC {
+			continue
+		}
+		openAt := day.Add(time.Duration(o) * time.Minute)
+		closeAt := day.Add(time.Duration(c) * time.Minute)
+		if c < o {
+			closeAt = closeAt.AddDate(0, 0, 1)
+		}
+		candidates = append(candidates, openAt, closeAt)
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Before(candidates[j]) })
+	openNow := w.IsOpenAt(t)
+	for _, at := range candidates {
+		if at.After(t) && w.IsOpenAt(at) != openNow {
+			return at, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// Yopiqlik sabablari (`OpenState.Reason`, JSON `closed_reason`).
+const (
+	// ClosedManual — restoran o'zi "Yopiq" qilgan (panel tugmasi).
+	ClosedManual = "manual"
+	// ClosedHours — "Ochiq", lekin hozir ish vaqti emas.
+	ClosedHours = "hours"
+)
+
+// OrderableAt — restoran shu paytda buyurtma qabul qiladimi; qabul
+// qilmasa — sababi bilan xato (`ErrRestaurantClosed` / `ErrOutsideHours`).
+//
+// ┌─ YAGONA QOIDA (2026-09-15) ────────────────────────────────────────┐
+// "Hozir ochiqmi" avval ikki xil hisoblanardi: narxlash (savat) ish
+// vaqtini tekshirardi, qolgan hamma joy — restoran kartalari, menyu,
+// qidiruv va sevimlilardagi `restaurant_open`, panel belgisi — faqat
+// qo'lda bosiladigan `Open` tugmasiga qarardi. Ish vaqti tugagan restoran
+// hamma joyda "Ochiq" ko'rinib, mijoz savatni to'ldirgach faqat oxirida
+// "yopiq" javobini olardi. Endi har bir yo'l shu metoddan o'tadi.
+// └────────────────────────────────────────────────────────────────────┘
+func (r *Restaurant) OrderableAt(t time.Time) error {
+	if !r.Open {
+		return ErrRestaurantClosed
+	}
+	if !r.WorkingHours.IsOpenAt(t) {
+		return ErrOutsideHours
+	}
+	return nil
+}
+
+// AcceptingOrdersAt — `OrderableAt` ning ha/yo'q ko'rinishi.
 func (r *Restaurant) AcceptingOrdersAt(t time.Time) bool {
-	return r.Open && r.WorkingHours.IsOpenAt(t)
+	return r.OrderableAt(t) == nil
+}
+
+// AcceptingOrdersNow — joriy payt uchun (javob tayyorlaydigan qatlamlar).
+func (r *Restaurant) AcceptingOrdersNow() bool {
+	return r.AcceptingOrdersAt(time.Now())
+}
+
+// OpenState — restoranning mijozga ko'rsatiladigan holati.
+type OpenState struct {
+	// Open — hozir buyurtma qabul qiladi.
+	Open bool
+	// Reason — yopiq bo'lsa sababi (`ClosedManual` / `ClosedHours`).
+	Reason string
+	// ChangesAt — holat O'Z-O'ZIDAN o'zgaradigan payt: ochiq bo'lsa yopilish,
+	// ish vaqti sabab yopiq bo'lsa ochilish vaqti. `nil` — o'zgarmaydi
+	// (qo'lda yopilgan, jadvalsiz, kun bo'yi ochiq yoki hafta davomida
+	// ochilmaydi).
+	ChangesAt *time.Time
+}
+
+// OpenStateAt — `t` paytidagi holat.
+func (r *Restaurant) OpenStateAt(t time.Time) OpenState {
+	if !r.Open {
+		return OpenState{Reason: ClosedManual}
+	}
+	st := OpenState{Open: r.WorkingHours.IsOpenAt(t)}
+	if !st.Open {
+		st.Reason = ClosedHours
+	}
+	if at, ok := r.WorkingHours.NextChangeAfter(t); ok {
+		st.ChangesAt = &at
+	}
+	return st
+}
+
+// WithOpenState — javob uchun nusxa: hisoblanadigan maydonlar (`open_now`,
+// `closed_reason`, `open_changes_at`) to'ldiriladi. Keshdan KEYIN
+// chaqiriladi — vaqtga bog'liq qiymat keshda eskirmasin.
+func (r Restaurant) WithOpenState(t time.Time) Restaurant {
+	st := r.OpenStateAt(t)
+	open := st.Open
+	r.OpenNow = &open
+	r.ClosedReason = st.Reason
+	r.OpenChangesAt = nil
+	if st.ChangesAt != nil {
+		at := st.ChangesAt.UTC()
+		r.OpenChangesAt = &at
+	}
+	return r
 }

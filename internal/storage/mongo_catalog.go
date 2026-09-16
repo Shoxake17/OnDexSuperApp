@@ -415,9 +415,7 @@ func (r *MongoCatalogRepo) searchViaMeili(ctx context.Context, query string) ([]
 	}
 	for _, it := range list {
 		if rest, ok := rests[it.RestaurantID]; ok {
-			it.RestaurantName = rest.Name
-			it.RestaurantLogoURL = rest.LogoURL
-			it.RestaurantOpen = rest.Open
+			it.AttachRestaurant(rest.toDomain())
 		}
 	}
 	return list, nil
@@ -498,9 +496,7 @@ func (r *MongoCatalogRepo) searchViaMongoScan(ctx context.Context, nq string) ([
 	}
 	for _, it := range list {
 		if rest, ok := rests[it.RestaurantID]; ok {
-			it.RestaurantName = rest.Name
-			it.RestaurantLogoURL = rest.LogoURL
-			it.RestaurantOpen = rest.Open
+			it.AttachRestaurant(rest.toDomain())
 		}
 	}
 	return list, nil

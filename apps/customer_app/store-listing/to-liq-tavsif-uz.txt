@@ -1,0 +1,37 @@
+OnDex — restoranlardan buyurtma berish, yetkazib berish va zalda xizmatni bitta ilovada birlashtiruvchi xalq ilovasi.
+
+Shahringizdagi restoranlarni ko'ring, taomni bir necha soniyada tanlang va uni uyingizgacha yetkazib berishni yoki restoran zalida stol ustidan buyurtma qilishni tanlang — hammasi bitta ilova ichida, qo'ng'iroqsiz va navbatsiz.
+
+RESTORAN VA BUYURTMA
+• Kategoriya, reyting va masofa bo'yicha restoranlarni qidiring
+• Menyuni rasm, narx va tavsif bilan ko'ring
+• Savatga qo'shing, chegirma va aksiyalarni ko'ring
+• Naqd, Click yoki Payme orqali to'lang
+
+YETKAZIB BERISHNI JONLI KUZATING
+• Buyurtma qabul qilingandan tortib yetib kelgunga qadar bosqichlarni ko'ring
+• Kuryer xaritada JONLI harakatlanadi — qayerda ekanini istalgan payt bilasiz
+• Restorandan sizgacha bo'lgan yo'nalish chiziqda ko'rsatiladi, yetib kelish vaqti taxmin qilinadi
+
+RESTORAN ZALIDA — STOL USTIDAN BUYURTMA
+• Stoldagi QR kodni skanerlang va ofitsiantni kutmasdan menyudan tanlang
+• Buyurtma to'g'ridan-to'g'ri oshxonaga tushadi
+• Ba'zi restoranlarda zalning 3D ko'rinishini ilova ichida aylanib ko'rish ham mumkin
+
+SUN'IY INTELLEKT YORDAMCHISI
+• Shaddiy — ovozli va yozma chat orqali taom tanlashda yordam beradi
+• Nima buyurtma qilishni bilmasangiz, tavsiya so'rang
+• Yakuniy tasdiqni har doim SIZ berasiz — yordamchi taklif qiladi, buyurtmani siz tasdiqlaysiz
+
+TAOMNI STOL USTIDA "KO'RING" (AR)
+• Kamera orqali tanlagan taomingizni haqiqiy stol ustida taxminiy hajmda ko'ring
+• Buyurtma berishdan oldin nima kelishini his qiling
+
+QULAY VA XAVFSIZ
+• Telefon raqami, Telegram, email yoki Google orqali kirish
+• Yuz yoki barmoq izi bilan tezkor kirish (PIN qulfi)
+• OnDex Wallet — keshbek bilan to'lov
+• Sevimli restoran va taomlarni saqlab qo'ying
+• Buyurtmalar tarixi va bildirishnomalar
+
+OnDex — shunchaki yetkazib berish ilovasi emas, kundalik ehtiyojlaringizni osonlashtiruvchi xalq ilovasi. Yuklab oling va birinchi buyurtmangizni bering!

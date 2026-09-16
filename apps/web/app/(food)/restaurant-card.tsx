@@ -1,7 +1,10 @@
+"use client";
+
 import { Clock, MapPin, Star, Store } from "lucide-react";
 import Link from "next/link";
 import { fullImageUrl } from "@/lib/images";
 import type { Restaurant } from "@/lib/types";
+import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
 
 // Mijoz super-app bosh sahifasidagi restoran kartasi (image/restarant.png).
 //
@@ -23,6 +26,8 @@ export default function RestaurantCard({
 }) {
   const cover = r.cover_url;
   const tags = r.tags.trim();
+  // "Ochiq/Yopiq" — qo'lda tugma emas, ish vaqti bilan (server hisobi).
+  const { status, detail } = useRestaurantOpenStatus(r);
 
   // 0 = kiritilmagan. Soxta qiymat ko'rsatmaymiz — chip butunlay
   // chizilmaydi (backend izohiga qarang: catalog.Restaurant).
@@ -35,7 +40,7 @@ export default function RestaurantCard({
         // Cover yo'q bo'lsa fon TO'Q bo'lishi shart: oq matn och kulrang
         // ustida o'qilmasdi.
         cover ? "bg-neutral-800" : "bg-neutral-800 dark:bg-neutral-700"
-      } ${r.open ? "" : "pointer-events-none opacity-60"}`}
+      } ${status.open ? "" : "pointer-events-none opacity-60"}`}
     >
       {/* ┌─ COVER TO'LIQ KO'RINADI, KESILMAYDI ────────────────────────┐
           Avval rasm `absolute ... h-full w-full object-cover` edi:
@@ -77,11 +82,14 @@ export default function RestaurantCard({
           └─────────────────────────────────────────────────────────────┘ */}
 
       <span
-        className={`absolute right-4 top-4 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ${
-          r.open ? "text-green-600" : "text-red-600"
+        className={`absolute right-4 top-4 max-w-[70%] truncate rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ${
+          status.open ? "text-green-600" : "text-red-600"
         }`}
       >
-        {r.open ? "Ochiq" : "Yopiq"}
+        {status.open ? "Ochiq" : "Yopiq"}
+        {detail && (
+          <span className="font-semibold text-neutral-500"> · {detail}</span>
+        )}
       </span>
 
       {/* Logotip ATAYLAB chizilmaydi. Cover rasmining o'zida brend
@@ -128,7 +136,7 @@ export default function RestaurantCard({
     </div>
   );
 
-  if (!r.open) return card;
+  if (!status.open) return card;
   return (
     <Link href={`/restaurants/${r.id}`} className="block">
       {card}

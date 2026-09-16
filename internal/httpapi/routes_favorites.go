@@ -124,9 +124,7 @@ func (s *Server) registerFavoriteRoutes(mux *http.ServeMux) {
 				}
 				res := &catalog.ProductSearchResult{Product: *p}
 				if rest != nil {
-					res.RestaurantName = rest.Name
-					res.RestaurantLogoURL = rest.LogoURL
-					res.RestaurantOpen = rest.Open
+					res.AttachRestaurant(rest)
 				}
 				out = append(out, res)
 			}

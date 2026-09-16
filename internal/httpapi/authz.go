@@ -102,16 +102,14 @@ func redactForCourierBeforePickup(c *users.Claims, o *orders.Order) any {
 // soni kam (o'nlab), qo'shimcha repository metodi/migratsiya shart emas.
 // Topilmasa bo'sh satr qaytadi (chaqiruvchi shunchaki maydonni qo'shmaydi).
 func restaurantPhoneFor(ctx context.Context, userRepo users.Repository, restaurantID string) string {
-	list, err := userRepo.ListByRole(ctx, users.RoleRestaurant)
+	// Bitta indeksli so'rov (`idx_users_role_entity`). Avval barcha restoran
+	// akkauntlari o'qilib, Go'da filtrlanardi — `role` indeksi yo'qligi
+	// sababli bu butun `users` jadvalini (mijozlar bilan) ko'rib chiqardi.
+	u, err := userRepo.GetByRoleEntity(ctx, users.RoleRestaurant, restaurantID)
 	if err != nil {
 		return ""
 	}
-	for _, u := range list {
-		if u.EntityID == restaurantID {
-			return u.Phone
-		}
-	}
-	return ""
+	return u.Phone
 }
 
 // customerPhoneFor — mijoz akkauntining telefon raqami. Restoran(lar)dan

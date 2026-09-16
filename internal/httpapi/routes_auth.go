@@ -31,6 +31,11 @@ func authStatus(err error, def int) int {
 		return http.StatusTooManyRequests
 	case errors.Is(err, users.ErrPhoneNotVerified):
 		return http.StatusForbidden
+	case errors.Is(err, users.ErrAccountDeleted):
+		// 403 — "login/parol noto'g'ri" (401) EMAS: kim ekani va
+		// parol/sessiya TO'G'RI, faqat akkaunt o'chirilgan. Xuddi
+		// `ErrPhoneNotVerified` bilan bir xil shakl.
+		return http.StatusForbidden
 	case errors.Is(err, users.ErrServerBusy):
 		// Parol tekshirish navbati to'lgan (Argon2 chegarasi). Bu
 		// VAQTINCHALIK holat — 4xx emas, 503 bo'lishi kerak, aks holda

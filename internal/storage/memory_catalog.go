@@ -21,7 +21,10 @@ func cloneRestaurant(x catalog.Restaurant) catalog.Restaurant {
 		p := *x.PaymentMethods
 		x.PaymentMethods = &p
 	}
-	x.OpenNow = nil // hisoblanadigan maydon saqlanmaydi
+	// Hisoblanadigan maydonlar saqlanmaydi (`Restaurant.WithOpenState`).
+	x.OpenNow = nil
+	x.ClosedReason = ""
+	x.OpenChangesAt = nil
 	return x
 }
 
@@ -149,12 +152,9 @@ func (r *MemoryCatalogRepo) SearchProducts(_ context.Context, query string) ([]*
 		if !ok {
 			continue
 		}
-		list = append(list, &catalog.ProductSearchResult{
-			Product:           p,
-			RestaurantName:    rest.Name,
-			RestaurantLogoURL: rest.LogoURL,
-			RestaurantOpen:    rest.Open,
-		})
+		res := &catalog.ProductSearchResult{Product: p}
+		res.AttachRestaurant(&rest)
+		list = append(list, res)
 	}
 	return list, nil
 }

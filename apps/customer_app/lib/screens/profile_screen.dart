@@ -14,6 +14,7 @@ import '../services/push.dart';
 import '../session.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'address_screen.dart';
+import 'delete_account_screen.dart';
 import 'login_screen.dart';
 import 'web_session.dart';
 import 'pin_screen.dart';
@@ -256,6 +257,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// "Akkauntni o'chirish" — ekran o'zi `POST /me/delete-account` ni
+  /// chaqiradi (parol kerak bo'lsa so'raydi) va muvaffaqiyatda `true`
+  /// bilan qaytadi. Server sessiyasi ALLAQACHON bekor qilingan bo'lgani
+  /// uchun keyingi tozalash ODATDAGI chiqish bilan BIR XIL —
+  /// `api.logout()` bu holatda shunchaki 401 oladi va uni yutadi
+  /// (`ondex_core.ApiClient.logout` izohiga qarang).
+  Future<void> _deleteAccount() async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
+    );
+    if (deleted == true) {
+      await _doLogout();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SheetScaffold(
@@ -472,6 +488,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
+                // ── Akkauntni o'chirish ──────────────────────────────
+                //
+                // Google Play/App Store talabi: hisobni o'chirish imkoni
+                // ILOVA ICHIDA ham bo'lishi shart, faqat veb sahifada
+                // emas (veb nusxasi: https://ondex.uz/delete-account).
+                // "Chiqish"dan pastroq va kichikroq — bu halokatli amal,
+                // tasodifan bosilmasligi kerak.
+                const SizedBox(height: 14),
+                Center(
+                  child: TextButton(
+                    onPressed: _deleteAccount,
+                    child: const Text('Akkauntni o\'chirish',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF9E9E9E),
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ),
+
                 // ── Versiya ────────────────────────────────────────
                 //
                 // ┌─ NEGA BU YERDA VA NEGA HAR DOIM KO'RINADI ──────┐
@@ -487,15 +522,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // ajralib turadi va uni prod build bilan chalkashtirib
                 // bo'lmaydi.
                 //
-                // Android'ning build raqami (`versionCode`) bu yerda
-                // KO'RSATILMAYDI: u faqat tizim uchun kerak va
-                // "0.2.0+2" foydalanuvchiga chalkash ko'rinadi.
+                // Build raqami qavs ichida ko'rsatiladi ("v0.2.3 (15)"):
+                // har reliz +1 oshadi (`scripts/version.ps1`) va
+                // qaysi build o'rnatilganini aniq aytadi.
                 // └─────────────────────────────────────────────────┘
                 const SizedBox(height: 20),
-                const Center(
+                Center(
                   child: Text(
-                    'OnDex versiya: $appVersion',
-                    style: TextStyle(
+                    'OnDex $appVersionLabel',
+                    key: const ValueKey('customer-app-version'),
+                    style: const TextStyle(
                       fontSize: 12.5,
                       color: Color(0xFF9CA3AF),
                       fontWeight: FontWeight.w500,

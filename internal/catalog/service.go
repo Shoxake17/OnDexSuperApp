@@ -122,13 +122,11 @@ func (s *Service) PriceOrder(ctx context.Context, reqs []ItemRequest) (restauran
 	if err != nil {
 		return "", nil, err
 	}
-	if !rest.Open {
-		return "", nil, ErrRestaurantClosed
-	}
-	// Ish vaqti — HAMMA buyurtma yo'li (ilova, stol QR, agent, yordamchi)
-	// shu funksiyadan o'tadi, shuning uchun tekshiruv bitta joyda.
-	if !rest.WorkingHours.IsOpenAt(s.now()) {
-		return "", nil, ErrOutsideHours
+	// Qo'lda yopilgan va ish vaqti — HAMMA buyurtma yo'li (ilova, stol QR,
+	// agent, yordamchi) shu funksiyadan o'tadi; qoidaning o'zi esa
+	// ko'rsatish bilan bir joyda (`Restaurant.OrderableAt`).
+	if err := rest.OrderableAt(s.now()); err != nil {
+		return "", nil, err
 	}
 	return restaurantID, items, nil
 }

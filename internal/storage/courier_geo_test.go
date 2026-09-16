@@ -40,6 +40,11 @@ func seedCouriers() []couriers.Courier {
 			Available: false, Approved: true, VehicleType: couriers.VehicleMoped, Rating: 5},
 		{ID: "tasdiqsiz", Name: "Tasdiqsiz", Lat: center.Lat, Lng: center.Lng,
 			Available: true, Approved: false, VehicleType: couriers.VehicleMoped, Rating: 5},
+		// Restoranning O'Z kuryeri — markazda, onlayn, tasdiqlangan. Platforma
+		// havuzida HECH QACHON ko'rinmasligi kerak (yuqoridagi barcha
+		// tekshiruvlar platforma havuzida ishlaydi va uni sanamaydi).
+		{ID: "restoranniki", Name: "Restoranniki", RestaurantID: "geo-rest", Lat: center.Lat, Lng: center.Lng,
+			Available: true, Approved: true, VehicleType: couriers.VehicleMoped, Rating: 5},
 	}
 }
 
@@ -55,8 +60,33 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	t.Helper()
 	ctx := context.Background()
 
+	// XAVFSIZLIK CHEGARASI: restoran kuryeri faqat o'z restorani havuzida,
+	// platforma kuryeri faqat platforma havuzida.
+	t.Run("havuzlar aralashmaydi", func(t *testing.T) {
+		got, err := repo.ListAvailableNear(ctx, "geo-rest", center.Lat, center.Lng, 7000, 0, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].ID != "restoranniki" {
+			t.Fatalf("restoran havuzida faqat o'z kuryeri bo'lishi kerak: %v", ids(got))
+		}
+		got, err = repo.ListAvailableNear(ctx, "begona-rest", center.Lat, center.Lng, 7000, 0, 20)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("begona restoran havuzi bo'sh bo'lishi kerak: %v %v", ids(got), err)
+		}
+		got, err = repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range ids(got) {
+			if id == "restoranniki" {
+				t.Fatal("restoran kuryeri platforma havuziga tushdi")
+			}
+		}
+	})
+
 	t.Run("radius tashqarisidagi kuryer tushmaydi", func(t *testing.T) {
-		got, err := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, 0, 20)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 20)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -71,7 +101,7 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	})
 
 	t.Run("eng yaqinidan tartiblanadi", func(t *testing.T) {
-		got, err := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, 0, 20)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 20)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -81,7 +111,7 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	})
 
 	t.Run("offline va tasdiqlanmagan kuryer tushmaydi", func(t *testing.T) {
-		got, err := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, 0, 20)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 20)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -93,7 +123,7 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	})
 
 	t.Run("limit hurmat qilinadi", func(t *testing.T) {
-		got, err := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, 0, 1)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 1)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -107,7 +137,7 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	})
 
 	t.Run("juda kichik radiusda faqat ustidagi topiladi", func(t *testing.T) {
-		got, err := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 50, 0, 20)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 50, 0, 20)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -124,7 +154,7 @@ func runProximitySuite(t *testing.T, repo couriers.Repository) {
 	// okeanига tushadi va HECH KIM topilmaydi.
 	t.Run("lat va lng almashtirilmagan", func(t *testing.T) {
 		// Teskari koordinata bilan qidirsak HECH KIM topilmasligi kerak.
-		got, err := repo.ListAvailableNear(ctx, center.Lng, center.Lat, 7000, 0, 20)
+		got, err := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lng, center.Lat, 7000, 0, 20)
 		if err != nil {
 			t.Fatalf("ListAvailableNear: %v", err)
 		}
@@ -147,7 +177,7 @@ func TestStaleLocationSkipped(t *testing.T) {
 	ctx := context.Background()
 
 	// Joylashuv YANGILANMAGAN kuryerlar o'tadi (vaqt noma'lum).
-	got, _ := repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, time.Minute, 20)
+	got, _ := repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, time.Minute, 20)
 	if len(got) != 2 {
 		t.Fatalf("vaqti noma'lum kuryerlar o'tishi kerak edi: %v", ids(got))
 	}
@@ -156,13 +186,13 @@ func TestStaleLocationSkipped(t *testing.T) {
 	if err := repo.UpdateLocation(ctx, "markaz", center.Lat, center.Lng); err != nil {
 		t.Fatalf("UpdateLocation: %v", err)
 	}
-	got, _ = repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, time.Minute, 20)
+	got, _ = repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, time.Minute, 20)
 	if len(got) != 2 {
 		t.Fatalf("yangi joylashuvli kuryer tushib qoldi: %v", ids(got))
 	}
 
 	// maxAge NOL bo'lsa eskilik umuman tekshirilmaydi.
-	got, _ = repo.ListAvailableNear(ctx, center.Lat, center.Lng, 7000, 0, 20)
+	got, _ = repo.ListAvailableNear(ctx, couriers.PlatformPool, center.Lat, center.Lng, 7000, 0, 20)
 	if len(got) != 2 {
 		t.Fatalf("maxAge=0 da hamma o'tishi kerak: %v", ids(got))
 	}
@@ -232,11 +262,11 @@ type prefixedRepo struct {
 	prefix string
 }
 
-func (p *prefixedRepo) ListAvailableNear(ctx context.Context, lat, lng float64,
+func (p *prefixedRepo) ListAvailableNear(ctx context.Context, pool string, lat, lng float64,
 	radius float64, maxAge time.Duration, limit int) ([]*couriers.Courier, error) {
 	// Limitni kengaytiramiz: begona yozuvlar filtrlangandan keyin ham
 	// kerakli miqdor qolsin.
-	all, err := p.Repository.ListAvailableNear(ctx, lat, lng, radius, maxAge, 0)
+	all, err := p.Repository.ListAvailableNear(ctx, pool, lat, lng, radius, maxAge, 0)
 	if err != nil {
 		return nil, err
 	}

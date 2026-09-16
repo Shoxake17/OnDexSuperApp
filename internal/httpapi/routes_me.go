@@ -96,6 +96,39 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "token": token})
 		}))
 
+	// POST /me/delete-account — "Akkauntni o'chirish" (Google Play/App
+	// Store talabi: hisobni o'chirish imkoni ilova ICHIDA ham bo'lishi
+	// shart, faqat veb sahifada emas — veb nusxasi
+	// https://ondex.uz/delete-account).
+	//
+	// FAQAT MIJOZ: kuryer/affitsiant/restoran akkauntlari xodim
+	// yozuviga ergashadi va o'z hayot davri qoidasiga ega
+	// (`staff-module-architecture`) — bu yo'l ularga aralashmaydi.
+	//
+	// MA'LUMOT SAQLANADI. Faqat kirish yopiladi va barcha sessiyalar
+	// bekor qilinadi (`AuthSvc.DeleteAccount` izohiga qarang). Akkaunt
+	// keyin O'SHA telefon/email bilan qayta tasdiqlansa avtomatik
+	// tiklanadi.
+	mux.HandleFunc("POST /me/delete-account", s.auth([]users.Role{users.RoleCustomer},
+		func(w http.ResponseWriter, r *http.Request) {
+			var req struct {
+				CurrentPassword string `json:"current_password"`
+			}
+			if !decodeJSON(w, r, &req) {
+				return
+			}
+			c := claimsFrom(r)
+			if err := s.AuthSvc.DeleteAccount(r.Context(), c.Subject,
+				req.CurrentPassword, c.HasFreshPhoneProof(time.Now())); err != nil {
+				respondAuthError(w, err, http.StatusBadRequest)
+				return
+			}
+			// Qo'lidagi token (shu jumladan hozirgi so'rovniki) DARHOL
+			// yaroqsiz bo'ladi — "chiqish" emas, akkaunt yopilishi.
+			s.Revoked.Revoke(r.Context(), c.Subject)
+			writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+		}))
+
 	mux.HandleFunc("GET /me", s.auth(nil,
 		func(w http.ResponseWriter, r *http.Request) {
 			u, err := s.UserRepo.GetByID(r.Context(), claimsFrom(r).Subject)

@@ -1,4 +1,18 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { NextConfig } from "next";
+
+/// Veb versiyasi — `package.json` dan (`scripts/version.ps1 bump -Apps web`
+/// oshiradi). Landing futeri va profil sahifasida ko'rinadi. Build vaqtida
+/// singdiriladi, ya'ni Dockerfile/CI ga alohida o'zgaruvchi shart emas.
+const webVersion: string = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "";
+  } catch {
+    return "";
+  }
+})();
 
 // MUHIM (haqiqiy Android qurilmada topilgan HAQIQIY sabab — soatlab
 // izlangan "hech qanaqa tugma ishlamayapti" bug'ining ILDIZI): Next.js
@@ -12,6 +26,7 @@ import type { NextConfig } from "next";
 // muhim (production build bunday cheklovga ega emas).
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: { NEXT_PUBLIC_APP_VERSION: webVersion },
   // `dev-web-ondex.shoxpro.uz` — lokal Cloudflare tunnel
   // (scripts/dev_tunnel.ps1). Busiz tunnel orqali ochilgan sahifa
   // yuqoridagi AYNAN o'sha nosozlikka uchraydi: HTML keladi, tugmalar

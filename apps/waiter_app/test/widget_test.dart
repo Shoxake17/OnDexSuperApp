@@ -21,7 +21,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
-    expect(find.text('OnDex Affitsiant'), findsOneWidget);
+    expect(find.text('OnDexPro'), findsOneWidget);
     // ┌─ ESKIRGAN KUTILMA TUZATILDI (2026-09-06) ────────────────────┐
     // Bu yerda `'Kod olish'` turardi. Ekran SMS'dan Telegram'ga
     // ko'chirilganda tugma matni `'Telegram orqali kod olish'` ga
