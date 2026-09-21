@@ -6,7 +6,9 @@
 .env.*.example
 **/.env.example
 /image/
-/scripts/
+# `scripts/` ENDI repoda: ondex.ps1 (`ondex run`), version.ps1, bump-version.ps1,
+# dev_tunnel.ps1 — jamoa uchun umumiy vositalar, ichida sir yo'q (gitleaks
+# tekshirgan). Faqat mashinaga bog'liq `scripts/.bookcafe_device` pastda ignore.
 
 # Application config & secrets
 **/config/prod.json
@@ -248,6 +250,9 @@ apps/web/test-results/
 
 # Book Cafe: oxirgi ishlagan qurilma manzili (mahalliy)
 scripts/.bookcafe_device
+# Cloudflare tunnel sozlamasi: ichida shaxsiy yo'l (C:\Users\...) va tunnel ID —
+# mashinaga bog'liq, repoga chiqmaydi.
+scripts/cloudflared/config.yml
 
 # ┌─ WebMCP hakatoni materiallari (466 MB) ────────────────────────────┐
 # Rasm, video va audio — taqdimot uchun yig'ilgan, backend kodiga
@@ -257,3 +262,10 @@ scripts/.bookcafe_device
 # Kerak bo'lsa alohida repo yoki Git LFS.
 # └────────────────────────────────────────────────────────────────────┘
 WebMCP/
+
+# Taqdimotlar va pitch materiallari — kod emas, ikkilik (.pptx) fayllar
+# tarixni abadiy shishiradi. Kerak bo'lsa alohida joyda saqlang.
+texnopark/
+pitch/
+*.pptx
+*.potx
