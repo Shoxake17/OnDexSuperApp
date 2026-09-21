@@ -1,7 +1,7 @@
 name: chust_admin
 description: ChustApp — Superadmin panel
 publish_to: "none"
-version: 0.1.1+1
+version: 0.1.4+4
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -28,7 +28,8 @@ dependencies:
   geolocator: ^13.0.1
   web: ^1.1.0
   file_picker: ^8.1.3
-
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_test:
