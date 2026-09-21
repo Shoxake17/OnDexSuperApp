@@ -816,21 +816,22 @@ func main() {
 		// `users.WithoutSms`.
 		authSvc = authSvc.WithoutSms()
 	}
-	// Test akkaunti (TEST_OTP=true): do'kon sharhlovchilari (Google Play
-	// "App access") OnDexGO/OnDexPro ga +998999999999 va sobit 666666 kodi
-	// bilan kiradi. Standart - O'CHIQ. Kod faqat KURYER yoki AFFITSIANT
-	// akkauntini ochadi; mijoz, restoran va admin akkaunti hech qachon
+	// Test akkauntlari (TEST_OTP=true): do'kon sharhlovchilari (Google Play
+	// "App access") sobit 666666 kodi bilan kiradi: OnDexGO - +998888888888
+	// (faqat kuryer), OnDexPro - +998999999999 (faqat affitsiant). Standart -
+	// O'CHIQ. Mijoz, restoran va admin akkaunti hech qachon ochilmaydi
 	// (xavfsizlik chegaralari: internal/users/test_login.go).
 	if testOTP, _ := parseEnvBool("TEST_OTP"); testOTP {
-		withTest, err := authSvc.WithTestLogin(users.TestLoginPhone, users.TestLoginCode)
+		withTest, err := authSvc.WithTestLogin(users.TestLogins, users.TestLoginCode)
 		if err != nil {
-			slog.Error("TEST_OTP: test akkauntini yoqib bo'lmadi", "err", err)
+			slog.Error("TEST_OTP: test akkauntlarini yoqib bo'lmadi", "err", err)
 			os.Exit(1)
 		}
 		authSvc = withTest
-		slog.Warn("rejim: TEST_OTP YOQIQ - test raqami sobit kod bilan kiradi "+
-			"(faqat kuryer/affitsiant akkaunti; sharhdan keyin o'chiring)",
-			"raqam", users.TestLoginPhone)
+		for _, l := range users.TestLogins {
+			slog.Warn("rejim: TEST_OTP YOQIQ - test raqami sobit kod bilan kiradi "+
+				"(sharhdan keyin o'chiring)", "raqam", l.Phone, "rol", l.Role)
+		}
 	}
 	// Dev rejimda SMTP bo'lmasa ham email oqimini SINASH mumkin bo'lsin:
 	// kod logga chiqadi va `dev_code` javobda qaytadi. Production'da

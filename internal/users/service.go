@@ -44,9 +44,9 @@ type Service struct {
 	// konstruktorni unutgan har bir joy SMS'ni jimgina o'chirib
 	// qo'yardi.
 	smsDisabled bool
-	// testPhone/testCode — sobit kodli test akkaunti (`test_login.go`).
-	// Bo'sh — o'chiq (standart).
-	testPhone string
+	// testRoles/testCode — sobit kodli test akkauntlari (`test_login.go`):
+	// raqam → u ochishi mumkin bo'lgan yagona rol. Bo'sh — o'chiq (standart).
+	testRoles map[string]Role
 	testCode  string
 }
 
@@ -120,7 +120,7 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 	}
 	// Test akkaunti — sobit kod (`test_login.go`). Qolgan hamma narsa
 	// (muddat, urinishlar, bir martalik) oddiy kod bilan bir xil.
-	if s.testPhone != "" && phone == s.testPhone {
+	if s.isTestPhone(phone) {
 		if s.testAccount(ctx, phone) {
 			code = s.testCode
 		} else {
@@ -219,13 +219,14 @@ func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *U
 	if !s.sameCode(phone, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
-	// Test raqami: sobit kod faqat kuryer/affitsiant akkauntini ochadi.
-	// Kod berilgandan keyin rol o'zgargan bo'lsa (masalan akkaunt
-	// restoran egasiga aylantirildi) — rad etiladi.
-	testLogin := s.testPhone != "" && phone == s.testPhone && code == s.testCode
+	// Test raqami: sobit kod faqat shu raqamga biriktirilgan rolni
+	// (kuryer yoki affitsiant) ochadi. Kod berilgandan keyin rol
+	// o'zgargan bo'lsa (masalan akkaunt restoran egasiga aylantirildi) —
+	// rad etiladi.
+	testLogin := s.isTestPhone(phone) && code == s.testCode
 	if testLogin && !s.testAccount(ctx, phone) {
 		s.dropCode(ctx, phone)
-		slog.Warn("test akkaunt: sobit kod rad etildi — akkaunt kuryer/affitsiant emas")
+		slog.Warn("test akkaunt: sobit kod rad etildi — akkaunt roli bu raqamga mos emas")
 		return "", nil, ErrInvalidCode
 	}
 	if err := s.consumeCode(ctx, phone); err != nil {

@@ -8,43 +8,68 @@ import (
 )
 
 // Bu testlar `test_login.go` dagi xavfsizlik chegaralarini BUZISHGA
-// urinadi: sobit kod faqat bayroq yoqilganda va faqat kuryer/affitsiant
-// akkauntini ochishi kerak.
+// urinadi: sobit kod faqat bayroq yoqilganda va faqat raqamga
+// biriktirilgan rolni (888 — kuryer, 999 — affitsiant) ochishi kerak.
+
+const (
+	goPhone  = "+998888888888" // OnDexGO — kuryer
+	proPhone = "+998999999999" // OnDexPro — affitsiant
+)
 
 // testLoginService — SMS kanali o'chirilgan (production holati) servis va
-// test raqamidagi akkaunt. `role` bo'sh bo'lsa akkaunt yaratilmaydi.
-func testLoginService(t *testing.T, role Role, enable bool) (*Service, *fakeUserRepo, *countingSms) {
+// `phone` dagi akkaunt. `role` bo'sh bo'lsa akkaunt yaratilmaydi.
+func testLoginService(t *testing.T, phone string, role Role, enable bool) (*Service, *fakeUserRepo, *countingSms) {
 	t.Helper()
 	sms := &countingSms{}
 	s := newServiceWithSms(sms).WithoutSms()
 	repo := s.users.(*fakeUserRepo)
 	if role != "" {
 		_ = repo.Create(context.Background(), &User{
-			ID: "test-user", Phone: TestLoginPhone, Role: role,
+			ID: "test-user", Phone: phone, Role: role,
 			EntityID: "staff-1", PhoneVerified: true, CreatedAt: time.Now(),
 		})
 	}
 	if enable {
 		var err error
-		if s, err = s.WithTestLogin(TestLoginPhone, TestLoginCode); err != nil {
+		if s, err = s.WithTestLogin(TestLogins, TestLoginCode); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return s, repo, sms
 }
 
-// Asosiy oqim: OnDexGO (kuryer) va OnDexPro (affitsiant) sharhlovchisi
-// SMS'siz, Telegram'siz kiradi.
+// Ro'yxat ilovalarga mos: OnDexGO — kuryer, OnDexPro — affitsiant.
+func TestTestLoginsMapping(t *testing.T) {
+	want := map[string]Role{goPhone: RoleCourier, proPhone: RoleWaiter}
+	if len(TestLogins) != len(want) {
+		t.Fatalf("%d ta test raqami, kutilgan %d", len(TestLogins), len(want))
+	}
+	for _, l := range TestLogins {
+		if want[l.Phone] != l.Role {
+			t.Errorf("%s → %q, kutilgan %q", l.Phone, l.Role, want[l.Phone])
+		}
+	}
+}
+
+// Asosiy oqim: har bir ilova sharhlovchisi SMS'siz, Telegram'siz kiradi.
 func TestTestLoginOpensStaffAccounts(t *testing.T) {
-	for _, role := range []Role{RoleCourier, RoleWaiter} {
-		t.Run(string(role), func(t *testing.T) {
-			s, _, sms := testLoginService(t, role, true)
+	for _, c := range []struct {
+		name  string
+		phone string
+		role  Role
+		typed string // foydalanuvchi yozgan shakl
+	}{
+		{"OnDexGO", goPhone, RoleCourier, "+998 88 888-88-88"},
+		{"OnDexPro", proPhone, RoleWaiter, "998999999999"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s, _, sms := testLoginService(t, c.phone, c.role, true)
 			ctx := context.Background()
 
-			if !s.TestLoginActive(ctx, "+998 99 999-99-99") {
+			if !s.TestLoginActive(ctx, c.typed) {
 				t.Fatal("test raqami (har qanday yozilishda) faol bo'lishi kerak edi")
 			}
-			phone, code, err := s.RequestCode(ctx, TestLoginPhone)
+			phone, code, err := s.RequestCode(ctx, c.typed)
 			if err != nil {
 				t.Fatalf("SMS o'chiq bo'lsa ham test kodi berilishi kerak: %v", err)
 			}
@@ -58,8 +83,8 @@ func TestTestLoginOpensStaffAccounts(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Verify: %v", err)
 			}
-			if token == "" || u.Role != role {
-				t.Fatalf("token=%q rol=%q, kutilgan rol %q", token, u.Role, role)
+			if token == "" || u.Role != c.role {
+				t.Fatalf("token=%q rol=%q, kutilgan rol %q", token, u.Role, c.role)
 			}
 			// Bir martalik: o'sha kod ikkinchi marta o'tmaydi.
 			if _, _, err := s.Verify(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
@@ -69,67 +94,97 @@ func TestTestLoginOpensStaffAccounts(t *testing.T) {
 	}
 }
 
-// "+998 99" — haqiqiy operator kodi: raqam tirik odamniki bo'lishi
-// mumkin. Uning mijoz akkaunti (hamyon!), restoran yoki admin akkaunti
-// sobit kod bilan HECH QACHON ochilmasligi kerak.
-func TestTestLoginNeverOpensPrivilegedOrCustomerAccounts(t *testing.T) {
-	for _, role := range []Role{RoleCustomer, RoleRestaurant, RoleAdmin} {
-		t.Run(string(role), func(t *testing.T) {
-			s, _, _ := testLoginService(t, role, true)
-			ctx := context.Background()
+// Har raqam FAQAT o'z rolini ochadi: 888 affitsiant bo'lsa ham, 999 kuryer
+// bo'lsa ham sobit kod ishlamaydi.
+func TestTestLoginPhoneBoundToItsRole(t *testing.T) {
+	for _, c := range []struct {
+		phone string
+		role  Role
+	}{
+		{goPhone, RoleWaiter},
+		{proPhone, RoleCourier},
+	} {
+		s, _, _ := testLoginService(t, c.phone, c.role, true)
+		ctx := context.Background()
+		if s.TestLoginActive(ctx, c.phone) {
+			t.Errorf("%s (%s): boshqa rol uchun test kirishi faol bo'lmasligi kerak", c.phone, c.role)
+		}
+		phone, code, err := s.IssueCode(ctx, c.phone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if code == TestLoginCode {
+			t.Errorf("%s (%s): sobit kod berildi", c.phone, c.role)
+		}
+		if _, _, err := s.Verify(ctx, phone, TestLoginCode); err == nil {
+			t.Errorf("%s (%s): sobit kod boshqa rolni ochdi", c.phone, c.role)
+		}
+	}
+}
 
-			if s.TestLoginActive(ctx, TestLoginPhone) {
-				t.Fatal("bu rol uchun test kirishi faol bo'lmasligi kerak")
-			}
-			// Oddiy raqamdek: SMS o'chiq — kod umuman berilmaydi.
-			if _, _, err := s.RequestCode(ctx, TestLoginPhone); !errors.Is(err, ErrSmsSendUnavailable) {
-				t.Fatalf("ErrSmsSendUnavailable kutilgandi, olindi: %v", err)
-			}
-			// Telegram yo'li (IssueCode) tasodifiy kod beradi — sobit EMAS.
-			phone, code, err := s.IssueCode(ctx, TestLoginPhone)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if code == TestLoginCode {
-				t.Fatal("imtiyozli/mijoz akkauntiga sobit kod berildi")
-			}
-			if _, _, err := s.Verify(ctx, phone, TestLoginCode); err == nil {
-				t.Fatal("sobit kod imtiyozli/mijoz akkauntini ochdi")
-			}
-			// Haqiqiy egasi esa o'z kodini (Telegram'dan) kiritib kira oladi.
-			if _, _, err := s.Verify(ctx, phone, code); err != nil {
-				t.Fatalf("haqiqiy kod ishlashi kerak edi: %v", err)
-			}
-		})
+// "+998 88" va "+998 99" — haqiqiy operator kodlari: raqam tirik odamniki
+// bo'lishi mumkin. Uning mijoz akkaunti (hamyon!), restoran yoki admin
+// akkaunti sobit kod bilan HECH QACHON ochilmasligi kerak.
+func TestTestLoginNeverOpensPrivilegedOrCustomerAccounts(t *testing.T) {
+	for _, phone := range []string{goPhone, proPhone} {
+		for _, role := range []Role{RoleCustomer, RoleRestaurant, RoleAdmin} {
+			t.Run(phone+"/"+string(role), func(t *testing.T) {
+				s, _, _ := testLoginService(t, phone, role, true)
+				ctx := context.Background()
+
+				if s.TestLoginActive(ctx, phone) {
+					t.Fatal("bu rol uchun test kirishi faol bo'lmasligi kerak")
+				}
+				// Oddiy raqamdek: SMS o'chiq — kod umuman berilmaydi.
+				if _, _, err := s.RequestCode(ctx, phone); !errors.Is(err, ErrSmsSendUnavailable) {
+					t.Fatalf("ErrSmsSendUnavailable kutilgandi, olindi: %v", err)
+				}
+				// Telegram yo'li (IssueCode) tasodifiy kod beradi — sobit EMAS.
+				p, code, err := s.IssueCode(ctx, phone)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if code == TestLoginCode {
+					t.Fatal("imtiyozli/mijoz akkauntiga sobit kod berildi")
+				}
+				if _, _, err := s.Verify(ctx, p, TestLoginCode); err == nil {
+					t.Fatal("sobit kod imtiyozli/mijoz akkauntini ochdi")
+				}
+				// Haqiqiy egasi esa o'z kodini (Telegram'dan) kiritib kira oladi.
+				if _, _, err := s.Verify(ctx, p, code); err != nil {
+					t.Fatalf("haqiqiy kod ishlashi kerak edi: %v", err)
+				}
+			})
+		}
 	}
 }
 
 // Akkaunt yo'q bo'lsa test kirishi uni YARATMAYDI (aks holda sobit kod
 // bilan mijoz akkaunti paydo bo'lardi).
 func TestTestLoginDoesNotCreateAccounts(t *testing.T) {
-	s, repo, _ := testLoginService(t, "", true)
+	s, repo, _ := testLoginService(t, goPhone, "", true)
 	ctx := context.Background()
 
-	if s.TestLoginActive(ctx, TestLoginPhone) {
+	if s.TestLoginActive(ctx, goPhone) {
 		t.Fatal("akkaunt yo'q — test kirishi faol bo'lmasligi kerak")
 	}
-	if _, _, err := s.Verify(ctx, TestLoginPhone, TestLoginCode); err == nil {
+	if _, _, err := s.Verify(ctx, goPhone, TestLoginCode); err == nil {
 		t.Fatal("kod berilmagan raqamga kirildi")
 	}
-	if _, err := repo.GetByPhone(ctx, TestLoginPhone); !errors.Is(err, ErrUserNotFound) {
+	if _, err := repo.GetByPhone(ctx, goPhone); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("akkaunt yaratilmasligi kerak edi: %v", err)
 	}
 }
 
 // O'chirilgan kuryer akkaunti sobit kod bilan tiklanmaydi.
 func TestTestLoginSkipsDeletedAccount(t *testing.T) {
-	s, repo, _ := testLoginService(t, RoleCourier, true)
+	s, repo, _ := testLoginService(t, goPhone, RoleCourier, true)
 	ctx := context.Background()
-	u, _ := repo.GetByPhone(ctx, TestLoginPhone)
+	u, _ := repo.GetByPhone(ctx, goPhone)
 	now := time.Now()
 	u.DeletedAt = &now
 
-	if s.TestLoginActive(ctx, TestLoginPhone) {
+	if s.TestLoginActive(ctx, goPhone) {
 		t.Fatal("o'chirilgan akkaunt uchun test kirishi faol bo'lmasligi kerak")
 	}
 }
@@ -137,14 +192,14 @@ func TestTestLoginSkipsDeletedAccount(t *testing.T) {
 // Kod berilgandan keyin rol o'zgarsa (masalan akkaunt restoran egasiga
 // aylantirildi) — sobit kod rad etiladi va o'chiriladi.
 func TestTestLoginRecheckedAtVerify(t *testing.T) {
-	s, repo, _ := testLoginService(t, RoleCourier, true)
+	s, repo, _ := testLoginService(t, goPhone, RoleCourier, true)
 	ctx := context.Background()
 
-	phone, _, err := s.RequestCode(ctx, TestLoginPhone)
+	phone, _, err := s.RequestCode(ctx, goPhone)
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, _ := repo.GetByPhone(ctx, TestLoginPhone)
+	u, _ := repo.GetByPhone(ctx, goPhone)
 	u.Role = RoleRestaurant
 
 	if _, _, err := s.Verify(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
@@ -157,25 +212,25 @@ func TestTestLoginRecheckedAtVerify(t *testing.T) {
 	}
 }
 
-// Bayroq o'chiq (standart) — test raqami oddiy raqam.
+// Bayroq o'chiq (standart) — test raqamlari oddiy raqam.
 func TestTestLoginDisabledByDefault(t *testing.T) {
-	s, _, _ := testLoginService(t, RoleCourier, false)
+	s, _, _ := testLoginService(t, goPhone, RoleCourier, false)
 	ctx := context.Background()
 
-	if s.TestLoginActive(ctx, TestLoginPhone) {
+	if s.TestLoginActive(ctx, goPhone) {
 		t.Fatal("TEST_OTP o'chiq — test kirishi faol bo'lmasligi kerak")
 	}
-	if _, _, err := s.RequestCode(ctx, TestLoginPhone); !errors.Is(err, ErrSmsSendUnavailable) {
+	if _, _, err := s.RequestCode(ctx, goPhone); !errors.Is(err, ErrSmsSendUnavailable) {
 		t.Fatalf("ErrSmsSendUnavailable kutilgandi, olindi: %v", err)
 	}
-	if _, _, err := s.Verify(ctx, TestLoginPhone, TestLoginCode); err == nil {
+	if _, _, err := s.Verify(ctx, goPhone, TestLoginCode); err == nil {
 		t.Fatal("bayroq o'chiq bo'lsa sobit kod ishlamasligi kerak")
 	}
 }
 
 // Boshqa raqamlarga ta'sir yo'q.
 func TestTestLoginDoesNotAffectOtherPhones(t *testing.T) {
-	s, _, _ := testLoginService(t, RoleCourier, true)
+	s, _, _ := testLoginService(t, goPhone, RoleCourier, true)
 	if _, _, err := s.RequestCode(context.Background(), "+998901234567"); !errors.Is(err, ErrSmsSendUnavailable) {
 		t.Fatalf("ErrSmsSendUnavailable kutilgandi, olindi: %v", err)
 	}
@@ -183,9 +238,9 @@ func TestTestLoginDoesNotAffectOtherPhones(t *testing.T) {
 
 // Urinishlar cheklovi test kodida ham ishlaydi.
 func TestTestLoginKeepsAttemptLimit(t *testing.T) {
-	s, _, _ := testLoginService(t, RoleCourier, true)
+	s, _, _ := testLoginService(t, goPhone, RoleCourier, true)
 	ctx := context.Background()
-	phone, _, err := s.RequestCode(ctx, TestLoginPhone)
+	phone, _, err := s.RequestCode(ctx, goPhone)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,13 +255,26 @@ func TestTestLoginKeepsAttemptLimit(t *testing.T) {
 }
 
 func TestWithTestLoginValidates(t *testing.T) {
-	s := newServiceWithSms(&countingSms{})
-	if _, err := s.WithTestLogin("999", TestLoginCode); err == nil {
-		t.Error("noto'g'ri raqam qabul qilindi")
+	ok := []TestLogin{{Phone: goPhone, Role: RoleCourier}}
+	bad := map[string]struct {
+		logins []TestLogin
+		code   string
+	}{
+		"bo'sh ro'yxat":   {nil, TestLoginCode},
+		"noto'g'ri raqam": {[]TestLogin{{Phone: "999", Role: RoleCourier}}, TestLoginCode},
+		"mijoz roli":      {[]TestLogin{{Phone: goPhone, Role: RoleCustomer}}, TestLoginCode},
+		"restoran roli":   {[]TestLogin{{Phone: goPhone, Role: RoleRestaurant}}, TestLoginCode},
+		"admin roli":      {[]TestLogin{{Phone: goPhone, Role: RoleAdmin}}, TestLoginCode},
+		"takroriy raqam":  {[]TestLogin{{Phone: goPhone, Role: RoleCourier}, {Phone: "+998 88 888 88 88", Role: RoleWaiter}}, TestLoginCode},
+		"bo'sh kod":       {ok, ""},
+		"5 xonali kod":    {ok, "12345"},
+		"7 xonali kod":    {ok, "1234567"},
+		"harfli kod":      {ok, "abcdef"},
 	}
-	for _, bad := range []string{"", "12345", "1234567", "abcdef"} {
-		if _, err := s.WithTestLogin(TestLoginPhone, bad); err == nil {
-			t.Errorf("noto'g'ri kod qabul qilindi: %q", bad)
+	for name, c := range bad {
+		s := newServiceWithSms(&countingSms{})
+		if _, err := s.WithTestLogin(c.logins, c.code); err == nil {
+			t.Errorf("%s: qabul qilindi", name)
 		}
 	}
 }
