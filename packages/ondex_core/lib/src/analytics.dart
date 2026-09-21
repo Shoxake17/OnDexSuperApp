@@ -88,12 +88,41 @@ class Analytics {
   bool get _on => posthogEnabled;
 
   /// Ishga tushirish — ilova boshlanganda bir marta.
+  ///
+  /// ┌─ `$session_id` — NEGA SHU YERDA QO'YILADI ─────────────────────────┐
+  /// Busiz PostHog interfeysida hodisa oldidagi "View recording" tugmasi
+  /// har doim "No session ID associated with this event" derdi — hatto
+  /// mobil ilovada HAQIQIY video yozuv mavjud bo'lsa ham (SDK session
+  /// replay'ni O'ZINING ichki seans ID'si bilan yozadi, biz esa HTTP
+  /// orqali yuborgan hodisalarga uni HECH QACHON qo'shmagan edik).
+  ///
+  /// Shu yerda avval TAXMINIY (mahalliy generatsiya qilingan) qiymat
+  /// qo'yiladi — bu Windows panellarida ham hodisalarni kamida "seans"
+  /// sifatida guruhlaydi (video bo'lmasa ham). Mobil ilovada esa
+  /// `setSdkSessionId()` orqali HAQIQIY SDK seansi bilan USTIGA YOZILADI
+  /// (`main.dart`, `Posthog().getSessionId()`) — shundan keyin HTTP orqali
+  /// yuborilgan har qanday hodisa ("Screen", custom hodisalar) SDK yozib
+  /// turgan video bilan TO'G'RI bog'lanadi.
+  /// └────────────────────────────────────────────────────────────────────┘
   void start({required String distinctId}) {
     if (!_on) return;
     _distinctId = distinctId;
     _superProps['platform'] = clientPlatform;
     _superProps['app_version'] = appVersion;
+    _superProps['\$session_id'] = _newLocalSessionId();
     _timer ??= Timer.periodic(_flushEvery, (_) => flush());
+  }
+
+  static String _newLocalSessionId() {
+    final rnd = Random.secure();
+    return List.generate(32, (_) => rnd.nextInt(16).toRadixString(16)).join();
+  }
+
+  /// SDK'ning HAQIQIY seans ID'sini o'rnatadi (`Posthog().getSessionId()`).
+  /// Faqat mobil ilovalarda chaqiriladi — Windows panellarida SDK
+  /// umuman yo'q, mahalliy generatsiya qilingan qiymat qoladi.
+  void setSdkSessionId(String? id) {
+    if (id != null && id.isNotEmpty) _superProps['\$session_id'] = id;
   }
 
   /// ┌─ ANONIM IDENTIFIKATOR ───────────────────────────────────────────┐

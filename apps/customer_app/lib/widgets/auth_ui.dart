@@ -13,6 +13,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'brand_icons.dart';
 
@@ -220,32 +221,37 @@ class AuthField extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-        height: 46,
-        decoration: _fieldBox(),
-        child: TextField(
-          controller: controller,
-          obscureText: obscure,
-          keyboardType: keyboardType,
-          textCapitalization: textCapitalization,
-          maxLength: 128,
-          style: const TextStyle(fontSize: 14.5, color: authText),
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: hint,
-            hintStyle: const TextStyle(color: authHint, fontSize: 14.5),
-            prefixIcon: Icon(icon, color: authHint, size: 19),
-            prefixIconConstraints:
-                const BoxConstraints(minWidth: 36, minHeight: 36),
-            suffixIcon: trailing,
-            suffixIconConstraints:
-                const BoxConstraints(minWidth: 40, minHeight: 40),
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+  Widget build(BuildContext context) {
+    final field = Container(
+      height: 46,
+      decoration: _fieldBox(),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        textCapitalization: textCapitalization,
+        maxLength: 128,
+        style: const TextStyle(fontSize: 14.5, color: authText),
+        decoration: InputDecoration(
+          counterText: '',
+          hintText: hint,
+          hintStyle: const TextStyle(color: authHint, fontSize: 14.5),
+          prefixIcon: Icon(icon, color: authHint, size: 19),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 36, minHeight: 36),
+          suffixIcon: trailing,
+          suffixIconConstraints:
+              const BoxConstraints(minWidth: 40, minHeight: 40),
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
         ),
-      );
+      ),
+    );
+    // Parol kabi yashirin maydonlar PostHog seans yozuvida ham
+    // niqoblanadi — `obscure: true` bo'lganda bu odatda parol.
+    return obscure ? PostHogMaskWidget(child: field) : field;
+  }
 }
 
 /// Parolni ko'rsatish/yashirish tugmasi.
@@ -273,43 +279,46 @@ class AuthPhoneField extends StatelessWidget {
   static String fullPhone(TextEditingController c) =>
       '+998${c.text.replaceAll(RegExp(r'\D'), '')}';
 
+  // Telefon raqami — PostHog seans yozuvida HAR DOIM niqoblanadi.
   @override
-  Widget build(BuildContext context) => Container(
-        height: 46,
-        decoration: _fieldBox(),
-        child: Row(children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10),
-            child: Row(children: [
-              UzFlag(width: 22),
-              SizedBox(width: 6),
-              Text('+998',
-                  style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      color: authText)),
-            ]),
-          ),
-          Container(width: 1, height: 24, color: authBorder),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(9),
-              ],
-              style: const TextStyle(fontSize: 14.5, color: authText),
-              decoration: const InputDecoration(
-                hintText: '90 123 45 67',
-                hintStyle: TextStyle(color: authHint, fontSize: 14.5),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 10),
+  Widget build(BuildContext context) => PostHogMaskWidget(
+        child: Container(
+          height: 46,
+          decoration: _fieldBox(),
+          child: Row(children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Row(children: [
+                UzFlag(width: 22),
+                SizedBox(width: 6),
+                Text('+998',
+                    style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: authText)),
+              ]),
+            ),
+            Container(width: 1, height: 24, color: authBorder),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(9),
+                ],
+                style: const TextStyle(fontSize: 14.5, color: authText),
+                decoration: const InputDecoration(
+                  hintText: '90 123 45 67',
+                  hintStyle: TextStyle(color: authHint, fontSize: 14.5),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10),
+                ),
               ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       );
 }
 
@@ -566,8 +575,14 @@ class OtpInputState extends State<OtpInput> {
     }
   }
 
+  // OTP kod — SMS/Telegramdan kelgan bir martalik kod, PostHog seans
+  // yozuvida niqoblanadi.
   @override
   Widget build(BuildContext context) {
+    return PostHogMaskWidget(child: _buildRow());
+  }
+
+  Widget _buildRow() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(widget.length, (i) {

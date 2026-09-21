@@ -66,17 +66,23 @@ void main() async {
       final cfg = PostHogConfig(posthogApiKey)
         ..host = posthogHost
         ..sessionReplay = true
-        // Session Replay uchun to'liq config:
-        //   1) maskAllTexts/maskAllImages — shaxsiy ma'lumot niqoblash
-        //   2) captureApplicationLifecycleEvents — ilova foreground/background
-        //      o'tganda ham hodisa yozish
-        // (`captureScreenViews`/`debouncerTimeSecs` posthog_flutter 5.39.0
-        // da olib tashlangan — endi ekran ko'rinishini avtomatik yozish
-        // uchun `PosthogObserver` navigator observer sifatida ulanishi
-        // kerak, hodisalar esa `flushAt`/`flushInterval` standart
-        // qiymatlari bilan to'planadi.)
-        ..sessionReplayConfig.maskAllTexts = true
-        ..sessionReplayConfig.maskAllImages = true
+        // ┌─ TO'LIQ NIQOBDAN NUQTALI NIQOBGA (2026-09-19) ────────────────┐
+        // Ilgari `maskAllTexts/maskAllImages = true` edi — bu BUTUN
+        // ekranni (taom nomi, narx, tugmalar — hammasini) qora
+        // to'rtburchaklarga aylantirardi, video amalda foydasiz bo'lib
+        // qolgan edi (nima bosilganini ko'rib bo'lmasdi).
+        //
+        // Endi FAQAT haqiqatan sezgir joylar niqoblanadi —
+        // `PostHogMaskWidget` bilan qo'lda o'ralgan: telefon raqami
+        // (`AuthPhoneField`), parol (`AuthField(obscure: true)`,
+        // o'chirish ekrani), OTP kod (`OtpInput`), yetkazish manzili va
+        // uning tafsilotlari (podyezd/qavat/kvartira/domofon/izoh —
+        // `address_screen.dart`, `address_search_screen.dart`). Qolgan
+        // hamma narsa (menyu, narx, tugmalar) ko'rinadi — video endi
+        // UX/nosozlik tahlili uchun haqiqatan foydali.
+        // └───────────────────────────────────────────────────────────────┘
+        ..sessionReplayConfig.maskAllTexts = false
+        ..sessionReplayConfig.maskAllImages = false
         ..captureApplicationLifecycleEvents = true;
       await Posthog().setup(cfg);
       // ┌─ SDK BRIDGE: ondex_core Analytics bilan sinxronlash ─────┐
@@ -121,7 +127,33 @@ void main() async {
   }
   await Analytics.bootstrap();
 
-  runApp(const ChustApp());
+  // SDK'ning HAQIQIY seans ID'sini HTTP orqali yuboriladigan
+  // hodisalarga ko'chiramiz — aks holda "View recording" doim
+  // "No session ID associated" derdi, garchi video aslida yozilsa ham
+  // (`Analytics.start()` izohiga qarang).
+  if (posthogEnabled) {
+    try {
+      Analytics.instance.setSdkSessionId(await Posthog().getSessionId());
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PostHog SDK] sessionId olinmadi: $e');
+    }
+  }
+
+  // ┌─ SEANS YOZUVI HECH QACHON ISHLAMAGAN EDI (2026-09-19) ─────────────┐
+  // `sessionReplay = true` sozlangan, seans ID ham to'g'ri yuborilardi
+  // (PostHog'da "Recording" yozuvi paydo bo'lardi), lekin video HECH
+  // QACHON tayyor bo'lmasdi ("still working on it" abadiy). Sabab:
+  // haqiqiy ekran suratini olib, native SDK'ga yuboradigan butun
+  // mexanizm (`ScreenshotCapturer`/`ChangeDetector`) FAQAT
+  // `PostHogWidget` ning `initState()`'ida ishga tushadi — biz uni
+  // ilova daraxtiga HECH QACHON qo'shmagan edik. Ya'ni seans "bor" edi,
+  // lekin unga birorta ham kadr yuborilmasdi.
+  // └───────────────────────────────────────────────────────────────────┘
+  runApp(
+    posthogEnabled
+        ? const PostHogWidget(child: ChustApp())
+        : const ChustApp(),
+  );
 }
 
 /// OnDex brend rangi — logotipdagi "Dex", faol menyu elementi va QR

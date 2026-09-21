@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
 import '../widgets/app_text_field.dart';
@@ -144,13 +145,17 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
                   // vazifasi esa o'zgarmagan: bu MANZIL qidiruvi,
                   // restoran qidirmaydi.
                   Expanded(
-                    child: AppTextField(
-                      controller: _ctrl,
-                      focusNode: _focusNode,
-                      hint: 'Yetkazish manzilini kiriting',
-                      icon: Icons.search,
-                      textInputAction: TextInputAction.search,
-                      onChanged: _onChanged,
+                    // Mijoz shu yerga haqiqiy manzilini yozadi — PostHog
+                    // seans yozuvida niqoblanadi.
+                    child: PostHogMaskWidget(
+                      child: AppTextField(
+                        controller: _ctrl,
+                        focusNode: _focusNode,
+                        hint: 'Yetkazish manzilini kiriting',
+                        icon: Icons.search,
+                        textInputAction: TextInputAction.search,
+                        onChanged: _onChanged,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),

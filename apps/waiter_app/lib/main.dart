@@ -32,8 +32,12 @@ void main() async {
       final cfg = PostHogConfig(posthogApiKey)
         ..host = posthogHost
         ..sessionReplay = true
-        ..sessionReplayConfig.maskAllTexts = true
-        ..sessionReplayConfig.maskAllImages = true
+        // To'liq niqob (2026-09-19 gacha) o'rniga nuqtali niqob —
+        // sabab customer_app/main.dart izohida. Sezgir maydonlar
+        // (telefon, OTP) o'z widgetlarida `PostHogMaskWidget` bilan
+        // qo'lda o'ralgan.
+        ..sessionReplayConfig.maskAllTexts = false
+        ..sessionReplayConfig.maskAllImages = false
         // posthog_flutter 5.39 da `captureScreenViews`/`debouncerTimeSecs`
         // YO'Q (build aynan shu sababli yiqilardi). Ekran nomlari
         // `Analytics.instance.screen(...)` orqali yuboriladi.
@@ -71,7 +75,29 @@ void main() async {
   }
   await Analytics.bootstrap();
 
-  runApp(const WaiterApp());
+  // SDK'ning HAQIQIY seans ID'sini HTTP orqali yuboriladigan
+  // hodisalarga ko'chiramiz — aks holda "View recording" doim
+  // "No session ID associated" derdi, garchi video aslida yozilsa ham
+  // (`Analytics.start()` izohiga qarang).
+  if (posthogEnabled) {
+    try {
+      Analytics.instance.setSdkSessionId(await Posthog().getSessionId());
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PostHog SDK] sessionId olinmadi: $e');
+    }
+  }
+
+  // ┌─ SEANS YOZUVI HECH QACHON ISHLAMAGAN EDI (2026-09-19) ─────────────┐
+  // Ekran suratini olib native SDK'ga yuboradigan mexanizm FAQAT
+  // `PostHogWidget.initState()`da ishga tushadi — biz uni ilova
+  // daraxtiga HECH QACHON qo'shmagan edik (`customer_app/main.dart`
+  // izohiga qarang, aynan shu bug topilgan joy).
+  // └───────────────────────────────────────────────────────────────────┘
+  runApp(
+    posthogEnabled
+        ? const PostHogWidget(child: WaiterApp())
+        : const WaiterApp(),
+  );
 }
 
 class WaiterApp extends StatelessWidget {

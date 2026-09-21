@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
 import '../widgets/app_text_field.dart';
@@ -387,14 +388,19 @@ class _AddressScreenState extends State<AddressScreen> {
                               Text('Manzil aniqlanmoqda...'),
                             ],
                           )
-                        : AppTextField(
-                            controller: _addressCtrl,
-                            hint: 'Manzilni qidirish uchun bosing',
-                            icon: Icons.search,
-                            // Bu maydon TUGMA: bosilganda manzil qidiruv
-                            // ekrani ochiladi, o'zida yozilmaydi.
-                            readOnly: true,
-                            onTap: _openAddressSearch,
+                        : PostHogMaskWidget(
+                            // Bu yerda mijozning haqiqiy uy manzili
+                            // ko'rsatiladi — PostHog seans yozuvida
+                            // niqoblanadi.
+                            child: AppTextField(
+                              controller: _addressCtrl,
+                              hint: 'Manzilni qidirish uchun bosing',
+                              icon: Icons.search,
+                              // Bu maydon TUGMA: bosilganda manzil qidiruv
+                              // ekrani ochiladi, o'zida yozilmaydi.
+                              readOnly: true,
+                              onTap: _openAddressSearch,
+                            ),
                           ),
                     const SizedBox(height: 12),
                     Row(
@@ -463,7 +469,12 @@ class _FieldBox extends StatelessWidget {
   Widget build(BuildContext context) {
     // Ilgari tagi chizilgan (`UnderlineInputBorder`) edi va ekrandagi
     // qolgan maydonlardan ajralib turardi. Endi umumiy ko'rinish.
-    return AppTextField(controller: controller, hint: label);
+    //
+    // Podyezd/qavat/kvartira/domofon/izoh — hammasi manzil tafsiloti,
+    // PostHog seans yozuvida niqoblanadi.
+    return PostHogMaskWidget(
+      child: AppTextField(controller: controller, hint: label),
+    );
   }
 }
 

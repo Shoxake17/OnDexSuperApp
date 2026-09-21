@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
 
@@ -151,10 +152,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               const SizedBox(height: 16),
               const Text('Joriy parol', style: TextStyle(fontSize: 13.5)),
               const SizedBox(height: 8),
-              TextField(
-                controller: _passwordCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
+              PostHogMaskWidget(
+                child: TextField(
+                  controller: _passwordCtrl,
+                  obscureText: true,
+                  decoration:
+                      const InputDecoration(border: OutlineInputBorder()),
+                ),
               ),
             ],
             if (_error != null) ...[

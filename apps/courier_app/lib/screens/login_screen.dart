@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -162,14 +163,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 32),
-              TextField(
-                controller: _phone,
-                enabled: !_codeSent,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Telefon raqam',
-                  hintText: '+998901234567',
-                  border: OutlineInputBorder(),
+              // Telefon raqami — PostHog seans yozuvida niqoblanadi.
+              PostHogMaskWidget(
+                child: TextField(
+                  controller: _phone,
+                  enabled: !_codeSent,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Telefon raqam',
+                    hintText: '+998901234567',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
               if (_codeSent) ...[
@@ -178,14 +182,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   _TelegramHint(deepLink: _deepLink),
                 ],
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _code,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText:
-                        _viaTelegram ? 'Telegramdan kelgan kod' : 'SMS kod',
-                    border: const OutlineInputBorder(),
+                // Tasdiqlash kodi — PostHog seans yozuvida niqoblanadi.
+                PostHogMaskWidget(
+                  child: TextField(
+                    controller: _code,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText:
+                          _viaTelegram ? 'Telegramdan kelgan kod' : 'SMS kod',
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ],
