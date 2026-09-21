@@ -381,6 +381,15 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		if rateLimited(w, telegramIPLimiter, clientIP(r)) {
 			return
 		}
+		// Test akkaunti (`TEST_OTP`): sharhlovchini Telegram'ga
+		// jo'natmaymiz. OnDexGO va OnDexPro Telegram pog'onasi xato
+		// bersa `POST /auth/request-code` ga o'tadi — u sobit kodni
+		// SMS'siz beradi. Ilovalarda hech narsa o'zgartirilmadi.
+		if s.AuthSvc.TestLoginActive(r.Context(), phone) {
+			httpError(w, http.StatusConflict,
+				errors.New("bu raqam uchun kod ilovaga to'g'ridan-to'g'ri kiritiladi"))
+			return
+		}
 		link, err := s.Telegram.Start(r.Context(), phone)
 		if err != nil {
 			slog.Warn("telegram: start xatosi", "err", err)

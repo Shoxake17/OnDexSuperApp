@@ -10,6 +10,7 @@ import HeaderActions from "./header-actions";
 import RestaurantCard from "./restaurant-card";
 import { categoryIconFor } from "@/lib/categoryIcons";
 import type { Restaurant } from "@/lib/types";
+import { useAddressLabel } from "@/lib/use-address-label";
 import MobileSheet from "./mobile-sheet";
 
 export default function HomeContent({
@@ -47,6 +48,7 @@ export default function HomeContent({
         <MobileHome
           restaurants={restaurants}
           categories={categories}
+          signedIn={signedIn}
           query={query}
           setQuery={setQuery}
           searchOpen={searchOpen}
@@ -61,6 +63,7 @@ export default function HomeContent({
 function MobileHome({
   restaurants,
   categories,
+  signedIn,
   query,
   setQuery,
   searchOpen,
@@ -69,6 +72,7 @@ function MobileHome({
 }: {
   restaurants: Restaurant[];
   categories: string[];
+  signedIn: boolean;
   query: string;
   setQuery: (v: string) => void;
   searchOpen: boolean;
@@ -76,6 +80,7 @@ function MobileHome({
   filtered: Restaurant[];
 }) {
   const router = useRouter();
+  const [addressLabel] = useAddressLabel(signedIn);
 
   // ┌─ TAOMLAR — "desktop-navbar.tsx"dagi `submitSearch` bilan bir xil ─┐
   // Yuqoridagi `filtered` — LOKAL, tarmoqqa chiqmaydi (allaqachon
@@ -97,8 +102,8 @@ function MobileHome({
     <MobileSheet className="px-4 pb-28">
       {/* ┌─ SARLAVHA ──────────────────────────────────────────────────┐
           Tartib: logotip -> "Super App" -> manzil. Manzil ATAYLAB eng
-          pastda — u eng kam o'zgaradigan va eng kam bosiladigan element
-          (platforma faqat Chust uchun), shuning uchun brend yuqorida
+          pastda — u eng kam o'zgaradigan va eng kam bosiladigan element,
+          shuning uchun brend yuqorida
           turadi va sahifa nomi bilan boshlanadi.
 
           Qidiruv chapdagi ustunning YONIDA, o'ngda: u bitta ikon, ya'ni
@@ -118,14 +123,16 @@ function MobileHome({
               joyni egallab turardi. O'sha joyni manzil oldi: u
               bosiladigan va haqiqatan foydali element.
 
-              Maketda "Toshkent, Chilonzor" turibdi — u shunchaki namuna.
-              Platforma Chust uchun, shuning uchun shahar nomi qat'iy. */}
+              Yorliq — saqlangan manzil (kompyuter navbar'i bilan bir xil
+              manba, `lib/use-address-label.ts`). Avval bu yerda "Chust"
+              qattiq yozilgan edi; Toshkent qo'shilgach u noto'g'ri
+              bo'lib qolardi. */}
           <Link
             href="/address"
             className="mt-1.5 flex items-center gap-1.5 py-0.5 active:opacity-60"
           >
             <MapPin size={16} className="shrink-0" />
-            <span className="truncate text-[14px] font-semibold">Chust</span>
+            <span className="truncate text-[14px] font-semibold">{addressLabel}</span>
             <ChevronDown size={16} className="shrink-0 text-neutral-500" />
           </Link>
         </div>

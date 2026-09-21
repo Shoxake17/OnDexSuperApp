@@ -250,10 +250,23 @@ class _Header extends StatefulWidget {
 class _HeaderState extends State<_Header> {
   int _unread = 0;
 
+  /// Saqlangan manzil matni (`super_home_screen.dart` bilan bir xil manba).
+  String _addressLabel = kNoAddressLabel;
+
   @override
   void initState() {
     super.initState();
     _loadUnread();
+    _loadAddress();
+  }
+
+  /// Kirmagan foydalanuvchida endpoint 401 qaytaradi — zaxira yorliq qoladi.
+  Future<void> _loadAddress() async {
+    try {
+      final a = await api.getMyAddress();
+      final t = (a['text'] ?? '').toString().trim();
+      if (mounted && t.isNotEmpty) setState(() => _addressLabel = t);
+    } catch (_) {}
   }
 
   /// O'qilmagan bildirishnomalar soni.
@@ -277,8 +290,12 @@ class _HeaderState extends State<_Header> {
     // tortib yopiladi (`widgets/sheet_page.dart`).
     await Navigator.of(context).push(sheetRoute(screen));
     // Bildirishnomalar ochilgan bo'lsa ular o'qilgan deb
-    // belgilangan — belgi yangilanishi kerak.
-    if (mounted) _loadUnread();
+    // belgilangan — belgi yangilanishi kerak. Manzil ekranidan
+    // qaytilgan bo'lsa yorliq ham yangi manzilni ko'rsatsin.
+    if (mounted) {
+      _loadUnread();
+      _loadAddress();
+    }
   }
 
   @override
@@ -309,8 +326,8 @@ class _HeaderState extends State<_Header> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                // Shahar qat'iy: platforma Chust uchun. Maketdagi
-                // "Toshkent, Chilonzor" — shunchaki namuna edi.
+                // Saqlangan manzil; yo'q bo'lsa `kNoAddressLabel`. Avval
+                // bu yerda "Chust" qattiq yozilgan edi.
                 //
                 // Qator BOSILADI va manzil ekranini ochadi (vebda ham
                 // `<Link href="/address">`) — shu sabab yonida pastga
@@ -324,12 +341,16 @@ class _HeaderState extends State<_Header> {
                       children: [
                         const Icon(Icons.place_outlined, size: 16),
                         const SizedBox(width: 5),
-                        Text(
-                          'Chust',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                        Flexible(
+                          child: Text(
+                            _addressLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
                         ),
                         const SizedBox(width: 2),
                         const Icon(Icons.keyboard_arrow_down,

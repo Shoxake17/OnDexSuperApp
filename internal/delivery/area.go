@@ -20,6 +20,9 @@ var ErrBadCoords = errors.New("koordinata noto'g'ri")
 // ErrOutsideArea — koordinata haqiqiy, lekin xizmat hududidan tashqarida.
 var ErrOutsideArea = errors.New("bu nuqta xizmat hududidan tashqarida")
 
+// ErrOtherCity — restoran va yetkazish manzili boshqa-boshqa shaharlarda.
+var ErrOtherCity = errors.New("bu restoran sizning shahringizga yetkazmaydi")
+
 // ValidCoords — koordinatani ENG ASOSIY tekshiruvdan o'tkazadi.
 //
 // Nima uchun kerak: kuryer joylashuvi, manzil tanlash va geokodlash
@@ -64,10 +67,18 @@ type City struct {
 	RadiusKM float64
 }
 
-// Cities — HOZIRCHA FAQAT CHUST. Yangi shahar qo'shish uchun shu
-// ro'yxatga bitta qator qo'shiladi (va `service-area.ts` ga ham).
+// Cities — xizmat ko'rsatiladigan shaharlar. Yangi shahar qo'shish uchun
+// shu ro'yxatga bitta qator qo'shiladi (va `service-area.ts` ga ham —
+// `area_test.go` ikkalasini solishtiradi).
+//
+// Toshkent markazi — Amir Temur xiyoboni. 20 km shaharning halqa yo'li
+// ichidagi barcha tumanlarini (Sergeli, Yangihayot, Yunusobod, Chilonzor
+// chekkalari) qamraydi, lekin viloyat shaharlariga (Chirchiq, Nurafshon,
+// Yangiyo'l — 30 km+) chiqmaydi. Shaharlar bir-biridan ~170 km uzoqda,
+// ya'ni doiralar ham, operatsion mintaqalar ham kesishmaydi.
 var Cities = []City{
 	{Name: "Chust", Lat: 41.0004, Lng: 71.2394, RadiusKM: 8},
+	{Name: "Toshkent", Lat: 41.3111, Lng: 69.2797, RadiusKM: 20},
 }
 
 // distanceKM — ikki nuqta orasidagi masofa (haversine).
@@ -94,3 +105,48 @@ func CityFor(lat, lng float64) *City {
 
 // Covered — qisqa yordamchi.
 func Covered(lat, lng float64) bool { return CityFor(lat, lng) != nil }
+
+// nearestCity — nuqtaga ENG YAQIN shahar, agar u `maxKM` ichida bo'lsa.
+func nearestCity(lat, lng, maxKM float64) *City {
+	if !ValidCoords(lat, lng) {
+		return nil
+	}
+	var best *City
+	bestKM := maxKM
+	for i := range Cities {
+		c := &Cities[i]
+		if d := distanceKM(lat, lng, c.Lat, c.Lng); d <= bestKM {
+			best, bestKM = c, d
+		}
+	}
+	return best
+}
+
+// CheckServes — restoran shu manzilga yetkazib bera oladimi (shahar
+// bo'yicha). Manzilning o'zi xizmat hududida ekani (`Covered`) chaqiruvchi
+// tomonidan ALOHIDA tekshiriladi.
+//
+// ┌─ NEGA KERAK (Toshkent qo'shilganda) ──────────────────────────────┐
+// Buyurtmada restoran↔mijoz masofasi hech qachon tekshirilmagan: bitta
+// shahar bo'lganda hamma restoran va hamma manzil baribir Chustda edi.
+// Ikkinchi shahar bilan Chustdagi mijoz Toshkentdagi restorandan
+// buyurtma bera olardi (~300 km) — kuryer esa faqat restorandan 7 km
+// ichida qidiriladi, ya'ni buyurtma hech qachon yetkazilmasdi.
+// └───────────────────────────────────────────────────────────────────┘
+//
+// Restoranning shahri xizmat radiusi bilan EMAS, operatsion radius
+// (`OperationalRadiusKM`) bilan aniqlanadi: restoran shahar chekkasida,
+// doiradan biroz tashqarida turishi mumkin. Koordinatasi umuman yo'q
+// (0,0) yoki hech bir shaharga yaqin bo'lmagan restoran uchun cheklov
+// qo'yilmaydi — avvalgi xatti-harakat saqlanadi.
+func CheckServes(restLat, restLng, addrLat, addrLng float64) error {
+	rc := nearestCity(restLat, restLng, OperationalRadiusKM)
+	if rc == nil {
+		return nil
+	}
+	ac := CityFor(addrLat, addrLng)
+	if ac == nil || ac.Name != rc.Name {
+		return ErrOtherCity
+	}
+	return nil
+}

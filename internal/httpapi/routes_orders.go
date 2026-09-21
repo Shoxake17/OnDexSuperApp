@@ -192,14 +192,20 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			// -to'g'ri chaqirilsa ham hudud tashqarisiga buyurtma
 			// yaratilmaydi.
 			if !delivery.Covered(addr.Lat, addr.Lng) {
-				httpError(w, http.StatusBadRequest,
-					errors.New("bu manzilga hozircha yetkazmaymiz — faqat Chust shahri"))
+				httpError(w, http.StatusBadRequest, errOutsideServiceArea)
 				return
 			}
 
 			restaurantID, items, err := s.CatalogSvc.PriceOrder(r.Context(), req.Items)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, err)
+				return
+			}
+			// Restoran va manzil BITTA shaharda bo'lishi shart: kuryer
+			// restorandan 7 km ichida qidiriladi, ya'ni boshqa shahardagi
+			// manzilga buyurtma hech qachon yetkazilmasdi.
+			if err := s.checkRestaurantServes(r.Context(), restaurantID, addr.Lat, addr.Lng); err != nil {
+				writeServesError(w, err)
 				return
 			}
 			// Restoran "To'lov usullari" sozlamasi — serverda majburiy.

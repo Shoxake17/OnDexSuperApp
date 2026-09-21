@@ -156,6 +156,13 @@ var Registry = []Var{
 	// literali sifatida TOPMAYDI — qo'lda qo'shildi.
 	{Name: "ESKIZ_ENABLED", Effect: "SMS kanali yoqiq; `false` bo'lsa kod faqat Telegram/Firebase orqali ketadi", DeployRequired: true},
 	{Name: "ESKIZ_BASE_URL", Effect: "standart Eskiz manzili ishlatiladi", DeployRequired: true},
+	// `TEST_OTP=true` — do'kon sharhlovchisi uchun sobit OTP'li test
+	// akkaunti (`internal/users/test_login.go`). Bo'sh = O'CHIQ, ya'ni
+	// "yo'q" bo'lishi XAVFSIZ standart. Compose'da SANALGAN bo'lishi
+	// shart: busiz `.env` ga yozilgan `true` konteynerga yetmaydi va
+	// sharhlovchi jimgina kira olmaydi. `parseEnvBool` orqali o'qiladi —
+	// manba skaneri uni topmaydi, qo'lda qo'shildi.
+	{Name: "TEST_OTP", Effect: "test akkaunti (sobit OTP) o'chiq — xavfsiz standart", DeployRequired: true},
 
 	// ---------- To'lov (Octo) ----------
 	{Name: "OCTO_SHOP_ID", Effect: "karta orqali to'lov O'CHIQ — faqat naqd", DeployRequired: true},

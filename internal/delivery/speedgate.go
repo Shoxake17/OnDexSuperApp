@@ -6,10 +6,14 @@ import (
 )
 
 // OperationalRadiusKM — kuryer joylashuvi qabul qilinadigan eng katta
-// masofa (xizmat shahri markazidan). Xizmat radiusi (8 km) dan ATAYLAB
-// kengroq: kuryer chekka mahallaga chiqib qolishi yoki GPS bir necha yuz
-// metr adashishi normal holat. Lekin "Toshkentdan turib Chustga buyurtma
-// olaman" degan soxta koordinata bu chegaradan o'tolmaydi.
+// masofa (xizmat shaharlaridan BIRORTASINING markazidan). Xizmat radiusidan
+// ATAYLAB kengroq: kuryer chekka mahallaga chiqib qolishi yoki GPS bir
+// necha yuz metr adashishi normal holat. Lekin hech bir xizmat shahriga
+// yaqin bo'lmagan soxta koordinata (masalan Samarqanddan) o'tolmaydi.
+//
+// Shahar bo'yicha AJRATISH bu yerda emas: kuryer faqat restorandan 7 km
+// ichida nomzod bo'ladi (`couriers.searchRadiusMeters`), ya'ni Toshkentdagi
+// kuryer Chust buyurtmasini baribir olmaydi.
 const OperationalRadiusKM = 50
 
 // InOperationalRange — nuqta xizmat shaharlaridan birortasining

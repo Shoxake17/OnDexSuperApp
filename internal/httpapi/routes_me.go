@@ -180,8 +180,7 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("lat/lng noto'g'ri"))
 				return
 			case errors.Is(err, delivery.ErrOutsideArea):
-				httpError(w, http.StatusBadRequest,
-					errors.New("bu manzilga hozircha yetkazmaymiz — faqat Chust shahri"))
+				httpError(w, http.StatusBadRequest, errOutsideServiceArea)
 				return
 			}
 			if err := s.UserRepo.UpdateAddress(r.Context(), claimsFrom(r).Subject, addr); err != nil {

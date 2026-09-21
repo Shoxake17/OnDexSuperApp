@@ -40,12 +40,15 @@ func TestCheckPointErrors(t *testing.T) {
 	if err := CheckPoint(0, 0); err != ErrBadCoords {
 		t.Errorf("ErrBadCoords kutilgan, olindi %v", err)
 	}
-	// Toshkent — haqiqiy koordinata, lekin hududdan tashqarida.
-	if err := CheckPoint(41.2995, 69.2401); err != ErrOutsideArea {
+	// Samarqand — haqiqiy koordinata, lekin hech bir xizmat shahrida emas.
+	if err := CheckPoint(39.6542, 66.9597); err != ErrOutsideArea {
 		t.Errorf("ErrOutsideArea kutilgan, olindi %v", err)
 	}
 	if err := CheckPoint(41.0004, 71.2394); err != nil {
 		t.Errorf("Chust qabul qilinishi kerak edi, olindi %v", err)
+	}
+	if err := CheckPoint(41.2995, 69.2401); err != nil {
+		t.Errorf("Toshkent qabul qilinishi kerak edi, olindi %v", err)
 	}
 }
 
@@ -55,9 +58,19 @@ func TestInOperationalRange(t *testing.T) {
 	if !InOperationalRange(41.0011, 71.6673) {
 		t.Error("Namangan operatsion mintaqada bo'lishi kerak edi")
 	}
-	// Toshkent (~200 km) — kuryer u yerdan Chustga buyurtma olmaydi.
-	if InOperationalRange(41.2995, 69.2401) {
-		t.Error("Toshkent operatsion mintaqadan tashqarida bo'lishi kerak edi")
+	// Toshkent — xizmat shahri: u yerdagi kuryerning joylashuvi qabul
+	// qilinadi (avval 400 bilan rad etilib, `location` NULL qolardi).
+	if !InOperationalRange(41.2995, 69.2401) {
+		t.Error("Toshkent operatsion mintaqada bo'lishi kerak edi")
+	}
+	// Chirchiq (~31 km) — Toshkent doirasidan tashqarida, lekin kuryer
+	// koordinatasi sifatida ishonarli.
+	if !InOperationalRange(41.4689, 69.5822) {
+		t.Error("Chirchiq operatsion mintaqada bo'lishi kerak edi")
+	}
+	// Samarqand (~250 km) — hech bir xizmat shahriga yaqin emas.
+	if InOperationalRange(39.6542, 66.9597) {
+		t.Error("Samarqand operatsion mintaqadan tashqarida bo'lishi kerak edi")
 	}
 	if InOperationalRange(math.NaN(), 71.2) {
 		t.Error("NaN rad etilishi kerak edi")

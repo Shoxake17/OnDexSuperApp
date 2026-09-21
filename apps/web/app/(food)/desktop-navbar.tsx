@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useAddressLabel } from "@/lib/use-address-label";
 import DesktopAddressDialog from "./desktop-address-dialog";
 import DesktopCartMenu from "./desktop-cart-menu";
 import {
@@ -59,26 +60,9 @@ export default function DesktopNavbar({
     setQuery(initialQuery);
   }
   const [addressOpen, setAddressOpen] = useState(false);
-  // Saqlangan manzil nomi — yo'q bo'lsa shahar nomi ko'rsatiladi
-  // (platforma faqat Chust uchun, ya'ni bu doim to'g'ri zaxira).
-  const [addressLabel, setAddressLabel] = useState("Chust");
-
-  useEffect(() => {
-    if (!signedIn) return;
-    let cancelled = false;
-    fetch("/api/proxy/me/address")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((a: { text?: string } | null) => {
-        const text = a?.text?.trim();
-        if (text && !cancelled) setAddressLabel(text);
-      })
-      .catch(() => {
-        // Manzil ko'rsatilmaydi, xolos — "Chust" zaxira qiymati qoladi.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [signedIn]);
+  // Saqlangan manzil nomi — yo'q bo'lsa "Manzilni tanlang"
+  // (`lib/use-address-label.ts`).
+  const [addressLabel, setAddressLabel] = useAddressLabel(signedIn);
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();

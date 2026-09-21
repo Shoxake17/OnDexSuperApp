@@ -22,6 +22,13 @@ import 'catalog_screen.dart' show kBrand;
 /// └────────────────────────────────────────────────────────────────────┘
 const _mapPin = 'assets/services/map.png';
 
+/// Manzil saqlanmagan holatdagi sarlavha yorlig'i (bosh sahifa va katalog).
+///
+/// Avval bu joylarda "Chust" qattiq yozilgan edi — platforma bitta shahar
+/// uchun bo'lganda bu to'g'ri edi. Toshkent qo'shilgach manzilsiz Toshkent
+/// mijoziga ham "Chust" ko'rinardi, shuning uchun shahar taxmin qilinmaydi.
+const kNoAddressLabel = 'Manzilni tanlang';
+
 /// Yetkazib berish manzilini xaritadan tanlash ekrani (Yandex Go uslubi):
 /// xarita tepada, markazda qimirlamas pin turadi (foydalanuvchi xaritani
 /// suradi, pin joyida qoladi), pastda manzil matni + podъezd/qavat/

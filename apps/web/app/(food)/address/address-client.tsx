@@ -21,8 +21,7 @@ type AddressDetails = {
 };
 
 // Boshlang'ich markaz va xizmat hududi — `lib/service-area.ts` da
-// (hozircha faqat Chust). Yangi shahar qo'shish uchun shu faylga
-// bitta qator qo'shiladi.
+// (Chust va Toshkent; xaritada har biri o'z doirasi bilan chiziladi).
 const CHUST_CENTER = DEFAULT_CENTER;
 
 // map.png namunasiga mos: to'liq ekranli xarita, MARKAZDA qotirilgan

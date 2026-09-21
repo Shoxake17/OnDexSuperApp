@@ -526,7 +526,7 @@ func (s *Server) agentDeliveryReady(ctx context.Context, userID string) error {
 		return errors.New("yetkazib berish manzili tanlanmagan — foydalanuvchi uni OnDex ilovasida tanlashi kerak")
 	}
 	if !delivery.Covered(u.Address.Lat, u.Address.Lng) {
-		return errors.New("bu manzilga yetkazilmaydi — faqat Chust shahri")
+		return errOutsideServiceArea
 	}
 	return nil
 }
@@ -554,7 +554,7 @@ func (s *Server) placeAgentOrder(ctx context.Context, d *agentapi.Draft) (string
 		return "", errors.New("yetkazib berish manzili tanlanmagan")
 	}
 	if !delivery.Covered(addr.Lat, addr.Lng) {
-		return "", errors.New("bu manzilga yetkazilmaydi — faqat Chust shahri")
+		return "", errOutsideServiceArea
 	}
 	restaurantID, items, err := s.CatalogSvc.PriceOrder(ctx, d.ToItemRequests())
 	if err != nil {
@@ -564,6 +564,11 @@ func (s *Server) placeAgentOrder(ctx context.Context, d *agentapi.Draft) (string
 	// (yoki katalog o'zgargan) holat — buyurtma yaratilmaydi.
 	if restaurantID != d.RestaurantID {
 		return "", errors.New("menyu o'zgargan — qoralamani qaytadan yarating")
+	}
+	// `POST /orders` bilan bir xil: restoran boshqa shaharda bo'lsa
+	// buyurtma yaratilmaydi.
+	if err := s.checkRestaurantServes(ctx, restaurantID, addr.Lat, addr.Lng); err != nil {
+		return "", err
 	}
 	// Agent buyurtmasi yetkazishda to'lanadi — restoran joyida to'lovni
 	// o'chirgan bo'lsa (faqat onlayn karta), buyurtma yaratilmaydi.

@@ -44,6 +44,10 @@ type Service struct {
 	// konstruktorni unutgan har bir joy SMS'ni jimgina o'chirib
 	// qo'yardi.
 	smsDisabled bool
+	// testPhone/testCode — sobit kodli test akkaunti (`test_login.go`).
+	// Bo'sh — o'chiq (standart).
+	testPhone string
+	testCode  string
 }
 
 func NewService(users Repository, codes CodeStore, sms SmsSender, tokens *TokenIssuer, idgen func() string) *Service {
@@ -114,6 +118,21 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 	if err != nil {
 		return "", "", err
 	}
+	// Test akkaunti — sobit kod (`test_login.go`). Qolgan hamma narsa
+	// (muddat, urinishlar, bir martalik) oddiy kod bilan bir xil.
+	if s.testPhone != "" && phone == s.testPhone {
+		if s.testAccount(ctx, phone) {
+			code = s.testCode
+		} else {
+			// Oddiy akkaunt: tasodifiy kod sobit kodga TENG bo'lmasin —
+			// aks holda `Verify` uni test kirishi deb o'ylab rad etardi.
+			for code == s.testCode {
+				if code, err = randomCode(); err != nil {
+					return "", "", err
+				}
+			}
+		}
+	}
 	if err := s.codes.Save(ctx, &Code{
 		Target:    phone,
 		CodeHash:  s.hashCode(phone, code),
@@ -132,6 +151,12 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 // SMS KERAK BO'LMAGAN kanallar (Telegram boti) `IssueCode` ni
 // chaqirsin — izohiga qarang.
 func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code string, err error) {
+	// Test akkaunti: kod sobit va sharhlovchiga oldindan ma'lum — SMS
+	// yuborilmaydi (o'chirilgan SMS kanalida ham ishlaydi). Javobda kod
+	// qaytarilmaydi: handler uni faqat dev rejimda qo'shadi.
+	if s.TestLoginActive(ctx, rawPhone) {
+		return s.IssueCode(ctx, rawPhone)
+	}
 	// SMS o'chirilgan bo'lsa KOD YARATILMAYDI — sabab `WithoutSms`
 	// izohida (behuda cooldown). Bu tekshiruv `DisabledSms` ni
 	// ortiqcha qilmaydi: u ikkinchi qatlam bo'lib, `WithoutSms`
@@ -194,11 +219,24 @@ func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *U
 	if !s.sameCode(phone, code, c.CodeHash) {
 		return "", nil, ErrInvalidCode
 	}
+	// Test raqami: sobit kod faqat kuryer/affitsiant akkauntini ochadi.
+	// Kod berilgandan keyin rol o'zgargan bo'lsa (masalan akkaunt
+	// restoran egasiga aylantirildi) — rad etiladi.
+	testLogin := s.testPhone != "" && phone == s.testPhone && code == s.testCode
+	if testLogin && !s.testAccount(ctx, phone) {
+		s.dropCode(ctx, phone)
+		slog.Warn("test akkaunt: sobit kod rad etildi — akkaunt kuryer/affitsiant emas")
+		return "", nil, ErrInvalidCode
+	}
 	if err := s.consumeCode(ctx, phone); err != nil {
 		return "", nil, err
 	}
 
-	return s.finishPhoneLogin(ctx, phone)
+	token, u, err := s.finishPhoneLogin(ctx, phone)
+	if err == nil && testLogin {
+		slog.Warn("test akkaunt orqali kirish (TEST_OTP)", "user", u.ID, "role", u.Role)
+	}
+	return token, u, err
 }
 
 // consumeCode — to'g'ri kiritilgan kodni BIR MARTALIK qiladi.

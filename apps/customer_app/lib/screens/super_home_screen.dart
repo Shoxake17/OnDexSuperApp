@@ -164,7 +164,7 @@ const _tiles = <_Service>[
 
 class _SuperHomeScreenState extends State<SuperHomeScreen> {
   int _unread = 0;
-  String _city = 'Chust';
+  String _city = kNoAddressLabel;
   List<dynamic> _restaurants = const [];
   bool _loadingRestaurants = true;
 
