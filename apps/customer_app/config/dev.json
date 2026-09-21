@@ -7,7 +7,7 @@
 
   "_shart": "Tunnel ishlab turishi kerak: `ondex run` (tunnel rejimi standart) yoki scripts/dev_tunnel.ps1. cloudflared buyruqlarida --config SHART.",
 
-  "ONDEX_APP_VERSION": "0.2.3-dev+15",
+  "ONDEX_APP_VERSION": "0.2.4-dev+16",
   "ONDEX_API_URL": "https://dev-api-ondex.shoxpro.uz",
   "ONDEX_WEB_URL": "https://dev-web-ondex.shoxpro.uz"
 }
