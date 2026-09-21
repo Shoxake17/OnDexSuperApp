@@ -511,7 +511,20 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 	// └────────────────────────────────────────────────────────────────┘
 	mux.HandleFunc("GET /admin/orders", s.auth([]users.Role{users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
-			list, err := s.OrderRepo.ListRecent(r.Context(), 100)
+			// ?restaurant_id= — bitta restoran moduli (admin panelida
+			// restoran ichidagi "Buyurtmalar"). Filtrni SERVER qiladi:
+			// umumiy oxirgi 100 ta buyurtmadan mijoz tomonda ajratilsa,
+			// kamroq faol restoran uchun ro'yxat bo'sh chiqardi. Ro'yxat
+			// restoran panelidagi bilan bir xil (`ListByRestaurant`).
+			var (
+				list []*orders.Order
+				err  error
+			)
+			if rid := strings.TrimSpace(r.URL.Query().Get("restaurant_id")); rid != "" {
+				list, err = s.OrderRepo.ListByRestaurant(r.Context(), rid, 100)
+			} else {
+				list, err = s.OrderRepo.ListRecent(r.Context(), 100)
+			}
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return
@@ -680,19 +693,36 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				if c.Available && c.Approved {
 					online++
 				}
-				if !c.Approved {
+				// "Tasdiq kutayotgan" — FAQAT platformaning o'z kuryerlari.
+				// Restoranning o'z yetkazib beruvchisini admin tasdiqlay
+				// olmaydi (`POST /admin/couriers/{id}/approve` 409 beradi),
+				// shuning uchun uni bu yerda sanash "hal qilib bo'lmaydigan"
+				// ariza ko'rsatgan bo'lardi.
+				if !c.Approved && c.RestaurantID == "" {
 					pending++
 				}
 			}
 			restaurants, _ := s.CatalogRepo.ListRestaurants(r.Context())
-			writeJSON(w, http.StatusOK, map[string]any{
+			resp := map[string]any{
 				"orders_today":        ordersToday,
 				"delivered_today":     deliveredToday,
 				"revenue_today_tiyin": revenueToday,
 				"by_status":           byStatus,
 				"couriers_online":     online,
 				"couriers_pending":    pending,
+				"couriers_total":      len(allCouriers),
 				"restaurants_total":   len(restaurants),
-			})
+			}
+			// Davr bo'yicha to'liq statistika (`?period=today|7d|30d|all`):
+			// jami, har restoran jadvali, holatlar, kunlik grafik.
+			extra, err := s.platformStats(r.Context(), r.URL.Query().Get("period"), now, restaurants)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			for k, v := range extra {
+				resp[k] = v
+			}
+			writeJSON(w, http.StatusOK, resp)
 		}))
 }
