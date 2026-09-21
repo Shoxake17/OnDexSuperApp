@@ -115,6 +115,12 @@ func synthWithRetry(tts *voice.Gemini, text string) ([]byte, error) {
 			return nil, err // qayta urinish foydasiz
 		}
 		lastErr = err
+		// "Audio yo'q" kabi xatoda HAR urinish kunlik kvotadan (bepul tarifda 10)
+		// bitta so'rov yeydi: 8 marta urinish butun kunlik kvotani bitta ibora
+		// uchun sarflashi mumkin. Uch urinishdan keyin keyingi iboraga o'tiladi.
+		if !errors.Is(err, voice.ErrRateLimited) && attempt >= 3 {
+			break
+		}
 		wait := 5 * time.Second
 		if errors.Is(err, voice.ErrRateLimited) {
 			wait = time.Duration(attempt*20) * time.Second
