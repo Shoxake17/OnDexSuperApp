@@ -51,6 +51,7 @@ import (
 	"chustapp/internal/tracking"
 	"chustapp/internal/users"
 	"chustapp/internal/voice"
+	"chustapp/internal/wallet"
 	"chustapp/internal/ws"
 )
 
@@ -932,6 +933,22 @@ func main() {
 	orderSvc := orders.NewService(orderRepo, alertsSvc.WrapOrders(notifier), httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
 
+	// â”€â”€ OnDex Wallet (keshbek + hamyondan to'lash) â”€â”€
+	//
+	// Tashqi provayder EMAS (Octo'dan farqli) â€” faqat ichki ledger,
+	// shuning uchun ATAYLAB shartsiz yoqilgan (Postgres bo'lmasa
+	// xotirada, server qayta ishga tushganda yo'qoladi â€” xuddi boshqa
+	// modullar kabi). Reja: F:\ChustApp\ondexwallet.md.
+	var walletRepo wallet.Repository
+	if pgPool != nil {
+		walletRepo = storage.NewPostgresWalletRepo(pgPool)
+	} else {
+		walletRepo = storage.NewMemoryWalletRepo()
+		slog.Warn("rejim: in-memory (OnDex Wallet) â€” server qayta ishga tushganda yo'qoladi")
+	}
+	walletSvc := wallet.NewService(walletRepo, httpapi.NewID)
+	orderSvc.WithWallet(walletSvc)
+
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
 	//
 	// Katalog Mongo'da bo'lishi mumkin, lekin stollar ATAYLAB
@@ -1262,6 +1279,7 @@ func main() {
 		TableOrders:        tableOrders,
 		Payments:           paymentSvc,
 		OctoClient:         octoClient,
+		WalletSvc:          walletSvc,
 		Dispatcher:         dispatcher,
 		DevMode:            devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”

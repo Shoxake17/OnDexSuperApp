@@ -49,6 +49,7 @@ import (
 	"chustapp/internal/tracking"
 	"chustapp/internal/users"
 	"chustapp/internal/voice"
+	"chustapp/internal/wallet"
 	"chustapp/internal/ws"
 
 	"chustapp/internal/cache"
@@ -141,6 +142,11 @@ type Deps struct {
 	// OctoClient â€” callback imzosini tekshirish uchun. `Payments`
 	// bilan birga to'ldiriladi.
 	OctoClient *octo.Client
+
+	// WalletSvc â€” OnDex Wallet (`internal/wallet`). `nil` bo'lsa
+	// `GET /wallet` 503 qaytaradi, checkout'da "wallet" to'lov usuli
+	// `orders.Service`da xuddi shunday yopiq bo'ladi.
+	WalletSvc *wallet.Service
 
 	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
@@ -358,6 +364,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerCourierRoutes(mux)
 	s.registerPromotionRoutes(mux)
 	s.registerPaymentRoutes(mux)
+	s.registerWalletRoutes(mux)
 	s.registerAdminRoutes(mux)
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)

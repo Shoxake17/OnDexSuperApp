@@ -186,6 +186,10 @@ func (r *Restaurant) AcceptsPayment(m orders.PaymentMethod) bool {
 	switch m {
 	case orders.PaymentCard:
 		return p.CardOnline
+	case orders.PaymentWallet:
+		// OnDexWallet HAR DOIM true (`EffectivePaymentMethods`) — bu
+		// restoran sozlamasi emas, platforma qoidasi.
+		return p.OnDexWallet
 	case orders.PaymentCash, "":
 		return p.Cash || p.CardTerminal
 	}

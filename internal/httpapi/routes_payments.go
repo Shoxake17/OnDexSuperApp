@@ -25,6 +25,7 @@ import (
 //	                          bu yerga kelgan MA'LUMOTGA ISHONILMAYDI:
 //	                          har xabar imzo yoki provayder API'si
 //	                          orqali tasdiqlanadi (payments.Service).
+//
 // └───────────────────────────────────────────────────────────────────┘
 func (s *Server) registerPaymentRoutes(mux *http.ServeMux) {
 	// POST /orders/{id}/pay — buyurtma uchun to'lov boshlaydi va
@@ -217,9 +218,11 @@ func paymentMethodFromRequest(v string) (orders.PaymentMethod, error) {
 		return orders.PaymentCash, nil
 	case string(orders.PaymentCard):
 		return orders.PaymentCard, nil
+	case string(orders.PaymentWallet):
+		return orders.PaymentWallet, nil
 	default:
-		return "", fmt.Errorf("to'lov usuli qo'llab-quvvatlanmaydi: %q (faqat %q yoki %q)",
-			v, orders.PaymentCash, orders.PaymentCard)
+		return "", fmt.Errorf("to'lov usuli qo'llab-quvvatlanmaydi: %q (faqat %q, %q yoki %q)",
+			v, orders.PaymentCash, orders.PaymentCard, orders.PaymentWallet)
 	}
 }
 

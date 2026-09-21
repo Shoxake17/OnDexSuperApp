@@ -140,6 +140,21 @@ type PaymentGateway interface {
 	ReleaseForOrder(ctx context.Context, orderID string) error
 }
 
+// WalletGateway — OnDex Wallet (`internal/wallet`). Tor interfeys —
+// `orders` paketi `wallet`ni IMPORT QILMAYDI (`payments` bilan bir
+// xil sabab, aylanma bog'liqlikdan qochish).
+type WalletGateway interface {
+	// DebitForOrder — checkout: wallet TO'LIQ to'lov sifatida
+	// tanlanganda buyurtma summasini yechadi.
+	DebitForOrder(ctx context.Context, orderID, customerID string, amountTiyin int64) error
+	// RefundForOrder — wallet bilan to'langan buyurtma rad/bekor
+	// qilinganda yechilgan summani qaytaradi.
+	RefundForOrder(ctx context.Context, orderID, customerID string, amountTiyin int64) error
+	// CreditCashback — buyurtma yetkazilgach (1%, 50 000 so'mdan
+	// past bo'lsa JIM o'tkaziladi — bu qoida `wallet` paketida).
+	CreditCashback(ctx context.Context, orderID, customerID string, orderTotalTiyin int64) error
+}
+
 type Service struct {
 	repo           Repository
 	notifier       Notifier
@@ -147,12 +162,20 @@ type Service struct {
 	now            func() time.Time
 	promotionsRepo promotions.Repository // nil = aksiyalar qo'llanilmaydi (masalan testlarda)
 	payments       PaymentGateway        // nil = karta to'lovi ulanmagan
+	wallet         WalletGateway         // nil = OnDex Wallet ulanmagan
 }
 
 // WithPayments — karta to'lovini ulaydi. Alohida setter: mavjud
 // `NewService` chaqiruvlari (va o'nlab testlar) o'zgarmasin.
 func (s *Service) WithPayments(p PaymentGateway) *Service {
 	s.payments = p
+	return s
+}
+
+// WithWallet — OnDex Wallet'ni ulaydi (checkout'da to'lov + har
+// buyurtma yetkazilganda keshbek).
+func (s *Service) WithWallet(w WalletGateway) *Service {
+	s.wallet = w
 	return s
 }
 
@@ -410,7 +433,34 @@ func (s *Service) CreateExpecting(ctx context.Context, o *Order,
 		}
 	}
 
+	// ┌─ WALLET: TO'LIQ SUMMA SHU YERDA, SAQLASHDAN OLDIN YECHILADI ────┐
+	// Karta to'lovidan farqi: wallet ASYNC emas — provayder/webhook
+	// kutilmaydi, hammasi shu so'rov ichida hal bo'ladi. Shuning uchun
+	// `Save`dan OLDIN yechiladi: agar balans yetarli bo'lmasa, buyurtma
+	// UMUMAN yaratilmaydi (keyin "to'lanmagan buyurtmani bekor qilish"
+	// kabi kompensatsiya kerak bo'lmaydi). `o.PaymentState = PaymentPaid`
+	// SHU YERDA qo'yiladi — aks holda pastdagi `AwaitingPayment()`
+	// tekshiruvi buyurtmani abadiy "kutilmoqda"da qoldirardi (wallet
+	// uchun uni ochadigan webhook/OnPaymentHeld yo'q).
+	// └───────────────────────────────────────────────────────────────────┘
+	if o.PaymentMethod == PaymentWallet {
+		if s.wallet == nil {
+			return nil, errors.New("hamyon orqali to'lov sozlanmagan")
+		}
+		if err := s.wallet.DebitForOrder(ctx, o.ID, o.CustomerID, o.TotalTiyin); err != nil {
+			return nil, fmt.Errorf("hamyondan to'lab bo'lmadi: %w", err)
+		}
+		o.PaymentState = PaymentPaid
+	}
+
 	if err := s.repo.Save(ctx, o); err != nil {
+		if o.PaymentMethod == PaymentWallet {
+			// Pul ALLAQACHON yechilgan, buyurtma esa saqlanmadi — bu
+			// pul masalasi, jim qolishi mumkin emas (kamdan-kam,
+			// faqat DB infratuzilma xatosida yuz beradi).
+			slog.Error("wallet'dan pul yechildi, lekin buyurtma saqlanmadi — QO'LDA tekshirish kerak",
+				"order", o.ID, "customer", o.CustomerID, "amount_tiyin", o.TotalTiyin, "error", err)
+		}
 		if errors.Is(err, ErrDuplicateIdempotencyKey) && o.IdempotencyKey != "" {
 			// Race: boshqa parallel so'rov BIZDAN oldin xuddi shu kalit
 			// bilan yozib ulgurdi — endi uning natijasini qaytaramiz
@@ -576,6 +626,7 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 			return nil, err
 		}
 		s.settlePayment(ctx, o, to)
+		s.creditCashback(ctx, o, to)
 		if s.notifier != nil {
 			s.notifier.OrderStatusChanged(o, from)
 		}
@@ -584,7 +635,25 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 	return nil, ErrConflict
 }
 
-// settlePayment — karta to'lovini buyurtma holatiga moslaydi:
+// settlePayment — oldindan to'langan buyurtmani holatga moslaydi.
+// Usul (karta/wallet)ga qarab tegishli gateway'ga uzatiladi — ikkalasi
+// ham "qabul qilindi -> yechiladi, rad/bekor -> qaytariladi" umumiy
+// qoidaga bo'ysunadi, lekin MEXANIZMI butunlay boshqa (karta — hold
+// keyin capture; wallet — darhol to'liq debit, "capture" tushunchasi
+// yo'q, faqat rad/bekorda qaytarish bor).
+func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
+	if !o.PaymentMethod.RequiresPrepayment() {
+		return
+	}
+	switch o.PaymentMethod {
+	case PaymentCard:
+		s.settleCardPayment(ctx, o, to)
+	case PaymentWallet:
+		s.settleWalletPayment(ctx, o, to)
+	}
+}
+
+// settleCardPayment — karta (Octo) to'lovi:
 //
 //	qabul qilindi        -> bloklangan pul YECHILADI (capture)
 //	rad etildi/bekor     -> blok BO'SHATILADI (yoki qaytariladi)
@@ -594,8 +663,8 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 // provayderining vaqtincha nosozligi tufayli oshxona to'xtab qolmasligi
 // kerak; yechilmagan blok esa keyin qo'lda yoki takroriy urinishda
 // tugallanadi va 30 kundan keyin AVTOMATIK bo'shaydi (pul mijozda).
-func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
-	if s.payments == nil || !o.PaymentMethod.RequiresPrepayment() {
+func (s *Service) settleCardPayment(ctx context.Context, o *Order, to Status) {
+	if s.payments == nil {
 		return
 	}
 	switch to {
@@ -623,6 +692,44 @@ func (s *Service) settlePayment(ctx context.Context, o *Order, to Status) {
 			next = PaymentRefunded
 		}
 		s.persistPaymentState(ctx, o, next)
+	}
+}
+
+// settleWalletPayment — OnDex Wallet to'lovi. `StatusAccepted`da
+// hech narsa qilinmaydi: pul buyurtma YARATILGANDA allaqachon TO'LIQ
+// yechilgan (hold/capture bosqichi yo'q). Faqat rad/bekor qilinganda
+// yechilgan summa mijozga QAYTARILADI.
+func (s *Service) settleWalletPayment(ctx context.Context, o *Order, to Status) {
+	if s.wallet == nil {
+		return
+	}
+	if to != StatusRejected && to != StatusCancelled {
+		return
+	}
+	if o.PaymentState != PaymentPaid {
+		return
+	}
+	if err := s.wallet.RefundForOrder(ctx, o.ID, o.CustomerID, o.TotalTiyin); err != nil {
+		slog.Error("wallet to'lovini qaytarib bo'lmadi", "order", o.ID, "error", err)
+		return
+	}
+	s.persistPaymentState(ctx, o, PaymentRefunded)
+}
+
+// creditCashback — buyurtma MUVAFFAQIYATLI yakunlangach (yetkazildi/
+// stolda xizmat ko'rsatildi) 1% keshbekni ishga tushiradi. To'lov
+// usulidan qat'i nazar (naqd/karta/wallet) — foydalanuvchi qarori,
+// `ondexwallet.md`. Chegara/foiz qoidasi `wallet.Service` ichida,
+// bu yerda faqat "muvaffaqiyatli yakunlandi" signali beriladi.
+func (s *Service) creditCashback(ctx context.Context, o *Order, to Status) {
+	if s.wallet == nil || o.CustomerID == "" {
+		return
+	}
+	if to != StatusDelivered && to != StatusServed {
+		return
+	}
+	if err := s.wallet.CreditCashback(ctx, o.ID, o.CustomerID, o.TotalTiyin); err != nil {
+		slog.Error("keshbek berilmadi", "order", o.ID, "error", err)
 	}
 }
 

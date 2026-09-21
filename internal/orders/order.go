@@ -303,11 +303,21 @@ const (
 	PaymentCash PaymentMethod = "cash"
 	// PaymentCard — karta orqali OLDINDAN (Octo to'lov sahifasi).
 	PaymentCard PaymentMethod = "card"
+	// PaymentWallet — OnDex Wallet balansidan TO'LIQ to'lov (aralash
+	// to'lov yo'q — balans buyurtmani to'liq qoplamasa bu usul
+	// umuman tanlanmaydi, `wallet.Service.CanSpend`).
+	PaymentWallet PaymentMethod = "wallet"
 )
 
 // RequiresPrepayment — buyurtma oshxonaga tushishidan OLDIN pul
-// bloklangan bo'lishi shartmi.
-func (m PaymentMethod) RequiresPrepayment() bool { return m == PaymentCard }
+// bloklangan/yechilgan bo'lishi shartmi.
+//
+// Wallet ham shu qatorda: karta kabi ASYNC emas (webhook kutmaydi —
+// pul buyurtma yaratilishning O'ZIDA yechiladi), lekin xuddi shu
+// bayroq orqali `settlePayment`ning rad/bekor qilinganda "qaytarish"
+// mexanizmini ("Settled" tekshiruvi) BEPUL meros qilib oladi — alohida
+// holat mashinasi YOZILMAYDI.
+func (m PaymentMethod) RequiresPrepayment() bool { return m == PaymentCard || m == PaymentWallet }
 
 // PaymentState — karta to'lovining holati (naqdda ishlatilmaydi).
 type PaymentState string
