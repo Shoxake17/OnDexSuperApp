@@ -4,7 +4,11 @@ import '../api.dart';
 import '../live.dart';
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key});
+  /// [restaurantId] berilsa — restoran moduli ichidagi ko'rinish: faqat shu
+  /// restoranning buyurtmalari (filtr serverda) va "Restoran" ustuni yo'q.
+  const OrdersPage({super.key, this.restaurantId});
+
+  final String? restaurantId;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -61,10 +65,22 @@ class _OrdersPageState extends State<OrdersPage> {
   Future<void> _load() async {
     try {
       // Buyurtmalar, restoranlar va kuryerlarni PARALLEL yuklaymiz.
-      final lFuture = api.orders();
-      final rFuture = _loadRestaurantNameMap();
+      final lFuture = api.orders(restaurantId: widget.restaurantId);
+      // Bitta restoran ichida uning nomi ustun sifatida ko'rsatilmaydi.
+      final rFuture = _scoped
+          ? Future.value(<String, String>{})
+          : _loadRestaurantNameMap();
       final cFuture = _loadCourierNameMap();
-      final l = await lFuture;
+      var l = await lFuture;
+      if (_scoped) {
+        // Ikkinchi qatlam: filtrni server qiladi, lekin eski server
+        // `restaurant_id` parametrini e'tiborsiz qoldirib BARCHA
+        // restoranlar buyurtmasini qaytarsa ham, bu restoran modulida
+        // begona buyurtma ko'rinmaydi.
+        l = l
+            .where((o) => o is Map && o['restaurant_id'] == widget.restaurantId)
+            .toList();
+      }
       final rn = await rFuture;
       final cn = await cFuture;
       if (!mounted) return;
@@ -79,6 +95,8 @@ class _OrdersPageState extends State<OrdersPage> {
       setState(() => _loading = false);
     }
   }
+
+  bool get _scoped => (widget.restaurantId ?? '').isNotEmpty;
 
   Future<Map<String, String>> _loadRestaurantNameMap() async {
     final m = <String, String>{};
@@ -192,14 +210,15 @@ class _OrdersPageState extends State<OrdersPage> {
                         child: SizedBox(
                           width: double.infinity,
                           child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('Vaqt')),
-                              DataColumn(label: Text('№')),
-                              DataColumn(label: Text('Restoran')),
-                              DataColumn(label: Text('Mijoz')),
-                              DataColumn(label: Text('Kuryer')),
-                              DataColumn(label: Text('Summa')),
-                              DataColumn(label: Text('Holat')),
+                            columns: [
+                              const DataColumn(label: Text('Vaqt')),
+                              const DataColumn(label: Text('№')),
+                              if (!_scoped)
+                                const DataColumn(label: Text('Restoran')),
+                              const DataColumn(label: Text('Mijoz')),
+                              const DataColumn(label: Text('Kuryer')),
+                              const DataColumn(label: Text('Summa')),
+                              const DataColumn(label: Text('Holat')),
                             ],
                             rows: [
                               for (final o in _list.cast<Map<String, dynamic>>())
@@ -207,7 +226,8 @@ class _OrdersPageState extends State<OrdersPage> {
                                   DataCell(Text(_time(o['created_at']))),
                                   DataCell(Text(
                                       o['order_number']?.toString() ?? '—')),
-                                  DataCell(Text(_name(o, 'restaurant'))),
+                                  if (!_scoped)
+                                    DataCell(Text(_name(o, 'restaurant'))),
                                   DataCell(_customerCell(o)),
                                   DataCell(Text(_courier(o))),
                                   DataCell(

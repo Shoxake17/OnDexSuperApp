@@ -15,7 +15,11 @@ import '../api.dart';
 /// Shuning uchun alohida sahifa: bu yerda narx maydoni UMUMAN yo'q.
 /// └────────────────────────────────────────────────────────────────────┘
 class BooksPage extends StatefulWidget {
-  const BooksPage({super.key});
+  /// [restaurantId] berilsa — restoran moduli ichidagi ko'rinish: faqat shu
+  /// restoranning kitoblari, restoran tanlash ro'yxati yo'q.
+  const BooksPage({super.key, this.restaurantId});
+
+  final String? restaurantId;
 
   @override
   State<BooksPage> createState() => _BooksPageState();
@@ -31,7 +35,15 @@ class _BooksPageState extends State<BooksPage> {
   @override
   void initState() {
     super.initState();
-    _loadRestaurants();
+    final fixed = widget.restaurantId;
+    if (fixed != null && fixed.isNotEmpty) {
+      // Restoran modulida restoran allaqachon tanlangan: ro'yxatni
+      // yuklash ham, almashtirish ham kerak emas.
+      _restaurantId = fixed;
+      _loadBooks();
+    } else {
+      _loadRestaurants();
+    }
   }
 
   Future<void> _loadRestaurants() async {
@@ -149,7 +161,7 @@ class _BooksPageState extends State<BooksPage> {
                   style:
                       TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
               const SizedBox(width: 20),
-              if (_restaurants.isNotEmpty)
+              if (widget.restaurantId == null && _restaurants.isNotEmpty)
                 DropdownButton<String>(
                   value: _restaurantId,
                   items: [

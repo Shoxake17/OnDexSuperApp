@@ -2,19 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../live.dart';
-import '../pages/books_page.dart';
 import '../pages/couriers_page.dart';
-import '../pages/dashboard_page.dart';
 import '../pages/ondexmap_page.dart';
-import '../pages/orders_page.dart';
 import '../pages/people_page.dart';
-import '../pages/restaurants_page.dart';
+import '../pages/restaurant_module.dart';
 import '../pages/settings_page.dart';
-import '../pages/support_chat_page.dart';
+import '../pages/stats_page.dart';
 import '../support_inbox.dart';
 import 'login_screen.dart';
 
-/// Asosiy tuzilma: chapda navigatsiya, o'ngda sahifa.
+/// Asosiy tuzilma: chapda navigatsiya (Sidebar), o'ngda sahifa.
+///
+/// Sidebar (yuqoridan pastga):
+///   * **Restoran** — restoranlar ro'yxati; restoran tanlansa uning ALOHIDA
+///     moduli ochiladi (buyurtmalar, kuryerlar, affitsiantlar, kutubxona, chat);
+///   * **Statistika** — barcha restoranlar bo'yicha umumiy ko'rsatkichlar;
+///   * **Mijozlar**;
+///   * **OnDex kuryerlari** — restoranga bog'lanmagan platforma kuryerlari;
+///   * **Sozlamalar** — qo'llab-quvvatlash aloqa ma'lumotlari;
+///   * (eng pastda) **OnDexMap** — alohida loyihaning muharriri va takliflari.
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
 
@@ -22,22 +28,74 @@ class AdminShell extends StatefulWidget {
   State<AdminShell> createState() => _AdminShellState();
 }
 
+/// Sidebar bandi. Tartib `_AdminShellState._page` bilan AYNAN bir xil
+/// (ikkalasi uchun bitta indeks).
+typedef _NavSpec = ({
+  String key,
+  String label,
+  String screen,
+  IconData icon,
+  IconData selectedIcon,
+});
+
+const _navTop = <_NavSpec>[
+  (
+    key: 'nav-restaurants',
+    label: 'Restoran',
+    screen: 'Restaurants',
+    icon: Icons.storefront_outlined,
+    selectedIcon: Icons.storefront,
+  ),
+  (
+    key: 'nav-stats',
+    label: 'Statistika',
+    screen: 'Statistics',
+    icon: Icons.insights_outlined,
+    selectedIcon: Icons.insights,
+  ),
+  (
+    key: 'nav-customers',
+    label: 'Mijozlar',
+    screen: 'Customers',
+    icon: Icons.people_outline,
+    selectedIcon: Icons.people,
+  ),
+  (
+    key: 'nav-couriers',
+    label: 'OnDex kuryerlari',
+    screen: 'Couriers',
+    icon: Icons.delivery_dining_outlined,
+    selectedIcon: Icons.delivery_dining,
+  ),
+  (
+    key: 'nav-settings',
+    label: 'Sozlamalar',
+    screen: 'Settings',
+    icon: Icons.settings_outlined,
+    selectedIcon: Icons.settings,
+  ),
+];
+
+const _navBottom = <_NavSpec>[
+  (
+    key: 'nav-ondexmap',
+    label: 'OnDexMap',
+    screen: 'OnDexMap',
+    icon: Icons.map_outlined,
+    selectedIcon: Icons.map,
+  ),
+];
+
+const _navAll = [..._navTop, ..._navBottom];
+
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
 
-  static const _pageNames = [
-    'Dashboard',
-    'Orders',
-    'Restaurants',
-    'Couriers',
-    'Customers',
-    'Waiters',
-    'Books',
-    'OnDexMap',
-    'Chat',
-    'Settings',
-  ];
-
+  /// Bo'limlar birinchi ochilgunicha qurilmaydi (OnDexMap xaritasi og'ir,
+  /// qolganlari ortiqcha so'rov yubormasin), keyin esa saqlanib qoladi:
+  /// boshqa bo'limga o'tib qaytganda holat (tanlangan restoran, davr,
+  /// muharrir) yo'qolmaydi.
+  final Set<int> _visited = {0};
   @override
   void initState() {
     super.initState();
@@ -45,12 +103,12 @@ class _AdminShellState extends State<AdminShell> {
     // unga obuna bo'ladi — `lib/live.dart`). Ekran darajasida ochilsa
     // har bo'limga o'tganda yangi soket va yangi bilet kerak bo'lardi.
     adminLive.start();
-    // Restoranlardan kelgan chat xabarlari — navigatsiyadagi rozetka.
+    // Restoranlardan kelgan chat xabarlari — "Restoran" bo'limidagi rozetka.
     supportInbox.addListener(_onInbox);
     supportInbox.start();
     // Ilova ochilganda birinchi sahifani PostHog'ga yozamiz.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Analytics.instance.screen(_pageNames[0]);
+      Analytics.instance.screen(_navAll[0].screen);
     });
   }
 
@@ -66,60 +124,26 @@ class _AdminShellState extends State<AdminShell> {
     super.dispose();
   }
 
-  // Tartib navigatsiya ro'yxatidagi tartib bilan AYNAN bir xil
-  // bo'lishi shart (`_index` ikkalasi uchun bitta).
-  static const _pages = [
-    DashboardPage(),
-    OrdersPage(),
-    RestaurantsPage(),
-    CouriersPage(),
-    CustomersPage(),
-    WaitersPage(),
-    BooksPage(),
-    // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
-    // ChustApp bazasiga ham, API'siga ham tegmaydi.
-    OndexMapPage(),
-    // Restoranlar bilan yozishma (restoran panelidagi "Chat markazi").
-    SupportChatPage(),
-    // Aloqa ma'lumotlari — barcha restoran panellarida ko'rinadi.
-    SettingsPage(),
-  ];
+  void _select(int i) {
+    if (i == _index) return;
+    setState(() {
+      _index = i;
+      _visited.add(i);
+    });
+    Analytics.instance.screen(_navAll[i].screen);
+  }
 
-  static const _baseDestinations = [
-    NavigationRailDestination(
-        icon: Icon(Icons.dashboard_outlined),
-        selectedIcon: Icon(Icons.dashboard),
-        label: Text('Boshqaruv')),
-    NavigationRailDestination(
-        icon: Icon(Icons.receipt_long_outlined),
-        selectedIcon: Icon(Icons.receipt_long),
-        label: Text('Buyurtmalar')),
-    NavigationRailDestination(
-        icon: Icon(Icons.storefront_outlined),
-        selectedIcon: Icon(Icons.storefront),
-        label: Text('Restoranlar')),
-    NavigationRailDestination(
-        icon: Icon(Icons.delivery_dining_outlined),
-        selectedIcon: Icon(Icons.delivery_dining),
-        label: Text('Kuryerlar')),
-    NavigationRailDestination(
-        icon: Icon(Icons.people_outline),
-        selectedIcon: Icon(Icons.people),
-        label: Text('Mijozlar')),
-    NavigationRailDestination(
-        icon: Icon(Icons.room_service_outlined),
-        selectedIcon: Icon(Icons.room_service),
-        label: Text('Affitsiantlar')),
-    NavigationRailDestination(
-        icon: Icon(Icons.menu_book_outlined),
-        selectedIcon: Icon(Icons.menu_book),
-        label: Text('Kutubxona')),
-    NavigationRailDestination(
-        icon: Icon(Icons.map_outlined),
-        selectedIcon: Icon(Icons.map),
-        label: Text('OnDexMap')),
-  ];
-
+  Widget _page(int i) => switch (i) {
+        0 => const RestaurantsSection(),
+        1 => const StatsPage(),
+        2 => const CustomersPage(),
+        // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
+        3 => const CouriersPage(onlyPlatform: true),
+        4 => const SettingsPage(),
+        // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
+        // ChustApp bazasiga ham, API'siga ham tegmaydi.
+        _ => const OndexMapPage(),
+      };
   Future<void> _logout() async {
     // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
     // sessiya uchun qayta ulanishga urinib, har safar 401 olardi.
@@ -159,88 +183,174 @@ class _AdminShellState extends State<AdminShell> {
     return Scaffold(
       body: Row(
         children: [
-          // 10 ta bo'lim past ekranda (1366x768 noutbuk) sig'masligi mumkin —
-          // navigatsiya o'zi aylantiriladi, sahifa esa kesilmaydi.
-          LayoutBuilder(
-            builder: (context, box) => SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: box.maxHeight),
-                child: IntrinsicHeight(
-                  child: NavigationRail(
-                    selectedIndex: _index,
-                    onDestinationSelected: (i) {
-                      setState(() => _index = i);
-                      Analytics.instance.screen(_pageNames[i]);
-                    },
-                    labelType: NavigationRailLabelType.all,
-                    leading: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Icon(Icons.admin_panel_settings, size: 32),
-                    ),
-                    trailing: Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // ┌─ HUQUQIY HAVOLALAR OLIB TASHLANDI ──────────┐
-                              // Oferta va maxfiylik siyosati MIJOZGA kerak —
-                              // u xizmatdan foydalanish shartlarini qabul
-                              // qiladi. Superadmin esa platformaning egasi:
-                              // u hujjatlarni o'zi yozadi va panelda ularga
-                              // havola bosishning ma'nosi yo'q edi.
-                              //
-                              // Mijoz ilovasidagi havolalar TEGILMADI.
-                              // └──────────────────────────────────────────────┘
-                              IconButton(
-                                tooltip: 'Chiqish',
-                                icon: const Icon(Icons.logout),
-                                onPressed: _logout,
-                              ),
-                              // Qaysi build ishlayotgani — har reliz +1
-                              // (`scripts/version.ps1`).
-                              const SizedBox(height: 6),
-                              Text(
-                                appVersionLabel,
-                                key: const ValueKey('admin-app-version'),
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ],
-                          ),
-                        ),
+          _SideBar(
+            selected: _index,
+            unread: unread,
+            onSelect: _select,
+            onLogout: _logout,
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            // IndexedStack: barcha ochilgan bo'limlarning holati saqlanadi;
+            // ochilmaganlari qurilmaydi (`_visited`).
+            child: IndexedStack(
+              index: _index,
+              children: [
+                for (var i = 0; i < _navAll.length; i++)
+                  _visited.contains(i) ? _page(i) : const SizedBox.shrink(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chap navigatsiya: yuqorida asosiy bo'limlar, pastda "OnDexMap", eng
+/// pastda chiqish tugmasi va build versiyasi.
+class _SideBar extends StatelessWidget {
+  const _SideBar({
+    required this.selected,
+    required this.unread,
+    required this.onSelect,
+    required this.onLogout,
+  });
+
+  final int selected;
+  final int unread;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 88,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Icon(Icons.admin_panel_settings, size: 32),
+            ),
+            // Asosiy bo'limlar. Past ekranda (1366x768 noutbuk) sig'masa
+            // shu qism aylantiriladi — chiqish tugmasi va OnDexMap doim ko'rinadi.
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _navTop.length; i++)
+                      _NavItem(
+                        key: ValueKey(_navTop[i].key),
+                        spec: _navTop[i],
+                        selected: selected == i,
+                        // Restoranlardan kelgan o'qilmagan chat xabarlari.
+                        badge: i == 0 ? unread : 0,
+                        onTap: () => onSelect(i),
                       ),
-                    ),
-                    // Tartib `_pages` bilan AYNAN bir xil bo'lishi shart —
-                    // ikkalasi uchun bitta `_index` ishlatiladi.
-                    destinations: [
-                      ..._baseDestinations,
-                      NavigationRailDestination(
-                          icon: Badge(
-                            isLabelVisible: unread > 0,
-                            label: Text('$unread'),
-                            child: const Icon(Icons.forum_outlined),
-                          ),
-                          selectedIcon: Badge(
-                            isLabelVisible: unread > 0,
-                            label: Text('$unread'),
-                            child: const Icon(Icons.forum),
-                          ),
-                          label: const Text('Chat')),
-                      const NavigationRailDestination(
-                          icon: Icon(Icons.settings_outlined),
-                          selectedIcon: Icon(Icons.settings),
-                          label: Text('Sozlamalar')),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
+            for (var j = 0; j < _navBottom.length; j++)
+              _NavItem(
+                key: ValueKey(_navBottom[j].key),
+                spec: _navBottom[j],
+                selected: selected == _navTop.length + j,
+                onTap: () => onSelect(_navTop.length + j),
+              ),            const SizedBox(height: 12),
+            // ┌─ HUQUQIY HAVOLALAR OLIB TASHLANDI ──────────┐
+            // Oferta va maxfiylik siyosati MIJOZGA kerak —
+            // u xizmatdan foydalanish shartlarini qabul
+            // qiladi. Superadmin esa platformaning egasi:
+            // u hujjatlarni o'zi yozadi va panelda ularga
+            // havola bosishning ma'nosi yo'q edi.
+            //
+            // Mijoz ilovasidagi havolalar TEGILMADI.
+            // └──────────────────────────────────────────────┘
+            IconButton(
+              tooltip: 'Chiqish',
+              icon: const Icon(Icons.logout),
+              onPressed: onLogout,
+            ),
+            // Qaysi build ishlayotgani — har reliz +1
+            // (`scripts/version.ps1`).
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                appVersionLabel,
+                key: const ValueKey('admin-app-version'),
+                style: theme.textTheme.labelSmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    super.key,
+    required this.spec,
+    required this.selected,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final _NavSpec spec;
+  final bool selected;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final iconWidget = Icon(selected ? spec.selectedIcon : spec.icon,
+        color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: spec.label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: selected ? scheme.secondaryContainer : null,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: Badge(
+                  isLabelVisible: badge > 0,
+                  label: Text('$badge'),
+                  child: iconWidget,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                spec.label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ),
-          const VerticalDivider(width: 1),
-          Expanded(child: _pages[_index]),
-        ],
+        ),
       ),
     );
   }

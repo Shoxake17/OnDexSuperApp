@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:ondex_support/ondex_support.dart' show SupportThread;
 
 import 'api.dart';
 import 'live.dart';
@@ -86,3 +87,23 @@ class AdminSupportInbox extends ChangeNotifier {
 }
 
 final supportInbox = AdminSupportInbox();
+
+/// Restoran id -> o'qilmagan chat xabarlari soni (faqat o'qilmagani bor
+/// restoranlar). Restoranlar kartalaridagi va restoran modulidagi rozetka
+/// uchun. Xato chaqiruvchiga o'tadi: rozetka ixtiyoriy ma'lumot, shuning
+/// uchun chaqiruvchi uni yutib yuboradi.
+Future<Map<String, int>> fetchUnreadByRestaurant() async {
+  final res = await api.supportThreads();
+  final raw = res['items'];
+  final out = <String, int>{};
+  if (raw is! List) return out;
+  for (final item in raw) {
+    if (item is! Map) continue;
+    final t = SupportThread.tryParse(item);
+    final r = item['restaurant'];
+    final id = r is Map ? r['id'] : null;
+    if (t == null || id is! String || id.isEmpty || t.unread <= 0) continue;
+    out[id] = t.unread;
+  }
+  return out;
+}

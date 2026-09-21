@@ -5,7 +5,15 @@ import '../live.dart';
 import '../widgets/delete_account_action.dart';
 
 class CouriersPage extends StatefulWidget {
-  const CouriersPage({super.key});
+  /// [restaurantId] berilsa — restoran moduli ichidagi ko'rinish: faqat shu
+  /// restoranning O'Z yetkazib beruvchilari (`restaurant_id` mos keladi).
+  ///
+  /// [onlyPlatform] — "OnDex kuryerlari": restoranga BOG'LANMAGAN (platformaning
+  /// o'z) kuryerlari. Restoranlarning o'z kuryerlari o'z modulida ko'rinadi.
+  const CouriersPage({super.key, this.restaurantId, this.onlyPlatform = false});
+
+  final String? restaurantId;
+  final bool onlyPlatform;
 
   @override
   State<CouriersPage> createState() => _CouriersPageState();
@@ -43,7 +51,18 @@ class _CouriersPageState extends State<CouriersPage> {
 
   Future<void> _load() async {
     try {
-      final l = await api.couriers();
+      var l = await api.couriers();
+      final rid = widget.restaurantId;
+      if (rid != null && rid.isNotEmpty) {
+        // Ro'yxat server tomonda cheklanmagan (hamma kuryer keladi), shuning
+        // uchun mijozda ajratish to'liq — hech kim tushib qolmaydi.
+        l = l.where((c) => c is Map && c['restaurant_id'] == rid).toList();
+      } else if (widget.onlyPlatform) {
+        l = l
+            .where((c) =>
+                c is Map && ((c['restaurant_id'] as String?) ?? '').isEmpty)
+            .toList();
+      }
       // Xatosi ro'yxatni yiqitmaydi — faqat PostHog tugmasi uchun.
       final acc = await api.accountsByEntity('courier')
           .catchError((_) => <String, ({String userId, String phone, String name})>{});
@@ -173,7 +192,7 @@ class _CouriersPageState extends State<CouriersPage> {
         children: [
           Row(
             children: [
-              Text('Kuryerlar',
+              Text(widget.onlyPlatform ? 'OnDex kuryerlari' : 'Kuryerlar',
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(width: 12),
               if (pending > 0)
@@ -187,15 +206,21 @@ class _CouriersPageState extends State<CouriersPage> {
           ),
           const SizedBox(height: 8),
           Text(
-              'OnDex kuryerlari hozircha to\'xtatilgan: yetkazib beruvchilarni restoranlar o\'zi qo\'shadi '
-              '("Xodimlar" bo\'limi) va ularning kirishi o\'sha yerda boshqariladi. Bu yerdan akkauntni o\'chirish mumkin.',
+              (widget.restaurantId ?? '').isNotEmpty
+                  ? 'Bu restoranning o\'z yetkazib beruvchilari. Ularning kirishi restoran '
+                      '"Xodimlar" bo\'limida boshqariladi. Bu yerdan akkauntni o\'chirish mumkin.'
+                  : 'OnDex kuryerlari hozircha to\'xtatilgan: yetkazib beruvchilarni restoranlar o\'zi qo\'shadi '
+                      '("Xodimlar" bo\'limi) va ularning kirishi o\'sha yerda boshqariladi. Bu yerdan akkauntni o\'chirish mumkin.',
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 16),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _list.isEmpty
-                    ? const Center(child: Text('Hozircha kuryer yo\'q'))
+                    ? Center(
+                        child: Text((widget.restaurantId ?? '').isNotEmpty
+                            ? 'Bu restoranda hozircha kuryer yo\'q'
+                            : 'Hozircha kuryer yo\'q'))
                     : SingleChildScrollView(
                         child: SizedBox(
                           width: double.infinity,

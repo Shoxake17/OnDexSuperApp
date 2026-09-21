@@ -13,7 +13,12 @@ import '../support_inbox.dart';
 /// hodisalar `restaurant_id` bo'yicha ajratiladi, begona restoran xabari
 /// ochiq suhbatga tushmaydi.
 class SupportChatPage extends StatefulWidget {
-  const SupportChatPage({super.key, this.inbox, this.imagePicker, this.imageProvider});
+  const SupportChatPage({super.key, this.restaurant, this.inbox, this.imagePicker, this.imageProvider});
+
+  /// Berilsa — restoran moduli ichidagi ko'rinish: suhbatlar ro'yxati va
+  /// "Yangi suhbat" YO'Q, faqat shu restoran bilan yozishma ochiladi.
+  /// Kerakli kalitlar: `id`, `name`, `address`, `logo_url` (`GET /restaurants`).
+  final Map<String, dynamic>? restaurant;
 
   /// Testlar uchun; berilmasa panelning yagona nusxasi.
   final AdminSupportInbox? inbox;
@@ -103,20 +108,47 @@ class _SupportChatPageState extends State<SupportChatPage> {
   StreamSubscription<bool>? _connSub;
   Timer? _timer;
 
+  /// Restoran modulida bitta suhbat: ro'yxat yuklanmaydi.
+  bool get _scoped => _initialThread != null;
+
+  AdminThread? get _initialThread {
+    final r = widget.restaurant;
+    final id = r?['id'];
+    if (r == null || id is! String || id.isEmpty) return null;
+    String str(Object? v) => v is String ? v : '';
+    return AdminThread(
+      thread: SupportThread(restaurantId: id),
+      restaurantId: id,
+      name: str(r['name']).isEmpty ? id : str(r['name']),
+      address: str(r['address']),
+      logoUrl: str(r['logo_url']),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    scheduleMicrotask(() {
-      if (mounted) _loadThreads();
-    });
+    final first = _initialThread;
+    if (first != null) {
+      _selected = first;
+      _conv = _makeConversation(first.restaurantId);
+      _loading = false;
+      scheduleMicrotask(() {
+        if (mounted) _conv?.load();
+      });
+    } else {
+      scheduleMicrotask(() {
+        if (mounted) _loadThreads();
+      });
+    }
     _eventSub = _inbox.events.listen(_onEvent);
     _connSub = _inbox.connection.listen((connected) {
       if (!connected) return;
-      _loadThreads();
+      if (!_scoped) _loadThreads();
       _conv?.catchUp();
     });
     _timer = Timer.periodic(const Duration(seconds: 60), (_) {
-      _loadThreads();
+      if (!_scoped) _loadThreads();
       _conv?.catchUp();
     });
   }
@@ -156,6 +188,9 @@ class _SupportChatPageState extends State<SupportChatPage> {
 
   void _onEvent(Map<String, dynamic> e) {
     _conv?.handleEvent(e);
+    // Restoran modulida ro'yxat yo'q — begona restoran hodisasi bilan
+    // ishimiz yo'q (ochiq suhbatga tushmaydi, yuqorida `handleEvent` filtri).
+    if (_scoped) return;
     final rid = e['restaurant_id'];
     final t = SupportThread.tryParse(e['thread']);
     if (rid is! String || t == null) return;
@@ -175,20 +210,21 @@ class _SupportChatPageState extends State<SupportChatPage> {
     });
   }
 
+  SupportConversation _makeConversation(String rid) => SupportConversation(
+        viewer: kSideAdmin,
+        restaurantId: rid,
+        fetch: ({int? before, int? after, int limit = 50}) =>
+            api.supportMessages(rid, before: before, after: after, limit: limit),
+        sendMessage: (body, clientId) => api.sendSupportMessage(rid, body, clientId),
+        sendImage: (body, clientId, bytes, filename) => api.sendSupportImage(rid, body, clientId, bytes, filename),
+        markRead: (upTo) => api.markSupportRead(rid, upTo),
+      )..addListener(_onConversation);
+
   void _select(AdminThread t) {
     if (_selected?.restaurantId == t.restaurantId && _conv != null) return;
     _conv?.removeListener(_onConversation);
     _conv?.dispose();
-    final rid = t.restaurantId;
-    final conv = SupportConversation(
-      viewer: kSideAdmin,
-      restaurantId: rid,
-      fetch: ({int? before, int? after, int limit = 50}) =>
-          api.supportMessages(rid, before: before, after: after, limit: limit),
-      sendMessage: (body, clientId) => api.sendSupportMessage(rid, body, clientId),
-      sendImage: (body, clientId, bytes, filename) => api.sendSupportImage(rid, body, clientId, bytes, filename),
-      markRead: (upTo) => api.markSupportRead(rid, upTo),
-    )..addListener(_onConversation);
+    final conv = _makeConversation(t.restaurantId);
     setState(() {
       _selected = t;
       _conv = conv;
@@ -228,9 +264,66 @@ class _SupportChatPageState extends State<SupportChatPage> {
     _select(existing.isEmpty ? picked : existing.first);
   }
 
+  /// Restoran moduli ichidagi Chat: faqat shu restoran bilan yozishma
+  /// (ro'yxat va "Yangi suhbat" yo'q).
+  Widget _buildScoped(ThemeData theme) {
+    final sel = _selected;
+    final conv = _conv;
+    final unread = conv?.thread?.unread ?? 0;
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Chat', style: theme.textTheme.headlineMedium),
+              const SizedBox(width: 12),
+              if (unread > 0)
+                Chip(
+                  key: const ValueKey('admin-support-unread'),
+                  label: Text('$unread ta o\'qilmagan'),
+                  backgroundColor: theme.colorScheme.errorContainer,
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Yangilash',
+                onPressed: () => conv?.catchUp(),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Shu restoran bilan yozishma. Javobingiz restoran panelidagi "Chat markazi" ga darhol yetadi.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: LayoutBuilder(builder: (context, box) {
+              if (sel == null || conv == null) return _emptyPane(theme);
+              final showInfo = box.maxWidth >= 900;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _chatPane(theme, sel, conv)),
+                  if (showInfo) ...[
+                    const SizedBox(width: 16),
+                    SizedBox(width: 300, child: _infoPane(theme, sel, conv)),
+                  ],
+                ],
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (_scoped) return _buildScoped(theme);
     final unreadTotal = _threads.fold<int>(0, (n, t) => n + t.thread.unread);
     return Padding(
       padding: const EdgeInsets.all(24),

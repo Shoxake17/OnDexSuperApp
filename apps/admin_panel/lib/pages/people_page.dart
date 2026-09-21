@@ -33,17 +33,39 @@ class CustomersPage extends StatelessWidget {
 }
 
 class WaitersPage extends StatelessWidget {
-  const WaitersPage({super.key});
+  /// [restaurantId] berilsa — restoran moduli ichidagi ko'rinish: faqat shu
+  /// restoranning affitsiantlari va "Restoran" ustuni yo'q.
+  const WaitersPage({super.key, this.restaurantId});
+
+  final String? restaurantId;
+
+  bool get _scoped => (restaurantId ?? '').isNotEmpty;
+
+  /// Server hamma affitsiantni qaytaradi (cheklovsiz), shuning uchun
+  /// mijozda ajratish to'liq: hech kim tushib qolmaydi.
+  Future<Map<String, dynamic>> _load() async {
+    final d = await api.waiters();
+    if (!_scoped) return d;
+    final items = (d['items'] as List<dynamic>? ?? [])
+        .where((e) => e is Map && e['restaurant_id'] == restaurantId)
+        .toList();
+    return {...d, 'count': items.length, 'items': items};
+  }
 
   @override
   Widget build(BuildContext context) => _PeopleView(
+        // Restoran o'zgarsa ro'yxat qayta yuklanadi (holat eskisidan
+        // meros qolmaydi).
+        key: ValueKey('waiters-${restaurantId ?? 'all'}'),
         title: 'Affitsiantlar',
-        emptyText: 'Hozircha affitsiant yo\'q',
+        emptyText: _scoped
+            ? 'Bu restoranda hozircha affitsiant yo\'q'
+            : 'Hozircha affitsiant yo\'q',
         hint: 'Affitsiant akkauntini restoran o\'z panelidan yaratadi. '
             'U panelga shu telefon raqami orqali (Telegram kodi bilan) '
             'kiradi.',
-        showRestaurant: true,
-        load: api.waiters,
+        showRestaurant: !_scoped,
+        load: _load,
       );
 }
 
@@ -82,6 +104,7 @@ String _formatDate(String? iso) {
 
 class _PeopleView extends StatefulWidget {
   const _PeopleView({
+    super.key,
     required this.title,
     required this.emptyText,
     required this.hint,

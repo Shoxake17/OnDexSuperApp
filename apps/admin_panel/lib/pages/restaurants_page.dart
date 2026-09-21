@@ -4,10 +4,21 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../support_inbox.dart';
 import '../widgets/map_picker.dart';
 
+/// "Restoran" bo'limining bosh ekrani: restoranlar cover rasmli kartalar
+/// ro'yxati. Kartani bossangiz [onOpen] chaqiriladi va o'sha restoranning
+/// ALOHIDA moduli ochiladi (`restaurant_module.dart`).
+///
+/// Restoranni yaratish, tahrirlash, ochiq/yopiq qilish va o'chirish shu
+/// yerda qoladi — modul ichiga ko'chirilmagan: ular restoranga emas,
+/// platformaga tegishli amallar.
 class RestaurantsPage extends StatefulWidget {
-  const RestaurantsPage({super.key});
+  const RestaurantsPage({super.key, required this.onOpen});
+
+  /// Karta bosilganda: restoranning to'liq yozuvi (`GET /restaurants`).
+  final void Function(Map<String, dynamic> restaurant) onOpen;
 
   @override
   State<RestaurantsPage> createState() => _RestaurantsPageState();
@@ -16,6 +27,11 @@ class RestaurantsPage extends StatefulWidget {
 class _RestaurantsPageState extends State<RestaurantsPage> {
   List<dynamic> _list = [];
   bool _loading = true;
+  String _query = '';
+
+  /// Restoran id -> o'qilmagan chat xabarlari soni (kartadagi rozetka).
+  /// Xatosi ro'yxatni yiqitmaydi: rozetka shunchaki chiqmaydi.
+  Map<String, int> _unread = {};
 
   /// Restoran -> uning akkaunt ma'lumotlari (PostHog userID + telefon
   /// raqam + mas'ul shaxs ismi). Jadvalning Telefon ustuni va PostHog
@@ -33,9 +49,27 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
   void initState() {
     super.initState();
     _load();
+    // Yangi chat xabari kelsa rozetka yangilanadi (umumiy son o'zgarganda).
+    supportInbox.addListener(_loadUnread);
+  }
+
+  @override
+  void dispose() {
+    supportInbox.removeListener(_loadUnread);
+    super.dispose();
+  }
+
+  Future<void> _loadUnread() async {
+    try {
+      final map = await fetchUnreadByRestaurant();
+      if (mounted) setState(() => _unread = map);
+    } catch (_) {
+      // Rozetka — qo'shimcha ma'lumot; ro'yxatni to'xtatmaydi.
+    }
   }
 
   Future<void> _load() async {
+    _loadUnread();
     try {
       final l = await api.restaurants();
       Map<String, ({String userId, String phone, String name})> acc = {};
@@ -330,8 +364,19 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     }
   }
 
+  List<Map<String, dynamic>> get _visible {
+    final q = _query.trim().toLowerCase();
+    final all = _list.whereType<Map>().map((e) => Map<String, dynamic>.from(e));
+    if (q.isEmpty) return all.toList();
+    return all
+        .where((r) =>
+            '${r['name'] ?? ''} ${r['address'] ?? ''}'.toLowerCase().contains(q))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final visible = _visible;
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showCreateDialog,
@@ -347,13 +392,32 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
               children: [
                 Text('Restoranlar',
                     style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(width: 12),
+                if (_list.isNotEmpty) Chip(label: Text('Jami: ${_list.length}')),
                 const Spacer(),
+                SizedBox(
+                  width: 280,
+                  child: TextField(
+                    key: const ValueKey('restaurants-search'),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Nomi yoki manzili bo\'yicha qidirish',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
                 IconButton(
-                    onPressed: _load, icon: const Icon(Icons.refresh)),
+                    tooltip: 'Yangilash',
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh)),
               ],
             ),
             const SizedBox(height: 8),
             Text(
+                'Restoranni tanlang — uning buyurtmalari, kuryerlari, '
+                'affitsiantlari, kutubxonasi va chati alohida ochiladi. '
                 'Restoranlar o\'zi ro\'yxatdan o\'tmaydi — akkauntni shu yerdan yaratasiz.',
                 style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 16),
@@ -362,76 +426,36 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : _list.isEmpty
                       ? const Center(child: Text('Hozircha restoran yo\'q'))
-                      // ┌─ JADVAL BUTUN QATORNI EGALLASIN ──────────┐
-                      // Ilgari jadval gorizontal skroll ichida
-                      // to'g'ridan-to'g'ri turardi va shu sababli
-                      // MAZMUNI qadar kenglik olardi — keng oynada u
-                      // o'rtada tugab, o'ng tomonda katta bo'sh joy
-                      // qolardi.
-                      //
-                      // `ConstrainedBox(minWidth: maxWidth)` eng kam
-                      // enni oyna kengligiga tenglashtiradi: jadval
-                      // butun qatorni egallaydi. Gorizontal skroll
-                      // SAQLANADI — tor oynada ustunlar siqilib
-                      // ketmasligi uchun u baribir kerak.
-                      // └────────────────────────────────────────────┘
-                      : LayoutBuilder(
-                          builder: (context, box) => SingleChildScrollView(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: ConstrainedBox(
-                                constraints:
-                                    BoxConstraints(minWidth: box.maxWidth),
-                                child: DataTable(
-                              columns: const [
-                                DataColumn(label: Text('№')),
-                                DataColumn(label: Text('Logo')),
-                                DataColumn(label: Text('Nomi')),
-                                DataColumn(label: Text('Telefon')),
-                                DataColumn(label: Text('Manzil')),
-                                DataColumn(label: Text('Holat')),
-                                DataColumn(label: Text('Amal')),
-                              ],
-                              rows: [
-                                for (var i = 0; i < _list.length; i++)
-                                  DataRow(cells: [
-                                    DataCell(Text('${i + 1}')),
-                                    DataCell(_LogoThumb(
-                                        url: (_list[i] as Map<String, dynamic>)['logo_url'] as String? ?? '')),
-                                    DataCell(Text((_list[i] as Map<String, dynamic>)['name'] ?? '')),
-                                    DataCell(_phoneCell(_list[i] as Map<String, dynamic>)),
-                                    DataCell(Text((_list[i] as Map<String, dynamic>)['address'] ?? '')),
-                                    DataCell(Switch(
-                                      value: (_list[i] as Map<String, dynamic>)['open'] == true,
-                                      onChanged: (v) => _toggleOpen(_list[i] as Map<String, dynamic>, v),
-                                    )),
-                                    DataCell(Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _posthogButton(_list[i] as Map<String, dynamic>),
-                                        IconButton(
-                                          tooltip: 'Tahrirlash',
-                                          icon: const Icon(
-                                              Icons.edit_outlined),
-                                          onPressed: () =>
-                                              _showEditDialog(_list[i] as Map<String, dynamic>),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Restoranni o\'chirish',
-                                          icon: const Icon(
-                                              Icons.delete_outline,
-                                              color: Colors.red),
-                                          onPressed: () => _confirmDelete(_list[i] as Map<String, dynamic>),
-                                        ),
-                                      ],
-                                    )),
-                                  ]),
-                                  ],
-                                ),
+                      : visible.isEmpty
+                          ? const Center(child: Text('Topilmadi'))
+                          : GridView.builder(
+                              // Pastda "Restoran qo'shish" tugmasi oxirgi
+                              // qatorni yopib qo'ymasligi uchun joy.
+                              padding: const EdgeInsets.only(bottom: 88),
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 360,
+                                mainAxisExtent: 320,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
                               ),
+                              itemCount: visible.length,
+                              itemBuilder: (context, i) {
+                                final r = visible[i];
+                                final id = '${r['id'] ?? ''}';
+                                return _RestaurantCard(
+                                  key: ValueKey('restaurant-card-$id'),
+                                  restaurant: r,
+                                  contact: _phoneCell(r),
+                                  unread: _unread[id] ?? 0,
+                                  onOpen: () => widget.onOpen(r),
+                                  onToggleOpen: (v) => _toggleOpen(r, v),
+                                  onEdit: () => _showEditDialog(r),
+                                  onDelete: () => _confirmDelete(r),
+                                  posthog: _posthogButton(r),
+                                );
+                              },
                             ),
-                          ),
-                        ),
             ),
           ],
         ),
@@ -440,35 +464,247 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
   }
 }
 
-class _LogoThumb extends StatelessWidget {
-  final String url;
-  const _LogoThumb({required this.url});
+/// Restoran kartasi: cover rasm, logo, nom, manzil, holat. Kartaning
+/// yuqori qismi bosilsa restoran moduli ochiladi; pastdagi tugmalar
+/// (ochiq/yopiq, tahrirlash, o'chirish) alohida — tasodifan modulga
+/// kirib ketmaydi.
+class _RestaurantCard extends StatelessWidget {
+  const _RestaurantCard({
+    super.key,
+    required this.restaurant,
+    required this.contact,
+    required this.unread,
+    required this.onOpen,
+    required this.onToggleOpen,
+    required this.onEdit,
+    required this.onDelete,
+    required this.posthog,
+  });
+
+  final Map<String, dynamic> restaurant;
+  /// Akkaunt telefoni va mas'ul shaxs (yoki nima uchun yo'qligi izohi).
+  final Widget contact;
+  final int unread;
+  final VoidCallback onOpen;
+  final ValueChanged<bool> onToggleOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final Widget posthog;
+
+  static const _coverHeight = 140.0;
+  static const _logoSize = 56.0;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: url.isEmpty
-            ? Container(
-                color: Colors.grey.shade200,
-                child:
-                    const Icon(Icons.storefront, color: Colors.grey, size: 20),
-              )
-            : Image.network(
-                imageUrl(url),
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: Colors.grey.shade200,
-                  child: const Icon(Icons.storefront,
-                      color: Colors.grey, size: 20),
-                ),
+    final theme = Theme.of(context);
+    final name = '${restaurant['name'] ?? ''}';
+    final address = '${restaurant['address'] ?? ''}';
+    final cover = '${restaurant['cover_url'] ?? ''}';
+    final logo = '${restaurant['logo_url'] ?? ''}';
+    // Ko'rsatish uchun serverning `open_now` hisobi (qoida yagona joyda);
+    // u kelmasa qo'lda tugma (`open`) ga tushamiz.
+    final isOpen = (restaurant['open_now'] ?? restaurant['open']) == true;
+
+    Widget coverFallback() => Container(
+          color: theme.colorScheme.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: Icon(Icons.storefront_outlined,
+              size: 48, color: theme.colorScheme.onSurfaceVariant),
+        );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: InkWell(
+              key: ValueKey('restaurant-open-${restaurant['id']}'),
+              onTap: onOpen,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: _coverHeight + _logoSize / 2,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          height: _coverHeight,
+                          child: cover.isEmpty
+                              ? coverFallback()
+                              : Image.network(
+                                  imageUrl(cover),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => coverFallback(),
+                                ),
+                        ),
+                        Positioned(
+                          left: 12,
+                          top: 12,
+                          child: _Pill(
+                            text: isOpen ? 'Ochiq' : 'Yopiq',
+                            color: isOpen
+                                ? Colors.green.shade600
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+                        if (unread > 0)
+                          Positioned(
+                            right: 12,
+                            top: 12,
+                            child: Tooltip(
+                              message: 'O\'qilmagan chat xabarlari',
+                              child: _Pill(
+                                key: ValueKey(
+                                    'restaurant-unread-${restaurant['id']}'),
+                                text: '$unread',
+                                icon: Icons.forum,
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          left: 14,
+                          top: _coverHeight - _logoSize / 2,
+                          child: Container(
+                            width: _logoSize,
+                            height: _logoSize,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: theme.colorScheme.surface, width: 3),
+                            ),
+                            child: ClipOval(
+                              child: logo.isEmpty
+                                  ? Container(
+                                      color: theme.colorScheme.primaryContainer,
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        name.trim().isEmpty
+                                            ? '?'
+                                            : name.trim().characters.first
+                                                .toUpperCase(),
+                                        style: TextStyle(
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w700,
+                                            color: theme
+                                                .colorScheme.onPrimaryContainer),
+                                      ),
+                                    )
+                                  : Image.network(
+                                      imageUrl(logo),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color:
+                                            theme.colorScheme.primaryContainer,
+                                        child: const Icon(Icons.storefront),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text(
+                          address,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 4),
+                        contact,
+                      ],
+                    ),
+                  ),
+                ],
               ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 4, 4),
+            child: Row(
+              children: [
+                Tooltip(
+                  message: 'Qo\'lda ochiq/yopiq (restoran o\'zi ham boshqaradi)',
+                  child: Switch(
+                    key: ValueKey('restaurant-switch-${restaurant['id']}'),
+                    value: restaurant['open'] == true,
+                    onChanged: onToggleOpen,
+                  ),
+                ),
+                const Spacer(),
+                posthog,
+                IconButton(
+                  tooltip: 'Tahrirlash',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: onEdit,
+                ),
+                IconButton(
+                  tooltip: 'Restoranni o\'chirish',
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({super.key, required this.text, required this.color, this.icon});
+
+  final String text;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: Colors.white),
+              const SizedBox(width: 4),
+            ],
+            Text(text,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
 }
 
 /// Restoranni tahrirlash oynasi: nomi, manzili/joylashuvi (xarita orqali),

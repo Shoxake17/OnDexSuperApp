@@ -23,11 +23,21 @@ const baseUrl = apiBaseUrl;
 class AdminApi extends ApiClient {
   AdminApi() : super(baseUrl: apiBaseUrl);
 
-  Future<Map<String, dynamic>> stats() async =>
-      Map<String, dynamic>.from(await send('GET', '/admin/stats'));
+  /// Umumiy statistika. [period]: `today`, `7d`, `30d`, `all` (server
+  /// noma'lum qiymatni 30 kunga tushiradi).
+  Future<Map<String, dynamic>> stats({String period = '30d'}) async =>
+      Map<String, dynamic>.from(await send(
+          'GET', '/admin/stats?period=${Uri.encodeQueryComponent(period)}'));
 
-  Future<List<dynamic>> orders() async =>
-      (await send('GET', '/admin/orders')) as List<dynamic>? ?? [];
+  /// Buyurtmalar. [restaurantId] berilsa faqat shu restoranniki — filtrni
+  /// SERVER qiladi (umumiy oxirgi 100 tadan mijozda ajratish kam faol
+  /// restoran uchun bo'sh ro'yxat berardi).
+  Future<List<dynamic>> orders({String? restaurantId}) async {
+    final q = (restaurantId == null || restaurantId.isEmpty)
+        ? ''
+        : '?restaurant_id=${Uri.encodeQueryComponent(restaurantId)}';
+    return (await send('GET', '/admin/orders$q')) as List<dynamic>? ?? [];
+  }
 
   Future<List<dynamic>> couriers() async =>
       (await send('GET', '/admin/couriers')) as List<dynamic>? ?? [];
