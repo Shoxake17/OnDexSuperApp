@@ -78,7 +78,8 @@ const _aliasKinds = <String, String>{
 const _chust = LatLng(41.0004, 71.2394);
 
 /// O'zbekiston chegarasi (kamera undan chiqmaydi).
-final _uzBounds = LatLngBounds(const LatLng(37.0, 55.5), const LatLng(45.8, 73.5));
+final _uzBounds =
+    LatLngBounds(const LatLng(37.0, 55.5), const LatLng(45.8, 73.5));
 
 /// Nomlar shu zoomdan boshlab ko'rinadi.
 const _labelZoom = 15.0;
@@ -123,7 +124,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
   /// Eskirgan javob yangisini bosib ketmasin (tez qatlam almashtirilganda).
   int _epoch = 0;
 
-  GeomKind get _drawKind => _layer == 'mahalla' ? GeomKind.polygon : GeomKind.line;
+  GeomKind get _drawKind =>
+      _layer == 'mahalla' ? GeomKind.polygon : GeomKind.line;
   _Feat? get _selected {
     for (final f in _feats) {
       if (f.f.id == _selectedId) return f;
@@ -209,7 +211,10 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
       _fitPending = true;
       return;
     }
-    final shapes = [for (final f in _feats) if (f.shape != null) f.shape!];
+    final shapes = [
+      for (final f in _feats)
+        if (f.shape != null) f.shape!
+    ];
     if (shapes.isEmpty) return;
     _fitted = true;
     _fitShapes(shapes);
@@ -267,7 +272,9 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
   }
 
   void _select(String id) {
-    final f = _feats.cast<_Feat?>().firstWhere((e) => e!.f.id == id, orElse: () => null);
+    final f = _feats
+        .cast<_Feat?>()
+        .firstWhere((e) => e!.f.id == id, orElse: () => null);
     if (f == null) return;
     setState(() {
       _drawing = false;
@@ -277,7 +284,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
       _name.text = f.f.name;
       _source = _sources.containsKey(f.f.source) ? f.f.source : 'survey';
       if (_layer == 'street') {
-        _streetKind = _streetKinds.containsKey(f.f.streetKind) ? f.f.streetKind : 'kocha';
+        _streetKind =
+            _streetKinds.containsKey(f.f.streetKind) ? f.f.streetKind : 'kocha';
       }
       _alias.clear();
       _msg = null;
@@ -350,7 +358,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
       if (s == null || !shapeHit(s, ll, tol)) continue;
       // Bir nechtasi mos kelsa — eng kichigi (chiziq ustun): u tepada ko'rinadi.
       final b = s.bounds;
-      final area = s.kind == GeomKind.line ? 0.0 : (b[2] - b[0]) * (b[3] - b[1]);
+      final area =
+          s.kind == GeomKind.line ? 0.0 : (b[2] - b[0]) * (b[3] - b[1]);
       if (area < bestArea) {
         best = f;
         bestArea = area;
@@ -367,7 +376,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
       _say('Nom kiritilmagan', error: true);
       return;
     }
-    final geometry = _drawn != null ? toGeoJson(_drawKind, _drawn!) : _selected?.f.geometry;
+    final geometry =
+        _drawn != null ? toGeoJson(_drawKind, _drawn!) : _selected?.f.geometry;
     if (geometry == null || geometry.isEmpty) {
       _say('Geometriya yo\'q — avval xaritada chizing', error: true);
       return;
@@ -405,9 +415,12 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('O\'chirish'),
-        content: Text('«${sel.f.name}» butunlay o\'chirilsinmi? Buni qaytarib bo\'lmaydi.'),
+        content: Text(
+            '«${sel.f.name}» butunlay o\'chirilsinmi? Buni qaytarib bo\'lmaydi.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Bekor')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Bekor')),
           FilledButton(
             key: const ValueKey('editor-delete-confirm'),
             onPressed: () => Navigator.pop(ctx, true),
@@ -440,7 +453,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
     if (alias.isEmpty || id == null) return;
     setState(() => _busy = true);
     try {
-      await widget.api.addAlias(streetId: id, alias: alias, kind: _aliasKind, source: _source);
+      await widget.api.addAlias(
+          streetId: id, alias: alias, kind: _aliasKind, source: _source);
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -480,7 +494,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
   @override
   Widget build(BuildContext context) {
     if (_loadError != null) {
-      return OndexMapProblem(error: _loadError!, onRetry: _loadAll);
+      return OndexMapProblem(
+          error: _loadError!, onRetry: _loadAll, remote: widget.api.remote);
     }
     return Row(
       children: [
@@ -505,7 +520,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Ma\'lumot kiritish', style: tt.titleMedium)),
+              Expanded(
+                  child: Text('Ma\'lumot kiritish', style: tt.titleMedium)),
               Chip(
                 key: const ValueKey('editor-count'),
                 label: Text(_loading ? '…' : '${_feats.length} ta'),
@@ -529,7 +545,9 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
             key: const ValueKey('editor-draw'),
             onPressed: _busy ? null : _startDraw,
             icon: const Icon(Icons.edit_location_alt_outlined),
-            label: Text(_drawn != null || sel != null ? 'Qayta chizish' : 'Xaritada chizish'),
+            label: Text(_drawn != null || sel != null
+                ? 'Qayta chizish'
+                : 'Xaritada chizish'),
           ),
           const SizedBox(height: 8),
           Text(
@@ -558,7 +576,10 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
               ),
               child: Text(
                 _msg!,
-                style: TextStyle(color: _msgError ? cs.onErrorContainer : cs.onPrimaryContainer),
+                style: TextStyle(
+                    color: _msgError
+                        ? cs.onErrorContainer
+                        : cs.onPrimaryContainer),
               ),
             ),
           ],
@@ -570,7 +591,9 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           Text('Mavjud yozuvlar', style: tt.labelLarge),
           const SizedBox(height: 8),
           if (_loading && _feats.isEmpty)
-            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+            const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()))
           else if (_feats.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -601,8 +624,10 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
         key: ValueKey('editor-item-${f.f.id}'),
         dense: true,
         title: Text(f.f.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: f.shape == null ? const Text('geometriya yo\'q / yaroqsiz') : null,
-        trailing: Text(f.f.source, style: Theme.of(context).textTheme.labelSmall),
+        subtitle:
+            f.shape == null ? const Text('geometriya yo\'q / yaroqsiz') : null,
+        trailing:
+            Text(f.f.source, style: Theme.of(context).textTheme.labelSmall),
         onTap: _busy ? null : () => _select(f.f.id),
       ),
     );
@@ -620,7 +645,9 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           maxLength: 200,
           decoration: InputDecoration(
             labelText: 'Nomi',
-            hintText: _layer == 'mahalla' ? 'masalan: Chorsu mahallasi' : 'masalan: Navoiy ko\'chasi',
+            hintText: _layer == 'mahalla'
+                ? 'masalan: Chorsu mahallasi'
+                : 'masalan: Navoiy ko\'chasi',
             border: const OutlineInputBorder(),
             counterText: '',
           ),
@@ -631,11 +658,15 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
             key: const ValueKey('editor-kind'),
             initialValue: _streetKind,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Turi', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+                labelText: 'Turi', border: OutlineInputBorder()),
             items: [
-              for (final e in _streetKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+              for (final e in _streetKinds.entries)
+                DropdownMenuItem(value: e.key, child: Text(e.value)),
             ],
-            onChanged: _busy ? null : (v) => setState(() => _streetKind = v ?? _streetKind),
+            onChanged: _busy
+                ? null
+                : (v) => setState(() => _streetKind = v ?? _streetKind),
           ),
         ],
         const SizedBox(height: 12),
@@ -643,11 +674,14 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           key: const ValueKey('editor-source'),
           initialValue: _source,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Manba (provenans)', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+              labelText: 'Manba (provenans)', border: OutlineInputBorder()),
           items: [
-            for (final e in _sources.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+            for (final e in _sources.entries)
+              DropdownMenuItem(value: e.key, child: Text(e.value)),
           ],
-          onChanged: _busy ? null : (v) => setState(() => _source = v ?? _source),
+          onChanged:
+              _busy ? null : (v) => setState(() => _source = v ?? _source),
         ),
         const SizedBox(height: 6),
         Text(
@@ -679,7 +713,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
                 child: OutlinedButton(
                   key: const ValueKey('editor-delete'),
                   onPressed: _busy ? null : _delete,
-                  style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error),
                   child: const Text('O\'chirish'),
                 ),
               ),
@@ -694,7 +729,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Muqobil nom qo\'shish', style: Theme.of(context).textTheme.labelLarge),
+        Text('Muqobil nom qo\'shish',
+            style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
         TextField(
           key: const ValueKey('editor-alias'),
@@ -714,9 +750,12 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           isExpanded: true,
           decoration: const InputDecoration(border: OutlineInputBorder()),
           items: [
-            for (final e in _aliasKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+            for (final e in _aliasKinds.entries)
+              DropdownMenuItem(value: e.key, child: Text(e.value)),
           ],
-          onChanged: _busy ? null : (v) => setState(() => _aliasKind = v ?? _aliasKind),
+          onChanged: _busy
+              ? null
+              : (v) => setState(() => _aliasKind = v ?? _aliasKind),
         ),
         const SizedBox(height: 8),
         OutlinedButton(
@@ -753,7 +792,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           ));
           if (on && !dim) {
             // Tanlanganda oq chegara ostidan asosiy rang chiziq — ikki rangli ajratish.
-            lines.add(Polyline(points: [...ring, ring.first], color: base, strokeWidth: 2));
+            lines.add(Polyline(
+                points: [...ring, ring.first], color: base, strokeWidth: 2));
           }
         }
       } else {
@@ -778,7 +818,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
           borderStrokeWidth: 3,
         ));
       } else {
-        lines.add(Polyline(points: draft, color: Colors.deepOrange, strokeWidth: 5));
+        lines.add(
+            Polyline(points: draft, color: Colors.deepOrange, strokeWidth: 5));
       }
     }
 
@@ -802,7 +843,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
         ));
       }
       for (var i = 0; i < _points.length; i++) {
-        final first = i == 0 && _drawKind == GeomKind.polygon && _points.length >= 3;
+        final first =
+            i == 0 && _drawKind == GeomKind.polygon && _points.length >= 3;
         circles.add(CircleMarker(
           point: _points[i],
           radius: first ? 8 : 5,
@@ -903,10 +945,13 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
                       const TextSourceAttribution('© OnDex map'),
                       if (satellite)
                         TextSourceAttribution(
-                          _cfg.satelliteAttribution.isEmpty ? 'Powered by Esri' : _cfg.satelliteAttribution,
+                          _cfg.satelliteAttribution.isEmpty
+                              ? 'Powered by Esri'
+                              : _cfg.satelliteAttribution,
                         )
                       else
-                        const TextSourceAttribution('© OpenStreetMap contributors'),
+                        const TextSourceAttribution(
+                            '© OpenStreetMap contributors'),
                     ],
                   ),
                 ],
@@ -923,11 +968,14 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
                       key: const ValueKey('editor-basemap'),
                       showSelectedIcon: false,
                       segments: const [
-                        ButtonSegment(value: _Basemap.streets, label: Text('Xarita')),
-                        ButtonSegment(value: _Basemap.satellite, label: Text('Sputnik')),
+                        ButtonSegment(
+                            value: _Basemap.streets, label: Text('Xarita')),
+                        ButtonSegment(
+                            value: _Basemap.satellite, label: Text('Sputnik')),
                       ],
                       selected: {_base},
-                      onSelectionChanged: (s) => setState(() => _base = s.first),
+                      onSelectionChanged: (s) =>
+                          setState(() => _base = s.first),
                     ),
                   ),
                 ),
@@ -957,7 +1005,12 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
                   ),
                 ),
               ),
-              if (_drawing) Positioned(bottom: 40, left: 0, right: 0, child: Center(child: _drawBar(context))),
+              if (_drawing)
+                Positioned(
+                    bottom: 40,
+                    left: 0,
+                    right: 0,
+                    child: Center(child: _drawBar(context))),
             ],
           ),
         ),
@@ -980,7 +1033,8 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${_points.length} nuqta', key: const ValueKey('editor-points')),
+            Text('${_points.length} nuqta',
+                key: const ValueKey('editor-points')),
             const SizedBox(width: 12),
             TextButton.icon(
               key: const ValueKey('editor-undo'),
@@ -990,7 +1044,10 @@ class _OndexMapEditorState extends State<OndexMapEditor> {
             ),
             FilledButton.icon(
               key: const ValueKey('editor-finish'),
-              onPressed: _points.length >= (_drawKind == GeomKind.polygon ? 3 : 2) ? _finishDraw : null,
+              onPressed:
+                  _points.length >= (_drawKind == GeomKind.polygon ? 3 : 2)
+                      ? _finishDraw
+                      : null,
               icon: const Icon(Icons.check),
               label: const Text('Yakunlash'),
             ),

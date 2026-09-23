@@ -22,28 +22,36 @@ import '../ondexmap/moderation_view.dart';
 ///
 /// ┌─ ARXITEKTURA ──────────────────────────────────────────────────────┐
 /// OnDexMap — ALOHIDA loyiha (`F:\OnDexMap`), alohida repo, alohida
-/// baza (PostGIS 5433) va alohida server. ChustApp uning bazasiga ham,
-/// kodiga ham TEGMAYDI: ikkala qism faqat OnDexMap'ning LOKAL admin
-/// serveri (`cmd/admin`) bilan gaplashadi.
+/// baza va alohida server. ChustApp uning bazasiga ham, kodiga ham
+/// TEGMAYDI: ikkala qism faqat OnDexMap'ning admin serveri bilan
+/// gaplashadi — LOKAL (`cmd/admin`, dev) yoki MASOFAVIY
+/// (`cmd/adminserver`, production, Caddy ortida) — pastga qarang.
 ///
 /// Bu bo'lim ChustApp'ning boshqa bo'limlariga hech qanday ta'sir
 /// qilmaydi: ChustApp API'siga so'rov yubormaydi, mavjud holatga tegmaydi
 /// va `adminLive` soketidan foydalanmaydi.
 /// └────────────────────────────────────────────────────────────────────┘
 ///
-/// ┌─ NEGA 127.0.0.1 ───────────────────────────────────────────────────┐
-/// OnDexMap'ning admin serveri YOZISH huquqiga ega, shuning uchun u
-/// ataylab faqat lokal manzilga bog'langan va internetga chiqarilmaydi.
-/// Ommaviy OnDexMap API'si (`:8090`) esa faqat O'QIY oladi (karantinga
-/// yozishdan tashqari — u ham tasdiqlanmaguncha xaritaga tushmaydi).
+/// ┌─ IKKI REJIM — MANZILGA QARAB AVTOMATIK ────────────────────────────┐
+/// `ModerationApi.remote` = manzil loopback `http` EMAS degani:
 ///
-/// Manzilni o'zgartirish kerak bo'lsa (masalan boshqa port):
+///   • DEV (standart): `http://127.0.0.1:8091` — `cmd/admin` shu
+///     kompyuterda ishlaydi, token lokal sessiya faylidan (kirish oynasi
+///     YO'Q). OnDexMap'ning YOZISH huquqiga ega serveri ataylab faqat
+///     shu manzilga bog'langan va internetga chiqarilmaydi.
+///   • PRODUCTION (`config/prod.json`): `https://maps.ondex.uz/admin` —
+///     Caddy orqali `cmd/adminserver`ga (VPS), token qo'lda kiritilgan
+///     `ONDEXMAP_ADMIN_KEY` (yon panelning kalit tugmasi — pastga qarang;
+///     birinchi urinishda xato chiqsa ham shu tugma ko'rinadi).
+///
+/// Manzilni qo'lda o'zgartirish (masalan boshqa port):
 ///     flutter run --dart-define=ONDEXMAP_ADMIN_URL=http://127.0.0.1:9000
 /// └────────────────────────────────────────────────────────────────────┘
 class OndexMapPage extends StatefulWidget {
   const OndexMapPage({super.key});
 
-  /// Muharrir manzili. Sir emas — shunchaki lokal URL.
+  /// Muharrir manzili — dev'da lokal URL, production'da
+  /// `https://maps.ondex.uz/admin` (`config/prod.json`).
   static const url = String.fromEnvironment(
     'ONDEXMAP_ADMIN_URL',
     defaultValue: 'http://127.0.0.1:8091',
@@ -60,32 +68,60 @@ class _OndexMapPageState extends State<OndexMapPage> {
   /// Kutilayotgan takliflar soni («Takliflar (3)» belgisi uchun).
   int _pending = 0;
 
+  /// Har safar oshadi: `IndexedStack` ichidagi ekranlarni MAJBURIY qayta
+  /// yaratish uchun (`key` sifatida) — muharrir/moderatsiya `initState`da
+  /// birinchi so'rovni qiladi, u YANGI kalit bilan qayta ishga tushishi
+  /// kerak, lekin `_api` obyektining o'zi (shu bilan uning `hashCode`i)
+  /// o'zgarmaydi — shuning uchun alohida hisoblagich.
+  int _apiVersion = 0;
+
+  /// Kalitni (qayta) kiritish — masofaviy rejimda, xato kutmasdan ham.
+  Future<void> _changeKey() async {
+    final saved = await showOndexMapAdminKeyDialog(context);
+    if (mounted && saved) setState(() => _apiVersion++);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SegmentedButton<int>(
-              key: const ValueKey('ondexmap-sections'),
-              showSelectedIcon: false,
-              segments: [
-                const ButtonSegment(
-                  value: 0,
-                  icon: Icon(Icons.map_outlined),
-                  label: Text('Muharrir'),
+          child: Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SegmentedButton<int>(
+                    key: const ValueKey('ondexmap-sections'),
+                    showSelectedIcon: false,
+                    segments: [
+                      const ButtonSegment(
+                        value: 0,
+                        icon: Icon(Icons.map_outlined),
+                        label: Text('Muharrir'),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        icon: const Icon(Icons.inbox_outlined),
+                        label: Text(
+                            'Takliflar${_pending > 0 ? ' ($_pending)' : ''}'),
+                      ),
+                    ],
+                    selected: {_section},
+                    onSelectionChanged: (s) =>
+                        setState(() => _section = s.first),
+                  ),
                 ),
-                ButtonSegment(
-                  value: 1,
-                  icon: const Icon(Icons.inbox_outlined),
-                  label: Text('Takliflar${_pending > 0 ? ' ($_pending)' : ''}'),
+              ),
+              if (_api.remote)
+                IconButton(
+                  key: const ValueKey('ondexmap-change-key'),
+                  tooltip: 'Admin kalitini o\'zgartirish',
+                  icon: const Icon(Icons.key_outlined),
+                  onPressed: _changeKey,
                 ),
-              ],
-              selected: {_section},
-              onSelectionChanged: (s) => setState(() => _section = s.first),
-            ),
+            ],
           ),
         ),
         // `IndexedStack`: ikkala qism ham tirik qoladi — bo'limlar
@@ -95,13 +131,16 @@ class _OndexMapPageState extends State<OndexMapPage> {
           child: kIsWeb
               ? const _WebNote()
               : IndexedStack(
+                  key: ValueKey(_apiVersion),
                   index: _section,
                   children: [
                     OndexMapEditor(api: _api),
                     OndexMapModeration(
                       api: _api,
                       onPending: (n) {
-                        if (mounted && n != _pending) setState(() => _pending = n);
+                        if (mounted && n != _pending) {
+                          setState(() => _pending = n);
+                        }
                       },
                     ),
                   ],

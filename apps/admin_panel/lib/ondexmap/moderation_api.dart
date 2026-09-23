@@ -2,9 +2,73 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+import 'package:ondex_core/ondex_core.dart';
 
 import 'ondexmap_session.dart';
+
+/// Masofaviy (production) rejimda `ONDEXMAP_ADMIN_KEY` shu yerda saqlanadi —
+/// `adminTokenStore` (ChustApp'ning o'z tokeni) bilan BIR XIL mexanizm
+/// (`flutter_secure_storage`, shifrlangan), boshqa kalit ostida.
+const ondexmapAdminKeyStore = TokenStore('ondexmap_admin_key');
+
+/// Masofaviy rejimda `ONDEXMAP_ADMIN_KEY`ni qo'lda kiritish oynasi.
+///
+/// `true` — kalit kiritildi va saqlandi (chaqiruvchi qayta urinishi kerak);
+/// `false` — bekor qilindi yoki bo'sh qoldirildi.
+Future<bool> showOndexMapAdminKeyDialog(BuildContext context) async {
+  final controller = TextEditingController();
+  final saved = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('OnDexMap admin kaliti'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Bu kalit OnDexMap production serveridagi ONDEXMAP_ADMIN_KEY '
+              'qiymati. Qurilmada shifrlangan holda saqlanadi, ekranga '
+              'boshqa joyda chiqmaydi.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('ondexmap-admin-key-field'),
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Kalit',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => Navigator.pop(ctx, true),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Bekor'),
+        ),
+        FilledButton(
+          key: const ValueKey('ondexmap-admin-key-save'),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Saqlash'),
+        ),
+      ],
+    ),
+  );
+  if (saved != true) return false;
+  final key = controller.text.trim();
+  if (key.isEmpty) return false;
+  await ondexmapAdminKeyStore.write(key);
+  return true;
+}
 
 /// OnDexMap admin serveri bilan ishlash: foydalanuvchilar yuborgan
 /// ob'ektlarni MODERATSIYA qilish.
@@ -45,13 +109,24 @@ class ModerationException implements Exception {
 class KindMeta {
   final String key;
   final String label;
+
+  /// Shakl: "point" (bitta belgi) yoki "line" (yo'l — xaritada chiziladi).
+  /// Eski server geometry bermasa — nuqta.
+  final String geometry;
   final Set<String> allowed;
 
-  const KindMeta({required this.key, required this.label, required this.allowed});
+  const KindMeta(
+      {required this.key,
+      required this.label,
+      required this.allowed,
+      this.geometry = 'point'});
+
+  bool get isLine => geometry == 'line';
 
   factory KindMeta.fromJson(Map<String, dynamic> j) => KindMeta(
         key: '${j['key']}',
         label: '${j['label']}',
+        geometry: j['geometry'] == 'line' ? 'line' : 'point',
         allowed: {
           for (final f in (j['allowed'] as List? ?? const [])) '$f',
         },
@@ -64,14 +139,17 @@ class PlacesMeta {
   final List<String> categories;
   final int maxPhotos;
 
-  const PlacesMeta({required this.kinds, required this.categories, required this.maxPhotos});
+  const PlacesMeta(
+      {required this.kinds, required this.categories, required this.maxPhotos});
 
   factory PlacesMeta.fromJson(Map<String, dynamic> j) => PlacesMeta(
         kinds: [
           for (final k in (j['kinds'] as List? ?? const []))
             KindMeta.fromJson(k as Map<String, dynamic>),
         ],
-        categories: [for (final c in (j['categories'] as List? ?? const [])) '$c'],
+        categories: [
+          for (final c in (j['categories'] as List? ?? const [])) '$c'
+        ],
         maxPhotos: (j['max_photos'] as num?)?.toInt() ?? 4,
       );
 
@@ -92,13 +170,27 @@ class PlaceRecord {
   final String category;
   final String description;
   final String phone;
+
+  /// Veb-sayt va ijtimoiy tarmoq manzili (http/https URL; server tekshiradi).
+  final String site;
+  final String social;
   final String hours;
   final String street;
   final String house;
+
+  /// Nuqta uchun o'zi; chiziq (yo'l) uchun chiziq USTIDAGI bitta nuqta.
   final double lat;
   final double lng;
   final int photos;
   final String createdAt;
+
+  /// Yo'l chizig'i (kamida 2 nuqta); nuqta ob'ektlarda BO'SH.
+  final List<LatLng> line;
+
+  /// Chiziq uzunligi, metr (nuqtada 0).
+  final double lengthM;
+
+  bool get isLine => line.length >= 2;
 
   /// Faqat takliflar uchun.
   final String hint;
@@ -112,6 +204,8 @@ class PlaceRecord {
     required this.category,
     required this.description,
     required this.phone,
+    this.site = '',
+    this.social = '',
     required this.hours,
     required this.street,
     required this.house,
@@ -119,6 +213,8 @@ class PlaceRecord {
     required this.lng,
     required this.photos,
     required this.createdAt,
+    this.line = const [],
+    this.lengthM = 0,
     this.hint = '',
     this.reviewNote = '',
   });
@@ -133,6 +229,8 @@ class PlaceRecord {
       category: s('category'),
       description: s('description'),
       phone: s('phone'),
+      site: s('site'),
+      social: s('social'),
       hours: s('hours'),
       street: s('street'),
       house: s('house'),
@@ -140,6 +238,8 @@ class PlaceRecord {
       lng: (j['lng'] as num?)?.toDouble() ?? 0,
       photos: (j['photos'] as num?)?.toInt() ?? 0,
       createdAt: s('created_at'),
+      line: _parseLine(j['geometry']),
+      lengthM: (j['length_m'] as num?)?.toDouble() ?? 0,
       hint: s('hint'),
       reviewNote: s('review_note'),
     );
@@ -151,6 +251,21 @@ class PlaceRecord {
     final addr = [street, house].where((e) => e.isNotEmpty).join(' ');
     return addr.isNotEmpty ? addr : kindLabel;
   }
+}
+
+/// GeoJSON LineString -> nuqtalar ([lng, lat] tartibi). Boshqa shakl yoki buzuq
+/// ma'lumot — bo'sh ro'yxat (nuqta ob'ekt): ekran yiqilmaydi.
+List<LatLng> _parseLine(Object? geometry) {
+  if (geometry is! Map || geometry['type'] != 'LineString') return const [];
+  final coords = geometry['coordinates'];
+  if (coords is! List) return const [];
+  final out = <LatLng>[];
+  for (final c in coords) {
+    if (c is List && c.length >= 2 && c[0] is num && c[1] is num) {
+      out.add(LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()));
+    }
+  }
+  return out;
 }
 
 class SubmissionList {
@@ -176,20 +291,33 @@ class EditorConfig {
     this.satelliteMaxZoom = 18,
   });
 
-  factory EditorConfig.fromJson(Map<String, dynamic> j) {
+  /// [trustedOrigin] — masofaviy rejimda (`ModerationApi.remote`) admin
+  /// serveri ISHONGAN yagona manba (`scheme://host[:port]`, `defaultUrl`dan
+  /// hisoblangan). Lokal rejimda `null` — o'rniga loopback tekshiruvi.
+  factory EditorConfig.fromJson(Map<String, dynamic> j,
+      {String? trustedOrigin}) {
     final url = j['satellite_url'];
     return EditorConfig(
-      // Manzil faqat loopback `http` bo'lsa qabul qilinadi: token bu manzilga
-      // ketmaydi, lekin baribir tashqi serverga tile so'rovi yuborilmasin.
-      satelliteUrl: url is String && url.isNotEmpty && _isLoopbackTemplate(url) ? url : null,
+      // Ikki holat: lokal — faqat loopback `http`; masofaviy — FAQAT
+      // `trustedOrigin` bilan bir xil manba (biz allaqachon admin kalitini
+      // shu yerga yuborganmiz, boshqa hech qanday tashqi serverga emas).
+      satelliteUrl:
+          url is String && url.isNotEmpty && _isTrusted(url, trustedOrigin)
+              ? url
+              : null,
       satelliteAttribution: (j['satellite_attribution'] as String?) ?? '',
       satelliteMaxZoom: int.tryParse('${j['satellite_maxzoom'] ?? ''}') ?? 18,
     );
   }
 
   /// `{z}/{x}/{y}` shabloni `Uri.parse` ni buzadi — o'rinbosarlarni almashtirib tekshiramiz.
-  static bool _isLoopbackTemplate(String t) =>
-      isLoopbackHttp(t.replaceAll('{z}', '0').replaceAll('{x}', '0').replaceAll('{y}', '0'));
+  static bool _isTrusted(String t, String? trustedOrigin) {
+    final probe =
+        t.replaceAll('{z}', '0').replaceAll('{x}', '0').replaceAll('{y}', '0');
+    if (trustedOrigin == null) return isLoopbackHttp(probe);
+    final uri = Uri.tryParse(probe);
+    return uri != null && uri.scheme == 'https' && uri.origin == trustedOrigin;
+  }
 }
 
 /// Xaritadagi saqlangan obyekt (mahalla yoki ko'cha).
@@ -232,17 +360,47 @@ class MapFeature {
 const editorLayers = ['mahalla', 'street'];
 
 /// Taklif/ob'ekt identifikatori — UUID. Yo'lga qo'yishdan oldin tekshiriladi.
-final _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+final _uuid =
+    RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
 class ModerationApi {
-  /// Sessiya faylida manzil bo'lmasa ishlatiladigan manzil (loopback bo'lishi SHART).
+  /// Sessiya faylida manzil bo'lmasa ishlatiladigan manzil.
+  ///
+  /// ┌─ IKKI REJIM, BITTA MAYDONDAN ANIQLANADI ───────────────────────────┐
+  /// • Loopback `http` (standart, `http://127.0.0.1:8091`) — LOKAL: token
+  ///   sessiya faylidan (`cmd/admin`), faqat shu manzil ruxsat etiladi.
+  /// • Boshqa manzil (production build, `--dart-define-from-file=
+  ///   config/prod.json` orqali `https://maps.ondex.uz/admin`) — MASOFAVIY:
+  ///   token qo'lda kiritilgan `ONDEXMAP_ADMIN_KEY`
+  ///   (`ondexmapAdminKeyStore`), lokal sessiya faylI UMUMAN o'qilmaydi.
+  /// └────────────────────────────────────────────────────────────────────┘
   final String defaultUrl;
   final OndexMapSession? Function() _session;
 
-  ModerationApi({required this.defaultUrl, OndexMapSession? Function()? session})
-      : _session = session ?? readOndexMapSession;
+  /// Masofaviy rejimda kalitni O'QISH — standart `ondexmapAdminKeyStore`,
+  /// testlarda soxta qiymat bilan almashtiriladi (`_session` bilan BIR XIL
+  /// in'ektsiya naqshi — haqiqiy shifrlangan ombor testda kerak emas).
+  final Future<String?> Function() _remoteKey;
+
+  /// `true` — masofaviy (production) rejim.
+  final bool remote;
+
+  ModerationApi({
+    required this.defaultUrl,
+    OndexMapSession? Function()? session,
+    Future<String?> Function()? remoteKey,
+  })  : _session = session ?? readOndexMapSession,
+        _remoteKey = remoteKey ?? ondexmapAdminKeyStore.read,
+        remote = !isLoopbackHttp(defaultUrl);
 
   static const _timeout = Duration(seconds: 20);
+
+  /// Masofaviy rejimda kalit oldin kiritilganmi (UI shu bo'yicha
+  /// boshlang'ich holatni ko'rsatishi mumkin — ixtiyoriy).
+  Future<bool> hasStoredAdminKey() async {
+    final v = await _remoteKey();
+    return v != null && v.isNotEmpty;
+  }
 
   Future<PlacesMeta> meta() async =>
       PlacesMeta.fromJson(await _json('GET', '/api/places/meta'));
@@ -302,8 +460,10 @@ class ModerationApi {
 
   // ── Muharrir: mahalla va ko'chalar ────────────────────────────────
 
-  Future<EditorConfig> editorConfig() async =>
-      EditorConfig.fromJson(await _json('GET', '/api/config'));
+  Future<EditorConfig> editorConfig() async => EditorConfig.fromJson(
+        await _json('GET', '/api/config'),
+        trustedOrigin: remote ? Uri.parse(defaultUrl).origin : null,
+      );
 
   /// Qatlamdagi barcha obyektlar (`mahalla` | `street`).
   Future<List<MapFeature>> features(String layer) async {
@@ -384,26 +544,44 @@ class ModerationApi {
     Map<String, String>? query,
     Object? body,
   }) async {
-    final s = _session();
-    if (s == null) {
-      throw const ModerationException(
-        'Lokal sessiya topilmadi. OnDexMap admin serveri ishga tushirilganmi?\n'
-        'cd F:\\OnDexMap\ngo run ./cmd/admin',
-      );
+    final String base;
+    final String key;
+
+    if (remote) {
+      // ── Masofaviy: token qo'lda kiritilgan, sessiya fayli YO'Q ────────
+      base = defaultUrl;
+      final stored = await _remoteKey();
+      if (stored == null || stored.isEmpty) {
+        throw const ModerationException(
+          'OnDexMap admin kaliti kiritilmagan.',
+          unauthorized: true,
+        );
+      }
+      key = stored;
+    } else {
+      // ── Lokal: token sessiya faylidan, manzil HAR SAFAR tekshiriladi ──
+      final s = _session();
+      if (s == null) {
+        throw const ModerationException(
+          'Lokal sessiya topilmadi. OnDexMap admin serveri ishga tushirilganmi?\n'
+          'cd F:\\OnDexMap\ngo run ./cmd/admin',
+        );
+      }
+      final b = s.url ?? defaultUrl;
+      if (!isLoopbackHttp(b)) {
+        throw const ModerationException(
+          'OnDexMap manzili ishonchsiz (faqat 127.0.0.1 ruxsat etiladi)',
+        );
+      }
+      base = b;
+      key = s.token;
     }
 
-    // Manzil HAR SAFAR tekshiriladi (token shu manzilga ketadi).
-    final base = s.url ?? defaultUrl;
-    if (!isLoopbackHttp(base)) {
-      throw const ModerationException(
-        'OnDexMap manzili ishonchsiz (faqat 127.0.0.1 ruxsat etiladi)',
-      );
-    }
     final uri = Uri.parse(base).replace(path: path, queryParameters: query);
 
     final client = http.Client();
     try {
-      final headers = {'X-API-Key': s.token, 'Accept': 'application/json'};
+      final headers = {'X-API-Key': key, 'Accept': 'application/json'};
       final http.Response res;
       if (method == 'GET') {
         res = await client.get(uri, headers: headers).timeout(_timeout);
@@ -424,25 +602,30 @@ class ModerationApi {
     } on ModerationException {
       rethrow;
     } on TimeoutException {
-      throw const ModerationException('OnDexMap serveri vaqtida javob bermadi.');
-    } on http.ClientException {
       throw const ModerationException(
-        'OnDexMap serveriga ulanib bo\'lmadi. Uni ishga tushiring:\n'
-        'cd F:\\OnDexMap\ngo run ./cmd/admin',
-      );
+          'OnDexMap serveri vaqtida javob bermadi.');
+    } on http.ClientException {
+      throw ModerationException(remote
+          ? 'OnDexMap admin serveriga ulanib bo\'lmadi. Internet aloqasini tekshiring.'
+          : 'OnDexMap serveriga ulanib bo\'lmadi. Uni ishga tushiring:\n'
+              'cd F:\\OnDexMap\ngo run ./cmd/admin');
     } finally {
       client.close();
     }
   }
 
-  static String _errorText(http.Response res) {
+  String _errorText(http.Response res) {
     if (res.statusCode == 401) {
-      return 'Sessiya qabul qilinmadi (OnDexMap serveri qayta ishga tushgan '
-          'bo\'lishi mumkin). Sahifani yangilang.';
+      return remote
+          ? 'ONDEXMAP_ADMIN_KEY noto\'g\'ri yoki eskirgan. Kalitni qayta kiriting.'
+          : 'Sessiya qabul qilinmadi (OnDexMap serveri qayta ishga tushgan '
+              'bo\'lishi mumkin). Sahifani yangilang.';
     }
     try {
       final v = jsonDecode(utf8.decode(res.bodyBytes));
-      if (v is Map && v['error'] is String && (v['error'] as String).isNotEmpty) {
+      if (v is Map &&
+          v['error'] is String &&
+          (v['error'] as String).isNotEmpty) {
         return v['error'] as String;
       }
     } catch (_) {

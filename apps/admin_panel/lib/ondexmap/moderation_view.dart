@@ -2,9 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' show TileProvider;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'moderation_api.dart';
+import 'road_preview.dart';
 
 /// Foydalanuvchilar yuborgan ob'ektlarni MODERATSIYA qilish (OnDexMap bo'limi).
 ///
@@ -26,7 +28,11 @@ class OndexMapModeration extends StatefulWidget {
   /// Kutilayotgan takliflar soni o'zgarganda (bo'lim sarlavhasidagi belgi uchun).
   final ValueChanged<int>? onPending;
 
-  const OndexMapModeration({super.key, required this.api, this.onPending});
+  /// Yo'l ko'rinishi xaritasining tile manbai — faqat testlar uchun.
+  final TileProvider? tileProvider;
+
+  const OndexMapModeration(
+      {super.key, required this.api, this.onPending, this.tileProvider});
 
   @override
   State<OndexMapModeration> createState() => _OndexMapModerationState();
@@ -117,7 +123,8 @@ class _OndexMapModerationState extends State<OndexMapModeration> {
                   ButtonSegment(
                     value: _Tab.pending,
                     icon: const Icon(Icons.inbox_outlined),
-                    label: Text('Kutilmoqda${_pending > 0 ? ' ($_pending)' : ''}'),
+                    label:
+                        Text('Kutilmoqda${_pending > 0 ? ' ($_pending)' : ''}'),
                   ),
                   const ButtonSegment(
                     value: _Tab.places,
@@ -153,7 +160,8 @@ class _OndexMapModerationState extends State<OndexMapModeration> {
     }
     final err = _error;
     if (err != null) {
-      return OndexMapProblem(error: err, onRetry: _load);
+      return OndexMapProblem(
+          error: err, onRetry: _load, remote: widget.api.remote);
     }
     if (_items.isEmpty) {
       return Center(
@@ -185,6 +193,7 @@ class _OndexMapModerationState extends State<OndexMapModeration> {
                   record: r,
                   meta: meta,
                   api: widget.api,
+                  tileProvider: widget.tileProvider,
                   onChanged: _load,
                 ),
               _Tab.places => _PlaceCard(
@@ -214,19 +223,30 @@ const _fieldLabel = <String, String>{
   'category': 'Turkum',
   'description': 'Tavsif',
   'phone': 'Telefon',
+  'site': 'Veb-sayt',
+  'social': 'Ijtimoiy tarmoq',
   'hours': 'Ish vaqti',
   'street': 'Ko\'cha',
   'house': 'Uy raqami',
 };
 
 /// Formada tekis panjarada chiqadigan matn maydonlari (tavsifdan tashqari).
-const _gridFields = ['name', 'phone', 'hours', 'street', 'house'];
+const _gridFields = [
+  'name',
+  'phone',
+  'site',
+  'social',
+  'hours',
+  'street',
+  'house',
+];
 
 class _PendingCard extends StatefulWidget {
   final PlaceRecord record;
   final PlacesMeta meta;
   final ModerationApi api;
   final Future<void> Function() onChanged;
+  final TileProvider? tileProvider;
 
   const _PendingCard({
     super.key,
@@ -234,6 +254,7 @@ class _PendingCard extends StatefulWidget {
     required this.meta,
     required this.api,
     required this.onChanged,
+    this.tileProvider,
   });
 
   @override
@@ -255,14 +276,21 @@ class _PendingCardState extends State<_PendingCard> {
   void initState() {
     super.initState();
     final r = widget.record;
-    _kind = widget.meta.kind(r.kind) != null
+    // Tur FAQAT o'z shakli ichida almashtiriladi: chizilgan yo'lni «shlagbaum»
+    // qilib bo'lmaydi (nuqta emas), nuqta ob'ektni «yo'l» qilib bo'lmaydi —
+    // server ham buni rad etadi.
+    final sameShape = _kindsForRecord;
+    final current = widget.meta.kind(r.kind);
+    _kind = current != null && current.isLine == r.isLine
         ? r.kind
-        : (widget.meta.kinds.isNotEmpty ? widget.meta.kinds.first.key : r.kind);
+        : (sameShape.isNotEmpty ? sameShape.first.key : r.kind);
     // Ro'yxatda yo'q turkum (eski ma'lumot) — bo'sh qoladi, moderator tanlaydi.
     _category = widget.meta.categories.contains(r.category) ? r.category : '';
     _text = {
       'name': TextEditingController(text: r.name),
       'phone': TextEditingController(text: r.phone),
+      'site': TextEditingController(text: r.site),
+      'social': TextEditingController(text: r.social),
       'hours': TextEditingController(text: r.hours),
       'street': TextEditingController(text: r.street),
       'house': TextEditingController(text: r.house),
@@ -272,7 +300,9 @@ class _PendingCardState extends State<_PendingCard> {
     _lng = TextEditingController(text: '${r.lng}');
     // Rasm sarlavha talab qiladi (token), shuning uchun `Image.network` emas:
     // baytlar API klienti orqali olinadi.
-    _photos = [for (var i = 0; i < r.photos; i++) widget.api.submissionPhoto(r.id, i)];
+    _photos = [
+      for (var i = 0; i < r.photos; i++) widget.api.submissionPhoto(r.id, i)
+    ];
     _keep = List<bool>.filled(r.photos, true);
   }
 
@@ -289,6 +319,12 @@ class _PendingCardState extends State<_PendingCard> {
 
   Set<String> get _allowed => widget.meta.kind(_kind)?.allowed ?? const {};
 
+  /// Shu taklif shakliga (yo'l yoki nuqta) mos turlar.
+  List<KindMeta> get _kindsForRecord => [
+        for (final k in widget.meta.kinds)
+          if (k.isLine == widget.record.isLine) k
+      ];
+
   void _toast(String text, {bool error = false}) {
     if (!mounted) return;
     final cs = Theme.of(context).colorScheme;
@@ -301,16 +337,26 @@ class _PendingCardState extends State<_PendingCard> {
   }
 
   Future<void> _approve() async {
-    final lat = double.tryParse(_lat.text.trim().replaceAll(',', '.'));
-    final lng = double.tryParse(_lng.text.trim().replaceAll(',', '.'));
-    if (lat == null || lng == null) {
-      _toast('Koordinata noto\'g\'ri', error: true);
-      return;
-    }
     // Faqat shu turda RUXSAT ETILGAN maydonlar yuboriladi: server tur uchun
     // ruxsat etilmagan maydonni rad etadi (ko'rinmas maydonda eski qiymat
     // qolib ketgan bo'lsa ham).
-    final edit = <String, Object>{'kind': _kind, 'lat': lat, 'lng': lng};
+    final edit = <String, Object>{'kind': _kind};
+    if (widget.record.isLine) {
+      // Yo'l: chiziq AYNAN yuborilgandek ([lng, lat] tartibida); lat/lng
+      // YUBORILMAYDI — server chiziq turida nuqtani rad etadi.
+      edit['line'] = [
+        for (final p in widget.record.line) [p.longitude, p.latitude],
+      ];
+    } else {
+      final lat = double.tryParse(_lat.text.trim().replaceAll(',', '.'));
+      final lng = double.tryParse(_lng.text.trim().replaceAll(',', '.'));
+      if (lat == null || lng == null) {
+        _toast('Koordinata noto\'g\'ri', error: true);
+        return;
+      }
+      edit['lat'] = lat;
+      edit['lng'] = lng;
+    }
     for (final f in _allowed) {
       edit[f] = f == 'category' ? _category : (_text[f]?.text ?? '');
     }
@@ -321,7 +367,8 @@ class _PendingCardState extends State<_PendingCard> {
 
     setState(() => _busy = true);
     try {
-      await widget.api.approve(id: widget.record.id, edit: edit, keepPhotos: keep);
+      await widget.api
+          .approve(id: widget.record.id, edit: edit, keepPhotos: keep);
       _toast('Tasdiqlandi — endi hammaga ko\'rinadi');
       await widget.onChanged();
     } on ModerationException catch (e) {
@@ -360,9 +407,11 @@ class _PendingCardState extends State<_PendingCard> {
               spacing: 12,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(r.kindLabel, style: Theme.of(context).textTheme.titleMedium),
+                Text(r.kindLabel,
+                    style: Theme.of(context).textTheme.titleMedium),
                 Text(_fmtTime(r.createdAt), style: _muted(context)),
-                Text('yuboruvchi: ${r.hint.substring(0, math.min(8, r.hint.length))}',
+                Text(
+                    'yuboruvchi: ${r.hint.substring(0, math.min(8, r.hint.length))}',
                     style: _muted(context)),
               ],
             ),
@@ -373,7 +422,8 @@ class _PendingCardState extends State<_PendingCard> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _photos.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 10),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 10),
                   itemBuilder: (_, i) => _PhotoTile(
                     future: _photos[i],
                     keep: _keep[i],
@@ -393,12 +443,15 @@ class _PendingCardState extends State<_PendingCard> {
                     key: ValueKey('mod-kind-$id'),
                     initialValue: _kind,
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Turi', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                        labelText: 'Turi', border: OutlineInputBorder()),
                     items: [
-                      for (final k in widget.meta.kinds)
+                      for (final k in _kindsForRecord)
                         DropdownMenuItem(value: k.key, child: Text(k.label)),
                     ],
-                    onChanged: _busy ? null : (v) => setState(() => _kind = v ?? _kind),
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(() => _kind = v ?? _kind),
                   ),
                 ),
                 if (allowed.contains('category'))
@@ -408,13 +461,16 @@ class _PendingCardState extends State<_PendingCard> {
                       key: ValueKey('mod-category-$id'),
                       initialValue: _category,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Turkum', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                          labelText: 'Turkum', border: OutlineInputBorder()),
                       items: [
                         const DropdownMenuItem(value: '', child: Text('—')),
                         for (final c in widget.meta.categories)
                           DropdownMenuItem(value: c, child: Text(c)),
                       ],
-                      onChanged: _busy ? null : (v) => setState(() => _category = v ?? ''),
+                      onChanged: _busy
+                          ? null
+                          : (v) => setState(() => _category = v ?? ''),
                     ),
                   ),
                 for (final f in _gridFields)
@@ -442,40 +498,72 @@ class _PendingCardState extends State<_PendingCard> {
                 minLines: 2,
                 maxLines: 6,
                 maxLength: 1000,
-                decoration: const InputDecoration(labelText: 'Tavsif', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Tavsif', border: OutlineInputBorder()),
               ),
             ],
             const SizedBox(height: 4),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 160,
-                  child: TextField(
-                    key: ValueKey('mod-lat-$id'),
-                    controller: _lat,
-                    enabled: !_busy,
-                    decoration: const InputDecoration(labelText: 'Kenglik (lat)', border: OutlineInputBorder()),
+            if (r.isLine) ...[
+              // Yo'l: foydalanuvchi xaritada chizgan chiziq — moderator uni ko'radi.
+              // (Geometriya bu yerda tahrirlanmaydi: noto'g'ri chizilgan yo'l rad etiladi.)
+              const SizedBox(height: 8),
+              RoadPreview(
+                key: ValueKey('mod-road-$id'),
+                points: r.line,
+                tileProvider: widget.tileProvider,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Yo\'l: ${r.line.length} nuqta · ${_fmtLength(r.lengthM)}',
+                    key: ValueKey('mod-road-info-$id'),
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                ),
-                SizedBox(
-                  width: 160,
-                  child: TextField(
-                    key: ValueKey('mod-lng-$id'),
-                    controller: _lng,
-                    enabled: !_busy,
-                    decoration: const InputDecoration(labelText: 'Uzunlik (lng)', border: OutlineInputBorder()),
+                  TextButton.icon(
+                    onPressed: () => _openMap(r.lat, r.lng),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('OpenStreetMap\'da ko\'rish'),
                   ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _openMap(r.lat, r.lng),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('OpenStreetMap\'da ko\'rish'),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ] else
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 160,
+                    child: TextField(
+                      key: ValueKey('mod-lat-$id'),
+                      controller: _lat,
+                      enabled: !_busy,
+                      decoration: const InputDecoration(
+                          labelText: 'Kenglik (lat)',
+                          border: OutlineInputBorder()),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 160,
+                    child: TextField(
+                      key: ValueKey('mod-lng-$id'),
+                      controller: _lng,
+                      enabled: !_busy,
+                      decoration: const InputDecoration(
+                          labelText: 'Uzunlik (lng)',
+                          border: OutlineInputBorder()),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _openMap(r.lat, r.lng),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('OpenStreetMap\'da ko\'rish'),
+                  ),
+                ],
+              ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 12,
@@ -524,7 +612,8 @@ class _PhotoTile extends StatelessWidget {
   final bool keep;
   final ValueChanged<bool> onKeep;
 
-  const _PhotoTile({required this.future, required this.keep, required this.onKeep});
+  const _PhotoTile(
+      {required this.future, required this.keep, required this.onKeep});
 
   @override
   Widget build(BuildContext context) {
@@ -546,15 +635,17 @@ class _PhotoTile extends StatelessWidget {
                       child: Image.memory(
                         snap.data!,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) =>
-                            const Center(child: Icon(Icons.broken_image_outlined)),
+                        errorBuilder: (context, error, stack) => const Center(
+                            child: Icon(Icons.broken_image_outlined)),
                       ),
                     );
                   }
                   if (snap.hasError) {
-                    return const Center(child: Icon(Icons.broken_image_outlined));
+                    return const Center(
+                        child: Icon(Icons.broken_image_outlined));
                   }
-                  return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                  return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2));
                 },
               ),
             ),
@@ -568,7 +659,8 @@ class _PhotoTile extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 onChanged: (v) => onKeep(v ?? true),
               ),
-              const Flexible(child: Text('Qoldirish', overflow: TextOverflow.ellipsis)),
+              const Flexible(
+                  child: Text('Qoldirish', overflow: TextOverflow.ellipsis)),
             ],
           ),
         ],
@@ -586,7 +678,11 @@ class _PlaceCard extends StatefulWidget {
   final ModerationApi api;
   final Future<void> Function() onChanged;
 
-  const _PlaceCard({super.key, required this.record, required this.api, required this.onChanged});
+  const _PlaceCard(
+      {super.key,
+      required this.record,
+      required this.api,
+      required this.onChanged});
 
   @override
   State<_PlaceCard> createState() => _PlaceCardState();
@@ -603,7 +699,9 @@ class _PlaceCardState extends State<_PlaceCard> {
         title: const Text('Xaritadan olib tashlash'),
         content: Text('«${r.title}» ob\'ekti xaritadan olib tashlansinmi?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Bekor')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Bekor')),
           FilledButton(
             key: const ValueKey('mod-delete-confirm'),
             onPressed: () => Navigator.pop(ctx, true),
@@ -639,6 +737,8 @@ class _PlaceCardState extends State<_PlaceCard> {
       r.category,
       [r.street, r.house].where((e) => e.isNotEmpty).join(' '),
       r.phone,
+      r.site,
+      r.social,
       r.hours,
     ].where((e) => e.isNotEmpty).join(' · ');
 
@@ -655,7 +755,7 @@ class _PlaceCardState extends State<_PlaceCard> {
               children: [
                 Text(r.title, style: Theme.of(context).textTheme.titleMedium),
                 Text(
-                  '${r.kindLabel} · ${_fmtTime(r.createdAt)}${r.photos > 0 ? ' · ${r.photos} rasm' : ''}',
+                  '${r.kindLabel}${r.isLine ? ' · ${_fmtLength(r.lengthM)}' : ''} · ${_fmtTime(r.createdAt)}${r.photos > 0 ? ' · ${r.photos} rasm' : ''}',
                   style: _muted(context),
                 ),
               ],
@@ -673,7 +773,8 @@ class _PlaceCardState extends State<_PlaceCard> {
                 OutlinedButton.icon(
                   key: ValueKey('mod-delete-${r.id}'),
                   onPressed: _busy ? null : _delete,
-                  style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error),
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Xaritadan olib tashlash'),
                 ),
@@ -723,10 +824,25 @@ class OndexMapProblem extends StatelessWidget {
   final ModerationException error;
   final Future<void> Function() onRetry;
 
-  const OndexMapProblem({super.key, required this.error, required this.onRetry});
+  /// Masofaviy (production) rejimdami — `ModerationApi.remote` dan.
+  /// `true` va `error.unauthorized` bo'lsa kalit kiritish tugmasi ham
+  /// ko'rsatiladi (lokal rejimda kalit fayldan keladi, kiritilmaydi).
+  final bool remote;
+
+  const OndexMapProblem(
+      {super.key,
+      required this.error,
+      required this.onRetry,
+      this.remote = false});
+
+  Future<void> _enterKey(BuildContext context) async {
+    final saved = await showOndexMapAdminKeyDialog(context);
+    if (saved) await onRetry();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final showKeyButton = remote && error.unauthorized;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -741,11 +857,25 @@ class OndexMapProblem extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Qayta urinish'),
-            ),
+            if (showKeyButton) ...[
+              FilledButton.icon(
+                key: const ValueKey('mod-enter-key'),
+                onPressed: () => _enterKey(context),
+                icon: const Icon(Icons.key),
+                label: const Text('Admin kalitini kiritish'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Qayta urinish'),
+              ),
+            ] else
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Qayta urinish'),
+              ),
           ],
         ),
       ),
@@ -759,6 +889,11 @@ TextStyle? _muted(BuildContext context) => Theme.of(context)
     ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
 
 /// ISO vaqtni mahalliy `yyyy-MM-dd HH:mm` ko'rinishiga aylantiradi.
+/// Yo'l uzunligi: 1 km dan kichigi metrda, kattasi kilometrda.
+String _fmtLength(double meters) => meters < 1000
+    ? '${meters.round()} m'
+    : '${(meters / 1000).toStringAsFixed(2)} km';
+
 String _fmtTime(String iso) {
   final d = DateTime.tryParse(iso)?.toLocal();
   if (d == null) return '';
