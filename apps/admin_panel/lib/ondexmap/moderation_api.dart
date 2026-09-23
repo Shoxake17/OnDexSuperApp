@@ -577,7 +577,22 @@ class ModerationApi {
       key = s.token;
     }
 
-    final uri = Uri.parse(base).replace(path: path, queryParameters: query);
+    // ⚠️ `Uri.replace(path: ...)` yo'lni QO'SHMAYDI — ALMASHTIRADI. Lokal
+    // rejimda `base`ning o'z yo'li yo'q (`http://127.0.0.1:8091`), shuning
+    // uchun sezilmagan; masofaviy rejimda `base` — `https://maps.ondex.uz/admin`
+    // (o'z yo'li BOR!) — shunchaki `path: path` bersak `/admin` prefiksi
+    // yo'qolib, so'rov `/admin/api/...` o'rniga `/api/...`ga ketardi va
+    // Caddy uni web serverga (404) yuborardi. Prefiksni QO'LDA qo'shamiz.
+    final baseUri = Uri.parse(base);
+    // Orqadagi "/" olib tashlanadi — `defaultUrl` qo'lda "/admin/" deb
+    // (oxirida chiziq bilan) yozilsa ham qo'sh chiziqqa yo'l qo'yilmasin.
+    final basePath = baseUri.path.endsWith('/')
+        ? baseUri.path.substring(0, baseUri.path.length - 1)
+        : baseUri.path;
+    final uri = baseUri.replace(
+      path: basePath + path,
+      queryParameters: query,
+    );
 
     final client = http.Client();
     try {

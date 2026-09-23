@@ -81,31 +81,36 @@ class _Server {
 
   http.Response handle(http.Request r) {
     requests.add(r);
+    // ⚠️ `endsWith`, `==` EMAS: masofaviy rejimda `defaultUrl` o'z yo'liga
+    // ega bo'lishi mumkin (`/admin`), so'rov haqiqatan `/admin/api/...`ga
+    // ketadi. Aniq tenglik bu holatni ushlamay, sinovni jimgina noto'g'ri
+    // "muvaffaqiyat"ga aylantirardi (aynan shu bug production'da chiqqan
+    // edi, 2026-09-23).
     final p = r.url.path;
-    if (p == '/api/places/meta') return _json(_meta);
-    if (p == '/api/submissions' && r.method == 'GET') {
+    if (p.endsWith('/api/places/meta')) return _json(_meta);
+    if (p.endsWith('/api/submissions') && r.method == 'GET') {
       final st = r.url.queryParameters['status'];
       return _json({
         'pending': pending.length,
         'submissions': st == 'rejected' ? rejected : pending
       });
     }
-    if (p == '/api/places' && r.method == 'GET') {
+    if (p.endsWith('/api/places') && r.method == 'GET') {
       return _json({'places': places});
     }
-    if (p.startsWith('/api/submissions/') && p.contains('/photos/')) {
+    if (p.contains('/api/submissions/') && p.contains('/photos/')) {
       return http.Response.bytes(_png, 200);
     }
-    if (p == '/api/submissions/approve') {
+    if (p.endsWith('/api/submissions/approve')) {
       final res = approveResponse ?? _json({'place_id': 'pl-1'});
       if (res.statusCode == 200) pending = [];
       return res;
     }
-    if (p == '/api/submissions/reject') {
+    if (p.endsWith('/api/submissions/reject')) {
       pending = [];
       return _json({'ok': true});
     }
-    if (p == '/api/places/delete') {
+    if (p.endsWith('/api/places/delete')) {
       places = [];
       return _json({'ok': true});
     }
@@ -527,6 +532,10 @@ void main() {
     expect(server.requests, isNotEmpty);
     expect(server.requests.first.headers['X-API-Key'], 'haqiqiy-kalit');
     expect(server.requests.first.url.origin, 'https://maps.example.test');
+    // `defaultUrl`ning O'Z YO'LI (`/admin`) so'rovga QO'SHILISHI SHART —
+    // almashtirilib YO'QOLMASIN (production'da aynan shu bug chiqqan edi:
+    // `Uri.replace(path: ...)` yo'lni almashtiradi, qo'shmaydi).
+    expect(server.requests.first.url.path, '/admin/api/places/meta');
   });
 
   testWidgets(
