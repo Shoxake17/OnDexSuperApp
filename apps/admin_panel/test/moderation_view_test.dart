@@ -90,8 +90,9 @@ class _Server {
         'submissions': st == 'rejected' ? rejected : pending
       });
     }
-    if (p == '/api/places' && r.method == 'GET')
+    if (p == '/api/places' && r.method == 'GET') {
       return _json({'places': places});
+    }
     if (p.startsWith('/api/submissions/') && p.contains('/photos/')) {
       return http.Response.bytes(_png, 200);
     }
