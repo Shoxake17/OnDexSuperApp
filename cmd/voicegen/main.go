@@ -111,8 +111,8 @@ func synthWithRetry(tts *voice.Gemini, text string) ([]byte, error) {
 		if err == nil {
 			return data, nil
 		}
-		if errors.Is(err, voice.ErrDailyQuota) {
-			return nil, err // qayta urinish foydasiz
+		if errors.Is(err, voice.ErrDailyQuota) || errors.Is(err, voice.ErrBlocked) {
+			return nil, err // qayta urinish foydasiz — faqat kvota yeydi
 		}
 		lastErr = err
 		// "Audio yo'q" kabi xatoda HAR urinish kunlik kvotadan (bepul tarifda 10)

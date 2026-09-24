@@ -61,6 +61,49 @@ func TestGeminiDailyQuota(t *testing.T) {
 	}
 }
 
+// Audio yo'q javobda sabab xatoga chiqadi; aniq rad etish ErrBlocked bo'ladi
+// (voicegen uni qayta urinmaydi — kvota yemaydi).
+func TestGeminiNoAudioReportsReason(t *testing.T) {
+	cases := []struct {
+		name     string
+		body     string
+		want     error
+		contains string
+	}{
+		{
+			"audio o'rniga matn",
+			`{"candidates":[{"finishReason":"OTHER","content":{"parts":[{"text":"Kechirasiz"}]}}]}`,
+			ErrNoAudio, "finishReason=OTHER",
+		},
+		{
+			"so'rov bloklandi",
+			`{"promptFeedback":{"blockReason":"SAFETY"}}`,
+			ErrBlocked, "blockReason=SAFETY",
+		},
+		{
+			"javob xavfsizlik bilan to'xtadi",
+			`{"candidates":[{"finishReason":"PROHIBITED_CONTENT"}]}`,
+			ErrBlocked, "PROHIBITED_CONTENT",
+		},
+	}
+	for _, c := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(c.body))
+		}))
+		g := NewGemini("k", "", "")
+		g.baseURL = srv.URL
+		_, err := g.Synthesize(context.Background(), "x")
+		srv.Close()
+		if !errors.Is(err, c.want) {
+			t.Errorf("%s: %v, kutilgan %v", c.name, err, c.want)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.contains) {
+			t.Errorf("%s: xatoda sabab yo'q: %v", c.name, err)
+		}
+	}
+}
+
 func TestManeuverFromGoogle(t *testing.T) {
 	for in, want := range map[string]Maneuver{
 		"turn-right": Right, "turn-left": Left, "fork-right": SlightRight, "ramp-left": SlightLeft,

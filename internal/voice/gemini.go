@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,6 +30,28 @@ var ErrRateLimited = errors.New("TTS so'rovlar chegarasiga yetildi")
 // ErrDailyQuota — KUNLIK kvota tugadi (bepul tarifda kuniga 10 so'rov).
 // Qayta urinish foydasiz: ertasi kunni kutish yoki billing kerak.
 var ErrDailyQuota = errors.New("TTS kunlik kvotasi tugadi")
+
+// ErrNoAudio — javob muvaffaqiyatli (HTTP 200), lekin ichida audio yo'q.
+// Xato matnida modelning sababi bor (`finishReason` va model audio o'rniga
+// qaytargan matn).
+//
+// ┌─ NEGA SABAB KO'RSATILADI (2026-09-22) ────────────────────────────┐
+// Avval faqat "audio yo'q" deyilardi. "Chapga buriling." va "Keskin
+// chapga buriling." bir necha kun ketma-ket shunday yiqildi, har safar
+// 3 urinish bilan kunlik 10 so'rovning ko'pini yeb — sababini esa hech
+// kim ko'rmadi.
+// └───────────────────────────────────────────────────────────────────┘
+var ErrNoAudio = errors.New("TTS javobida audio yo'q")
+
+// ErrBlocked — model iborani ATAYLAB rad etdi (xavfsizlik filtri va h.k.).
+// Qayta urinish natijani o'zgartirmaydi, faqat kvota yeydi.
+var ErrBlocked = errors.New("TTS iborani rad etdi")
+
+// blockedFinish — qayta urinish foydasiz bo'lgan `finishReason` lar.
+var blockedFinish = map[string]bool{
+	"SAFETY": true, "PROHIBITED_CONTENT": true, "BLOCKLIST": true,
+	"SPII": true, "RECITATION": true,
+}
 
 // instruction — o'qish uslubi. Egasi tinglab tanlagan namuna shu ko'rsatma
 // bilan yasalgan; o'zgartirilsa ovoz ohangi ham o'zgaradi.
@@ -111,42 +134,96 @@ func (g *Gemini) Synthesize(ctx context.Context, text string) ([]byte, error) {
 		return nil, fmt.Errorf("TTS javobi: HTTP %d", resp.StatusCode)
 	}
 
-	var out struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					InlineData *struct {
-						MimeType string `json:"mimeType"`
-						Data     string `json:"data"`
-					} `json:"inlineData"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
+	var out ttsResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("TTS javobini o'qib bo'lmadi: %w", err)
 	}
 	for _, c := range out.Candidates {
 		for _, p := range c.Content.Parts {
-			if p.InlineData == nil || p.InlineData.Data == "" {
-				continue
+			if p.InlineData != nil && p.InlineData.Data != "" {
+				return decodeWAV(p.InlineData.MimeType, p.InlineData.Data)
 			}
-			pcm, err := base64.StdEncoding.DecodeString(p.InlineData.Data)
-			if err != nil {
-				return nil, fmt.Errorf("TTS audio buzilgan: %w", err)
-			}
-			rate := 24000
-			if m := rateRe.FindStringSubmatch(p.InlineData.MimeType); m != nil {
-				if v, err := strconv.Atoi(m[1]); err == nil && v >= 8000 && v <= 48000 {
-					rate = v
-				}
-			}
-			pcm = TrimSilence(pcm, rate, 400, 120*time.Millisecond)
-			if len(pcm) == 0 {
-				return nil, errors.New("TTS bo'sh audio qaytardi")
-			}
-			return PCM16ToWAV(pcm, rate), nil
 		}
 	}
-	return nil, errors.New("TTS javobida audio yo'q")
+	return nil, out.noAudioErr()
+}
+
+// ttsResponse — `generateContent` javobining bizga kerakli qismi.
+type ttsResponse struct {
+	Candidates []struct {
+		FinishReason string `json:"finishReason"`
+		Content      struct {
+			Parts []struct {
+				Text       string `json:"text"`
+				InlineData *struct {
+					MimeType string `json:"mimeType"`
+					Data     string `json:"data"`
+				} `json:"inlineData"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
+	PromptFeedback *struct {
+		BlockReason string `json:"blockReason"`
+	} `json:"promptFeedback"`
+}
+
+// decodeWAV — base64 PCM ni WAV ga aylantiradi (oldi-ortidagi sukunat kesiladi).
+func decodeWAV(mimeType, data string) ([]byte, error) {
+	pcm, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil, fmt.Errorf("TTS audio buzilgan: %w", err)
+	}
+	rate := 24000
+	if m := rateRe.FindStringSubmatch(mimeType); m != nil {
+		if v, err := strconv.Atoi(m[1]); err == nil && v >= 8000 && v <= 48000 {
+			rate = v
+		}
+	}
+	pcm = TrimSilence(pcm, rate, 400, 120*time.Millisecond)
+	if len(pcm) == 0 {
+		return nil, errors.New("TTS bo'sh audio qaytardi")
+	}
+	return PCM16ToWAV(pcm, rate), nil
+}
+
+// noAudioErr — audio yo'q javob: model NEGA bermaganini xatoga qo'shadi.
+func (r *ttsResponse) noAudioErr() error {
+	var finish, said []string
+	base := ErrNoAudio
+	for _, c := range r.Candidates {
+		if c.FinishReason != "" {
+			finish = append(finish, c.FinishReason)
+			if blockedFinish[c.FinishReason] {
+				base = ErrBlocked
+			}
+		}
+		for _, p := range c.Content.Parts {
+			if t := strings.TrimSpace(p.Text); t != "" {
+				said = append(said, t)
+			}
+		}
+	}
+	block := ""
+	if r.PromptFeedback != nil && r.PromptFeedback.BlockReason != "" {
+		block = r.PromptFeedback.BlockReason
+		base = ErrBlocked
+	}
+	return fmt.Errorf("%w (finishReason=%s, blockReason=%s, model matni=%q)",
+		base, orDash(strings.Join(finish, ",")), orDash(block), truncate(strings.Join(said, " "), 120))
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
+// truncate — xato matnini qisqartiradi (rune bo'yicha, harf bo'linmasin).
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
