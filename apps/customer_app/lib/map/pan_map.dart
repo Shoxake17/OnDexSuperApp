@@ -1,0 +1,186 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+
+import 'map_backend.dart';
+import 'ondex_style.dart';
+
+/// MANZIL TANLASH XARITASI — ikki motor, bitta xatti-harakat.
+///
+/// Ekranning markazida qimirlamas pin turadi, foydalanuvchi xaritani
+/// suradi. Shuning uchun bu yerda marker ham, chizilgan yo'l ham kerak
+/// emas — faqat kamera: qayerdaligi va uni surish.
+///
+/// ┌─ NEGA `gm.LatLng` TASHQI TURI ─────────────────────────────────────┐
+/// Chaqiruvchi ekran (`AddressScreen`) va buyurtma modeli allaqachon
+/// `google_maps_flutter` ning `LatLng` turida yozilgan. Yangi
+/// "neytral" nuqta turini kiritish butun oqimni (model, API, kuzatuv)
+/// o'zgartirishni talab qilardi — bu production ilovada keraksiz xavf.
+///
+/// Shuning uchun tashqi shartnoma o'zgarmaydi, konvertatsiya esa FAQAT
+/// shu faylning ichida, bitta joyda bo'ladi. `google_maps_flutter`
+/// baribir paketda qoladi: flag o'chiq bo'lsa xarita o'sha paket
+/// bilan chiziladi.
+/// └────────────────────────────────────────────────────────────────────┘
+
+/// Xaritani dastur tomonidan surish.
+///
+/// Ikkala motor uchun bitta interfeys: chaqiruvchi qaysi biri
+/// ishlayotganini bilmaydi.
+abstract class PanMapController {
+  /// Kamerani berilgan nuqtaga va masshtabga olib boradi.
+  Future<void> animateTo(gm.LatLng target, double zoom);
+}
+
+class PanMap extends StatefulWidget {
+  const PanMap({
+    super.key,
+    required this.initialCenter,
+    required this.initialZoom,
+    required this.satellite,
+    required this.onCameraMove,
+    required this.onCameraIdle,
+    required this.onReady,
+  });
+
+  final gm.LatLng initialCenter;
+  final double initialZoom;
+
+  /// Sun'iy yo'ldosh ko'rinishi.
+  final bool satellite;
+
+  /// Kamera surilganda — HAR kadrda chaqiriladi.
+  final void Function(gm.LatLng center, double zoom) onCameraMove;
+
+  /// Surish to'xtaganda.
+  final VoidCallback onCameraIdle;
+
+  /// Xarita tayyor bo'lganda boshqaruvchi beriladi.
+  final void Function(PanMapController controller) onReady;
+
+  @override
+  State<PanMap> createState() => _PanMapState();
+}
+
+class _PanMapState extends State<PanMap> {
+  @override
+  Widget build(BuildContext context) =>
+      kUseOnDexMap ? _OndexPanMap(widget) : _GooglePanMap(widget);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Google Maps — HOZIRGI yo'l.
+
+   Bu qism `address_screen.dart` da nima bo'lgan bo'lsa, o'shaning
+   o'zi: bir xil parametrlar, bir xil callback'lar. Flag o'chiq
+   bo'lsa ilova aynan shu kodni ishlatadi.
+   ══════════════════════════════════════════════════════════════════════ */
+
+class _GooglePanMap extends StatefulWidget {
+  const _GooglePanMap(this.cfg);
+  final PanMap cfg;
+
+  @override
+  State<_GooglePanMap> createState() => _GooglePanMapState();
+}
+
+class _GooglePanMapState extends State<_GooglePanMap> implements PanMapController {
+  gm.GoogleMapController? _ctrl;
+
+  @override
+  Future<void> animateTo(gm.LatLng target, double zoom) async {
+    await _ctrl?.animateCamera(
+      gm.CameraUpdate.newCameraPosition(
+        gm.CameraPosition(target: target, zoom: zoom),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = widget.cfg;
+    return gm.GoogleMap(
+      initialCameraPosition: gm.CameraPosition(
+        target: cfg.initialCenter,
+        zoom: cfg.initialZoom,
+      ),
+      mapType: cfg.satellite ? gm.MapType.hybrid : gm.MapType.normal,
+      onMapCreated: (c) {
+        _ctrl = c;
+        cfg.onReady(this);
+      },
+      onCameraMove: (pos) => cfg.onCameraMove(pos.target, pos.zoom),
+      onCameraIdle: cfg.onCameraIdle,
+      zoomControlsEnabled: false,
+      myLocationButtonEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: false,
+    );
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   OnDexMap (MapLibre Native).
+
+   Uslub — `maps.ondex.uz/tiles/style.json` (vektor, PMTiles).
+   Sun'iy yo'ldosh — o'z raster manbamiz; uslub `ondex_style.dart` da
+   quriladi.
+   ══════════════════════════════════════════════════════════════════════ */
+
+class _OndexPanMap extends StatefulWidget {
+  const _OndexPanMap(this.cfg);
+  final PanMap cfg;
+
+  @override
+  State<_OndexPanMap> createState() => _OndexPanMapState();
+}
+
+class _OndexPanMapState extends State<_OndexPanMap> implements PanMapController {
+  ml.MapLibreMapController? _ctrl;
+
+  @override
+  Future<void> animateTo(gm.LatLng target, double zoom) async {
+    await _ctrl?.animateCamera(
+      ml.CameraUpdate.newCameraPosition(
+        ml.CameraPosition(target: ml.LatLng(target.latitude, target.longitude), zoom: zoom),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = widget.cfg;
+    return ml.MapLibreMap(
+      // ⚠️ `ValueKey` SHART: uslub almashganda (oddiy ↔ sun'iy yo'ldosh)
+      // MapLibre uni joyida yangilamaydi, vidjet qayta yaratilishi kerak.
+      key: ValueKey(cfg.satellite),
+      styleString: cfg.satellite ? ondexSatelliteStyle : kOndexStyleUrl,
+      initialCameraPosition: ml.CameraPosition(
+        target: ml.LatLng(cfg.initialCenter.latitude, cfg.initialCenter.longitude),
+        zoom: cfg.initialZoom,
+      ),
+      // Kamera holatini kuzatish YOQILADI: usiz `onCameraMove`
+      // chaqirilmaydi va markaz hech qachon yangilanmasdi.
+      trackCameraPosition: true,
+      onMapCreated: (c) {
+        _ctrl = c;
+        cfg.onReady(this);
+      },
+      onCameraIdle: cfg.onCameraIdle,
+      onCameraMove: (pos) =>
+          cfg.onCameraMove(gm.LatLng(pos.target.latitude, pos.target.longitude), pos.zoom),
+      compassEnabled: false,
+      // Atribut tugmasi QOLADI — xarita ma'lumotining krediti
+      // ko'rsatilishi ODbL talabi.
+      attributionButtonPosition: ml.AttributionButtonPosition.bottomLeft,
+      // MapLibre logotipi kerak emas, atribut esa yuqorida.
+      logoEnabled: false,
+      myLocationEnabled: false,
+      // Xarita 2D: manzil tanlashda qiyalik faqat adashtiradi.
+      tiltGesturesEnabled: false,
+      rotateGesturesEnabled: false,
+    );
+  }
+}

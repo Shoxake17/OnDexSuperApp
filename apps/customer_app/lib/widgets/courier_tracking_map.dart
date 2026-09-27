@@ -2,13 +2,15 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:http/http.dart' as http;
 
 import '../api.dart';
 import '../delivery_tracking.dart';
+import '../map/map_backend.dart';
+import '../map/track_map.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 
 const _ink = Color(0xFF111827);
@@ -65,24 +67,32 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
   /// Mashina shundan kam siljisa burilmaydi (GPS "titrashi" uni aylantirmasin).
   static const _minMoveForBearing = 8.0;
 
-  GoogleMapController? _ctrl;
+  TrackMapController? _ctrl;
   bool _mapsReady = false;
   bool _mapsFailed = false;
   bool _follow = true;
-  // Dastur o'zi kamerani surayotganda `onCameraMoveStarted` kuzatuvni
-  // o'chirib qo'ymasin.
-  int _programmaticMoves = 0;
 
   /// Qolgan vaqt matnini daqiqalar o'tishi bilan yangilaydi (faqat yo'lda).
   Timer? _etaTicker;
 
-  BitmapDescriptor? _iconRestaurant;
+  /// Belgilar PNG BAYTLARI sifatida saqlanadi, `BitmapDescriptor` emas:
+  /// xarita qatlami ikkala motorga ham baytni beradi va har biri uni
+  /// o'z turiga o'raydi (`track_map.dart` izohiga qarang).
+  Uint8List? _iconRestaurant;
   // Qaysi logo uchun belgi so'ralgan ('' — logosiz zaxira belgi).
   String? _iconRestaurantFor;
-  BitmapDescriptor? _iconHome;
-  BitmapDescriptor? _iconCar;
+  Uint8List? _iconHome;
+  Uint8List? _iconCar;
   bool _iconsRequested = false;
   double _dpr = 2;
+
+  /// Belgilarning dip o'lchamlari — rasm piksel kengligini hisoblash
+  /// uchun ham kerak (`sizeDip * _dpr`).
+  static const _sizeHome = 38.0;
+  static const _sizeRestaurant = 40.0;
+  static const _sizeRestaurantFallback = 34.0;
+  static const _carWidth = 22.0;
+  static const _carHeight = 48.0;
 
   LatLng? _lastCourier;
   double _bearing = 0;
@@ -171,10 +181,9 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
     if (_iconsRequested) return;
     _iconsRequested = true;
     _dpr = MediaQuery.devicePixelRatioOf(context);
-    final config = createLocalImageConfiguration(context);
     Future.wait([
-      _circleIcon(_dpr, color: kBrand, icon: Icons.home_rounded, size: 38),
-      BitmapDescriptor.asset(config, _carAsset, width: 22, height: 48),
+      _circleIcon(_dpr, color: kBrand, icon: Icons.home_rounded, size: _sizeHome),
+      _assetIcon(_carAsset, _dpr, width: _carWidth, height: _carHeight),
     ]).then((icons) {
       if (!mounted) return;
       setState(() {
@@ -195,8 +204,8 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
     if (_iconRestaurantFor == key) return;
     _iconRestaurantFor = key;
     final future = key.isEmpty
-        ? _circleIcon(_dpr, color: _ink, label: 'A')
-        : _logoIcon(key, _dpr);
+        ? _circleIcon(_dpr, color: _ink, label: 'A', size: _sizeRestaurantFallback)
+        : _logoIcon(key, _dpr, size: _sizeRestaurant);
     future.then((icon) {
       if (mounted && _iconRestaurantFor == key) setState(() => _iconRestaurant = icon);
     }).catchError((Object e) {
@@ -205,6 +214,12 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
   }
 
   Future<void> _loadMaps() async {
+    // OnDexMap'da yuklanadigan SDK yo'q — uslub xaritaning o'zi bilan
+    // keladi (`address_screen.dart` dagi bilan bir xil sabab).
+    if (kUseOnDexMap) {
+      setState(() => _mapsReady = true);
+      return;
+    }
     try {
       await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (mounted) setState(() => _mapsReady = true);
@@ -265,117 +280,85 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
     }
   }
 
+  /// Kameraga kerakli nuqtalarni sig'dirish.
+  ///
+  /// To'rtburchak hisobi va "dastur o'zi surdi" holati endi xarita
+  /// qatlamida (`track_map.dart`), chunki ikkala motorda ham bir xil
+  /// kerak edi.
   Future<void> _fit() async {
-    final ctrl = _ctrl;
-    if (ctrl == null) return;
     final points = _focusPoints();
     if (points.isEmpty) return;
-    var minLat = points.first.latitude, maxLat = minLat;
-    var minLng = points.first.longitude, maxLng = minLng;
-    for (final p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-    final CameraUpdate update;
-    if ((maxLat - minLat).abs() < 1e-4 && (maxLng - minLng).abs() < 1e-4) {
-      update = CameraUpdate.newLatLngZoom(points.first, 16);
-    } else {
-      update = CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        48,
-      );
-    }
-    _programmaticMoves++;
-    try {
-      await ctrl.animateCamera(update);
-    } catch (_) {
-      // Xarita hali o'lchanmagan bo'lsa `newLatLngBounds` xato beradi —
-      // keyingi yangilanishda qayta urinadi.
-    } finally {
-      _programmaticMoves--;
-    }
+    await _ctrl?.fitPoints(points);
   }
 
-  Set<Marker> _markers() {
+  List<TrackMarker> _markers() {
     final name = widget.courierName.trim();
     final origin = _origin;
     final destination = _destination;
     final courier = _courier;
-    const center = Offset(0.5, 0.5);
-    const bottom = Offset(0.5, 1);
-    return {
+    // Restoran belgisi logoli (40) yoki "A" harfli (34) bo'lishi
+    // mumkin — piksel kengligi shunga qarab hisoblanadi.
+    final restSize =
+        (_iconRestaurantFor ?? '').isEmpty ? _sizeRestaurantFallback : _sizeRestaurant;
+    return [
       if (origin != null)
-        Marker(
-          markerId: const MarkerId('origin'),
-          position: origin,
-          icon: _iconRestaurant ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet),
-          anchor: _iconRestaurant != null ? center : bottom,
-          infoWindow: InfoWindow(title: _restaurantName),
-          zIndexInt: 1,
+        TrackMarker(
+          id: 'origin',
+          point: origin,
+          image: _iconRestaurant,
+          sizeDip: restSize,
+          imageWidthPx: restSize * _dpr,
+          title: _restaurantName,
+          zIndex: 1,
         ),
       if (destination != null)
-        Marker(
-          markerId: const MarkerId('destination'),
-          position: destination,
-          icon: _iconHome ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          anchor: _iconHome != null ? center : bottom,
-          infoWindow: const InfoWindow(title: 'Sizning manzilingiz'),
-          zIndexInt: 2,
+        TrackMarker(
+          id: 'destination',
+          point: destination,
+          image: _iconHome,
+          sizeDip: _sizeHome,
+          imageWidthPx: _sizeHome * _dpr,
+          title: 'Sizning manzilingiz',
+          zIndex: 2,
         ),
       if (courier != null)
-        Marker(
-          markerId: const MarkerId('courier'),
-          position: courier,
-          icon: _iconCar ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          anchor: _iconCar != null ? center : bottom,
-          // Mashina xarita bilan birga "yotadi" va yo'nalishga buriladi.
-          flat: _iconCar != null,
+        TrackMarker(
+          id: 'courier',
+          point: courier,
+          image: _iconCar,
+          sizeDip: _carWidth,
+          imageWidthPx: _carWidth * _dpr,
+          // Mashina yo'nalishga buriladi.
           rotation: _iconCar != null ? _bearing : 0,
-          infoWindow: InfoWindow(title: name.isEmpty ? 'Kuryer' : name),
-          zIndexInt: 3,
+          title: name.isEmpty ? 'Kuryer' : name,
+          zIndex: 3,
         ),
-    };
+    ];
   }
 
-  Set<Polyline> _polylines() {
+  List<TrackLine> _lines() {
     final t = _t;
-    if (t == null || _stage == _Stage.waiting) return const {};
+    if (t == null || _stage == _Stage.waiting) return const [];
     final planned = t.plannedRoute;
     final remaining = t.remainingRoute;
-    return {
+    return [
       if (planned != null)
-        Polyline(
-          polylineId: const PolylineId('planned'),
+        TrackLine(
+          id: 'planned',
           points: planned.points,
           // Yetkazilgan buyurtmada yo'l bosib o'tilgan — brend rangida;
           // yo'lda — kulrang "butun yo'l", ustida qolgan qism.
           color: _stage == _Stage.delivered ? kBrand : _plannedLine,
           width: _stage == _Stage.delivered ? 6 : 5,
-          jointType: JointType.round,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          zIndex: 1,
         ),
       if (_stage == _Stage.live && remaining != null)
-        Polyline(
-          polylineId: const PolylineId('remaining'),
+        TrackLine(
+          id: 'remaining',
           points: remaining.points,
           color: kBrand,
           width: 6,
-          jointType: JointType.round,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          zIndex: 2,
         ),
-    };
+    ];
   }
 
   @override
@@ -446,32 +429,17 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
     final focus = _focusPoints();
     return Stack(
       children: [
-        GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: focus.isNotEmpty ? focus.first : _chustCenter,
-            zoom: 14,
-          ),
+        TrackMap(
+          initialCenter: focus.isNotEmpty ? focus.first : _chustCenter,
           markers: _markers(),
-          polylines: _polylines(),
-          onMapCreated: (c) {
+          lines: _lines(),
+          onReady: (c) {
             _ctrl = c;
             _fit();
           },
-          onCameraMoveStarted: () {
-            if (_programmaticMoves == 0 && _follow) {
-              setState(() => _follow = false);
-            }
+          onUserMoved: () {
+            if (_follow) setState(() => _follow = false);
           },
-          // Xarita sahifa ichida (ListView): busiz barmoq xaritani emas,
-          // sahifani surardi.
-          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-            Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
-          },
-          myLocationEnabled: false,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
-          compassEnabled: false,
         ),
         // Kuryer ilovasidagi "joriy joylashuv" tugmasi uslubida.
         if (!_follow)
@@ -645,7 +613,10 @@ class _LogoDot extends StatelessWidget {
 }
 
 /// Oq hoshiyali dumaloq belgi: harf yoki ikonka.
-Future<BitmapDescriptor> _circleIcon(
+///
+/// PNG BAYTLARI qaytariladi — ikkala xarita motori ham shuni oladi
+/// (`map/track_map.dart` izohiga qarang).
+Future<Uint8List> _circleIcon(
   double dpr, {
   required Color color,
   String? label,
@@ -680,12 +651,45 @@ Future<BitmapDescriptor> _circleIcon(
   final px = (size * dpr).ceil();
   final image = await recorder.endRecording().toImage(px, px);
   final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-  return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: size, height: size);
+  return bytes!.buffer.asUint8List();
+}
+
+/// Asset rasmini kerakli o'lchamda PNG baytlariga aylantiradi.
+///
+/// Ilgari bu `BitmapDescriptor.asset` edi — u Google Maps'ga bog'langan.
+/// Bu yerda rasm o'zimiz chiziladi, ya'ni natija ikkala motorga ham
+/// yaraydi va o'lchami AYNAN bir xil bo'ladi.
+Future<Uint8List> _assetIcon(
+  String asset,
+  double dpr, {
+  required double width,
+  required double height,
+}) async {
+  final data = await rootBundle.load(asset);
+  final codec = await ui.instantiateImageCodec(
+    data.buffer.asUint8List(),
+    targetWidth: (width * dpr).ceil(),
+  );
+  final image = (await codec.getNextFrame()).image;
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(dpr);
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+    Rect.fromLTWH(0, 0, width, height),
+    Paint()..filterQuality = FilterQuality.medium,
+  );
+  final out = await recorder
+      .endRecording()
+      .toImage((width * dpr).ceil(), (height * dpr).ceil());
+  final bytes = await out.toByteData(format: ui.ImageByteFormat.png);
+  return bytes!.buffer.asUint8List();
 }
 
 /// Restoran logosidan dumaloq belgi. Yuklanmasa (tarmoq, hajm, format) —
 /// "A" harfli zaxira belgi; xarita hech qachon belgisiz qolmaydi.
-Future<BitmapDescriptor> _logoIcon(String url, double dpr, {double size = 40}) async {
+Future<Uint8List> _logoIcon(String url, double dpr, {double size = 40}) async {
   try {
     final resp = await http
         .get(Uri.parse(fullImageUrl(url)))
@@ -713,8 +717,8 @@ Future<BitmapDescriptor> _logoIcon(String url, double dpr, {double size = 40}) a
     final px = (size * dpr).ceil();
     final out = await recorder.endRecording().toImage(px, px);
     final bytes = await out.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: size, height: size);
+    return bytes!.buffer.asUint8List();
   } catch (_) {
-    return _circleIcon(dpr, color: _ink, label: 'A');
+    return _circleIcon(dpr, color: _ink, label: 'A', size: size);
   }
 }

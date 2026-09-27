@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
+import '../map/map_backend.dart';
+import '../map/pan_map.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
 import 'address_search_screen.dart';
@@ -47,15 +49,17 @@ class _AddressScreenState extends State<AddressScreen> {
   // Chust markazi — boshlang'ich joylashuv aniq bo'lmasa shu yerdan boshlanadi.
   static const _chustCenter = LatLng(41.0030, 71.2360);
 
-  late CameraPosition _initialCamera;
   LatLng _center = _chustCenter;
-  GoogleMapController? _ctrl;
+  PanMapController? _ctrl;
   bool _mapsReady = false;
   bool _mapsFailed = false;
   bool _resolvingAddress = false;
   bool _locating = false;
   bool _saving = false;
-  MapType _mapType = MapType.normal;
+
+  /// Sun'iy yo'ldosh ko'rinishi. Ilgari bu `MapType` edi — endi motorga
+  /// bog'liq bo'lmagan oddiy bayroq (`PanMap` uni o'z turiga o'giradi).
+  bool _satellite = false;
   int _geocodeGen = 0;
   LatLng? _lastResolvedCenter;
   Timer? _debounce;
@@ -83,11 +87,18 @@ class _AddressScreenState extends State<AddressScreen> {
     _center = (widget.initialLat != null && widget.initialLng != null)
         ? LatLng(widget.initialLat!, widget.initialLng!)
         : _chustCenter;
-    _initialCamera = CameraPosition(target: _center, zoom: 16);
     _loadMaps();
   }
 
   Future<void> _loadMaps() async {
+    // OnDexMap'da yuklanadigan SDK yo'q: uslub xaritaning o'zi bilan
+    // keladi. Google yo'lida esa (ayniqsa web'da) skript avval
+    // yuklanishi kerak, aks holda xarita bo'sh chiqadi.
+    if (kUseOnDexMap) {
+      setState(() => _mapsReady = true);
+      _scheduleResolve(_center);
+      return;
+    }
     try {
       await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (!mounted) return;
@@ -181,8 +192,7 @@ class _AddressScreenState extends State<AddressScreen> {
   Future<void> _animateTo(LatLng target, double zoom) async {
     _programmaticMoves++;
     try {
-      await _ctrl?.animateCamera(CameraUpdate.newCameraPosition(
-          CameraPosition(target: target, zoom: zoom)));
+      await _ctrl?.animateTo(target, zoom);
     } finally {
       _programmaticMoves--;
       _center = target;
@@ -269,24 +279,21 @@ class _AddressScreenState extends State<AddressScreen> {
                   else if (!_mapsReady)
                     const Center(child: CircularProgressIndicator())
                   else
-                    GoogleMap(
-                      initialCameraPosition: _initialCamera,
-                      mapType: _mapType,
-                      onMapCreated: (c) => _ctrl = c,
-                      onCameraMove: (pos) {
+                    PanMap(
+                      initialCenter: _center,
+                      initialZoom: _currentZoom,
+                      satellite: _satellite,
+                      onReady: (c) => _ctrl = c,
+                      onCameraMove: (center, zoom) {
                         // Dastur o'zi kamerani suriyotgan bo'lsa (zoom,
                         // "joriy joylashuvim", qidiruv) — oraliq qiymatlarni
                         // e'tiborsiz qoldiramiz, faqat haqiqiy foydalanuvchi
                         // surganda markazni yangilaymiz.
                         if (_programmaticMoves > 0) return;
-                        _center = pos.target;
-                        _currentZoom = pos.zoom;
+                        _center = center;
+                        _currentZoom = zoom;
                       },
                       onCameraIdle: () => _scheduleResolve(_center),
-                      zoomControlsEnabled: false,
-                      myLocationButtonEnabled: false,
-                      mapToolbarEnabled: false,
-                      compassEnabled: false,
                     ),
                   // Markazda qimirlamas pin — xarita ostida suriladi.
                   if (_mapsReady)
@@ -335,17 +342,11 @@ class _AddressScreenState extends State<AddressScreen> {
                     right: 12,
                     top: 12,
                     child: RoundIconButton(
-                      tooltip: _mapType == MapType.normal
-                          ? 'Sputnik (3D) ko\'rinish'
-                          : 'Oddiy xarita (2D)',
-                      icon: _mapType == MapType.normal
-                          ? Icons.threed_rotation
-                          : Icons.map,
-                      onTap: () => setState(() {
-                        _mapType = _mapType == MapType.normal
-                            ? MapType.hybrid
-                            : MapType.normal;
-                      }),
+                      tooltip: _satellite
+                          ? 'Oddiy xarita (2D)'
+                          : 'Sputnik (3D) ko\'rinish',
+                      icon: _satellite ? Icons.map : Icons.threed_rotation,
+                      onTap: () => setState(() => _satellite = !_satellite),
                     ),
                   ),
                   // Joriy joylashuv + zoom — pastki o'ng burchakda, manzil

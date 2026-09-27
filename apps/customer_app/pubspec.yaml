@@ -4,7 +4,10 @@ publish_to: "none"
 version: 0.2.4+16
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  # 3.3.0 dan ko'tarildi: `maplibre_gl` (OnDexMap xaritasi) 3.7+ talab
+  # qiladi. Build muhitidagi Dart — 3.12, ya'ni bu cheklov hech narsani
+  # cheklamaydi.
+  sdk: ">=3.7.0 <4.0.0"
 
 dependencies:
   # Umumiy yadro — API klienti, sessiya, format, holat yorliqlari.
@@ -30,6 +33,16 @@ dependencies:
   shared_preferences: ^2.2.0
   geolocator: ^13.0.1
   google_maps_flutter: ^2.10.0
+  # OnDexMap xaritasi (`lib/map/`). Google Maps'ning O'RNIGA emas,
+  # YONIDA: qaysi biri ishlashini `--dart-define=ONDEX_MAP` hal qiladi
+  # (`lib/map/map_backend.dart` izohiga qarang). Flag o'chiq bo'lsa bu
+  # kod ishga tushmaydi.
+  #
+  # MapLibre Native PMTiles'ni O'ZI qo'llaydi, shuning uchun OnDexMap
+  # uslubi (`tiles/style.json`) o'zgarishsiz ishlaydi va qo'shimcha
+  # vektor-tile paketlari kerak emas — ularning flutter_map 8 bilan
+  # ishlaydigan versiyalari hali beta (2026-09-27 da tekshirilgan).
+  maplibre_gl: ^0.27.1
   web: ^1.1.0
   webview_flutter: ^4.9.0
   webview_flutter_android: ^4.0.0

@@ -96,3 +96,19 @@ jobs:
 
       - name: Test
         run: flutter test
+
+      # ┌─ IKKINCHI XARITA MOTORI ──────────────────────────────────────┐
+      # Mijoz ilovasida xarita ikki motorda ishlay oladi (Google Maps
+      # va OnDexMap), tanlov `--dart-define=ONDEX_MAP` bilan
+      # kompilyatsiya vaqtida qilinadi
+      # (`apps/customer_app/lib/map/map_backend.dart`).
+      #
+      # `flutter analyze` ikkala tarmoqni ham ko'radi (u flagga
+      # qaramaydi), lekin `flutter test` — yo'q: flag o'chiq bo'lganda
+      # OnDexMap shoxi umuman BAJARILMAYDI. Ya'ni u yerdagi noto'g'ri
+      # uslub manzili, buzuq JSON yoki yiqiladigan mantiq faqat
+      # OnDexMap yoqilgan build'da, eng yomon paytda chiqardi.
+      # └───────────────────────────────────────────────────────────────┘
+      - name: Test (OnDexMap xaritasi)
+        if: matrix.package == 'apps/customer_app'
+        run: flutter test --dart-define=ONDEX_MAP=true
