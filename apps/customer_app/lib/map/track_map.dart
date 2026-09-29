@@ -7,7 +7,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import 'map_backend.dart';
+import 'ondex_brand.dart';
 import 'ondex_style.dart';
+import 'poi_icons.dart';
 
 /// KURYER KUZATUVI XARITASI — ikki motor, bitta xatti-harakat.
 ///
@@ -342,7 +344,10 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
       for (final m in byZ) {
         await ctrl.addSymbol(ml.SymbolOptions(
           geometry: ml.LatLng(m.point.latitude, m.point.longitude),
-          iconImage: m.image != null ? m.id : 'marker-15',
+          // Rasm berilmagan bo'lsa — umumiy belgi. Uslubning o'z
+          // sprite'i bo'sh, shuning uchun `marker-15` kabi tayyor
+          // nomlar ishlamaydi (ular jimgina chizilmasdi).
+          iconImage: m.image != null ? m.id : '${markerPrefix}selected',
           // Rasm piksel o'lchamida chiziladi — uni dip ga qaytaramiz,
           // aks holda yuqori zichlikdagi ekranda belgi ulkan bo'lardi.
           iconSize: m.image != null && m.imageWidthPx > 0
@@ -368,7 +373,15 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
 
   @override
   Widget build(BuildContext context) {
-    final cfg = widget.cfg;
+    return Stack(
+      children: [
+        _map(widget.cfg),
+        const OndexMapBrand(),
+      ],
+    );
+  }
+
+  Widget _map(TrackMap cfg) {
     return ml.MapLibreMap(
       styleString: ondexVectorStyle,
       initialCameraPosition: ml.CameraPosition(
@@ -381,9 +394,15 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
       },
       // ⚠️ Belgilarni uslub yuklangunga QADAR qo'shib bo'lmaydi:
       // `addImage` manba topa olmay xato beradi.
-      onStyleLoadedCallback: () {
+      onStyleLoadedCallback: () async {
         _styleReady = true;
         _loadedImages.clear();
+        // Joy belgilari uslubda emas (`poi_icons.dart`) — busiz
+        // kuzatuv xaritasi ham bo'm-bo'sh ko'rinadi.
+        final c = _ctrl;
+        if (c != null && mounted) {
+          await loadPoiIcons(c);
+        }
         _scheduleRedraw();
       },
       onCameraTrackingDismissed: cfg.onUserMoved,
@@ -392,11 +411,15 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
       },
       trackCameraPosition: true,
       gestureRecognizers: _eagerGestures,
+      // Kamera mamlakatdan chiqmaydi — tashqarida xarita ma'lumoti yo'q.
+      cameraTargetBounds: ondexCameraBounds,
+      minMaxZoomPreference: const ml.MinMaxZoomPreference(kOndexMinZoom, null),
       compassEnabled: false,
       logoEnabled: false,
       myLocationEnabled: false,
       tiltGesturesEnabled: false,
-      attributionButtonPosition: ml.AttributionButtonPosition.bottomLeft,
+      // Atribut tugmasi ekrandan chiqariladi — o'rniga «OnDex» yorlig'i.
+      attributionButtonMargins: kOndexHideAttribution,
     );
   }
 }

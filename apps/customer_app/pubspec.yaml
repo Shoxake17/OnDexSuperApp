@@ -72,6 +72,7 @@ dependencies:
   # rasmiy `camera` plagini.
   camera: ^0.11.0
   posthog_flutter: ^5.39.0
+  lucide_icons_flutter: ^3.1.20
 
 dev_dependencies:
   flutter_test:
@@ -142,4 +143,11 @@ flutter:
     - assets/uz_flag.png
     # Buyurtma kuzatuvi xaritasi: kuryer mashinasi (yuqoridan ko'rinish).
     - assets/map/
+    # ⚠️ Ichki papka ALOHIDA yoziladi: `assets/map/` faqat o'sha
+    # papkadagi fayllarni oladi, ost-papkalarni emas.
+    #
+    # Bu yerda OnDexMap xaritasidagi joy pinlari
+    # (`web/public/org-icons/` dan ko'chirilgan, 128 px ga
+    # kichraytirilgan — `poi_icons.dart` izohiga qarang).
+    - assets/map/poi/
     - shorebird.yaml

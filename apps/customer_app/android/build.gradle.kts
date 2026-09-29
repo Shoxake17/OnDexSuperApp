@@ -75,6 +75,55 @@ subprojects {
     if (state.executed) raiseCompileSdk() else afterEvaluate { raiseCompileSdk() }
 }
 
+// ┌─ PLAGINNING JAVA 21 TALABI TUSHIRILADI ────────────────────────────┐
+// `maplibre_gl` (OnDexMap xaritasi) o'z modulida `JavaVersion.VERSION_21`
+// deb yozgan. Loyihaning JDK'si 17, va build shu yerda yiqiladi:
+//
+//   Execution failed for task ':maplibre_gl:compileDebugJavaWithJavac'
+//   > Java compilation initialization error
+//       error: invalid source release: 21
+//
+// Ikki yo'l bor edi: butun loyihani JDK 21 ga ko'chirish yoki shu
+// plaginni 17 ga tushirish. Ikkinchisi tanlandi, chunki:
+//
+//   * JDK ni ko'tarish BARCHA ilovalarga (kuryer, afitsiant, panellar)
+//     va release build'ga ta'sir qilardi — bitta xarita plagini uchun
+//     juda katta o'zgarish;
+//   * har bir dasturchi va CI mashinasida JDK 21 bo'lishini talab
+//     qilardi, ya'ni build muhiti og'irlashardi;
+//   * plagin kodi Java 21 ning O'ZIGA XOS xususiyatlarini
+//     ishlatmaydi — 21 raqami shunchaki uning o'z build sozlamasi
+//     (2026-09-27 da sinab tasdiqlangan: 17 bilan kompilyatsiya
+//     bo'ladi).
+//
+// Bu FAQAT kompilyatsiya darajasi: `minSdk`, `targetSdk` va ish
+// vaqtidagi xulq o'zgarmaydi.
+//
+// ⚠️ Plagin versiyasi ko'tarilganda buni qayta tekshiring: agar u
+// haqiqatan Java 21 sintaksisini ishlata boshlasa, bu yerda emas,
+// JDK ni ko'tarish orqali hal qilinadi.
+// └────────────────────────────────────────────────────────────────────┘
+subprojects {
+    val capJavaVersion = {
+        if (project.name == "maplibre_gl") {
+            val android = project.extensions.findByName("android")
+                as? com.android.build.gradle.BaseExtension
+            android?.compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+            project.tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>()
+                .configureEach {
+                    compilerOptions.jvmTarget.set(
+                        org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                    )
+                }
+            logger.lifecycle("ondex: maplibre_gl Java 21 -> 17 (loyiha JDK'si 17)")
+        }
+    }
+    if (state.executed) capJavaVersion() else afterEvaluate { capJavaVersion() }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

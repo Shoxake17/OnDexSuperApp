@@ -15,12 +15,19 @@ import 'session.dart';
 import 'data/agent_driver.dart';
 import 'screens/connected_apps_screen.dart';
 import 'screens/home_shell.dart';
+import 'map/map_backend.dart';
+import 'map/ondex_brand.dart';
 import 'screens/lock_gate.dart';
 import 'screens/login_screen.dart';
 import 'widgets/agent_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // OnDexMap xaritasi yoqilgan bo'lsa, MapLibre'ni birinchi
+  // xaritadan OLDIN to'g'ri rejimga o'tkazamiz — keyin kech
+  // (`map/ondex_brand.dart` izohiga qarang).
+  if (kUseOnDexMap) initOndexMap();
 
   // ┌─ TIZIM PANELLARI SHAFFOF ─────────────────────────────────────┐
   // Ilova status-bar va pastki navigatsiya paneli ORQASIGA ham

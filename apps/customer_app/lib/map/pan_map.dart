@@ -5,7 +5,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import 'map_backend.dart';
+import 'ondex_brand.dart';
 import 'ondex_style.dart';
+import 'poi_icons.dart';
 
 /// MANZIL TANLASH XARITASI — ikki motor, bitta xatti-harakat.
 ///
@@ -152,6 +154,16 @@ class _OndexPanMapState extends State<_OndexPanMap> implements PanMapController 
   @override
   Widget build(BuildContext context) {
     final cfg = widget.cfg;
+    return Stack(
+      children: [
+        _map(cfg),
+        // MapLibre'ning «i» tugmasi o'rniga ilovaning o'z yorlig'i.
+        const OndexMapBrand(),
+      ],
+    );
+  }
+
+  Widget _map(PanMap cfg) {
     return ml.MapLibreMap(
       // ⚠️ `ValueKey` SHART: uslub almashganda (oddiy ↔ sun'iy yo'ldosh)
       // MapLibre uni joyida yangilamaydi, vidjet qayta yaratilishi kerak.
@@ -168,14 +180,25 @@ class _OndexPanMapState extends State<_OndexPanMap> implements PanMapController 
         _ctrl = c;
         cfg.onReady(this);
       },
+      // Joy belgilari uslubda emas, mijoz tomonidan beriladi —
+      // `poi_icons.dart` izohiga qarang. Busiz xarita bo'm-bo'sh
+      // ko'rinadi: na do'kon, na kafe nomi.
+      onStyleLoadedCallback: () async {
+        final c = _ctrl;
+        if (c != null && mounted) {
+          await loadPoiIcons(c);
+        }
+      },
       onCameraIdle: cfg.onCameraIdle,
       onCameraMove: (pos) =>
           cfg.onCameraMove(gm.LatLng(pos.target.latitude, pos.target.longitude), pos.zoom),
+      // Kamera mamlakatdan chiqmaydi — tashqarida xarita ma'lumoti yo'q.
+      cameraTargetBounds: ondexCameraBounds,
+      minMaxZoomPreference: const ml.MinMaxZoomPreference(kOndexMinZoom, null),
       compassEnabled: false,
-      // Atribut tugmasi QOLADI — xarita ma'lumotining krediti
-      // ko'rsatilishi ODbL talabi.
-      attributionButtonPosition: ml.AttributionButtonPosition.bottomLeft,
-      // MapLibre logotipi kerak emas, atribut esa yuqorida.
+      // Atribut tugmasi ekrandan chiqariladi, o'rniga ilovaning
+      // «OnDex» yorlig'i qo'yiladi (`ondex_brand.dart` izohiga qarang).
+      attributionButtonMargins: kOndexHideAttribution,
       logoEnabled: false,
       myLocationEnabled: false,
       // Xarita 2D: manzil tanlashda qiyalik faqat adashtiradi.

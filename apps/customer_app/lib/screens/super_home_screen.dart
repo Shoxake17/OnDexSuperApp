@@ -7,6 +7,7 @@ import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
+import 'ondex_map_screen.dart';
 import 'restaurant_shell.dart';
 import 'wallet_screen.dart';
 
@@ -144,7 +145,6 @@ const _tiles = <_Service>[
     icon: Icons.place,
     color: kBrand,
     image: 'assets/services/map.png',
-    soon: true,
   ),
   _Service(
     title: 'Ish joy\ne\'lonlari',
@@ -226,7 +226,16 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
       _soon(s.title.replaceAll('\n', ' '));
       return;
     }
-    _push(const RestaurantShell());
+    // Ishlaydigan xizmatlar soni ortgani uchun endi nom bo'yicha
+    // tanlanadi. Ilgari bitta xizmat bor edi va `_push` to'g'ridan-
+    // to'g'ri restoranni ochardi — yangi xizmat qo'shilganda bu
+    // jimgina noto'g'ri ekranga olib borardi.
+    switch (s.title) {
+      case 'OnDex Xarita':
+        _push(const OndexMapScreen());
+      default:
+        _push(const RestaurantShell());
+    }
   }
 
   @override
