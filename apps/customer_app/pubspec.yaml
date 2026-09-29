@@ -70,7 +70,7 @@ dependencies:
   # KADRDA QR qidiradi — bu yerda esa skanerlash umuman kerak emas va
   # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
   # rasmiy `camera` plagini.
-  camera: ^0.11.0
+  camera: ^0.12.1
   posthog_flutter: ^5.39.0
   lucide_icons_flutter: ^3.1.20
   image_picker: ^1.2.3
