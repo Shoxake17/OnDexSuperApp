@@ -1,7 +1,7 @@
 name: chust_admin
 description: ChustApp — Superadmin panel
 publish_to: "none"
-version: 0.1.8+8
+version: 0.1.11+11
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

@@ -98,6 +98,63 @@ void main() {
     expect(gone.statusCode, 404);
   }, skip: live ? false : 'ONDEXMAP_LIVE=1 emas — jonli test o\'tkazib yuborildi');
 
+  test('YO\'L (chiziq): yuborish → moderator geometriyani ko\'radi → tasdiqlash → hammaga LineString → olib tashlash',
+      () async {
+    final api = ModerationApi(defaultUrl: 'http://127.0.0.1:8091');
+    final meta = await api.meta();
+    expect(meta.kind('road')!.isLine, isTrue, reason: 'server yo\'lni chiziq turi deb aytishi kerak');
+    expect(meta.kind('organization')!.isLine, isFalse);
+
+    final tag = 'DARTROAD${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+    const sentLine = [
+      [71.2400, 41.0000],
+      [71.2412, 41.0009],
+      [71.2425, 41.0016],
+    ];
+    final req = http.MultipartRequest('POST', Uri.parse('$_api/v1/places'))
+      ..headers['Origin'] = 'http://localhost:3100'
+      ..fields['data'] = jsonEncode({
+        'kind': 'road', 'line': sentLine, 'name': '$tag ko\'chasi',
+        'description': 'DARTROAD sinov yo\'li', 'website': '',
+      });
+    final sent = await http.Response.fromStream(await req.send());
+    expect(sent.statusCode, 201, reason: sent.body);
+
+    final mine = (await api.submissions('pending')).items.firstWhere((s) => s.name == '$tag ko\'chasi');
+    expect(mine.kind, 'road');
+    expect(mine.isLine, isTrue, reason: 'moderator chiziqni ko\'rishi kerak');
+    expect(mine.line.length, 3);
+    // Tartib va [lng, lat] -> LatLng almashinuvi haqiqiy serverdan ham to'g'ri.
+    expect(mine.line.first.latitude, closeTo(41.0000, 1e-6));
+    expect(mine.line.first.longitude, closeTo(71.2400, 1e-6));
+    expect(mine.line.last.longitude, closeTo(71.2425, 1e-6));
+    expect(mine.lengthM, greaterThan(200));
+
+    // Tasdiqlash: chiziq AYNAN qaytadi (lat/lng yuborilmaydi).
+    final placeId = await api.approve(
+      id: mine.id,
+      edit: {
+        'kind': 'road',
+        'line': [for (final p in mine.line) [p.longitude, p.latitude]],
+        'name': '$tag ko\'chasi',
+        'description': 'DARTROAD sinov yo\'li',
+      },
+      keepPhotos: const [],
+    );
+    try {
+      final detail = jsonDecode((await http.get(Uri.parse('$_api/v1/places/$placeId'))).body) as Map;
+      expect((detail['geometry'] as Map)['type'], 'LineString');
+      expect(detail['length_m'], greaterThan(200));
+
+      final placed = (await api.places()).firstWhere((p) => p.id == placeId);
+      expect(placed.isLine, isTrue);
+      expect(placed.line.length, 3);
+    } finally {
+      await api.deletePlace(placeId);
+    }
+    expect((await http.get(Uri.parse('$_api/v1/places/$placeId'))).statusCode, 404);
+  }, skip: live ? false : 'ONDEXMAP_LIVE=1 emas — jonli test o\'tkazib yuborildi');
+
   test('muharrir: config → mahalla yaratish/yangilash → ko\'cha + muqobil nom → o\'chirish', () async {
     final api = ModerationApi(defaultUrl: 'http://127.0.0.1:8091');
 
