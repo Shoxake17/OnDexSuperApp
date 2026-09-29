@@ -33,6 +33,7 @@ class MapSearchSheet extends StatelessWidget {
     required this.onSubmitted,
     required this.onClear,
     required this.onChip,
+    required this.onAddPlace,
     required this.searching,
   });
 
@@ -44,6 +45,9 @@ class MapSearchSheet extends StatelessWidget {
 
   /// Tezkor chip bosilganda — uning qidiruv so'zi bilan.
   final ValueChanged<String> onChip;
+
+  /// «Ob'ekt qo'shish» bosilganda.
+  final VoidCallback onAddPlace;
 
   final bool searching;
 
@@ -100,10 +104,20 @@ class MapSearchSheet extends StatelessWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _chips.length,
+              // Birinchi o'rinda «Ob'ekt qo'shish»: u qidiruv emas,
+              // amal — shuning uchun brend rangida va ro'yxat boshida.
+              itemCount: _chips.length + 1,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (_, i) {
-                final c = _chips[i];
+                if (i == 0) {
+                  return _Chip(
+                    label: 'Ob\'ekt qo\'shish',
+                    icon: LucideIcons.plus,
+                    onTap: onAddPlace,
+                    primary: true,
+                  );
+                }
+                final c = _chips[i - 1];
                 return _Chip(
                   label: c.label,
                   icon: c.icon,
@@ -197,16 +211,26 @@ class _SearchField extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.icon, required this.onTap});
+  const _Chip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.primary = false,
+  });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Amal chipi (qidiruv emas) — brend rangida ajralib turadi.
+  final bool primary;
+
   @override
   Widget build(BuildContext context) {
+    final fon = primary ? const Color(0xFFFFF1E7) : const Color(0xFFF4F4F5);
+    final matn = primary ? const Color(0xFFEA580C) : const Color(0xFF18181B);
     return Material(
-      color: const Color(0xFFF4F4F5),
+      color: fon,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -216,11 +240,13 @@ class _Chip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: const Color(0xFF3F3F46)),
+              Icon(icon, size: 16, color: matn),
               const SizedBox(width: 6),
               Text(label,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w500)),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: primary ? FontWeight.w600 : FontWeight.w500,
+                      color: matn)),
             ],
           ),
         ),

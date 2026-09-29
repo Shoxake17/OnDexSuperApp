@@ -170,8 +170,123 @@ class OndexMapApi {
     );
   }
 
+  /// Yangi ob'ekt yuboradi (`POST /v1/places`).
+  ///
+  /// ┌─ NIMA BO'LADI SO'NG ───────────────────────────────────────────┐
+  /// Ob'ekt darhol xaritaga CHIQMAYDI — u karantinga tushadi va
+  /// moderator tasdiqlagandan keyin hammaga ko'rinadi. Server
+  /// `status: "pending"` qaytaradi.
+  /// └────────────────────────────────────────────────────────────────┘
+  ///
+  /// ⚠️ `website` maydoni ATAYLAB bo'sh yuboriladi: u asalari
+  /// (honeypot) — odam ko'rmaydi, bot to'ldiradi. To'ldirilgan
+  /// bo'lsa server yuborishni jimgina tashlab yuboradi.
+  Future<void> submitPlace({
+    required String kind,
+    required double lat,
+    required double lng,
+    required String name,
+    String category = '',
+    String description = '',
+    String phone = '',
+    String hours = '',
+    String street = '',
+    String house = '',
+    String site = '',
+    String social = '',
+    List<({String name, List<int> bytes})> photos = const [],
+  }) async {
+    if (photos.length > kOndexMaxPhotos) {
+      throw OndexMapException(
+          'Ko\'pi bilan $kOndexMaxPhotos ta rasm yuborish mumkin');
+    }
+    for (final p in photos) {
+      if (p.bytes.length > kOndexMaxPhotoBytes) {
+        throw OndexMapException('«${p.name}» juda katta — 6 MB dan oshmasin');
+      }
+    }
+
+    final req = http.MultipartRequest('POST', Uri.parse('$kOndexApiBase/v1/places'));
+    req.fields['data'] = jsonEncode({
+      'kind': kind,
+      'lat': lat,
+      'lng': lng,
+      'name': name.trim(),
+      'category': category.trim(),
+      'description': description.trim(),
+      'phone': phone.trim(),
+      'hours': hours.trim(),
+      'street': street.trim(),
+      'house': house.trim(),
+      'site': site.trim(),
+      'social': social.trim(),
+      // Asalari — hech qachon to'ldirilmaydi.
+      'website': '',
+    });
+    for (final p in photos) {
+      req.files.add(http.MultipartFile.fromBytes('photos', p.bytes,
+          filename: p.name));
+    }
+
+    final http.StreamedResponse res;
+    try {
+      // Rasm yuklash sekin tarmoqda uzoq davom etadi — umumiy 12 s
+      // muddat bu yerda kam.
+      res = await _client.send(req).timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      throw OndexMapException('Yuborilmadi — internet sekin');
+    } catch (_) {
+      throw OndexMapException('Internetni tekshiring');
+    }
+
+    if (res.statusCode == 201 || res.statusCode == 200) return;
+
+    final body = await res.stream.bytesToString();
+    // Server xato sababini `{"error": "..."}` da beradi — uni
+    // ko'rsatamiz, chunki u foydalanuvchi tuzata oladigan narsa
+    // (nom qisqa, rasm katta, soatlik chegara).
+    String xabar;
+    try {
+      xabar = (jsonDecode(body) as Map<String, dynamic>)['error'] as String? ??
+          'Yuborilmadi';
+    } catch (_) {
+      xabar = 'Yuborilmadi (${res.statusCode})';
+    }
+    if (res.statusCode == 429) {
+      xabar = 'Juda ko\'p ob\'ekt yubordingiz — birozdan keyin urinib ko\'ring';
+    }
+    throw OndexMapException(xabar);
+  }
+
   void dispose() => _client.close();
 }
+
+/// Bitta ob'ektga qo'shsa bo'ladigan rasmlar soni (server chegarasi).
+const int kOndexMaxPhotos = 4;
+
+/// Bitta rasmning eng katta hajmi (server chegarasi).
+const int kOndexMaxPhotoBytes = 6 * 1024 * 1024;
+
+/// Qo'shsa bo'ladigan ob'ekt turlari.
+///
+/// ┌─ NEGA HAMMASI EMAS ────────────────────────────────────────────────┐
+/// Serverda o'n bitta tur bor, lekin uchtasi CHIZIQ shaklida
+/// (`road`, `crossing`, `fence`) — ularni qo'shish uchun xaritada
+/// yo'l chizish kerak. Bu alohida muharrir talab qiladi, shuning
+/// uchun hozircha nuqta turlari qabul qilinadi.
+///
+/// Ro'yxat va nomlar serverdagi `places.Kinds` bilan bir xil.
+/// └────────────────────────────────────────────────────────────────────┘
+const List<({String key, String label})> kOndexPlaceKinds = [
+  (key: 'organization', label: 'Tashkilot'),
+  (key: 'address', label: 'Manzil'),
+  (key: 'entrance', label: 'Bino kirishi'),
+  (key: 'barrier', label: 'Shlagbaum'),
+  (key: 'stop', label: 'Transport bekati'),
+  (key: 'parking', label: 'Avtoturargoh'),
+  (key: 'gate', label: 'Darvoza'),
+  (key: 'other', label: 'Boshqa ob\'ekt'),
+];
 
 /// Masofa: «1,7 km» yoki «340 m».
 String ondexDistanceText(double meters) {

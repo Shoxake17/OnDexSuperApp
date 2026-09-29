@@ -13,6 +13,7 @@ import '../map/map_controls.dart';
 import '../map/map_sheet.dart';
 import '../map/poi_icons.dart';
 import '../map/route_sheet.dart';
+import 'add_place_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 
 /// ONDEX XARITA — super-ilovaning xarita bo'limi.
@@ -48,6 +49,13 @@ class OndexMapScreen extends StatefulWidget {
 
 /// Marshrut nuqtasi.
 enum _Slot { a, b }
+
+/// Xaritadan nuqta tanlash nima uchun so'ralayotgani.
+///
+/// Tanlash oqimi bitta: markazda nishon, xaritani suriladi,
+/// «Tanlash» bosiladi. Farq faqat natijada — shuning uchun maqsad
+/// alohida saqlanadi.
+enum _PickFor { routeA, routeB, newPlace }
 
 class _RoutePoint {
   _RoutePoint(this.lat, this.lng, this.label);
@@ -89,7 +97,7 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   /// Hozir xaritadan qaysi nuqta tanlanayotgani. `null` — tanlash
   /// rejimi o'chiq.
-  _Slot? _picking;
+  _PickFor? _picking;
 
   OndexRoute? _route;
   bool _routing = false;
@@ -264,21 +272,26 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
   }
 
   /// Xaritadan nuqta tanlash rejimini yoqadi.
-  void _startPicking(_Slot slot) {
-    setState(() => _picking = slot);
+  void _startPicking(_PickFor nima) {
+    setState(() => _picking = nima);
   }
 
-  /// Markazdagi nishonni joriy slotga qo'yadi.
-  void _confirmPick() {
-    final slot = _picking;
-    if (slot == null) return;
-    final p = _RoutePoint(
-      _center.latitude,
-      _center.longitude,
-      'Xaritadagi nuqta',
-    );
+  /// Markazdagi nishonni tasdiqlaydi — maqsadga qarab.
+  Future<void> _confirmPick() async {
+    final nima = _picking;
+    if (nima == null) return;
+    final lat = _center.latitude;
+    final lng = _center.longitude;
+
+    if (nima == _PickFor.newPlace) {
+      setState(() => _picking = null);
+      await _openAddPlace(lat, lng);
+      return;
+    }
+
+    final p = _RoutePoint(lat, lng, 'Xaritadagi nuqta');
     setState(() {
-      if (slot == _Slot.a) {
+      if (nima == _PickFor.routeA) {
         _a = p;
       } else {
         _b = p;
@@ -286,8 +299,32 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       _picking = null;
       _route = null;
     });
-    _redraw();
+    await _redraw();
     _maybeRoute();
+  }
+
+  /* ── Ob'ekt qo'shish ─────────────────────────────────────────────── */
+
+  /// Xaritada nuqta tanlashni boshlaydi — keyin forma ochiladi.
+  void _startAddPlace() {
+    setState(() {
+      // Marshrut rejimidan chiqamiz: ikkala rejim bir vaqtda
+      // ishlashi chalkash bo'lardi (ikkalasi ham markaz nishonini
+      // ishlatadi).
+      _routeMode = false;
+      _selected = null;
+      _picking = _PickFor.newPlace;
+    });
+    _redraw();
+  }
+
+  Future<void> _openAddPlace(double lat, double lng) async {
+    final yuborildi = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddPlaceScreen(lat: lat, lng: lng)),
+    );
+    if (yuborildi == true && mounted) {
+      _say('Rahmat! Ob\'ekt moderatsiyaga yuborildi');
+    }
   }
 
   Future<void> _useMyLocation(_Slot slot, {bool jim = false}) async {
@@ -471,8 +508,8 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
         onClose: _closeRouteMode,
         onClear: _clearRoute,
         onSwap: _swap,
-        onPickA: () => _startPicking(_Slot.a),
-        onPickB: () => _startPicking(_Slot.b),
+        onPickA: () => _startPicking(_PickFor.routeA),
+        onPickB: () => _startPicking(_PickFor.routeB),
         onUnavailableMode: (nom) =>
             _say('$nom marshruti hozircha hisoblanmaydi'),
         labelA: _a?.label,
@@ -504,6 +541,7 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
         _searchCtrl.text = q;
         _runSearch(q);
       },
+      onAddPlace: _startAddPlace,
     );
   }
 
@@ -567,7 +605,11 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   /// Nuqta tanlash rejimidagi markaz nishoni.
   Widget _buildCrosshair() {
-    final rang = _picking == _Slot.a ? _dotA : _dotB;
+    final rang = switch (_picking!) {
+      _PickFor.routeA => _dotA,
+      _PickFor.routeB => _dotB,
+      _PickFor.newPlace => kBrand,
+    };
     return IgnorePointer(
       child: Center(
         child: Padding(
@@ -671,40 +713,63 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
     );
   }
 
-  /// Nuqta tanlash rejimidagi tasdiqlash paneli.
   /// Nuqta tanlash paneli — qolgan panellar bilan bir xil sheet.
   Widget _buildPickSheet() {
-    final slot = _picking!;
+    final nima = _picking!;
+    final sarlavha = switch (nima) {
+      _PickFor.routeA => 'Boshlanish nuqtasini tanlang',
+      _PickFor.routeB => 'Tugash nuqtasini tanlang',
+      _PickFor.newPlace => 'Ob\'ekt joyini belgilang',
+    };
+    // «Joylashuvim» faqat marshrut uchun: yangi ob'ektni odam
+    // ko'rib turgan joyga qo'yadi, o'zi turgan joyga emas.
+    final slot = switch (nima) {
+      _PickFor.routeA => _Slot.a,
+      _PickFor.routeB => _Slot.b,
+      _PickFor.newPlace => null,
+    };
     return _Sheet(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            slot == _Slot.a
-                ? 'Boshlanish nuqtasini tanlang'
-                : 'Tugash nuqtasini tanlang',
-            style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700),
-          ),
+          Text(sarlavha,
+              style:
+                  const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700)),
           const SizedBox(height: 3),
           const Text('Xaritani suring — nishon markazda qoladi',
               style: TextStyle(fontSize: 13.5, color: Color(0xFF71717A))),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(13)),
+              if (slot != null) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13)),
+                    ),
+                    onPressed: () => _useMyLocation(slot),
+                    icon: const Icon(LucideIcons.locateFixed, size: 18),
+                    label: const Text('Joylashuvim'),
                   ),
-                  onPressed: () => _useMyLocation(slot),
-                  icon: const Icon(LucideIcons.locateFixed, size: 18),
-                  label: const Text('Joylashuvim'),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ] else ...[
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13)),
+                    ),
+                    onPressed: () => setState(() => _picking = null),
+                    child: const Text('Bekor qilish'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(
@@ -713,7 +778,8 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
                         borderRadius: BorderRadius.circular(13)),
                   ),
                   onPressed: _confirmPick,
-                  child: const Text('Tanlash'),
+                  child: Text(
+                      nima == _PickFor.newPlace ? 'Davom etish' : 'Tanlash'),
                 ),
               ),
             ],

@@ -73,6 +73,7 @@ dependencies:
   camera: ^0.11.0
   posthog_flutter: ^5.39.0
   lucide_icons_flutter: ^3.1.20
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:
