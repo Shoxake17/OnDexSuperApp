@@ -312,7 +312,7 @@ class _AddressScreenState extends State<AddressScreen> {
                                   height: 52,
                                   // Rasm topilmasa xarita pinsiz
                                   // qolmasin.
-                                  errorBuilder: (_, __, ___) => const Icon(
+                                  errorBuilder: (_, _, _) => const Icon(
                                       Icons.location_on,
                                       size: 44,
                                       color: kBrand)),

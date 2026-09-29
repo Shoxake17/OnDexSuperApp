@@ -1226,7 +1226,7 @@ class _TypingRowState extends State<_TypingRow>
               children: [
                 AnimatedBuilder(
                   animation: _c,
-                  builder: (_, __) => Row(
+                  builder: (_, _) => Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       for (var i = 0; i < 3; i++)

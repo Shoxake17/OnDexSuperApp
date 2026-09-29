@@ -107,7 +107,7 @@ class MapSearchSheet extends StatelessWidget {
               // Birinchi o'rinda «Ob'ekt qo'shish»: u qidiruv emas,
               // amal — shuning uchun brend rangida va ro'yxat boshida.
               itemCount: _chips.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (_, i) {
                 if (i == 0) {
                   return _Chip(
@@ -195,7 +195,7 @@ class _SearchField extends StatelessWidget {
             // (ya'ni 300 ms kechikish bilan) paydo bo'lardi.
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: controller,
-              builder: (_, value, __) => value.text.isEmpty
+              builder: (_, value, _) => value.text.isEmpty
                   ? const SizedBox(width: 14)
                   : IconButton(
                       icon: const Icon(LucideIcons.x, size: 18),

@@ -206,7 +206,7 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: _results.length,
-      separatorBuilder: (_, __) => Divider(
+      separatorBuilder: (_, _) => Divider(
           height: 1,
           color: Theme.of(context).colorScheme.surfaceContainerHighest),
       itemBuilder: (context, i) {

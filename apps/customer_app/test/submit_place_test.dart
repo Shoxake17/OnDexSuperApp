@@ -74,7 +74,7 @@ void main() {
 
     test('4 tadan ortiq rasm — tarmoqqa CHIQMAYDI', () async {
       var chaqirildi = false;
-      final c = MockClient.streaming((_, __) async {
+      final c = MockClient.streaming((_, _) async {
         chaqirildi = true;
         return http.StreamedResponse(const Stream.empty(), 201);
       });
@@ -96,7 +96,7 @@ void main() {
 
     test('6 MB dan katta rasm — tarmoqqa CHIQMAYDI', () async {
       var chaqirildi = false;
-      final c = MockClient.streaming((_, __) async {
+      final c = MockClient.streaming((_, _) async {
         chaqirildi = true;
         return http.StreamedResponse(const Stream.empty(), 201);
       });
@@ -116,7 +116,7 @@ void main() {
 
   group('server xatolari', () {
     test('429 — tushunarli xabar', () async {
-      final c = MockClient.streaming((_, __) async => http.StreamedResponse(
+      final c = MockClient.streaming((_, _) async => http.StreamedResponse(
           Stream.value(utf8.encode('{"error":"soatiga 5 tadan ko\'p"}')), 429));
       await expectLater(
         OndexMapApi(client: c).submitPlace(
@@ -128,7 +128,7 @@ void main() {
 
     test('400 — server sababi ko\'rsatiladi', () async {
       // Foydalanuvchi tuzata oladigan xato: sababni yashirmaymiz.
-      final c = MockClient.streaming((_, __) async => http.StreamedResponse(
+      final c = MockClient.streaming((_, _) async => http.StreamedResponse(
           Stream.value(utf8.encode('{"error":"nom juda qisqa"}')), 400));
       await expectLater(
         OndexMapApi(client: c).submitPlace(

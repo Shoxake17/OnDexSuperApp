@@ -23,12 +23,12 @@ import 'page_sheet.dart';
 /// ustida turganini bilib bo'lmasdi.
 Route<T> sheetRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
-    pageBuilder: (_, __, ___) => page,
+    pageBuilder: (_, _, _) => page,
     opaque: false,
     // Sekin va sezilarli: 320 ms da harakat "chaqnab" o'tib ketardi.
     transitionDuration: const Duration(milliseconds: 520),
     reverseTransitionDuration: const Duration(milliseconds: 440),
-    transitionsBuilder: (_, animation, __, child) {
+    transitionsBuilder: (_, animation, _, child) {
       final curved = CurvedAnimation(
         parent: animation,
         curve: Curves.easeOutCubic,

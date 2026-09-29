@@ -91,8 +91,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         itemCount: 4,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (_, __) => Container(
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (_, _) => Container(
           height: 104,
           decoration: BoxDecoration(
             color: const Color(0xFFF5F5F5),
@@ -115,7 +115,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (_, i) => _NotificationCard(n: items[i]),
     );
   }

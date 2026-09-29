@@ -606,7 +606,7 @@ class _LogoDot extends StatelessWidget {
         height: 20,
         fit: BoxFit.cover,
         cacheWidth: 60,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       ),
     );
   }

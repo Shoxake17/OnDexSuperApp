@@ -1224,7 +1224,7 @@ class _Logo extends StatelessWidget {
     return Image.asset(
       asset,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => fallback ?? const SizedBox.shrink(),
+      errorBuilder: (_, _, _) => fallback ?? const SizedBox.shrink(),
     );
   }
 }

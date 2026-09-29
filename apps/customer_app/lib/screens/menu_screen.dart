@@ -920,13 +920,13 @@ class _MenuScreenState extends State<MenuScreen> {
                       // tegilmaydi (skroll silliq qoladi).
                       child: ValueListenableBuilder<String>(
                         valueListenable: _activeCategory,
-                        builder: (_, active, __) => ListView.separated(
+                        builder: (_, active, _) => ListView.separated(
                           key: _chipsListKey,
                           controller: _chipsScroll,
                           scrollDirection: Axis.horizontal,
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                           itemCount: _sections.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
                           itemBuilder: (_, i) {
                             final title = _sections[i].title;
                             // Chip umumiy paketdan — affitsiant ilovasining
@@ -968,7 +968,7 @@ class _MenuScreenState extends State<MenuScreen> {
             SliverToBoxAdapter(
               child: ValueListenableBuilder<RestaurantOpenStatus>(
                 valueListenable: _openStatus,
-                builder: (_, st, __) => st.open
+                builder: (_, st, _) => st.open
                     ? const SizedBox.shrink()
                     : _ClosedBanner(message: st.closedMessage(DateTime.now())),
               ),

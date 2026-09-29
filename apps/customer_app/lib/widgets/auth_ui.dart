@@ -102,7 +102,7 @@ class AuthHeader extends StatelessWidget {
           'assets/ondex_hero.png',
           width: 126,
           fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const SizedBox(width: 126),
+          errorBuilder: (_, _, _) => const SizedBox(width: 126),
         ),
       ],
     );

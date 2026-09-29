@@ -31,7 +31,7 @@ class GoogleIcon extends StatelessWidget {
         child: Image.asset(
           'assets/google_logo.png',
           fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => CustomPaint(painter: _GooglePainter()),
+          errorBuilder: (_, _, _) => CustomPaint(painter: _GooglePainter()),
         ),
       );
 }
@@ -148,7 +148,7 @@ class UzFlag extends StatelessWidget {
         child: Image.asset(
           'assets/uz_flag.png',
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Column(
+          errorBuilder: (_, _, _) => const Column(
             children: [
               Expanded(child: ColoredBox(color: Color(0xFF0099B5), child: SizedBox.expand())),
               Expanded(child: ColoredBox(color: Colors.white, child: SizedBox.expand())),

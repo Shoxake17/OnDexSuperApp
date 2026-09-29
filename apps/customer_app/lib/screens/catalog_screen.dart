@@ -154,7 +154,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                           sliver: SliverList.separated(
                             itemCount: list.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const SizedBox(height: 16),
                             itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
                           ),
@@ -536,7 +536,7 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
   }
 }
 
-/// "'<so'rov>' bo'yicha taomlarni qidirish" qatori — `_RestaurantCard`
+/// `'<so'rov>' bo'yicha taomlarni qidirish` qatori — `_RestaurantCard`
 /// bilan bir xil uslubda, lekin taomlarga olib boradi.
 class _ProductSearchPrompt extends StatelessWidget {
   final String query;
@@ -618,7 +618,7 @@ class _CategoryRow extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
             itemBuilder: (_, i) => _CategoryTile(name: _nameOf(list[i])),
           ),
         );
@@ -679,7 +679,7 @@ class _CategoryTile extends StatelessWidget {
                       // tashlardi (vebda esa `object-contain`).
                       fit: BoxFit.contain,
                       // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
-                      errorBuilder: (_, __, ___) => const Icon(Icons.restaurant,
+                      errorBuilder: (_, _, _) => const Icon(Icons.restaurant,
                           color: Color(0xFF9E9E9E)),
                     ),
             ),

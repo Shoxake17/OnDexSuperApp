@@ -569,7 +569,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
                   : ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: _restaurants.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      separatorBuilder: (_, _) => const SizedBox(width: 12),
                       itemBuilder: (_, i) {
                         final r =
                             Map<String, dynamic>.from(_restaurants[i] as Map);
@@ -643,7 +643,7 @@ class _ServiceCard extends StatelessWidget {
                     fit: BoxFit.contain,
                     // Rasm topilmasa blok bo'sh qolmasin — xizmat
                     // belgisi o'rnini bosadi.
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         Icon(service.icon, size: 40, color: service.color),
                   ),
                 ),
@@ -689,7 +689,7 @@ class _Tile extends StatelessWidget {
             child: Image.asset(
               service.image,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
+              errorBuilder: (_, _, _) =>
                   Icon(service.icon, size: 28, color: service.color),
             ),
           ),
@@ -741,7 +741,7 @@ class _RestaurantCard extends StatelessWidget {
                         ? Container(color: _tileBg)
                         : Image.network(cover,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
+                            errorBuilder: (_, _, _) =>
                                 Container(color: _tileBg)),
                   ),
                   Positioned(

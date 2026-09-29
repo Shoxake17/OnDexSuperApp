@@ -78,7 +78,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
   # Ilova belgisini (launcher icon) `assets/logo.png` dan barcha
   # Android/iOS o'lchamlariga generatsiya qiladi. Qo'lda 10+ PNG
   # yasash o'rniga bitta buyruq — va o'lchamlardan biri unutilib

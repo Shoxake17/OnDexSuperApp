@@ -98,7 +98,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
           // Savatdagi taomlar soni menyudan ham o'zgaradi — belgi
           // o'zi yangilanishi uchun savat oqimiga obuna bo'ladi.
           animation: CartStore.instance,
-          builder: (_, __) => OndexBottomBar(
+          builder: (_, _) => OndexBottomBar(
             left: [
               NavSpec(
                 icon: Icons.storefront_outlined,

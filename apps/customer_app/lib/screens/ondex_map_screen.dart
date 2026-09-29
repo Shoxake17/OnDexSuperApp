@@ -648,7 +648,7 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   itemCount: _results.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, indent: 52),
                   itemBuilder: (_, i) {
                     final p = _results[i];

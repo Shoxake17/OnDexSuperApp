@@ -101,7 +101,7 @@ void main() {
             initialCenter: chust,
             initialZoom: 16,
             satellite: false,
-            onCameraMove: (_, __) {},
+            onCameraMove: (_, _) {},
             onCameraIdle: () {},
             onReady: (_) {},
           ),

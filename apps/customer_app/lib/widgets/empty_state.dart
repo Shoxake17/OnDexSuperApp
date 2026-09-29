@@ -50,7 +50,7 @@ class EmptyState extends StatelessWidget {
             fit: BoxFit.contain,
             // Rasm yuklanmasa ekran buzilmasligi kerak — bo'sh joy
             // qoladi, matn joyida turadi.
-            errorBuilder: (_, __, ___) => SizedBox(height: imageSize),
+            errorBuilder: (_, _, _) => SizedBox(height: imageSize),
           ),
           const SizedBox(height: 20),
           Text(
