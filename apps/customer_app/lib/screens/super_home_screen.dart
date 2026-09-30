@@ -189,8 +189,13 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     try {
       final a = await api.getMyAddress();
       final t = (a['text'] ?? '').toString().trim();
-      if (mounted && t.isNotEmpty) setState(() => _city = t);
-    } catch (_) {}
+      // Bo'sh javob ham MA'LUMOT: manzil o'chirilgan bo'lsa eski nom
+      // sarlavhada qolib ketmasin.
+      if (mounted) setState(() => _city = t.isEmpty ? kNoAddressLabel : t);
+    } catch (_) {
+      // Kirmagan foydalanuvchida endpoint 401 qaytaradi — zaxira
+      // yorliq qoladi.
+    }
   }
 
   Future<void> _loadRestaurants() async {
@@ -209,7 +214,14 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
 
   Future<void> _push(Widget screen) async {
     await Navigator.of(context).push(sheetRoute(screen));
-    if (mounted) _loadUnread();
+    if (mounted) {
+      _loadUnread();
+      // ⚠️ Manzil ham qayta o'qiladi. Busiz manzil ekranidan
+      // qaytilganda sarlavhada ESKI nom qolardi, restoran sahifasi
+      // esa (`catalog_screen.dart`, AYNI manbadan o'qiydi) yangisini
+      // ko'rsatardi — bitta ilovada ikki xil manzil.
+      _loadAddress();
+    }
   }
 
   void _soon(String name) {

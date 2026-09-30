@@ -51,6 +51,37 @@ void main() {
     expect(debugBadgeSize, 20);
   });
 
+  group('marshrut A/B belgilari', () {
+    // ┌─ SAYTGA MOSLIK ──────────────────────────────────────────────┐
+    // Saytda A/B — DOIRA: `useMapTools.ts` dagi `LYR.halo`
+    // (`circle-radius: 10`, oq `circle-stroke-width: 2`) va ustidagi
+    // `LYR.labels` harfi. Ilovada esa qo'lda chizilgan 24×32 li
+    // TOMCHI turardi — ikki mahsulot boshqa-boshqa ko'rinardi.
+    //
+    // Kvadratlik tekshiruvi aynan shuni ushlaydi: tomchi hech qachon
+    // kvadrat bo'lolmaydi (uchi pastga cho'zilgan).
+    // └──────────────────────────────────────────────────────────────┘
+    for (final slot in ['a', 'b']) {
+      test('«${slot.toUpperCase()}» — kvadrat doira, tomchi emas', () async {
+        final o = pngOlcham(await debugRouteDotPng(slot));
+        expect(o.w, o.h, reason: 'tomchi kvadrat bo\'lmaydi');
+      });
+    }
+
+    test('o\'lcham saytdagi radius bilan bir xil', () async {
+      final dpr = ui.PlatformDispatcher.instance.implicitView!.devicePixelRatio;
+      // radius 10 + 1 dip oq halqa, ya'ni diametr 22 dip.
+      final o = pngOlcham(await debugRouteDotPng('a'));
+      expect(o.w, (22 * dpr).round());
+    });
+  });
+
+  test('marshrut chizig\'i saytdagi ko\'k', () {
+    // Brend to'q sarig'i (`#f97316`) bu yerda XATO edi: saytda
+    // marshrut Yandex kabi ko'k chiziladi (`ROUTE_BLUE`).
+    expect(kOndexRouteLine, '#2f6bff');
+  });
+
   test('zichlik YO\'QOTILMAGAN — rasm dip o\'lchamida emas', () async {
     // ⚠️ Mutatsiya tuzog'i: `canvas.scale(dpr)` olib tashlansa test
     // yuqorida yiqiladi, lekin dpr=1 li muhitda sezilmay qolardi.

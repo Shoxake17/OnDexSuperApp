@@ -87,7 +87,64 @@ class _AddressScreenState extends State<AddressScreen> {
     _center = (widget.initialLat != null && widget.initialLng != null)
         ? LatLng(widget.initialLat!, widget.initialLng!)
         : _chustCenter;
-    _loadMaps();
+    _boot();
+  }
+
+  /// Avval SAQLANGAN manzilni o'qiydi, keyin xaritani ko'rsatadi.
+  ///
+  /// Tartib muhim: xarita `initialCenter: _center` bilan bir marta
+  /// quriladi, shuning uchun markaz undan OLDIN to'g'ri bo'lishi
+  /// kerak.
+  Future<void> _boot() async {
+    // Chaqiruvchi aniq nuqta bergan bo'lsa u ustun — saqlangan manzil
+    // uni bosib ketmasligi kerak.
+    if (widget.initialLat == null || widget.initialLng == null) {
+      await _loadSaved();
+    }
+    await _loadMaps();
+  }
+
+  /// ┌─ NEGA BU KERAK ────────────────────────────────────────────────┐
+  /// Ekran avval HAR SAFAR Chust markazidan ochilardi va darhol
+  /// teskari geokodlash ishga tushib, manzil maydoniga «Chust…» deb
+  /// yozib qo'yardi. Ya'ni manzilini boshqa shaharga o'zgartirgan
+  /// odam ekranni qayta ochsa o'z manzilini KO'RMASDI, saqlagan
+  /// bo'lsa esa u JIMGINA Chustga almashardi.
+  ///
+  /// Qo'shimcha maydonlar (podyezd, qavat, kvartira, domofon, izoh)
+  /// ham shu sababdan har safar bo'sh kelardi.
+  /// └────────────────────────────────────────────────────────────────┘
+  Future<void> _loadSaved() async {
+    try {
+      final a = await api
+          .getMyAddress()
+          .timeout(const Duration(seconds: 6));
+      final lat = (a['lat'] as num?)?.toDouble() ?? 0;
+      final lng = (a['lng'] as num?)?.toDouble() ?? 0;
+      // lat/lng == 0 — manzil hali tanlanmagan.
+      if (!mounted || lat == 0 || lng == 0) return;
+      _center = LatLng(lat, lng);
+      _currentZoom = 17;
+
+      final t = (a['text'] ?? '').toString().trim();
+      if (t.isNotEmpty) {
+        _addressCtrl.text = t;
+        // ⚠️ Bu qator matnni teskari geokodlashdan HIMOYA qiladi:
+        // `_resolveAddress` 3 metrdan yaqin nuqtani o'tkazib
+        // yuboradi. Busiz xarita ochilishi bilan server matni
+        // foydalanuvchi saqlagan (balki qo'lda tahrirlangan) matnni
+        // bosib ketardi.
+        _lastResolvedCenter = _center;
+      }
+      _entranceCtrl.text = (a['entrance'] ?? '').toString();
+      _floorCtrl.text = (a['floor'] ?? '').toString();
+      _apartmentCtrl.text = (a['apartment'] ?? '').toString();
+      _intercomCtrl.text = (a['intercom'] ?? '').toString();
+      _commentCtrl.text = (a['comment'] ?? '').toString();
+    } catch (_) {
+      // Kirmagan foydalanuvchi (401), tarmoq yoki kutish muddati —
+      // ekran Chust markazidan ochiladi, bu avvalgi xatti-harakat.
+    }
   }
 
   Future<void> _loadMaps() async {

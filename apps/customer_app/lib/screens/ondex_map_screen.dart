@@ -219,19 +219,23 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       // qo'shilgan bo'lishi SHART. Uslubning o'z sprite'i bo'sh
       // (`tiles/sprite.json` → 404), shuning uchun u yerdan hech
       // qanday tayyor belgi olib bo'lmaydi.
-      Future<void> pin(double lat, double lng, String belgi) async {
+      //
+      // ⚠️ LANGAR ikki xil, saytdagi kabi: A/B — nuqta USTIDA
+      // markazlashgan doira (`center`), tanlangan joy esa uchi bilan
+      // nuqtaga sanchiladigan pin (`bottom`).
+      Future<void> pin(double lat, double lng, String belgi, String langar) async {
         _symbols.add(await ctrl.addSymbol(ml.SymbolOptions(
           geometry: ml.LatLng(lat, lng),
-          iconImage: '$markerPrefix$belgi',
-          iconAnchor: 'bottom',
+          iconImage: belgi,
+          iconAnchor: langar,
         )));
       }
 
       if (_routeMode) {
-        if (_a != null) await pin(_a!.lat, _a!.lng, 'a');
-        if (_b != null) await pin(_b!.lat, _b!.lng, 'b');
+        if (_a != null) await pin(_a!.lat, _a!.lng, '${markerPrefix}a', 'center');
+        if (_b != null) await pin(_b!.lat, _b!.lng, '${markerPrefix}b', 'center');
       } else if (_selected != null) {
-        await pin(_selected!.lat, _selected!.lng, 'selected');
+        await pin(_selected!.lat, _selected!.lng, markerSelected, 'bottom');
       }
 
       if (_routeLine != null) {
@@ -240,10 +244,14 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       }
       final r = _route;
       if (r != null && _routeMode) {
+        // Rang saytdagi `ROUTE_BLUE` (`useMapTools.ts`) — Yandex
+        // marshruti kabi ko'k. Ilgari bu yerda brend to'q sarig'i
+        // turardi va ikki mahsulot boshqa-boshqa ko'rinardi.
         _routeLine = await ctrl.addLine(ml.LineOptions(
           geometry: [for (final p in r.points) ml.LatLng(p.lat, p.lng)],
-          lineColor: '#f97316',
-          lineWidth: 5.5,
+          lineColor: kOndexRouteLine,
+          lineWidth: 6,
+          lineOpacity: 0.92,
           lineJoin: 'round',
         ));
       }

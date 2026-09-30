@@ -265,7 +265,9 @@ class _HeaderState extends State<_Header> {
     try {
       final a = await api.getMyAddress();
       final t = (a['text'] ?? '').toString().trim();
-      if (mounted && t.isNotEmpty) setState(() => _addressLabel = t);
+      // Bo'sh javob ham MA'LUMOT: manzil o'chirilgan bo'lsa eski nom
+      // qolib ketmasin.
+      if (mounted) setState(() => _addressLabel = t.isEmpty ? kNoAddressLabel : t);
     } catch (_) {}
   }
 

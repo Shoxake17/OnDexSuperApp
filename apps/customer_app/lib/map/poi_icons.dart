@@ -67,6 +67,11 @@ Future<Uint8List> debugBadgePng(String klass) => _badge(_poi[klass]!);
 @visibleForTesting
 const double debugBadgeSize = _badgeSize;
 
+/// Testlar uchun: marshrut nuqtasining (A yoki B) PNG baytlari.
+@visibleForTesting
+Future<Uint8List> debugRouteDotPng(String slot) =>
+    _routeDot(_routeDots[slot]!, slot.toUpperCase());
+
 /// `w`×`h` dip li tuval, `dpr` baravar zich. Chizish dip da bajariladi.
 Future<Uint8List> _chiz(
   double w,
@@ -212,12 +217,26 @@ const Map<String, _Poi> _poi = {
 /// hech qachon chizilmasdi — pinlar jimgina yo'qolardi.
 const String markerPrefix = 'ondex-marker-';
 
-/// Xaritaga qo'yiladigan belgilarning ranglari.
-const Map<String, Color> _markers = {
-  'selected': Color(0xFFF97316), // qidiruvdan tanlangan joy
+/// Marshrut chizig'i — saytdagi `ROUTE_BLUE` (`useMapTools.ts`).
+/// Yandex marshruti kabi ko'k, brend to'q sarig'i emas.
+const String kOndexRouteLine = '#2f6bff';
+
+/// Marshrut nuqtalarining ranglari — saytdagi `ROUTE_DOT` bilan
+/// AYNAN bir xil (`useMapTools.ts`).
+const Map<String, Color> _routeDots = {
   'a': Color(0xFFFF4D3A), // marshrut boshlanishi
   'b': Color(0xFF3F3F46), // marshrut tugashi
 };
+
+/// Tanlangan joy belgisining nomi (`_logoPin` bilan chiziladi).
+const String markerSelected = '${markerPrefix}selected';
+
+/// OnDex pin rasmi — OnDexMap saytidagi `public/ondexmap-pin.png` dan
+/// nusxa (96×96 px).
+const String _logoPinFile = 'ondex_pin.png';
+
+/// Pin o'lchami (dip) — saytdagi `PIN_SIZE` (`SearchBar.tsx`).
+const double _logoPinSize = 46;
 
 /// Barcha belgilarni xaritaga yuklaydi.
 ///
@@ -267,47 +286,72 @@ Future<void> loadPoiIcons(ml.MapLibreMapController ctrl) async {
     );
   }
 
-  for (final e in _markers.entries) {
-    await qosh('$markerPrefix${e.key}', () => _mapMarker(e.value));
+  for (final e in _routeDots.entries) {
+    await qosh('$markerPrefix${e.key}', () => _routeDot(e.value, e.key.toUpperCase()));
   }
+  await qosh(markerSelected, _logoPin);
 }
 
-/// Tomchi shaklidagi belgi — tanlangan joy va marshrut nuqtalari.
+/// Marshrut nuqtasi — oq halqali rangli doira, ichida «A» yoki «B».
 ///
-/// Bu POI pinlaridan FARQ QILADI: u foydalanuvchi qo'ygan nuqtani
-/// bildiradi, xaritadagi ob'ektni emas. Shuning uchun shakli ham
-/// boshqacha — oddiy, bitta rangli, ichi bo'sh.
-Future<Uint8List> _mapMarker(Color color) {
-  const w = 24.0;
-  const h = 32.0;
+/// ┌─ SAYTDAGI SHAKLNING AYNAN O'ZI ────────────────────────────────────┐
+/// `web/src/components/map/useMapTools.ts` dagi `LYR.halo` va
+/// `LYR.labels` qatlamlari: `circle-radius: 10`,
+/// `circle-stroke-width: 2` (oq), ustida `text-size: 11` oq qalin
+/// harf. Doira nuqtaning USTIDA markazlashadi — shuning uchun bu
+/// belgi `iconAnchor: 'center'` bilan qo'yiladi, tomchi kabi
+/// «bottom» bilan emas.
+///
+/// ⚠️ Ilgari bu yerda QO'LDA chizilgan tomchi bor edi. U saytga
+/// umuman o'xshamasdi: saytda A/B — doira, tomchi esa faqat
+/// tanlangan joy uchun (u ham OnDex logotipi, qo'lda chizilgan
+/// shakl emas — `_logoPin` ga qarang).
+/// └────────────────────────────────────────────────────────────────────┘
+Future<Uint8List> _routeDot(Color fill, String label) {
+  // Tashqi oq halqa doiradan 1 dip chiqadi (10 radius + 2 chiziq,
+  // chiziq markazi radiusda — ya'ni tashqarisi 11).
+  const r = 10.0;
+  const s = (r + 1) * 2;
+  const c = Offset(s / 2, s / 2);
 
-  const r = w / 2 - 1.5;
-  const c = Offset(w / 2, r + 1.5);
-  const uch = Offset(w / 2, h - 1);
+  final tp = TextPainter(
+    text: TextSpan(
+      text: label,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: Colors.white,
+        height: 1,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
-  Path shakl(double radius, Offset markaz, Offset tip) {
-    final d = (tip - markaz).distance;
-    final a = math.asin((radius / d).clamp(-1.0, 1.0));
-    final b = math.atan2(tip.dy - markaz.dy, tip.dx - markaz.dx);
-    final chap = markaz +
-        Offset(radius * math.cos(b + math.pi / 2 + a),
-            radius * math.sin(b + math.pi / 2 + a));
-    final ong = markaz +
-        Offset(radius * math.cos(b - math.pi / 2 - a),
-            radius * math.sin(b - math.pi / 2 - a));
-    return Path()
-      ..moveTo(chap.dx, chap.dy)
-      ..lineTo(tip.dx, tip.dy)
-      ..lineTo(ong.dx, ong.dy)
-      ..arcToPoint(chap, radius: Radius.circular(radius), largeArc: true);
-  }
+  return _chiz(s, s, (canvas) {
+    canvas.drawCircle(c, r + 1, Paint()..color = Colors.white);
+    canvas.drawCircle(c, r, Paint()..color = fill);
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
+  });
+}
 
-  return _chiz(w, h, (canvas) {
-    canvas.drawPath(shakl(r + 1.5, c, uch + const Offset(0, 1)),
-        Paint()..color = Colors.white);
-    canvas.drawPath(shakl(r, c, uch), Paint()..color = color);
-    // Ichki oq doira — belgi «teshik»li bo'lib, fonda ajralib turadi.
-    canvas.drawCircle(c, r * 0.38, Paint()..color = Colors.white);
+/// Tanlangan joy — OnDexMap logotipi shaklidagi pin.
+///
+/// Saytda ham AYNAN shu fayl ishlatiladi (`logoPin.ts` →
+/// `/ondexmap-pin.png`, `anchor: "bottom"`). Rasmning o'tkir uchi
+/// tuvalning pastki chetiga yaqin, shuning uchun belgi nuqtaga
+/// «sanchiladi».
+Future<Uint8List> _logoPin() async {
+  final data = await rootBundle.load('assets/map/poi/$_logoPinFile');
+  final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+  final img = (await codec.getNextFrame()).image;
+
+  return _chiz(_logoPinSize, _logoPinSize, (canvas) {
+    canvas.drawImageRect(
+      img,
+      Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+      const Rect.fromLTWH(0, 0, _logoPinSize, _logoPinSize),
+      Paint()..filterQuality = FilterQuality.high,
+    );
   });
 }
 
