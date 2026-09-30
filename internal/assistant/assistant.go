@@ -78,8 +78,12 @@ type Pricer interface {
 //
 // Checkout ekrani ko'rsatadigan AYNAN o'sha hisob ishlatiladi —
 // aks holda yordamchi bir raqamni aytib, savatda boshqasi chiqardi.
+//
+// Oxirgi parametr — stol buyurtmasimi. Yordamchi FAQAT yetkazish
+// buyurtmasini tayyorlaydi (stol oqimi QR bilan boshlanadi), shuning
+// uchun chaqiruvlarda u `false`.
 type Quoter interface {
-	Quote(ctx context.Context, restaurantID string, items []orders.Item, customerID string) (*orders.QuoteResult, error)
+	Quote(ctx context.Context, restaurantID string, items []orders.Item, customerID string, dineIn bool) (*orders.QuoteResult, error)
 }
 
 // OrderReader — foydalanuvchining o'z buyurtmalari.

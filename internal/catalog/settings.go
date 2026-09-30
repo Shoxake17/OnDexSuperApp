@@ -169,6 +169,54 @@ func (p PaymentMethods) Validate() error {
 	return nil
 }
 
+// ─── Yetkazib berish narxi ─────────────────────────────────────────────
+
+// MaxDeliveryFeeTiyin — yetkazish narxining yuqori chegarasi (100 000
+// so'm).
+//
+// Chegara PANELDAGI XATO uchun: nol ortiqcha yozilib qolsa (600 000
+// so'm o'rniga 6 000 000) mijoz uni checkout'da ko'radi va restoran
+// buyurtmasiz qoladi. Haqiqiy yetkazish narxi bu chegaraga hech qachon
+// yaqinlashmaydi.
+const MaxDeliveryFeeTiyin int64 = 10_000_000
+
+var (
+	ErrDeliveryFeeNegative = errors.New("yetkazib berish narxi manfiy bo'lishi mumkin emas")
+	ErrDeliveryFeeTooBig   = errors.New("yetkazib berish narxi juda katta — tiyinda kiritilganiga ishonch hosil qiling")
+)
+
+// ValidateDeliveryFee — narx va bepul chegarasi.
+func ValidateDeliveryFee(feeTiyin, freeFromTiyin int64) error {
+	if feeTiyin < 0 || freeFromTiyin < 0 {
+		return ErrDeliveryFeeNegative
+	}
+	if feeTiyin > MaxDeliveryFeeTiyin {
+		return ErrDeliveryFeeTooBig
+	}
+	return nil
+}
+
+// EffectiveDeliveryFee — shu savat uchun yetkazish narxi (tiyin).
+//
+// `orderTotalTiyin` — CHEGIRMADAN KEYINGI summa (mijoz ekranda
+// ko'rayotgan raqam).
+//
+// ┌─ STOL BUYURTMASI HECH QACHON TO'LAMAYDI ──────────────────────────────┐
+// Bu yerda `dineIn` alohida parametr, chunki narxlash restoran
+// sozlamasini emas, BUYURTMA TURINI bilishi kerak. Tekshiruv chaqiruvchi
+// tomonda qoldirilsa, uni bir joyda (masalan `/quote` da) unutib
+// qo'yish oson va mijoz stolda o'tirib yetkazish haqini to'lardi.
+// └───────────────────────────────────────────────────────────────────────┘
+func (r *Restaurant) EffectiveDeliveryFee(orderTotalTiyin int64, dineIn bool) int64 {
+	if dineIn || r == nil || r.DeliveryFeeTiyin <= 0 {
+		return 0
+	}
+	if r.DeliveryFreeFromTiyin > 0 && orderTotalTiyin >= r.DeliveryFreeFromTiyin {
+		return 0
+	}
+	return r.DeliveryFeeTiyin
+}
+
 // EffectivePaymentMethods — saqlangan yoki standart qiymat (hamyon doim yoqiq).
 func (r *Restaurant) EffectivePaymentMethods() PaymentMethods {
 	p := DefaultPaymentMethods()

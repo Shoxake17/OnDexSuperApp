@@ -66,6 +66,29 @@ type Restaurant struct {
 	ETAMinMinutes int `json:"eta_min_minutes"`
 	ETAMaxMinutes int `json:"eta_max_minutes"`
 
+	// ┌─ YETKAZIB BERISH NARXI ────────────────────────────────────────┐
+	// Restoran O'Z kuryeri bilan ishlaydi va narxni O'ZI belgilaydi.
+	// OnDex bu puldan hech narsa olmaydi — u to'liq restoranga tushadi
+	// (daromad modeli: buyurtmadan foiz emas, oyiga qat'iy obuna).
+	//
+	// 0 — BEPUL, "belgilanmagan" emas. Yetkazish narxi ixtiyoriy
+	// tushuncha: ko'p kafe uni umuman olmaydi va standart holat aynan
+	// shu bo'lishi kerak (mavjud restoranlarda hech narsa o'zgarmaydi).
+	//
+	// ⚠️ Bu narx STOL buyurtmasiga QO'SHILMAYDI — `EffectiveDeliveryFee`
+	// ga qarang.
+	// └────────────────────────────────────────────────────────────────┘
+	DeliveryFeeTiyin int64 `json:"delivery_fee_tiyin"`
+
+	// DeliveryFreeFromTiyin — savat shu summadan katta yoki teng bo'lsa
+	// yetkazish bepul. 0 — qoida ishlatilmaydi.
+	//
+	// Taqqoslash CHEGIRMADAN KEYINGI summa bilan: mijoz ekranda
+	// ko'rayotgan raqam o'sha. Chegirmagacha bo'lgan summa bilan
+	// solishtirilsa, 100 000 lik savat 20% chegirma bilan 80 000 ga
+	// tushib, mijoz baribir "bepul yetkazish" ni ko'rardi.
+	DeliveryFreeFromTiyin int64 `json:"delivery_free_from_tiyin"`
+
 	// ┌─ 3D MAKET ─────────────────────────────────────────────────────┐
 	// Ba'zi restoranlarning ichki maketi 3D da chizilgan: mijoz ilova
 	// ichida kirib, aylanib, stolga o'tirib buyurtma bera oladi.

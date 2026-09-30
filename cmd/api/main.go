@@ -950,6 +950,11 @@ func main() {
 	orderSvc := orders.NewService(orderRepo, alertsSvc.WrapOrders(notifier), httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
 
+	// Yetkazib berish haqi — restoran o'zi belgilaydi (`delivery_fee_tiyin`).
+	// Ulanmasa haq umuman hisoblanmaydi, ya'ni buni unutib qoldirish
+	// jimgina "hamma yerda bepul" degani bo'lardi.
+	orderSvc.WithDelivery(httpapi.NewDeliveryPricer(catalogRepo))
+
 	// â”€â”€ OnDex Wallet (keshbek + hamyondan to'lash) â”€â”€
 	//
 	// Tashqi provayder EMAS (Octo'dan farqli) â€” faqat ichki ledger,

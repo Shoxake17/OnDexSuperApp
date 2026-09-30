@@ -75,8 +75,11 @@ type Pricer interface {
 // ko'rsatadigan AYNAN o'sha hisobni bajaradi. Agar bu yerda summa
 // alohida hisoblanganda, agent bir raqamni aytib, buyurtmada boshqa
 // raqam chiqishi mumkin edi.
+//
+// Oxirgi parametr — stol buyurtmasimi. Agent orqali FAQAT yetkazish
+// buyurtmasi keladi, shuning uchun chaqiruvlarda u `false`.
 type Quoter interface {
-	Quote(ctx context.Context, restaurantID string, items []orders.Item, customerID string) (*orders.QuoteResult, error)
+	Quote(ctx context.Context, restaurantID string, items []orders.Item, customerID string, dineIn bool) (*orders.QuoteResult, error)
 }
 
 // PlaceFunc — qoralamani HAQIQIY buyurtmaga aylantiradi.
@@ -596,7 +599,9 @@ func (s *Service) CreateDraft(ctx context.Context, p *Partner, g *Grant,
 	if err != nil {
 		return nil, err
 	}
-	quote, err := s.quoter.Quote(ctx, restaurantID, priced, g.UserID)
+	// `false` — agent orqali faqat YETKAZISH buyurtmasi keladi, ya'ni
+	// yetkazish haqi summaga kiradi (`Quoter` izohiga qarang).
+	quote, err := s.quoter.Quote(ctx, restaurantID, priced, g.UserID, false)
 	if err != nil {
 		return nil, err
 	}

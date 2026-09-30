@@ -272,7 +272,7 @@ func TestQuoteReturnsConsistentLines(t *testing.T) {
 		{ProductID: "a", Name: "Osh", Qty: 2, PriceTiyin: 3500001},
 		{ProductID: "b", Name: "Choy", Qty: 1, PriceTiyin: 500001},
 	}
-	q, err := svc.Quote(context.Background(), "r1", items, "")
+	q, err := svc.Quote(context.Background(), "r1", items, "", false)
 	if err != nil {
 		t.Fatalf("kutilmagan xato: %v", err)
 	}

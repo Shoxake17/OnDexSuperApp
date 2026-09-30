@@ -32,7 +32,13 @@ import (
 // klient "saqlandi" deb o'ylab qolardi.
 // └───────────────────────────────────────────────────────────────────────┘
 
-var restaurantEditableFields = []string{"logo_url", "cover_url", "description", "working_hours", "payment_methods"}
+// `delivery_fee_tiyin` restoranning O'ZIGA ochiq: u o'z kuryeri bilan
+// ishlaydi va narxni o'zi belgilaydi. OnDex bu puldan hech narsa
+// olmaydi, ya'ni bu shartnomaga tegmaydigan, kundalik sozlama.
+var restaurantEditableFields = []string{
+	"logo_url", "cover_url", "description", "working_hours", "payment_methods",
+	"delivery_fee_tiyin", "delivery_free_from_tiyin",
+}
 
 // restaurantLockedFields — faqat admin o'zgartiradigan maydonlar.
 var restaurantLockedFields = map[string]bool{
@@ -58,9 +64,14 @@ type restaurantSettingsView struct {
 	WorkingHours            *catalog.WorkingHours  `json:"working_hours"`
 	PaymentMethods          catalog.PaymentMethods `json:"payment_methods"`
 	OnlinePaymentsAvailable bool                   `json:"online_payments_available"`
-	Timezone                string                 `json:"timezone"`
-	Editable                []string               `json:"editable"`
-	Locked                  []string               `json:"locked"`
+	// DeliveryFeeTiyin — 0 bepul. `DeliveryFeeMax` — panel kiritishni
+	// shu yerda cheklashi uchun (chegara serverda ham tekshiriladi).
+	DeliveryFeeTiyin      int64    `json:"delivery_fee_tiyin"`
+	DeliveryFreeFromTiyin int64    `json:"delivery_free_from_tiyin"`
+	DeliveryFeeMax        int64    `json:"delivery_fee_max_tiyin"`
+	Timezone              string   `json:"timezone"`
+	Editable              []string `json:"editable"`
+	Locked                []string `json:"locked"`
 }
 
 func (s *Server) restaurantSettings(ctx context.Context, rest *catalog.Restaurant) restaurantSettingsView {
@@ -80,6 +91,9 @@ func (s *Server) restaurantSettings(ctx context.Context, rest *catalog.Restauran
 		WorkingHours:            rest.WorkingHours,
 		PaymentMethods:          rest.EffectivePaymentMethods(),
 		OnlinePaymentsAvailable: s.Payments != nil,
+		DeliveryFeeTiyin:        rest.DeliveryFeeTiyin,
+		DeliveryFreeFromTiyin:   rest.DeliveryFreeFromTiyin,
+		DeliveryFeeMax:          catalog.MaxDeliveryFeeTiyin,
 		Timezone:                "Asia/Tashkent",
 		Editable:                slices.Clone(restaurantEditableFields),
 		Locked:                  []string{"name", "kind", "phone", "address"},
@@ -303,6 +317,48 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 				}
 				rest.PaymentMethods = &pm
 				changed = append(changed, "payment_methods")
+			}
+
+			// ┌─ YETKAZIB BERISH NARXI ────────────────────────────────┐
+			// Ikkala maydon BIRGA tekshiriladi, chunki qoida ikkisiga
+			// birdan tegishli: faqat bittasi yuborilgan bo'lsa ham
+			// ikkinchisining SAQLANGAN qiymati bilan solishtiriladi.
+			// Alohida tekshirilsa "bepul chegarasi bor, narx yo'q"
+			// kabi ma'nosiz juftlik yozilib qolardi.
+			// └────────────────────────────────────────────────────────┘
+			if _, a := raw["delivery_fee_tiyin"]; a || raw["delivery_free_from_tiyin"] != nil {
+				fee, freeFrom := rest.DeliveryFeeTiyin, rest.DeliveryFreeFromTiyin
+				for _, f := range []struct {
+					key    string
+					target *int64
+				}{
+					{"delivery_fee_tiyin", &fee},
+					{"delivery_free_from_tiyin", &freeFrom},
+				} {
+					v, ok := raw[f.key]
+					if !ok {
+						continue
+					}
+					var n int64
+					if err := json.Unmarshal(v, &n); err != nil {
+						httpError(w, http.StatusBadRequest,
+							fmt.Errorf("%s butun son (tiyin) bo'lishi kerak", f.key))
+						return
+					}
+					*f.target = n
+				}
+				if err := catalog.ValidateDeliveryFee(fee, freeFrom); err != nil {
+					httpError(w, http.StatusBadRequest, err)
+					return
+				}
+				if fee != rest.DeliveryFeeTiyin {
+					rest.DeliveryFeeTiyin = fee
+					changed = append(changed, "delivery_fee_tiyin")
+				}
+				if freeFrom != rest.DeliveryFreeFromTiyin {
+					rest.DeliveryFreeFromTiyin = freeFrom
+					changed = append(changed, "delivery_free_from_tiyin")
+				}
 			}
 
 			if len(changed) > 0 {

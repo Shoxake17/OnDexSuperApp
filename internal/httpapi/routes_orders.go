@@ -265,6 +265,13 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			restaurantID := r.PathValue("id")
 			var req struct {
 				Items []catalog.ItemRequest `json:"items"`
+				// DineIn — stol buyurtmasi. Berilmasa YETKAZISH deb
+				// qaraladi: eski klientlar bu maydonni yubormaydi va
+				// ularning oqimi aynan yetkazish.
+				//
+				// ⚠️ Stol oqimi buni YUBORISHI SHART, aks holda mijoz
+				// stolda o'tirib yetkazish haqini to'lardi.
+				DineIn bool `json:"dine_in"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -279,7 +286,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("mahsulotlar boshqa restoranga tegishli"))
 				return
 			}
-			quote, err := s.OrderSvc.Quote(r.Context(), restaurantID, items, claimsFrom(r).Subject)
+			quote, err := s.OrderSvc.Quote(r.Context(), restaurantID, items, claimsFrom(r).Subject, req.DineIn)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return

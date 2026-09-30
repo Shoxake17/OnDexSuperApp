@@ -137,8 +137,9 @@ type Order struct {
 	Items        []Item `json:"items"`
 	// SubtotalTiyin — aksiya qo'llanilishidan OLDINGI summa (Σ price*qty).
 	// DiscountTiyin — shu summadan qancha ayirilgani (0 = aksiya
-	// qo'llanilmagan). TotalTiyin har doim SubtotalTiyin-DiscountTiyin'ga
-	// teng — HAQIQIY, promotions.ApplyBest orqali hisoblangan qiymatlar,
+	// qo'llanilmagan). TotalTiyin har doim
+	// SubtotalTiyin − DiscountTiyin + DeliveryFeeTiyin ga teng —
+	// HAQIQIY, promotions.ApplyBest orqali hisoblangan qiymatlar,
 	// checkout'da ko'rsatiladigan raqamlar bilan bir xil manba.
 	SubtotalTiyin int64  `json:"subtotal_tiyin"`
 	DiscountTiyin int64  `json:"discount_tiyin,omitempty"`
@@ -154,6 +155,19 @@ type Order struct {
 	// FAQAT shu qiymat butun chegirmaga teng bo'lganda ko'rsatiladi —
 	// aks holda "Chegirma" deb yoziladi.
 	PromotionDiscountTiyin int64 `json:"promotion_discount_tiyin,omitempty"`
+
+	// DeliveryFeeTiyin — yetkazib berish haqi, buyurtma vaqtida
+	// SURATGA OLINGAN.
+	//
+	// ┌─ NEGA NUSXA, HAVOLA EMAS ──────────────────────────────────────┐
+	// Restoran narxni istalgan payt o'zgartira oladi. Buyurtma uni
+	// restorandan qayta o'qisa, kechagi chek va oylik hisobot bugun
+	// boshqa raqam ko'rsatardi. Shu sabab `TotalTiyin` ham shu
+	// nusxadan hisoblanadi.
+	// └────────────────────────────────────────────────────────────────┘
+	//
+	// STOL buyurtmasida DOIM 0 (`catalog.EffectiveDeliveryFee`).
+	DeliveryFeeTiyin int64 `json:"delivery_fee_tiyin,omitempty"`
 
 	// PaymentMethod — mijoz tanlagan to'lov usuli (bo'sh = naqd).
 	PaymentMethod PaymentMethod `json:"payment_method,omitempty"`

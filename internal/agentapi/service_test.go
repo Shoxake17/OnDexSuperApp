@@ -47,7 +47,7 @@ func (f *fakePricer) PriceOrder(_ context.Context, reqs []catalog.ItemRequest) (
 
 type fakeQuoter struct{}
 
-func (fakeQuoter) Quote(_ context.Context, _ string, items []orders.Item, _ string) (*orders.QuoteResult, error) {
+func (fakeQuoter) Quote(_ context.Context, _ string, items []orders.Item, _ string, _ bool) (*orders.QuoteResult, error) {
 	var sum int64
 	for _, it := range items {
 		sum += it.PriceTiyin * int64(it.Qty)

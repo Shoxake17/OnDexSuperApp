@@ -163,6 +163,7 @@ type Service struct {
 	promotionsRepo promotions.Repository // nil = aksiyalar qo'llanilmaydi (masalan testlarda)
 	payments       PaymentGateway        // nil = karta to'lovi ulanmagan
 	wallet         WalletGateway         // nil = OnDex Wallet ulanmagan
+	delivery       DeliveryPricer        // nil = yetkazish haqi hisoblanmaydi
 }
 
 // WithPayments — karta to'lovini ulaydi. Alohida setter: mavjud
@@ -177,6 +178,37 @@ func (s *Service) WithPayments(p PaymentGateway) *Service {
 func (s *Service) WithWallet(w WalletGateway) *Service {
 	s.wallet = w
 	return s
+}
+
+// DeliveryPricer — restoranning yetkazib berish haqini beradi.
+//
+// ┌─ NEGA INTERFEYS, KATALOG EMAS ────────────────────────────────────┐
+// `orders` paketi `catalog` ni import qilmaydi va qilmasligi ham
+// kerak: buyurtma xizmati menyu tuzilmasini bilishi shart emas.
+// Kerak bo'lgan narsa bitta son, shuning uchun bitta metodli
+// interfeys — `WithPayments`/`WithWallet` bilan bir xil naqsh.
+// └───────────────────────────────────────────────────────────────────┘
+type DeliveryPricer interface {
+	// DeliveryFee — shu restoran, shu savat uchun haq (tiyin).
+	// `orderTotalTiyin` — chegirmadan KEYINGI summa.
+	DeliveryFee(ctx context.Context, restaurantID string, orderTotalTiyin int64, dineIn bool) (int64, error)
+}
+
+// WithDelivery — yetkazib berish haqini ulaydi. `nil` — haq
+// hisoblanmaydi (0), ya'ni ulanmagan holatda avvalgi xatti-harakat
+// saqlanadi va o'nlab mavjud testlar o'zgarmaydi.
+func (s *Service) WithDelivery(d DeliveryPricer) *Service {
+	s.delivery = d
+	return s
+}
+
+// deliveryFee — `nil` narxlovchida 0. Xato YUTILMAYDI: haq noto'g'ri
+// hisoblansa mijoz noto'g'ri summa to'lardi.
+func (s *Service) deliveryFee(ctx context.Context, restaurantID string, total int64, dineIn bool) (int64, error) {
+	if s.delivery == nil || dineIn {
+		return 0, nil
+	}
+	return s.delivery.DeliveryFee(ctx, restaurantID, total, dineIn)
 }
 
 func NewService(repo Repository, notifier Notifier, idgen func() string, promotionsRepo promotions.Repository) *Service {
@@ -255,7 +287,11 @@ func (s *Service) priceCart(ctx context.Context, restaurantID string, items []It
 type QuoteResult struct {
 	SubtotalTiyin int64 `json:"subtotal_tiyin"`
 	DiscountTiyin int64 `json:"discount_tiyin"`
-	TotalTiyin    int64 `json:"total_tiyin"`
+	// DeliveryFeeTiyin — yetkazib berish haqi (0 = bepul yoki stol
+	// buyurtmasi). `TotalTiyin` ga ALLAQACHON qo'shilgan.
+	DeliveryFeeTiyin int64 `json:"delivery_fee_tiyin"`
+	// TotalTiyin = SubtotalTiyin − DiscountTiyin + DeliveryFeeTiyin.
+	TotalTiyin int64 `json:"total_tiyin"`
 	// PromotionID/PromotionName — ENG KO'P hissa qo'shgan aksiya. Savatga
 	// bir vaqtda bir nechta aksiya tushishi mumkin (har qator o'zining
 	// eng yaxshisini oladi), to'liq ro'yxat — `Promotions`.
@@ -274,8 +310,15 @@ type QuoteResult struct {
 	// hissasi (hissasi bo'yicha kamayish tartibida).
 	Promotions []QuotePromotion `json:"promotions,omitempty"`
 	// Lines — HAR BIR savat qatorining yakuniy narxi. Klient savat va
-	// rasmiylashtirish ekranlarida AYNAN shu qiymatlarni chizadi:
-	// `sum(Lines[].TotalTiyin) == TotalTiyin` (invariant).
+	// rasmiylashtirish ekranlarida AYNAN shu qiymatlarni chizadi.
+	//
+	// ⚠️ INVARIANT O'ZGARDI (yetkazib berish haqi qo'shilganda):
+	//
+	//	sum(Lines[].TotalTiyin) + DeliveryFeeTiyin == TotalTiyin
+	//
+	// Ilgari u `sum(Lines) == TotalTiyin` edi. Yetkazish haqi TAOM
+	// emas, shuning uchun u qatorlar ichiga kirmaydi va hisobda
+	// alohida qator bo'lib chiziladi.
 	//
 	// Avval qator narxlari klientda alohida taxmin qilinardi va
 	// serverning jamiga mos kelmasdi — savat ekranida qatorlar
@@ -305,16 +348,26 @@ type QuoteLine struct {
 }
 
 // Quote — priceCart'ning ochiq (public) o'rovi, HTTP handler uchun.
-func (s *Service) Quote(ctx context.Context, restaurantID string, items []Item, customerID string) (*QuoteResult, error) {
+//
+// `dineIn` — stol buyurtmasi bo'lsa yetkazish haqi QO'SHILMAYDI. Bu
+// parametr ATAYLAB majburiy: uni chaqiruvchi tanlashi kerak va
+// "unutib qoldirish" mumkin emas.
+func (s *Service) Quote(ctx context.Context, restaurantID string, items []Item, customerID string, dineIn bool) (*QuoteResult, error) {
 	subtotal, discount, applied, lineDiscounts, err := s.priceCart(ctx, restaurantID, items, customerID)
 	if err != nil {
 		return nil, err
 	}
+	goods := subtotal - discount
+	fee, err := s.deliveryFee(ctx, restaurantID, goods, dineIn)
+	if err != nil {
+		return nil, err
+	}
 	res := &QuoteResult{
-		SubtotalTiyin: subtotal,
-		DiscountTiyin: discount,
-		TotalTiyin:    subtotal - discount,
-		Lines:         make([]QuoteLine, 0, len(items)),
+		SubtotalTiyin:    subtotal,
+		DiscountTiyin:    discount,
+		DeliveryFeeTiyin: fee,
+		TotalTiyin:       goods + fee,
+		Lines:            make([]QuoteLine, 0, len(items)),
 	}
 	for i, it := range items {
 		lineSubtotal := it.PriceTiyin * int64(it.Qty)
@@ -398,9 +451,16 @@ func (s *Service) CreateExpecting(ctx context.Context, o *Order,
 	if err != nil {
 		return nil, err
 	}
+	// Yetkazib berish haqi — buyurtmaga SURATGA OLINADI (`Order`
+	// izohiga qarang). Stol buyurtmasida `deliveryFee` 0 qaytaradi.
+	fee, err := s.deliveryFee(ctx, o.RestaurantID, subtotal-discount, o.IsDineIn())
+	if err != nil {
+		return nil, err
+	}
 	o.SubtotalTiyin = subtotal
 	o.DiscountTiyin = discount
-	o.TotalTiyin = subtotal - discount
+	o.DeliveryFeeTiyin = fee
+	o.TotalTiyin = subtotal - discount + fee
 	// Buyurtma yozuvida ENG KO'P hissa qo'shgan aksiya saqlanadi (bir
 	// nechta aksiya tushgan bo'lsa ham) va uning AYNAN O'ZI bergan summa
 	// — chek shu ikkisiga qarab rostgo'y yoziladi: nom faqat chegirmaning

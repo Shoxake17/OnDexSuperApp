@@ -551,7 +551,10 @@ func (s *Service) toolPropose(ctx context.Context, userID string,
 		// tugagan") — ular modelga o'z holicha uzatiladi.
 		return fail(err.Error()), nil
 	}
-	quote, err := s.quoter.Quote(ctx, restaurantID, items, userID)
+	// `false` — yordamchi faqat YETKAZISH qoralamasini tayyorlaydi
+	// (stol oqimi QR bilan boshlanadi), ya'ni yetkazish haqi summaga
+	// kiradi (`Quoter` izohiga qarang).
+	quote, err := s.quoter.Quote(ctx, restaurantID, items, userID, false)
 	if err != nil {
 		return fail("narxni hisoblab bo'lmadi"), nil
 	}
