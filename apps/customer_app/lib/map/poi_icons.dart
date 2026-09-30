@@ -48,6 +48,42 @@ const double _badgeSize = 20;
 /// Doira ichidagi belgi o'lchami — saytdagi `BADGE_GLYPH`.
 const double _glyphSize = 12;
 
+/// Rasm shuncha marta zich chiziladi (`loadPoiIcons` izohiga qarang).
+///
+/// Chegara ataylab: dpr juda katta bo'lsa 54 ta belgi xotirada behuda
+/// joy egallardi, 4 dan yuqorisi esa amalda uchramaydi.
+double get _dpr =>
+    (ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0)
+        .clamp(1.0, 4.0);
+
+/// Testlar uchun: bitta doira belgisining PNG baytlari.
+///
+/// Belgining EKRANDAGI o'lchami faqat shu baytlardan bilinadi —
+/// `addImage` ni testda chaqirib bo'lmaydi (platforma kanali).
+@visibleForTesting
+Future<Uint8List> debugBadgePng(String klass) => _badge(_poi[klass]!);
+
+/// Testlar uchun: doira belgisining dip o'lchami.
+@visibleForTesting
+const double debugBadgeSize = _badgeSize;
+
+/// `w`×`h` dip li tuval, `dpr` baravar zich. Chizish dip da bajariladi.
+Future<Uint8List> _chiz(
+  double w,
+  double h,
+  void Function(Canvas) chizuvchi,
+) async {
+  final k = _dpr;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(k);
+  chizuvchi(canvas);
+  final img = await recorder
+      .endRecording()
+      .toImage((w * k).round(), (h * k).round());
+  final data = await img.toByteData(format: ui.ImageByteFormat.png);
+  return data!.buffer.asUint8List();
+}
+
 /// Qaysi klass uchun TAYYOR PNG pin bor.
 ///
 /// ┌─ NEGA FAQAT SHULAR ────────────────────────────────────────────────┐
@@ -188,18 +224,26 @@ const Map<String, Color> _markers = {
 /// Uslub yuklangandan KEYIN chaqiriladi: `addImage` uslubga yoziladi,
 /// va uslub almashsa (sun'iy yo'ldosh ↔ oddiy) qaytadan kerak bo'ladi.
 ///
-/// ┌─ NEGA `dpr` BERILMAYDI ────────────────────────────────────────────┐
-/// `addImage` da masshtab parametri YO'Q, va Android tarafi rasmni
-/// `inScaled = false` bilan o'qiydi (`MapLibreMapController.java`:
-/// `style#addImage`). Ya'ni MapLibre rasmni 1x deb qabul qiladi:
-/// piksel o'lchami to'g'ridan-to'g'ri dip o'lchamiga aylanadi.
+/// ┌─ NEGA RASM `dpr` BARAVAR ZICH CHIZILADI ───────────────────────────┐
+/// Saytda tuval `PIN_SIZE * BADGE_RATIO` piksel qilib chiziladi va
+/// MapLibre'ga `addImage(..., { pixelRatio: 2 })` deb beriladi — ya'ni
+/// «bu rasm ikki barobar zich» deyiladi va xaritada u `PIN_SIZE` CSS
+/// px bo'lib ko'rinadi.
 ///
-/// Ilgari bu yerda rasm `size * devicePixelRatio` piksel qilib
-/// chizilardi — natijada dpr=3 qurilmada belgilar UCH BAROBAR katta
-/// bo'lib chiqardi.
+/// Flutter o'ramida `addImage` da `pixelRatio` parametri YO'Q, Android
+/// tarafi esa rasmni `inScaled = false`, `inDensity = 0` bilan o'qiydi
+/// (`MapLibreMapController.java`: `style#addImage`). Zichlik haqida
+/// ma'lumot yo'qolgani uchun rasm pikseli ekran pikseliga 1:1 tushadi.
 ///
-/// (Web'da bunday muammo yo'q: MapLibre GL JS `addImage` ga
-/// `pixelRatio` beriladi, saytda u 2 ga teng.)
+/// Shuning uchun `_pinSize = 30` bilan chizilgan rasm dpr=2.8 li
+/// qurilmada atigi ~10.7 dip bo'lib ko'rinardi — ko'rinmas darajada
+/// kichik. Rasmni `dpr` baravar zich chizsak, u yana kerakli 30 dip
+/// bo'ladi.
+///
+/// Chizish koordinatalari DIP da qoladi: tuval bir marta
+/// `canvas.scale(dpr)` bilan kattalashtiriladi. Ikki joyda (ham
+/// o'lchamda, ham tuvalda) ko'paytirish esa rasmni dpr² baravar
+/// kattalashtirib yuborardi.
 /// └────────────────────────────────────────────────────────────────────┘
 Future<void> loadPoiIcons(ml.MapLibreMapController ctrl) async {
   Future<void> qosh(String nom, Future<Uint8List> Function() chiz) async {
@@ -233,11 +277,9 @@ Future<void> loadPoiIcons(ml.MapLibreMapController ctrl) async {
 /// Bu POI pinlaridan FARQ QILADI: u foydalanuvchi qo'ygan nuqtani
 /// bildiradi, xaritadagi ob'ektni emas. Shuning uchun shakli ham
 /// boshqacha — oddiy, bitta rangli, ichi bo'sh.
-Future<Uint8List> _mapMarker(Color color) async {
+Future<Uint8List> _mapMarker(Color color) {
   const w = 24.0;
   const h = 32.0;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
 
   const r = w / 2 - 1.5;
   const c = Offset(w / 2, r + 1.5);
@@ -260,15 +302,13 @@ Future<Uint8List> _mapMarker(Color color) async {
       ..arcToPoint(chap, radius: Radius.circular(radius), largeArc: true);
   }
 
-  canvas.drawPath(shakl(r + 1.5, c, uch + const Offset(0, 1)),
-      Paint()..color = Colors.white);
-  canvas.drawPath(shakl(r, c, uch), Paint()..color = color);
-  // Ichki oq doira — belgi «teshik»li bo'lib, fonda ajralib turadi.
-  canvas.drawCircle(c, r * 0.38, Paint()..color = Colors.white);
-
-  final img = await recorder.endRecording().toImage(w.ceil(), h.ceil());
-  final data = await img.toByteData(format: ui.ImageByteFormat.png);
-  return data!.buffer.asUint8List();
+  return _chiz(w, h, (canvas) {
+    canvas.drawPath(shakl(r + 1.5, c, uch + const Offset(0, 1)),
+        Paint()..color = Colors.white);
+    canvas.drawPath(shakl(r, c, uch), Paint()..color = color);
+    // Ichki oq doira — belgi «teshik»li bo'lib, fonda ajralib turadi.
+    canvas.drawCircle(c, r * 0.38, Paint()..color = Colors.white);
+  });
 }
 
 /// Tayyor PNG pinni kerakli o'lchamga keltiradi.
@@ -284,23 +324,18 @@ Future<Uint8List> _pngIcon(String fayl) async {
   final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
   final img = (await codec.getNextFrame()).image;
 
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-
   final k = math.min(px / img.width, px / img.height);
   final w = img.width * k;
   final h = img.height * k;
-  canvas.drawImageRect(
-    img,
-    Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-    Rect.fromLTWH((px - w) / 2, (px - h) / 2, w, h),
-    Paint()..filterQuality = FilterQuality.high,
-  );
 
-  final out =
-      await recorder.endRecording().toImage(px.toInt(), px.toInt());
-  final bytes = await out.toByteData(format: ui.ImageByteFormat.png);
-  return bytes!.buffer.asUint8List();
+  return _chiz(px, px, (canvas) {
+    canvas.drawImageRect(
+      img,
+      Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+      Rect.fromLTWH((px - w) / 2, (px - h) / 2, w, h),
+      Paint()..filterQuality = FilterQuality.high,
+    );
+  });
 }
 
 /// Oq halqali rangli doira, ichida oq belgi yoki harf.
@@ -316,14 +351,9 @@ Future<Uint8List> _pngIcon(String fayl) async {
 /// gradient, aniq hoshiya va pishiq chizilgan belgi bor. Qo'lda
 /// chizilgan taqlid ikki xil ko'rinish hosil qilardi, bittasi emas.
 /// └────────────────────────────────────────────────────────────────────┘
-Future<Uint8List> _badge(_Poi spec) async {
+Future<Uint8List> _badge(_Poi spec) {
   const s = _badgeSize;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
   const c = Offset(s / 2, s / 2);
-
-  canvas.drawCircle(c, s / 2 - 0.5, Paint()..color = Colors.white);
-  canvas.drawCircle(c, s / 2 - 1.25, Paint()..color = spec.color);
 
   final TextSpan span;
   if (spec.letter != null) {
@@ -351,10 +381,11 @@ Future<Uint8List> _badge(_Poi spec) async {
   }
 
   final tp = TextPainter(text: span, textDirection: TextDirection.ltr)..layout();
-  tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
 
-  final img = await recorder.endRecording().toImage(s.ceil(), s.ceil());
-  final data = await img.toByteData(format: ui.ImageByteFormat.png);
-  return data!.buffer.asUint8List();
+  return _chiz(s, s, (canvas) {
+    canvas.drawCircle(c, s / 2 - 0.5, Paint()..color = Colors.white);
+    canvas.drawCircle(c, s / 2 - 1.25, Paint()..color = spec.color);
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
+  });
 }
 

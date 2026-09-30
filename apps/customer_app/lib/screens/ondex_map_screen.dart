@@ -64,17 +64,9 @@ class _RoutePoint {
   final String label;
 }
 
-class _OndexMapScreenState extends State<OndexMapScreen>
-    with WidgetsBindingObserver {
+class _OndexMapScreenState extends State<OndexMapScreen> {
   // Chust markazi — boshlang'ich joylashuv aniq bo'lmaganda.
   static const _chust = ml.LatLng(41.0030, 71.2360);
-
-  /// Ilova fonga o'tgach xarita qancha kutib, keyin uyquga ketadi.
-  ///
-  /// Qisqa almashinuvda (bildirishnomani o'qib qaytish) xarita qayta
-  /// yuklanmasin; uzoq fonda turganda esa 90 MB GPU xotirasi ushlab
-  /// turilmasin.
-  static const _uyquMuddati = Duration(seconds: 30);
 
   /// A/B nuqtalarining ranglari — saytdagi `RoutePanel` bilan bir xil.
   static const _dotA = Color(0xFFFF4D3A);
@@ -88,26 +80,14 @@ class _OndexMapScreenState extends State<OndexMapScreen>
   bool _styleReady = false;
   bool _satellite = false;
   ml.LatLng _center = _chust;
+  /// Joriy masshtab.
+  ///
+  /// Sun'iy yo'ldosh rejimi almashganda xarita vidjeti butunlay
+  /// qayta quriladi (`key: ValueKey(_satellite)`) va
+  /// `initialCameraPosition` qaytadan qo'llanadi. Bu yerda qattiq
+  /// `13` turgan paytda foydalanuvchi rejimni almashtirsa xarita
+  /// markazda qolib, masshtabi sakrab ketardi.
   double _zoomLevel = 13;
-
-  /// Xarita oynasi tirikmi.
-  ///
-  /// ┌─ NEGA UNI O'CHIRISH KERAK ─────────────────────────────────────┐
-  /// MapLibre plitka keshini va GL yuzasini O'ZI bo'shatmaydi:
-  /// `maplibre_gl` dagi `onTrimMemory(int)` — bo'sh metod, faqat
-  /// `onLowMemory()` uzatiladi, uni esa zamonaviy Android deyarli
-  /// chaqirmaydi. Natijada ilova FONDA turganda ham 90 MB GPU
-  /// xotirasini ushlab qoladi (qurilmada o'lchangan: `Graphics`
-  /// `am send-trim-memory COMPLETE` dan keyin ham 90.7 MB da
-  /// qoldi). Xotirasi kam telefonda bu ilovani `lmkd` uchun birinchi
-  /// nishonga aylantiradi.
-  ///
-  /// Yagona ishonchli yo'l — xarita vidjetini daraxtdan olib tashlash.
-  /// Holat (`_a`, `_b`, `_route`, `_selected`) saqlanadi va uyg'onganda
-  /// `_redraw()` hammasini qaytadan chizadi.
-  /// └────────────────────────────────────────────────────────────────┘
-  bool _mapAlive = true;
-  Timer? _sleepTimer;
 
   // Qidiruv.
   Timer? _debounce;
@@ -156,65 +136,16 @@ class _OndexMapScreenState extends State<OndexMapScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _readLocPerm();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _sleepTimer?.cancel();
     _debounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _api.dispose();
     super.dispose();
-  }
-
-  /* ── Hayot sikli: xaritani uxlatish ──────────────────────────────── */
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _sleepTimer?.cancel();
-      _sleepTimer = null;
-      if (!_mapAlive && mounted) setState(() => _mapAlive = true);
-      return;
-    }
-    if (state == AppLifecycleState.paused && _mapAlive) {
-      _sleepTimer?.cancel();
-      _sleepTimer = Timer(_uyquMuddati, _sleepMap);
-    }
-  }
-
-  @override
-  void didHaveMemoryPressure() {
-    // Ekran ko'rinib turganda xaritani olib tashlash foydalanuvchiga
-    // buzilgandek ko'rinardi. Bosim FONDA kelsa esa aynan shu 90 MB ni
-    // bo'shatish ilovani o'ldirilishdan saqlaydi.
-    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-      return;
-    }
-    _sleepMap();
-  }
-
-  /// Xarita oynasini daraxtdan olib tashlaydi.
-  ///
-  /// Kamera (`_center`, `_zoomLevel`) va marshrut holati saqlanadi —
-  /// uyg'onganda foydalanuvchi o'sha joyni ko'radi.
-  void _sleepMap() {
-    _sleepTimer?.cancel();
-    _sleepTimer = null;
-    if (!_mapAlive || !mounted) return;
-    setState(() {
-      _mapAlive = false;
-      _ctrl = null;
-      _styleReady = false;
-      // Bu ro'yxatlar O'CHIRILGAN xarita oynasidagi ob'ektlarga
-      // ishora qiladi — yangi oynada ular yaroqsiz.
-      _symbols.clear();
-      _routeLine = null;
-    });
   }
 
   /* ── Qidiruv ─────────────────────────────────────────────────────── */
@@ -688,15 +619,6 @@ class _OndexMapScreenState extends State<OndexMapScreen>
   }
 
   Widget _buildMap() {
-    // Uyquga ketgan xarita — o'rnida uslubning o'z foni. Joyni
-    // egallab turadi, ustidagi panellar sakramaydi
-    // (`_mapAlive` izohiga qarang).
-    if (!_mapAlive) {
-      return ColoredBox(
-        color: _satellite ? const Color(0xFF1C1C1E) : Colors.white,
-        child: const SizedBox.expand(),
-      );
-    }
     return ml.MapLibreMap(
       key: ValueKey(_satellite),
       styleString: _satellite ? ondexSatelliteStyle : kOndexStyleUrl,
@@ -720,7 +642,6 @@ class _OndexMapScreenState extends State<OndexMapScreen>
       },
       onCameraMove: (pos) {
         _center = pos.target;
-        // Uyqudan keyin xarita AYNAN shu ko'rinishda qaytadi.
         _zoomLevel = pos.zoom;
       },
       // Kamera mamlakatdan chiqmaydi: tashqarida xarita ma'lumoti
