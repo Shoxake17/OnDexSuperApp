@@ -45,8 +45,20 @@ const baseUrl = apiBaseUrl;
 /// marta yozilgan va to'rtala ilovaga birdan yetadi.
 class CustomerApi extends ApiClient {
   CustomerApi() : super(baseUrl: apiBaseUrl);
+  /// Mijozga KO'RINADIGAN restoranlar.
+  ///
+  /// ┌─ NEGA `for_me=1` ────────────────────────────────────────────────┐
+  /// Bu parametr serverga "menga yetkaza oladiganini ber" deydi va
+  /// ro'yxat saqlangan manzil joylashgan shahar bilan cheklanadi
+  /// (`internal/httpapi/service_area.go`).
+  ///
+  /// Parametr SHART: usiz server to'liq ro'yxatni qaytaradi — admin
+  /// paneli va sitemap aynan shunga tayanadi. Ajratuvchi narsa
+  /// foydalanuvchining ROLI emas, QAYSI ILOVA so'rayotgani: platforma
+  /// egasi mijoz ilovasida oddiy mijoz, roli esa `admin`.
+  /// └──────────────────────────────────────────────────────────────────┘
   Future<List<dynamic>> restaurants() async =>
-      (await send('GET', '/restaurants')) as List<dynamic>? ?? [];
+      (await send('GET', '/restaurants?for_me=1')) as List<dynamic>? ?? [];
 
   /// Bitta restoran. Menyu ekrani holatni ("Ochiq/Yopiq", ish vaqti) shu
   /// bilan YANGI oladi — katalog keshi eskirgan bo'lishi mumkin.

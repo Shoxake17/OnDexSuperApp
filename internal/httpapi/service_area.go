@@ -7,7 +7,6 @@ import (
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/delivery"
-	"chustapp/internal/users"
 )
 
 // errOutsideServiceArea — manzil hech bir xizmat shahrida emas. Matn
@@ -37,33 +36,37 @@ func (s *Server) checkRestaurantServes(ctx context.Context, restaurantID string,
 // savatni to'ldirib, faqat oxirida "boshqa shahar" xatosini ko'rardi.
 // └────────────────────────────────────────────────────────────────────┘
 //
-// ┌─ KIM HAMMASINI KO'RADI ────────────────────────────────────────────┐
+// ┌─ FILTRNI CHAQIRUVCHI SO'RAYDI, ROL EMAS ───────────────────────────┐
+// `?for_me=1` — "menga yetkaza oladiganini ber". Uni FAQAT mijoz
+// ilovasi va sayt vitrinasi yuboradi; admin paneli, restoran paneli
+// va sitemap yubormaydi va TO'LIQ ro'yxatni oladi.
+//
+// Avval bu rol bo'yicha ajratilgan edi (`customer`/`courier`
+// filtrlanadi, xodimlar yo'q) — sabab: `GET /restaurants` ni admin
+// paneli HAM o'qiydi (`apps/admin_panel/lib/api.dart`) va adminning
+// shaxsiy manzili uning PANELIDAN restoranlarni yashirib qo'yardi.
+//
+// Lekin rol noto'g'ri o'lchov edi: platforma egasi ham mijoz
+// ilovasida ODDIY MIJOZ, uning roli esa `admin`. Natijada u filtrni
+// hech qachon ko'rmasdi. To'g'ri o'lchov — QAYSI ILOVA so'rayotgani,
+// va buni so'rovning o'zi aytadi.
+//
+// ⚠️ Bu xavfsizlik chegarasi EMAS va bo'lolmaydi: parametrni
+// istalgan klient qo'ymasligi mumkin. Restoran ro'yxati ochiq
+// ma'lumot, haqiqiy tekshiruv esa buyurtma bosqichida
+// (`checkRestaurantServes`).
+// └────────────────────────────────────────────────────────────────────┘
+//
 // Manzili yo'q foydalanuvchi (kirmagan, yoki kirgan-u hali manzil
-// tanlamagan) TO'LIQ ro'yxatni ko'radi. Sabab: bosh sahifa bo'sh
+// tanlamagan) TO'LIQ ro'yxatni ko'radi: bosh sahifa bo'sh
 // ochilmasligi kerak — odam avval nimalar borligini ko'rib, keyin
-// manzil tanlaydi. Buyurtma bosqichida tekshiruv baribir ishlaydi.
-//
-// Bu maxfiylik chegarasi EMAS: restoran ro'yxati ochiq ma'lumot.
-// └────────────────────────────────────────────────────────────────────┘
-//
-// ┌─ ⚠️ XODIM ROLLARI FILTRLANMAYDI ───────────────────────────────────┐
-// `GET /restaurants` ni admin paneli HAM o'qiydi
-// (`apps/admin_panel/lib/api.dart`). Adminning shaxsiy yetkazish
-// manzili (masalan Chustda) saqlangan bo'lsa, filtr uning
-// PANELIDAN boshqa shaharlarning restoranlarini yashirib qo'yardi —
-// ular boshqarib bo'lmas holga kelardi.
-//
-// Shuning uchun filtr faqat OVQAT BUYURTMA QILADIGAN rollarga
-// qo'llanadi. Yangi rol qo'shilsa u ATAYLAB filtrlanmaydi: bilmasdan
-// biror panelni sindirgandan ko'ra, bilmasdan ortiqcha ko'rsatgan
-// yaxshiroq (buyurtma bosqichida tekshiruv baribir bor).
-// └────────────────────────────────────────────────────────────────────┘
+// manzil tanlaydi.
 func (s *Server) visibleRestaurants(r *http.Request, list []*catalog.Restaurant) []*catalog.Restaurant {
-	c := claimsFrom(r)
-	if c == nil || c.Subject == "" {
+	if r.URL.Query().Get("for_me") != "1" {
 		return list
 	}
-	if c.Role != users.RoleCustomer && c.Role != users.RoleCourier {
+	c := claimsFrom(r)
+	if c == nil || c.Subject == "" {
 		return list
 	}
 	u, err := s.UserRepo.GetByID(r.Context(), c.Subject)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../data/address_scope.dart';
 import '../widgets/header_action.dart';
 import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
@@ -171,9 +172,19 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Manzil BITTA manbadan keladi va o'zgarganda o'zi xabar beradi —
+    // shunda restoran sahifasi bilan hech qachon ajralib qolmaydi
+    // (`AddressScope` izohiga qarang).
+    AddressScope.instance.addListener(_onAddressChanged);
     _loadUnread();
     _loadAddress();
     _loadRestaurants();
+  }
+
+  @override
+  void dispose() {
+    AddressScope.instance.removeListener(_onAddressChanged);
+    super.dispose();
   }
 
   /// Bildirishnoma belgisi — xatosi JIM yutiladi (bezak ma'lumoti,
@@ -185,17 +196,21 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _loadAddress() async {
-    try {
-      final a = await api.getMyAddress();
-      final t = (a['text'] ?? '').toString().trim();
-      // Bo'sh javob ham MA'LUMOT: manzil o'chirilgan bo'lsa eski nom
-      // sarlavhada qolib ketmasin.
-      if (mounted) setState(() => _city = t.isEmpty ? kNoAddressLabel : t);
-    } catch (_) {
-      // Kirmagan foydalanuvchida endpoint 401 qaytaradi — zaxira
-      // yorliq qoladi.
-    }
+  Future<void> _loadAddress() => AddressScope.instance.refresh();
+
+  /// Manzil o'zgardi — sarlavha VA ro'yxat birga yangilanadi.
+  ///
+  /// Ro'yxat ham shu yerda qayta so'raladi: server uni manzil shahri
+  /// bilan cheklaydi (`?for_me=1`), ya'ni manzil o'zgarsa javob ham
+  /// boshqacha bo'ladi. Busiz yangi ro'yxat faqat ilova qayta ishga
+  /// tushganda ko'rinardi.
+  void _onAddressChanged() {
+    if (!mounted) return;
+    setState(() {
+      final t = AddressScope.instance.text;
+      _city = t.isEmpty ? kNoAddressLabel : t;
+    });
+    _loadRestaurants();
   }
 
   Future<void> _loadRestaurants() async {
@@ -220,6 +235,9 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
       // qaytilganda sarlavhada ESKI nom qolardi, restoran sahifasi
       // esa (`catalog_screen.dart`, AYNI manbadan o'qiydi) yangisini
       // ko'rsatardi — bitta ilovada ikki xil manzil.
+      //
+      // O'zgargan bo'lsa `AddressScope` o'zi xabar beradi va
+      // `_onAddressChanged` ro'yxatni ham yangilaydi.
       _loadAddress();
     }
   }

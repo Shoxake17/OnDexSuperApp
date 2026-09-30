@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
+import '../data/address_scope.dart';
 import '../map/map_backend.dart';
 import '../map/pan_map.dart';
 import '../widgets/app_text_field.dart';
@@ -308,6 +309,15 @@ class _AddressScreenState extends State<AddressScreen> {
         apartment: _apartmentCtrl.text.trim(),
         intercom: _intercomCtrl.text.trim(),
         comment: _commentCtrl.text.trim(),
+      );
+      // ⚠️ Butun ilovaga DARHOL xabar beriladi — serverni qayta
+      // so'ramasdan. Busiz sarlavha va restoran ro'yxati faqat
+      // keyingi ishga tushirishda yangilanardi (`AddressScope`
+      // izohiga qarang).
+      AddressScope.instance.set(
+        lat: _center.latitude,
+        lng: _center.longitude,
+        text: _addressCtrl.text.trim(),
       );
       if (!mounted) return;
       Navigator.of(context).pop(_addressCtrl.text.trim());

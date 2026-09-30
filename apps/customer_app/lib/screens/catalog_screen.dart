@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../category_icons.dart';
+import '../data/address_scope.dart';
 import '../data/catalog_repository.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
@@ -43,12 +44,40 @@ class CatalogScreen extends StatefulWidget {
 class _CatalogScreenState extends State<CatalogScreen> {
   /// Repozitoriylar bir marta quriladi — `build` ichida yaratilsa
   /// har qayta chizishda yangi oqim ochilib, so'rov takrorlanardi.
-  final _restaurants = Repos.restaurants();
+  ///
+  /// ⚠️ `_restaurants` — ISTISNO: uning kesh kaliti manzilga bog'liq
+  /// (`Repos.restaurants()` izohiga qarang), shuning uchun manzil
+  /// o'zgarganda u QAYTA quriladi. Busiz ekran eski shaharning
+  /// ro'yxatini ushlab qolardi.
+  Repository<List<dynamic>> _restaurants = Repos.restaurants();
   final _categories = Repos.categories();
 
   /// "Pastga tortib yangilash" oqimni qaytadan ishga tushiradi.
   /// Kalit o'zgarishi `StreamBuilder` ni yangi obunaga majburlaydi.
   int _reloadTick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    AddressScope.instance.addListener(_onAddressChanged);
+  }
+
+  @override
+  void dispose() {
+    AddressScope.instance.removeListener(_onAddressChanged);
+    super.dispose();
+  }
+
+  /// Manzil o'zgardi — yangi kalit bilan yangi repozitoriy va yangi
+  /// obuna. Server ro'yxatni manzil shahri bilan cheklaydi, ya'ni
+  /// javob ham boshqacha bo'ladi.
+  void _onAddressChanged() {
+    if (!mounted) return;
+    setState(() {
+      _restaurants = Repos.restaurants();
+      _reloadTick++;
+    });
+  }
 
   /// Ro'yxat joyidan siljiganmi — sarlavhaning dumaloq burchagi va
   /// soyasi shunga qarab paydo bo'ladi.
@@ -263,19 +292,24 @@ class _HeaderState extends State<_Header> {
   @override
   void initState() {
     super.initState();
+    AddressScope.instance.addListener(_onAddressChanged);
     _loadUnread();
     _loadAddress();
   }
 
+  @override
+  void dispose() {
+    AddressScope.instance.removeListener(_onAddressChanged);
+    super.dispose();
+  }
+
   /// Kirmagan foydalanuvchida endpoint 401 qaytaradi — zaxira yorliq qoladi.
-  Future<void> _loadAddress() async {
-    try {
-      final a = await api.getMyAddress();
-      final t = (a['text'] ?? '').toString().trim();
-      // Bo'sh javob ham MA'LUMOT: manzil o'chirilgan bo'lsa eski nom
-      // qolib ketmasin.
-      if (mounted) setState(() => _addressLabel = t.isEmpty ? kNoAddressLabel : t);
-    } catch (_) {}
+  Future<void> _loadAddress() => AddressScope.instance.refresh();
+
+  void _onAddressChanged() {
+    if (!mounted) return;
+    final t = AddressScope.instance.text;
+    setState(() => _addressLabel = t.isEmpty ? kNoAddressLabel : t);
   }
 
   /// O'qilmagan bildirishnomalar soni.

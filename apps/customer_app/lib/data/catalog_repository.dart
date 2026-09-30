@@ -3,6 +3,7 @@
 // `package:ondex_core` importi ortiqcha bo'lardi (analizator ham
 // shuni aytadi).
 import '../api.dart';
+import 'address_scope.dart';
 
 /// Mijoz ilovasining BARCHA kesh-birinchi repozitoriylari.
 ///
@@ -62,9 +63,20 @@ class Repos {
 
   // ── Katalog (ommaviy) ────────────────────────────────────────────
 
-  static Repository<List<dynamic>> restaurants() => _list(
+  /// Restoranlar — MANZILGA BOG'LIQ.
+  ///
+  /// ⚠️ Kalitga manzil yorlig'i kiradi (`AddressScope.cacheTag`).
+  /// Server bitta manzilga (`GET /restaurants?for_me=1`) foydalanuvchi
+  /// manziliga qarab HAR XIL javob qaytaradi; kalit `restaurants`
+  /// bo'lib qolsa, Chust ro'yxati Toshkentga o'tgandan keyin ham
+  /// diskdan o'qilaverardi. Menyuda bu qoida allaqachon bor
+  /// (`menu.$restaurantId`).
+  ///
+  /// `tag` faqat ESKI yozuvni o'chirish uchun beriladi
+  /// (`AddressScope._apply`); oddiy chaqiruvda joriy manzil olinadi.
+  static Repository<List<dynamic>> restaurants({String? tag}) => _list(
         store: _public,
-        key: 'restaurants',
+        key: 'restaurants.${tag ?? AddressScope.instance.cacheTag}',
         ttl: _ttlRestaurants,
         fetch: api.restaurants,
       );

@@ -92,9 +92,12 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 		tashkentLat, tashkentLng = 41.3650, 69.2880
 	)
 
+	// `for_me=1` — mijoz ilovasi aynan shu bilan so'raydi.
+	const forMe = "/restaurants?for_me=1"
+
 	t.Run("Chust mijozi Toshkent restoranini KO'RMAYDI", func(t *testing.T) {
 		h, jwt := cityListServer(t, chustLat, chustLng)
-		w := do(t, h, "GET", "/restaurants", jwt, "")
+		w := do(t, h, "GET", forMe, jwt, "")
 		if w.Code != http.StatusOK {
 			t.Fatalf("kod %d: %s", w.Code, w.Body.String())
 		}
@@ -112,7 +115,7 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 
 	t.Run("Toshkent mijozi Chust restoranini KO'RMAYDI", func(t *testing.T) {
 		h, jwt := cityListServer(t, tashkentLat, tashkentLng)
-		got := ids(t, do(t, h, "GET", "/restaurants", jwt, "").Body.Bytes())
+		got := ids(t, do(t, h, "GET", forMe, jwt, "").Body.Bytes())
 		for _, id := range got {
 			if id == "rest-chust" {
 				t.Fatalf("Chust restorani Toshkent mijoziga ko'rindi: %v", got)
@@ -143,7 +146,7 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 		} {
 			h, jwt := cityListServer(t, c.lat, c.lng)
 			var bor bool
-			for _, id := range ids(t, do(t, h, "GET", "/restaurants", jwt, "").Body.Bytes()) {
+			for _, id := range ids(t, do(t, h, "GET", forMe, jwt, "").Body.Bytes()) {
 				if id == "rest-nowhere" {
 					bor = true
 				}
@@ -160,7 +163,7 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 	// └────────────────────────────────────────────────────────────────┘
 	t.Run("kirmagan foydalanuvchi hammasini ko'radi", func(t *testing.T) {
 		h, _ := cityListServer(t, chustLat, chustLng)
-		got := ids(t, do(t, h, "GET", "/restaurants", "", "").Body.Bytes())
+		got := ids(t, do(t, h, "GET", forMe, "", "").Body.Bytes())
 		if len(got) != 3 {
 			t.Fatalf("tokensiz ro'yxat %v, 3 ta kutilgan", got)
 		}
@@ -168,7 +171,7 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 
 	t.Run("manzilsiz mijoz hammasini ko'radi", func(t *testing.T) {
 		h, jwt := cityListServer(t, 0, 0)
-		got := ids(t, do(t, h, "GET", "/restaurants", jwt, "").Body.Bytes())
+		got := ids(t, do(t, h, "GET", forMe, jwt, "").Body.Bytes())
 		if len(got) != 3 {
 			t.Fatalf("manzilsiz ro'yxat %v, 3 ta kutilgan", got)
 		}
@@ -176,14 +179,17 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 
 	// ┌─ ADMIN PANELINI SINDIRMASLIK ──────────────────────────────────┐
 	// `GET /restaurants` ni admin paneli HAM o'qiydi
-	// (`apps/admin_panel/lib/api.dart`). Adminning shaxsiy yetkazish
-	// manzili saqlangan bo'lsa va filtr unga ham qo'llansa, panelda
-	// boshqa shaharlarning restoranlari YO'QOLARDI — ularni boshqarib
-	// bo'lmasdi.
+	// (`apps/admin_panel/lib/api.dart`) — u `for_me` YUBORMAYDI.
+	// Filtr unga qo'llansa panelda boshqa shaharlarning restoranlari
+	// YO'QOLARDI va ularni boshqarib bo'lmasdi.
+	//
+	// ⚠️ Rol bu yerda o'lchov EMAS: platforma egasi mijoz ilovasida
+	// oddiy mijoz, roli esa `admin`. Ajratuvchi narsa — parametr.
 	// └────────────────────────────────────────────────────────────────┘
-	t.Run("xodim rollari filtrlanmaydi", func(t *testing.T) {
+	t.Run("`for_me` siz so'rov HECH QACHON filtrlanmaydi", func(t *testing.T) {
 		for _, role := range []users.Role{
 			users.RoleAdmin, users.RoleRestaurant, users.RoleWaiter,
+			users.RoleCustomer, users.RoleCourier,
 		} {
 			h, jwt := cityListServerAs(t, role, chustLat, chustLng)
 			got := ids(t, do(t, h, "GET", "/restaurants", jwt, "").Body.Bytes())
@@ -193,13 +199,19 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 		}
 	})
 
-	// Kuryer ham ovqat buyurtma qiladi — u mijoz kabi filtrlanadi.
-	t.Run("kuryer mijoz kabi filtrlanadi", func(t *testing.T) {
-		h, jwt := cityListServerAs(t, users.RoleCourier, chustLat, chustLng)
-		got := ids(t, do(t, h, "GET", "/restaurants", jwt, "").Body.Bytes())
-		for _, id := range got {
-			if id == "rest-tash" {
-				t.Fatalf("kuryerga boshqa shahar restorani ko'rindi: %v", got)
+	// Teskarisi: `for_me=1` bo'lsa ROL AHAMIYATSIZ. Aynan shu qator
+	// platforma egasining muammosini hal qiladi — u `admin` roli bilan
+	// ham mijoz ilovasida o'z shahrini ko'radi.
+	t.Run("`for_me=1` da rol ahamiyatsiz", func(t *testing.T) {
+		for _, role := range []users.Role{
+			users.RoleCustomer, users.RoleCourier,
+			users.RoleAdmin, users.RoleRestaurant, users.RoleWaiter,
+		} {
+			h, jwt := cityListServerAs(t, role, tashkentLat, tashkentLng)
+			for _, id := range ids(t, do(t, h, "GET", forMe, jwt, "").Body.Bytes()) {
+				if id == "rest-chust" {
+					t.Errorf("%s: boshqa shahar restorani ko'rindi", role)
+				}
 			}
 		}
 	})
@@ -207,7 +219,7 @@ func TestListRestaurants_FilteredByCity(t *testing.T) {
 	// Yaroqsiz token 401 BERMAYDI — ochiq endpoint, anonim deb qaraladi.
 	t.Run("yaroqsiz token — anonim, 401 emas", func(t *testing.T) {
 		h, _ := cityListServer(t, chustLat, chustLng)
-		w := do(t, h, "GET", "/restaurants", "buzuq.token.qiymati", "")
+		w := do(t, h, "GET", forMe, "buzuq.token.qiymati", "")
 		if w.Code != http.StatusOK {
 			t.Fatalf("kod %d, 200 kutilgan: %s", w.Code, w.Body.String())
 		}

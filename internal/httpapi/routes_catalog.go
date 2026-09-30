@@ -21,10 +21,12 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// emas.
 	//
 	// ┌─ SHAHAR BO'YICHA FILTR ────────────────────────────────────────┐
-	// Ro'yxat mijozning saqlangan manzili joylashgan SHAHAR bilan
-	// cheklanadi (`visibleRestaurants`). Kesh esa TO'LIQ ro'yxatni
-	// saqlaydi va filtr undan KEYIN qo'llanadi — shunda kesh kaliti
-	// shaharlarga bo'linib ketmaydi.
+	// `?for_me=1` berilsa ro'yxat foydalanuvchining saqlangan manzili
+	// joylashgan SHAHAR bilan cheklanadi (`visibleRestaurants`).
+	// Parametrsiz — to'liq ro'yxat (admin paneli, sitemap).
+	//
+	// Kesh TO'LIQ ro'yxatni saqlaydi va filtr undan KEYIN qo'llanadi —
+	// shunda kesh kaliti shaharlarga bo'linib ketmaydi.
 	// └────────────────────────────────────────────────────────────────┘
 	mux.HandleFunc("GET /restaurants", s.optionalAuth(func(w http.ResponseWriter, r *http.Request) {
 		var list []*catalog.Restaurant
