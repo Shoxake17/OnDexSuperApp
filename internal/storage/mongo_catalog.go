@@ -47,6 +47,11 @@ type mongoRestaurant struct {
 	RatingCount   int     `bson:"rating_count"`
 	ETAMinMinutes int     `bson:"eta_min_minutes"`
 	ETAMaxMinutes int     `bson:"eta_max_minutes"`
+	// Yetkazib berish narxi — restoranning o'z sozlamasi. Eski
+	// hujjatlarda yo'q va nol qiymat aynan to'g'ri ma'noni beradi:
+	// 0 = BEPUL.
+	DeliveryFeeTiyin      int64 `bson:"delivery_fee_tiyin"`
+	DeliveryFreeFromTiyin int64 `bson:"delivery_free_from_tiyin"`
 	// 3D maket: bo'sh bo'lsa restoranda 3D yo'q. Eski hujjatlarda
 	// bu maydonlar yo'q va BSON ularni bo'sh qoldiradi.
 	Scene3DURL    string `bson:"scene_3d_url"`
@@ -62,6 +67,7 @@ func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 		WorkingHours: d.WorkingHours, PaymentMethods: d.PaymentMethods,
 		Rating: d.Rating, RatingCount: d.RatingCount,
 		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
+		DeliveryFeeTiyin: d.DeliveryFeeTiyin, DeliveryFreeFromTiyin: d.DeliveryFreeFromTiyin,
 		Scene3DURL: d.Scene3DURL, Scene3DSHA256: d.Scene3DSHA256, Scene3DBytes: d.Scene3DBytes,
 	}
 }
@@ -74,6 +80,7 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 		WorkingHours: x.WorkingHours, PaymentMethods: x.PaymentMethods,
 		Rating: x.Rating, RatingCount: x.RatingCount,
 		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
+		DeliveryFeeTiyin: x.DeliveryFeeTiyin, DeliveryFreeFromTiyin: x.DeliveryFreeFromTiyin,
 		Scene3DURL: x.Scene3DURL, Scene3DSHA256: x.Scene3DSHA256, Scene3DBytes: x.Scene3DBytes,
 	}
 }
