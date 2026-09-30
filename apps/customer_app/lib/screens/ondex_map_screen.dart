@@ -64,9 +64,17 @@ class _RoutePoint {
   final String label;
 }
 
-class _OndexMapScreenState extends State<OndexMapScreen> {
+class _OndexMapScreenState extends State<OndexMapScreen>
+    with WidgetsBindingObserver {
   // Chust markazi — boshlang'ich joylashuv aniq bo'lmaganda.
   static const _chust = ml.LatLng(41.0030, 71.2360);
+
+  /// Ilova fonga o'tgach xarita qancha kutib, keyin uyquga ketadi.
+  ///
+  /// Qisqa almashinuvda (bildirishnomani o'qib qaytish) xarita qayta
+  /// yuklanmasin; uzoq fonda turganda esa 90 MB GPU xotirasi ushlab
+  /// turilmasin.
+  static const _uyquMuddati = Duration(seconds: 30);
 
   /// A/B nuqtalarining ranglari — saytdagi `RoutePanel` bilan bir xil.
   static const _dotA = Color(0xFFFF4D3A);
@@ -80,6 +88,26 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
   bool _styleReady = false;
   bool _satellite = false;
   ml.LatLng _center = _chust;
+  double _zoomLevel = 13;
+
+  /// Xarita oynasi tirikmi.
+  ///
+  /// ┌─ NEGA UNI O'CHIRISH KERAK ─────────────────────────────────────┐
+  /// MapLibre plitka keshini va GL yuzasini O'ZI bo'shatmaydi:
+  /// `maplibre_gl` dagi `onTrimMemory(int)` — bo'sh metod, faqat
+  /// `onLowMemory()` uzatiladi, uni esa zamonaviy Android deyarli
+  /// chaqirmaydi. Natijada ilova FONDA turganda ham 90 MB GPU
+  /// xotirasini ushlab qoladi (qurilmada o'lchangan: `Graphics`
+  /// `am send-trim-memory COMPLETE` dan keyin ham 90.7 MB da
+  /// qoldi). Xotirasi kam telefonda bu ilovani `lmkd` uchun birinchi
+  /// nishonga aylantiradi.
+  ///
+  /// Yagona ishonchli yo'l — xarita vidjetini daraxtdan olib tashlash.
+  /// Holat (`_a`, `_b`, `_route`, `_selected`) saqlanadi va uyg'onganda
+  /// `_redraw()` hammasini qaytadan chizadi.
+  /// └────────────────────────────────────────────────────────────────┘
+  bool _mapAlive = true;
+  Timer? _sleepTimer;
 
   // Qidiruv.
   Timer? _debounce;
@@ -108,13 +136,85 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   bool _locating = false;
 
+  /// Joylashuvga ruxsat berilganmi.
+  ///
+  /// ┌─ NEGA HOLATDA SAQLANADI ───────────────────────────────────────┐
+  /// `myLocationEnabled: true` bilan TUG'ILGAN xarita, ruxsat o'sha
+  /// paytda hali berilmagan bo'lsa, ko'k nuqtani BOSHQA hech qachon
+  /// chizmaydi. Sabab `MapLibreMapController` da:
+  /// `enableLocationComponent()` uslub yuklanganda bir marta
+  /// chaqiriladi va ruxsatni o'sha yerda tekshiradi; keyin ruxsat
+  /// berilsa ham `setMyLocationEnabled(true)` qiymat o'zgarmaganini
+  /// ko'rib DARHOL qaytadi va komponent yaratilmay qoladi.
+  ///
+  /// Shuning uchun xarita `false` bilan tug'iladi. Ruxsat
+  /// tasdiqlangach `true` ga o'tadi — aynan shu `false -> true`
+  /// o'tishi komponentni haqiqatan yoqadi.
+  /// └────────────────────────────────────────────────────────────────┘
+  bool _locPerm = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _readLocPerm();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sleepTimer?.cancel();
     _debounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _api.dispose();
     super.dispose();
+  }
+
+  /* ── Hayot sikli: xaritani uxlatish ──────────────────────────────── */
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _sleepTimer?.cancel();
+      _sleepTimer = null;
+      if (!_mapAlive && mounted) setState(() => _mapAlive = true);
+      return;
+    }
+    if (state == AppLifecycleState.paused && _mapAlive) {
+      _sleepTimer?.cancel();
+      _sleepTimer = Timer(_uyquMuddati, _sleepMap);
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    // Ekran ko'rinib turganda xaritani olib tashlash foydalanuvchiga
+    // buzilgandek ko'rinardi. Bosim FONDA kelsa esa aynan shu 90 MB ni
+    // bo'shatish ilovani o'ldirilishdan saqlaydi.
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      return;
+    }
+    _sleepMap();
+  }
+
+  /// Xarita oynasini daraxtdan olib tashlaydi.
+  ///
+  /// Kamera (`_center`, `_zoomLevel`) va marshrut holati saqlanadi —
+  /// uyg'onganda foydalanuvchi o'sha joyni ko'radi.
+  void _sleepMap() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    if (!_mapAlive || !mounted) return;
+    setState(() {
+      _mapAlive = false;
+      _ctrl = null;
+      _styleReady = false;
+      // Bu ro'yxatlar O'CHIRILGAN xarita oynasidagi ob'ektlarga
+      // ishora qiladi — yangi oynada ular yaroqsiz.
+      _symbols.clear();
+      _routeLine = null;
+    });
   }
 
   /* ── Qidiruv ─────────────────────────────────────────────────────── */
@@ -411,12 +511,34 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   /* ── Joylashuv ───────────────────────────────────────────────────── */
 
+  /// Ruxsat holatini JIMGINA o'qiydi — dialog chiqarmaydi.
+  ///
+  /// Ekran ochilishi bilan so'rash noto'g'ri bo'lardi: odam hali nima
+  /// uchun kerakligini bilmaydi. Ilgari ruxsat bergan bo'lsa esa ko'k
+  /// nuqta darhol chiqishi kerak — shuning uchun tekshiruv bor.
+  Future<void> _readLocPerm() async {
+    try {
+      _applyLocPerm(await Geolocator.checkPermission());
+    } catch (_) {}
+  }
+
+  void _applyLocPerm(LocationPermission perm) {
+    final bor = perm == LocationPermission.always ||
+        perm == LocationPermission.whileInUse;
+    if (bor == _locPerm || !mounted) return;
+    setState(() => _locPerm = bor);
+  }
+
   Future<Position?> _myPosition({bool jim = false}) async {
     try {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
+      // ⚠️ Natija xaritaga SHU YERDA yetkaziladi: ruxsat endi
+      // berilgan bo'lsa ko'k nuqta shundan keyin paydo bo'ladi
+      // (`_locPerm` izohiga qarang).
+      _applyLocPerm(perm);
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
         if (!jim) _say('Joylashuvga ruxsat berilmadi');
@@ -566,10 +688,20 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
   }
 
   Widget _buildMap() {
+    // Uyquga ketgan xarita — o'rnida uslubning o'z foni. Joyni
+    // egallab turadi, ustidagi panellar sakramaydi
+    // (`_mapAlive` izohiga qarang).
+    if (!_mapAlive) {
+      return ColoredBox(
+        color: _satellite ? const Color(0xFF1C1C1E) : Colors.white,
+        child: const SizedBox.expand(),
+      );
+    }
     return ml.MapLibreMap(
       key: ValueKey(_satellite),
       styleString: _satellite ? ondexSatelliteStyle : kOndexStyleUrl,
-      initialCameraPosition: ml.CameraPosition(target: _center, zoom: 13),
+      initialCameraPosition:
+          ml.CameraPosition(target: _center, zoom: _zoomLevel),
       trackCameraPosition: true,
       onMapCreated: (c) => _ctrl = c,
       onStyleLoadedCallback: () async {
@@ -586,7 +718,11 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
         }
         await _redraw();
       },
-      onCameraMove: (pos) => _center = pos.target,
+      onCameraMove: (pos) {
+        _center = pos.target;
+        // Uyqudan keyin xarita AYNAN shu ko'rinishda qaytadi.
+        _zoomLevel = pos.zoom;
+      },
       // Kamera mamlakatdan chiqmaydi: tashqarida xarita ma'lumoti
       // yo'q va foydalanuvchi oq bo'shliq ko'rardi.
       cameraTargetBounds: ondexCameraBounds,
@@ -594,9 +730,12 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
           const ml.MinMaxZoomPreference(kOndexMinZoom, null),
       compassEnabled: false,
       logoEnabled: false,
-      // Qayerda turganimni ko'rsatadigan ko'k nuqta. Ruxsat bo'lmasa
-      // MapLibre uni jimgina chizmaydi — ilova yiqilmaydi.
-      myLocationEnabled: true,
+      // Qayerda turganimni ko'rsatadigan ko'k nuqta.
+      //
+      // ⚠️ BU YERGA `true` YOZMANG. Ruxsat hali berilmagan bo'lsa
+      // MapLibre komponentni umuman yaratmaydi va keyingi ruxsat ham
+      // yordam bermaydi — `_locPerm` izohiga qarang.
+      myLocationEnabled: _locPerm,
       myLocationRenderMode: ml.MyLocationRenderMode.normal,
       tiltGesturesEnabled: false,
       attributionButtonMargins: kOndexHideAttribution,
