@@ -139,13 +139,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
                           ),
                         ),
 
+                      // ⚠️ Ro'yxat SERVERDA manzil shahri bo'yicha
+                      // filtrlanadi (`visibleRestaurants`) — bo'sh
+                      // ro'yxat "umuman yo'q" emas, "shu shaharda
+                      // yo'q" degani bo'lishi mumkin.
                       if (list.isEmpty)
                         const SliverFillRemaining(
                           hasScrollBody: false,
                           child: Center(
                             child: Padding(
                               padding: EdgeInsets.all(32),
-                              child: Text('Hozircha restoran yo\'q'),
+                              child: Text(
+                                'Manzilingiz hududida hali restoran yo\'q',
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
                         )

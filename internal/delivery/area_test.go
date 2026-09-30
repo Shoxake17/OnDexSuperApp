@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,48 @@ func TestCheckServes(t *testing.T) {
 		got := CheckServes(c.restLat, c.restLng, c.addrLat, c.addrLng)
 		if !errors.Is(got, c.want) {
 			t.Errorf("%s: CheckServes = %v, kutilgan %v", c.name, got, c.want)
+		}
+		// `Serves` — ro'yxat filtri AYNI mantiqdan o'tishi kerak
+		// (`visibleRestaurants` izohiga qarang). Ular ajralsa ro'yxatda
+		// ko'rinadigan, lekin buyurtma qabul qilmaydigan restoran
+		// paydo bo'lardi.
+		if want := got == nil; Serves(c.restLat, c.restLng, c.addrLat, c.addrLng) != want {
+			t.Errorf("%s: Serves CheckServes bilan mos emas", c.name)
+		}
+	}
+}
+
+// Rad etish xabari restoran SHAHRINI aytishi kerak: "yetkazmaydi" o'zi
+// foydalanuvchiga nima qilishni tushuntirmaydi.
+func TestCheckServesNamesCity(t *testing.T) {
+	const (
+		chustLat, chustLng       = 41.0004, 71.2394
+		tashkentLat, tashkentLng = 41.2995, 69.2401
+	)
+	cases := []struct {
+		name             string
+		restLat, restLng float64
+		wantCity         string
+	}{
+		{"Toshkent restorani", tashkentLat, tashkentLng, "Toshkent"},
+		{"Chust restorani", chustLat, chustLng, "Chust"},
+	}
+	for _, c := range cases {
+		// Manzil ATAYLAB boshqa shaharda: Chust restorani uchun
+		// Toshkent manzili va aksincha.
+		addrLat, addrLng := chustLat, chustLng
+		if c.wantCity == "Chust" {
+			addrLat, addrLng = tashkentLat, tashkentLng
+		}
+		err := CheckServes(c.restLat, c.restLng, addrLat, addrLng)
+		if err == nil {
+			t.Fatalf("%s: xato kutilgan edi", c.name)
+		}
+		if !errors.Is(err, ErrOtherCity) {
+			t.Errorf("%s: sentinel yo'qolgan: %v", c.name, err)
+		}
+		if !strings.Contains(err.Error(), c.wantCity) {
+			t.Errorf("%s: xabarda «%s» yo'q: %s", c.name, c.wantCity, err)
 		}
 	}
 }

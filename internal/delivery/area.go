@@ -10,6 +10,7 @@ package delivery
 
 import (
 	"errors"
+	"fmt"
 	"math"
 )
 
@@ -146,7 +147,23 @@ func CheckServes(restLat, restLng, addrLat, addrLng float64) error {
 	}
 	ac := CityFor(addrLat, addrLng)
 	if ac == nil || ac.Name != rc.Name {
-		return ErrOtherCity
+		// Xabar restoran SHAHRINI aytadi: "yetkazmaydi" o'zi
+		// foydalanuvchiga nima qilishni tushuntirmaydi, shahar nomi esa
+		// tushuntiradi. Sentinel `errors.Is` uchun saqlanadi.
+		return fmt.Errorf("%w — bu restoran faqat %s shahriga xizmat qiladi",
+			ErrOtherCity, rc.Name)
 	}
 	return nil
+}
+
+// Serves — `CheckServes` ning bool shakli.
+//
+// ┌─ RO'YXAT VA BUYURTMA BITTA QOIDADAN O'TADI ───────────────────────┐
+// Mijozga ko'rsatiladigan restoranlar ro'yxati shu funksiya bilan
+// filtrlanadi, buyurtma esa `CheckServes` bilan tekshiriladi — ya'ni
+// ikkalasi AYNI mantiq. Alohida shart yozilsa ro'yxatda ko'rinadigan,
+// lekin buyurtma qabul qilmaydigan restoran paydo bo'lardi.
+// └───────────────────────────────────────────────────────────────────┘
+func Serves(restLat, restLng, addrLat, addrLng float64) bool {
+	return CheckServes(restLat, restLng, addrLat, addrLng) == nil
 }

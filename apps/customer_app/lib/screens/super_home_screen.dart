@@ -574,9 +574,22 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
                   ),
                 )
               : _restaurants.isEmpty
-                  ? const Center(
-                      child: Text('Hozircha restoran yo\'q',
-                          style: TextStyle(fontSize: 13.5, color: _muted)),
+                  // ⚠️ Ro'yxat SERVERDA manzil shahri bo'yicha
+                  // filtrlanadi (`visibleRestaurants`). Manzil
+                  // tanlangan bo'lsa bo'sh ro'yxat "umuman yo'q"
+                  // degani emas — "shu shaharda yo'q" degani, va
+                  // matn buni aytishi kerak.
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          _city == kNoAddressLabel
+                              ? 'Hozircha restoran yo\'q'
+                              : 'Manzilingiz hududida hali restoran yo\'q',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13.5, color: _muted),
+                        ),
+                      ),
                     )
                   : ListView.separated(
                       scrollDirection: Axis.horizontal,

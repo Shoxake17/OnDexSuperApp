@@ -19,12 +19,19 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// (restaurantsCacheKey konstantasiga qarang), shuning uchun 30s â€”
 	// "eng yomon holatda shuncha eskirishi mumkin" chegarasi, oddiy TTL
 	// emas.
-	mux.HandleFunc("GET /restaurants", func(w http.ResponseWriter, r *http.Request) {
+	//
+	// ┌─ SHAHAR BO'YICHA FILTR ────────────────────────────────────────┐
+	// Ro'yxat mijozning saqlangan manzili joylashgan SHAHAR bilan
+	// cheklanadi (`visibleRestaurants`). Kesh esa TO'LIQ ro'yxatni
+	// saqlaydi va filtr undan KEYIN qo'llanadi — shunda kesh kaliti
+	// shaharlarga bo'linib ketmaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	mux.HandleFunc("GET /restaurants", s.optionalAuth(func(w http.ResponseWriter, r *http.Request) {
 		var list []*catalog.Restaurant
 		if s.Cache.GetJSON(r.Context(), restaurantsCacheKey, &list) {
 			// Maket havolasi kesh ICHIGA tushmaydi — sabab
 			// `sceneViewMany` izohida.
-			writeJSON(w, http.StatusOK, s.sceneViewMany(r, list))
+			writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
 			return
 		}
 		list, err := s.CatalogRepo.ListRestaurants(r.Context())
@@ -33,8 +40,8 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			return
 		}
 		s.Cache.SetJSON(r.Context(), restaurantsCacheKey, list, 30*time.Second)
-		writeJSON(w, http.StatusOK, s.sceneViewMany(r, list))
-	})
+		writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
+	}))
 
 	// GET /restaurants/{id} â€” bitta restoran ma'lumoti (ochiq)
 	mux.HandleFunc("GET /restaurants/{id}", func(w http.ResponseWriter, r *http.Request) {

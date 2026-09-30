@@ -484,6 +484,43 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 	}
 }
 
+// optionalAuth — OCHIQ endpoint uchun: token bo'lsa o'qiydi, bo'lmasa
+// yoki yaroqsiz bo'lsa so'rovni BARIBIR o'tkazadi.
+//
+// ┌─ NEGA `auth` YARAMAYDI ───────────────────────────────────────────┐
+// `GET /restaurants` kirmagan foydalanuvchiga ham ochiq bo'lishi kerak
+// (odam avval nimalar borligini ko'radi, keyin ro'yxatdan o'tadi).
+// Lekin KIRGAN foydalanuvchining saqlangan manzili bo'yicha ro'yxatni
+// filtrlash uchun claims kerak. `auth` esa tokensiz so'rovni 401 bilan
+// rad etadi.
+//
+// ⚠️ Bu avtorizatsiya EMAS. Shu middleware ostidagi handler hech
+// qachon claims'ga qarab maxfiy ma'lumot bermasligi kerak — token
+// umuman yuborilmasligi mumkin va handler buni xato deb hisoblamaydi.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Server) optionalAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h := r.Header.Get("Authorization")
+		if !strings.HasPrefix(h, "Bearer ") {
+			next(w, r)
+			return
+		}
+		claims, err := s.Tokens.Parse(strings.TrimPrefix(h, "Bearer "))
+		if err != nil {
+			next(w, r)
+			return
+		}
+		// Bekor qilingan sessiya anonim deb qaraladi — `auth` dagi
+		// bilan bir xil qoida, faqat 401 o'rniga jim o'tkazish.
+		if s.Revoked != nil && claims.IssuedAt != nil &&
+			s.Revoked.IsRevoked(claims.Subject, claims.IssuedAt.Time) {
+			next(w, r)
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))
+	}
+}
+
 // claimsFrom — `auth` middleware kontekstga qo'ygan claims'ni qaytaradi.
 //
 // COMMA-OK bilan (panic'siz): `auth` bilan O'RALMAGAN handler — masalan
