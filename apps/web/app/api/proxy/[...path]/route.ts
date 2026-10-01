@@ -70,6 +70,9 @@ const ALLOWED: ReadonlyArray<{ method: string; pattern: string }> = [
   { method: "DELETE", pattern: "favorites/*" },
   { method: "GET", pattern: "geocode/reverse" },
   { method: "GET", pattern: "config/maps" },
+  // Ilova OnDexMap xatosi tufayli Google'ga o'tganini xabar qiladi (faqat log).
+  // Go tomonda surface ruxsat ro'yxatiga, reason uzunligiga cheklangan.
+  { method: "POST", pattern: "config/maps/fallback" },
   // Stol QR kodi: token → qaysi restoran va qaysi stol.
   //
   // FAQAT `resolve` ochiladi. Stol yaratish/o'chirish/token yangilash

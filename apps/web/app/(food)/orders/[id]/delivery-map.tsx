@@ -13,11 +13,10 @@ import {
   remainingSeconds,
   type DeliveryTracking,
   type LatLng,
-  type TrackedRoute,
 } from "@/lib/delivery-tracking";
-import { loadGoogleMaps } from "@/lib/gmaps";
-import { createHtmlMapMarker, type HtmlMapMarker } from "@/lib/html-map-marker";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { fullImageUrl } from "@/lib/images";
+import { createMapView, type MapMarker, type MapView } from "@/lib/maps";
 import { useNow } from "@/lib/use-now";
 import type { Order } from "@/lib/use-order-tracking";
 
@@ -87,17 +86,17 @@ export default function DeliveryMap({
   const courierName = order.courier_name?.trim() || "Kuryer";
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const mapRef = useRef<MapView | null>(null);
   const markersRef = useRef<{
-    origin?: HtmlMapMarker;
+    origin?: MapMarker;
     originIdentity?: string;
-    destination?: HtmlMapMarker;
-    courier?: HtmlMapMarker;
+    destination?: MapMarker;
+    courier?: MapMarker;
   }>({});
-  const linesRef = useRef<{
-    planned?: google.maps.Polyline;
-    remaining?: google.maps.Polyline;
-  }>({});
+  // Xarita yaratilmoqda (asinxron) — ikki marta yaratilmasin; komponent
+  // yopilgan bo'lsa tayyor bo'lgan xarita darhol yo'q qilinadi.
+  const creatingRef = useRef(false);
+  const unmountedRef = useRef(false);
   const bearingRef = useRef<{ last: LatLng | null; deg: number }>({
     last: null,
     deg: 0,
@@ -112,47 +111,42 @@ export default function DeliveryMap({
   }, [follow]);
 
   useEffect(() => {
-    let cancelled = false;
-    loadGoogleMaps()
-      .then(() => {
-        if (!cancelled) setReady(true);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
+    unmountedRef.current = false;
     return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Xarita BIR MARTA yaratiladi — keyin faqat belgilar va yo'llar yangilanadi.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!ready || !el) return;
-    const map = new google.maps.Map(el, {
-      center: CHUST_CENTER,
-      zoom: 14,
-      disableDefaultUI: true,
-      clickableIcons: false,
-      keyboardShortcuts: false,
-    });
-    // Mijoz xaritani o'zi surdi — kamera endi uni tortib qaytarmaydi.
-    const drag = map.addListener("dragstart", () => setFollow(false));
-    mapRef.current = map;
-    return () => {
-      drag.remove();
+      unmountedRef.current = true;
       const m = markersRef.current;
       m.origin?.remove();
       m.destination?.remove();
       m.courier?.remove();
-      linesRef.current.planned?.setMap(null);
-      linesRef.current.remaining?.setMap(null);
       markersRef.current = {};
-      linesRef.current = {};
+      mapRef.current?.destroy();
       mapRef.current = null;
     };
-  }, [ready]);
+  }, []);
 
+  // Xarita BIR MARTA yaratiladi — keyin faqat belgilar va yo'llar yangilanadi.
+  // Motorni (Google yoki OnDexMap) server tanlaydi (`GOOGLE_MAP`, `lib/maps`);
+  // OnDexMap ishlamasa o'zi Google'ga tushadi.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || mapRef.current || creatingRef.current) return;
+    creatingRef.current = true;
+    createMapView(el, { center: CHUST_CENTER, zoom: 14 })
+      .then((map) => {
+        if (unmountedRef.current) {
+          map.destroy();
+          return;
+        }
+        // Mijoz xaritani o'zi surdi — kamera endi uni tortib qaytarmaydi.
+        map.onUserDrag(() => setFollow(false));
+        mapRef.current = map;
+        setReady(true);
+      })
+      .catch(() => {
+        creatingRef.current = false;
+        if (!unmountedRef.current) setFailed(true);
+      });
+  }, []);
   /** Kamerada ko'rinishi kerak bo'lgan nuqtalar (mobil ilova bilan bir xil). */
   function focusPoints(): LatLng[] {
     switch (stage) {
@@ -190,12 +184,7 @@ export default function DeliveryMap({
     if (origin) {
       if (!markers.origin || markers.originIdentity !== originIdentity) {
         markers.origin?.remove();
-        markers.origin = createHtmlMapMarker(
-          map,
-          origin,
-          restaurantMarker(logoUrl, restaurantName),
-          1,
-        );
+        markers.origin = map.addMarker(origin, restaurantMarker(logoUrl, restaurantName), 1);
         markers.originIdentity = originIdentity;
       } else {
         markers.origin.setPosition(origin);
@@ -208,7 +197,7 @@ export default function DeliveryMap({
     // B — mijoz manzili.
     if (destination) {
       if (!markers.destination) {
-        markers.destination = createHtmlMapMarker(map, destination, homeMarker(), 2);
+        markers.destination = map.addMarker(destination, homeMarker(), 2);
       } else {
         markers.destination.setPosition(destination);
       }
@@ -231,7 +220,7 @@ export default function DeliveryMap({
         b.last = courierPos;
       }
       if (!markers.courier) {
-        markers.courier = createHtmlMapMarker(map, courierPos, carMarker(courierName), 3);
+        markers.courier = map.addMarker(courierPos, carMarker(courierName), 3);
       } else {
         markers.courier.setPosition(courierPos);
       }
@@ -244,25 +233,21 @@ export default function DeliveryMap({
 
     // Yo'llar: yetkazilganda bosib o'tilgan yo'l brend rangida; yo'lda —
     // kulrang "butun yo'l", ustida qolgan qism.
-    const lines = linesRef.current;
-    lines.planned = syncPolyline(
-      map,
-      lines.planned,
-      stage === "live" || stage === "delivered" ? (tracking?.plannedRoute ?? null) : null,
+    map.setLine(
+      "planned",
+      stage === "live" || stage === "delivered" ? (tracking?.plannedRoute?.points ?? null) : null,
       {
-        strokeColor: stage === "delivered" ? BRAND : PLANNED_LINE,
-        strokeWeight: stage === "delivered" ? 6 : 5,
+        color: stage === "delivered" ? BRAND : PLANNED_LINE,
+        width: stage === "delivered" ? 6 : 5,
         zIndex: 1,
       },
     );
-    lines.remaining = syncPolyline(
-      map,
-      lines.remaining,
-      stage === "live" ? (tracking?.remainingRoute ?? null) : null,
-      { strokeColor: BRAND, strokeWeight: 6, zIndex: 2 },
-    );
-
-    if (followRef.current) fitTo(map, focusPoints());
+    map.setLine("remaining", stage === "live" ? (tracking?.remainingRoute?.points ?? null) : null, {
+      color: BRAND,
+      width: 6,
+      zIndex: 2,
+    });
+    if (followRef.current) map.fitPoints(focusPoints(), 48);
     // `focusPoints` shu qiymatlardan hisoblanadi — kalitlar yetarli.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, stage, courierKey, destinationKey, originKey, logoUrl, restaurantName, courierName, tracking]);
@@ -313,7 +298,7 @@ export default function DeliveryMap({
                 type="button"
                 onClick={() => {
                   setFollow(true);
-                  if (mapRef.current) fitTo(mapRef.current, focusPoints());
+                  mapRef.current?.fitPoints(focusPoints(), 48);
                 }}
                 aria-label="Kuryerni kuzatish"
                 title="Kuryerni kuzatish"
@@ -532,48 +517,4 @@ function carMarker(name: string): HTMLElement {
     transition: "transform .4s ease",
   });
   return img;
-}
-
-function syncPolyline(
-  map: google.maps.Map,
-  line: google.maps.Polyline | undefined,
-  route: TrackedRoute | null,
-  style: { strokeColor: string; strokeWeight: number; zIndex: number },
-): google.maps.Polyline | undefined {
-  if (!route) {
-    line?.setMap(null);
-    return undefined;
-  }
-  if (!line) {
-    return new google.maps.Polyline({
-      map,
-      path: route.points,
-      clickable: false,
-      strokeOpacity: 1,
-      ...style,
-    });
-  }
-  line.setOptions({ path: route.points, ...style });
-  if (!line.getMap()) line.setMap(map);
-  return line;
-}
-
-function fitTo(map: google.maps.Map, points: LatLng[]) {
-  if (points.length === 0) return;
-  let minLat = points[0].lat;
-  let maxLat = minLat;
-  let minLng = points[0].lng;
-  let maxLng = minLng;
-  for (const p of points) {
-    if (p.lat < minLat) minLat = p.lat;
-    if (p.lat > maxLat) maxLat = p.lat;
-    if (p.lng < minLng) minLng = p.lng;
-    if (p.lng > maxLng) maxLng = p.lng;
-  }
-  if (maxLat - minLat < 1e-4 && maxLng - minLng < 1e-4) {
-    map.panTo(points[0]);
-    map.setZoom(16);
-    return;
-  }
-  map.fitBounds({ south: minLat, west: minLng, north: maxLat, east: maxLng }, 48);
 }

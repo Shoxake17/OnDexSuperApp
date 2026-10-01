@@ -4,7 +4,8 @@ import { ArrowLeft, LocateFixed } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentPosition } from "@/lib/geo";
-import { loadGoogleMaps, UnauthorizedError } from "@/lib/gmaps";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { createMapView, UnauthorizedError, type MapView } from "@/lib/maps";
 import { goBack } from "@/lib/nav";
 import { cityFor, DEFAULT_CENTER, SERVICE_CITIES } from "@/lib/service-area";
 import { AppButton } from "../ui";
@@ -34,11 +35,14 @@ function AddressPicker() {
   const next = searchParams.get("next") ?? "/checkout";
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const mapRef = useRef<MapView | null>(null);
+  // Xarita yaratilmoqda (asinxron) — ikki marta yaratilmasin; komponent
+  // yopilgan bo'lsa tayyor bo'lgan xarita darhol yo'q qilinadi.
+  const creatingRef = useRef(false);
+  const unmountedRef = useRef(false);
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGeocoded = useRef<string>("");
 
-  const [mapReady, setMapReady] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
   const [addressText, setAddressText] = useState("");
   const [resolving, setResolving] = useState(false);
@@ -100,11 +104,70 @@ function AddressPicker() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    loadGoogleMaps()
-      .then(() => !cancelled && setMapReady(true))
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      mapRef.current?.destroy();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Xarita FAQAT saqlangan manzil so'rovi tugagach quriladi — shunda
+  // boshlang'ich markazni bir marta to'g'ri qo'yamiz va foydalanuvchi
+  // "sakrab o'tish"ni ko'rmaydi.
+  //
+  // Qaysi motor (Google yoki OnDexMap) ishlashini server hal qiladi
+  // (`GOOGLE_MAP`, `lib/maps`); OnDexMap ishlamasa o'zi Google'ga tushadi.
+  useEffect(() => {
+    if (!addressLoaded || !containerRef.current || mapRef.current || creatingRef.current) return;
+    creatingRef.current = true;
+    createMapView(containerRef.current, { center: savedPoint ?? CHUST_CENTER, zoom: 17 })
+      .then((map) => {
+        if (unmountedRef.current) {
+          map.destroy();
+          return;
+        }
+        mapRef.current = map;
+
+        // Xizmat hududi xaritada KO'RINADI — sariq shaffof doira + chegara.
+        // Foydalanuvchi qayerda ishlashimizni tanlashdan OLDIN ko'radi
+        // (Yandex Eats'da ham zona shunday ko'rsatiladi).
+        for (const c of SERVICE_CITIES) {
+          // Brend rangi (`tailwind.config.ts` dagi `brand`). Qattiq qiymat:
+          // xarita ranglarni JS orqali oladi, Tailwind sinflari ishlamaydi.
+          // Juda past shaffoflik (0.07): yaqin zoomda butun ekran doira
+          // ichida bo'ladi va kuchli to'ldirish ko'chalarni o'qishni
+          // qiyinlashtirardi.
+          map.addCircle({ lat: c.lat, lng: c.lng }, c.radiusKm * 1000, {
+            color: "#F4511E",
+            strokeOpacity: 0.95,
+            strokeWidth: 3,
+            fillOpacity: 0.07,
+          });
+        }
+
+        map.onIdle(() => {
+          const c = map.getCenter();
+          reverseGeocode(c.lat, c.lng);
+        });
+        // Saqlangan manzil BO'LMASA — joriy joylashuvga o'tamiz (birinchi
+        // buyurtma holati). Saqlangan bo'lsa unga tegmaymiz, aks holda
+        // foydalanuvchi oldin tanlagan nuqta yo'qolardi.
+        if (!savedPoint) {
+          getCurrentPosition()
+            .then(({ lat, lng }) => {
+              map.setCenter({ lat, lng });
+              map.setZoom(17);
+            })
+            .catch(() => {
+              const c = map.getCenter();
+              reverseGeocode(c.lat, c.lng);
+            });
+        }
+      })
       .catch((e) => {
-        if (cancelled) return;
+        creatingRef.current = false;
+        if (unmountedRef.current) return;
         // Sessiya sahifa OCHIQ TURGANDA tugagan bo'lsa (`requireAuth`
         // buni odatda oldindan tutadi, bu — zaxira yo'l): "internet
         // uzildi" deb chalg'itish o'rniga to'g'ridan-to'g'ri kirish
@@ -117,73 +180,7 @@ function AddressPicker() {
         }
         setMapFailed(true);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Xarita FAQAT saqlangan manzil so'rovi tugagach quriladi — shunda
-  // boshlang'ich markazni bir marta to'g'ri qo'yamiz va foydalanuvchi
-  // "sakrab o'tish"ni ko'rmaydi.
-  useEffect(() => {
-    if (!mapReady || !addressLoaded || !containerRef.current || mapRef.current) return;
-    // Xarita uslubi ATAYLAB o'zgartirilmaydi — Google'ning standart OQ
-    // ko'rinishi. Profil → "Manzillarim" ekrani (address_screen.dart) ham
-    // aynan shunday (`MapType.normal`), ikkalasi bir xil ko'rinishi kerak.
-    const map = new google.maps.Map(containerRef.current, {
-      center: savedPoint ?? CHUST_CENTER,
-      zoom: 17,
-      disableDefaultUI: true,
-      keyboardShortcuts: false,
-      gestureHandling: "greedy",
-      clickableIcons: false,
-    });
-    mapRef.current = map;
-
-    // Xizmat hududi xaritada KO'RINADI — sariq shaffof doira + chegara.
-    // Foydalanuvchi qayerda ishlashimizni tanlashdan OLDIN ko'radi
-    // (Yandex Eats'da ham zona shunday ko'rsatiladi).
-    for (const c of SERVICE_CITIES) {
-      new google.maps.Circle({
-        map,
-        center: { lat: c.lat, lng: c.lng },
-        radius: c.radiusKm * 1000,
-        // Brend rangi (`tailwind.config.ts` dagi `brand`). CSS o'zgaruvchi
-        // emas, qattiq qiymat: Google Maps API ranglarni JS orqali oladi
-        // va Tailwind sinflari bu yerda ishlamaydi.
-        strokeColor: "#F4511E",
-        strokeOpacity: 0.95,
-        strokeWeight: 3,
-        fillColor: "#F4511E",
-        // Juda past shaffoflik: yaqin zoomda (17) butun ekran doira
-        // ichida bo'ladi va kuchli to'ldirish xaritani sarg'aytirib,
-        // ko'chalarni o'qishni qiyinlashtirardi. Chegara chizig'i esa
-        // uzoqroq zoomda — aynan kerak bo'lganda — yaqqol ko'rinadi.
-        fillOpacity: 0.07,
-        clickable: false,
-      });
-    }
-
-    map.addListener("idle", () => {
-      const c = map.getCenter();
-      if (c) reverseGeocode(c.lat(), c.lng());
-    });
-    // Saqlangan manzil BO'LMASA — joriy joylashuvga o'tamiz (birinchi
-    // buyurtma holati). Saqlangan bo'lsa unga tegmaymiz, aks holda
-    // foydalanuvchi oldin tanlagan nuqta yo'qolardi.
-    if (!savedPoint) {
-      getCurrentPosition()
-        .then(({ lat, lng }) => {
-          map.setCenter({ lat, lng });
-          map.setZoom(17);
-        })
-        .catch(() => {
-          const c = map.getCenter();
-          if (c) reverseGeocode(c.lat(), c.lng());
-        });
-    }
-  }, [mapReady, addressLoaded, savedPoint, reverseGeocode]);
-
+  }, [addressLoaded, savedPoint, reverseGeocode]);
   async function goToMyLocation() {
     setLocating(true);
     setError(null);
@@ -206,7 +203,7 @@ function AddressPicker() {
     }
     // Ikkinchi himoya qatlami — tugma allaqachon o'chirilgan bo'lsa ham,
     // hudud tashqarisidagi manzil HECH QACHON saqlanmasligi kerak.
-    if (cityFor(c.lat(), c.lng()) === null) {
+    if (cityFor(c.lat, c.lng) === null) {
       setError("Bu manzilga hozircha yetkazmaymiz");
       return;
     }
@@ -217,9 +214,9 @@ function AddressPicker() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lat: c.lat(),
-          lng: c.lng(),
-          text: addressText || `${c.lat().toFixed(5)}, ${c.lng().toFixed(5)}`,
+          lat: c.lat,
+          lng: c.lng,
+          text: addressText || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`,
           entrance,
           floor,
           apartment,

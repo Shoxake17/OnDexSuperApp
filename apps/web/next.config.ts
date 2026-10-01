@@ -129,13 +129,19 @@ function contentSecurityPolicy(): string {
     // domen `NEXT_PUBLIC_MEDIA_ORIGIN` orqali beriladi (masalan
     // https://pub-xxxx.r2.dev). Berilmasa — ro'yxat o'zgarmaydi.
     // └────────────────────────────────────────────────────────────┘
-    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com${
+    //
+    // OnDexMap (`GOOGLE_MAP=false`): uslub, shrift va plitkalar `*.ondex.uz`
+    // dan (`maps.ondex.uz`, `tiles.ondex.uz`) — `lib/maps/ondex-view.ts`.
+    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.ondex.uz${
       mediaOrigin ? ` ${mediaOrigin}` : ""
     }${apiOrigin ? ` ${apiOrigin}` : ""}${
       wsOrigin ? ` ${wsOrigin}` : ""
     }${isProd ? "" : " ws: wss:"}`,
 
     "font-src 'self' data:",
+
+    // MapLibre xarita ishchisini `blob:` dan ishga tushiradi (OnDexMap rejimi).
+    "worker-src 'self' blob:",
 
     // ┌─ TELEGRAM UCHUN MAJBURIY ──────────────────────────────────┐
     // Telegram Web mijozi Mini App'ni IFRAME ichida ochadi. Bu yerda

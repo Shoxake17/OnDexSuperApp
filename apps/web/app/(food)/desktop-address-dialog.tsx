@@ -3,7 +3,8 @@
 import { Crosshair, MapPin, Minus, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentPosition } from "@/lib/geo";
-import { loadGoogleMaps, UnauthorizedError } from "@/lib/gmaps";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { createMapView, UnauthorizedError, type MapView } from "@/lib/maps";
 import { cityFor, DEFAULT_CENTER, SERVICE_CITIES } from "@/lib/service-area";
 
 // Yetkazish manzili — KOMPYUTER uchun modal oyna (image/maps.png).
@@ -44,12 +45,14 @@ export default function DesktopAddressDialog({
   onSaved?: (text: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const mapRef = useRef<MapView | null>(null);
+  // Xarita yaratilmoqda (asinxron) — ikki marta yaratilmasin.
+  const creatingRef = useRef(false);
+  const unmountedRef = useRef(false);
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGeocoded = useRef("");
 
   const [mapFailed, setMapFailed] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
   const [addressLoaded, setAddressLoaded] = useState(false);
   const [savedPoint, setSavedPoint] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -119,11 +122,60 @@ export default function DesktopAddressDialog({
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    loadGoogleMaps()
-      .then(() => !cancelled && setMapReady(true))
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      mapRef.current?.destroy();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Xarita FAQAT saqlangan manzil so'rovi tugagach quriladi — markaz
+  // bir marta to'g'ri qo'yiladi va "sakrash" ko'rinmaydi. Motorni (Google
+  // yoki OnDexMap) server tanlaydi (`GOOGLE_MAP`, `lib/maps`).
+  useEffect(() => {
+    if (!addressLoaded || !containerRef.current || mapRef.current || creatingRef.current) {
+      return;
+    }
+    creatingRef.current = true;
+    createMapView(containerRef.current, { center: savedPoint ?? DEFAULT_CENTER, zoom: 17 })
+      .then((map) => {
+        if (unmountedRef.current) {
+          map.destroy();
+          return;
+        }
+        mapRef.current = map;
+
+        // Xizmat hududi ko'rinadi — mijoz tanlashdan OLDIN biladi.
+        for (const c of SERVICE_CITIES) {
+          map.addCircle({ lat: c.lat, lng: c.lng }, c.radiusKm * 1000, {
+            color: "#F4511E",
+            strokeOpacity: 0.95,
+            strokeWidth: 3,
+            fillOpacity: 0.07,
+          });
+        }
+
+        map.onIdle(() => {
+          const c = map.getCenter();
+          reverseGeocode(c.lat, c.lng);
+        });
+
+        if (!savedPoint) {
+          getCurrentPosition()
+            .then(({ lat, lng }) => {
+              map.setCenter({ lat, lng });
+              map.setZoom(17);
+            })
+            .catch(() => {
+              const c = map.getCenter();
+              reverseGeocode(c.lat, c.lng);
+            });
+        }
+      })
       .catch((e) => {
-        if (cancelled) return;
+        creatingRef.current = false;
+        if (unmountedRef.current) return;
         // Sessiya oyna ochiq turganda tugagan bo'lsa — "internet
         // uzildi" deb chalg'itmasdan kirish sahifasiga.
         if (e instanceof UnauthorizedError) {
@@ -134,64 +186,11 @@ export default function DesktopAddressDialog({
         }
         setMapFailed(true);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Xarita FAQAT saqlangan manzil so'rovi tugagach quriladi — markaz
-  // bir marta to'g'ri qo'yiladi va "sakrash" ko'rinmaydi.
-  useEffect(() => {
-    if (!mapReady || !addressLoaded || !containerRef.current || mapRef.current) {
-      return;
-    }
-    const map = new google.maps.Map(containerRef.current, {
-      center: savedPoint ?? DEFAULT_CENTER,
-      zoom: 17,
-      disableDefaultUI: true,
-      keyboardShortcuts: false,
-      gestureHandling: "greedy",
-      clickableIcons: false,
-    });
-    mapRef.current = map;
-
-    // Xizmat hududi ko'rinadi — mijoz tanlashdan OLDIN biladi.
-    for (const c of SERVICE_CITIES) {
-      new google.maps.Circle({
-        map,
-        center: { lat: c.lat, lng: c.lng },
-        radius: c.radiusKm * 1000,
-        strokeColor: "#F4511E",
-        strokeOpacity: 0.95,
-        strokeWeight: 3,
-        fillColor: "#F4511E",
-        fillOpacity: 0.07,
-        clickable: false,
-      });
-    }
-
-    map.addListener("idle", () => {
-      const c = map.getCenter();
-      if (c) reverseGeocode(c.lat(), c.lng());
-    });
-
-    if (!savedPoint) {
-      getCurrentPosition()
-        .then(({ lat, lng }) => {
-          map.setCenter({ lat, lng });
-          map.setZoom(17);
-        })
-        .catch(() => {
-          const c = map.getCenter();
-          if (c) reverseGeocode(c.lat(), c.lng());
-        });
-    }
-  }, [mapReady, addressLoaded, savedPoint, reverseGeocode]);
-
+  }, [addressLoaded, savedPoint, reverseGeocode]);
   function zoom(delta: number) {
     const map = mapRef.current;
     if (!map) return;
-    map.setZoom((map.getZoom() ?? 17) + delta);
+    map.setZoom(map.getZoom() + delta);
   }
 
   async function goToMyLocation() {
@@ -213,20 +212,20 @@ export default function DesktopAddressDialog({
     }
     // Ikkinchi himoya qatlami — tugma o'chirilgan bo'lsa ham, hudud
     // tashqarisidagi manzil HECH QACHON saqlanmaydi.
-    if (cityFor(c.lat(), c.lng()) === null) {
+    if (cityFor(c.lat, c.lng) === null) {
       setError("Bu manzilga hozircha yetkazmaymiz");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const text = addressText || `${c.lat().toFixed(5)}, ${c.lng().toFixed(5)}`;
+      const text = addressText || `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`;
       const res = await fetch("/api/proxy/me/address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lat: c.lat(),
-          lng: c.lng(),
+          lat: c.lat,
+          lng: c.lng,
           text,
           entrance,
           floor,

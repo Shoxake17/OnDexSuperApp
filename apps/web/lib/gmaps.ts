@@ -4,6 +4,11 @@
 // g'oya). `__gmapsLoading` — bir nechta xarita komponenti bir vaqtda
 // ochilsa ham skript ikki marta yuklanmasligi uchun.
 
+import { loadMapConfig } from "./maps/config";
+
+// Komponentlar UnauthorizedError ni shu yerdan import qiladi.
+export { UnauthorizedError } from "./maps/errors";
+
 declare global {
   interface Window {
     google?: typeof google;
@@ -11,33 +16,22 @@ declare global {
   }
 }
 
-// Sessiya tugagan/yo'q bo'lganda (`/config/maps` 401) chaqiruvchi buni
-// "internet uzildi" emas, "qayta kirish kerak" deb bilishi uchun alohida
-// belgi bilan. `requireAuth` (server) buni ODATDA oldindan tutadi —
-// bu FAQAT sessiya SAHIFA OCHIQ TURGANDA muddati tugagan holat uchun
-// zaxira (masalan token uzoq umr surmagan yoki serverda bekor qilingan).
-export class UnauthorizedError extends Error {
-  constructor() {
-    super("kirish talab qilinadi");
-    this.name = "UnauthorizedError";
-  }
-}
 
 export function loadGoogleMaps(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("server"));
   if (window.google?.maps) return Promise.resolve();
   if (window.__gmapsLoading) return window.__gmapsLoading;
-  window.__gmapsLoading = fetch("/api/proxy/config/maps")
-    .then((r) => {
-      if (r.status === 401) throw new UnauthorizedError();
-      if (!r.ok) throw new Error("xarita kaliti olinmadi");
-      return r.json();
+  window.__gmapsLoading = loadMapConfig()
+    .then((cfg) => {
+      // `GOOGLE_MAP=false` serverda Google kaliti bo'lmasligi mumkin.
+      if (!cfg.googleKey) throw new Error("xarita kaliti olinmadi");
+      return cfg.googleKey;
     })
     .then(
-      (data) =>
+      (key) =>
         new Promise<void>((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${data.maps_api_key}`;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
           script.async = true;
           script.onload = () => resolve();
           script.onerror = () => reject(new Error("xarita skripti yuklanmadi"));
