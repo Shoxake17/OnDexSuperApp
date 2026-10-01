@@ -108,6 +108,9 @@ var Registry = []Var{
 	{Name: "R2_ACCESS_KEY_ID", Effect: "R2 sozlanmaydi", DeployRequired: true},
 	{Name: "R2_SECRET_ACCESS_KEY", Effect: "R2 sozlanmaydi", DeployRequired: true},
 	{Name: "R2_PUBLIC_URL", Effect: "R2 sozlanmaydi", DeployRequired: true},
+	// Ixtiyoriy: rasm domeni almashtirilganda ESKI ochiq domenlar (vergul bilan).
+	// Bo'sh bo'lsa faqat R2_PUBLIC_URL tan olinadi.
+	{Name: "R2_LEGACY_PUBLIC_URLS", Effect: "eski ochiq domenli rasm/maket manzillari tan olinmaydi"},
 	// 3D maketlar uchun ALOHIDA, ommaviy BO'LMAGAN bucket. Bo'sh
 	// bo'lsa maket ommaviy bucket'dan beriladi — havola faqat kirgan
 	// foydalanuvchiga ko'rsatiladi, lekin muddatsiz bo'ladi.

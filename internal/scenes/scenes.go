@@ -132,14 +132,18 @@ func (s *Signer) SignedURL(ctx context.Context, key string) (string, error) {
 // Ya'ni mavjud yozuvlar ham, kelajakda kalit sifatida kiritilganlar
 // ham ishlaydi.
 // └────────────────────────────────────────────────────────────────────┘
-func ObjectKey(stored, publicBaseURL string) string {
+func ObjectKey(stored string, publicBaseURLs ...string) string {
 	stored = strings.TrimSpace(stored)
 	if stored == "" {
 		return ""
 	}
-	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
-	if base != "" && strings.HasPrefix(stored, base+"/") {
-		return strings.TrimPrefix(stored, base+"/")
+	// Bir nechta asos: joriy ochiq domen va ESKILARI (domen almashtirilgandan
+	// keyin ham bazadagi eski manzillar ishlashi uchun).
+	for _, b := range publicBaseURLs {
+		base := strings.TrimRight(strings.TrimSpace(b), "/")
+		if base != "" && strings.HasPrefix(stored, base+"/") {
+			return strings.TrimPrefix(stored, base+"/")
+		}
 	}
 	// To'liq URL, lekin boshqa domen — kalitni ajratib bo'lmaydi.
 	// Bunday qiymat ATAYLAB rad etiladi: noma'lum domenga imzo

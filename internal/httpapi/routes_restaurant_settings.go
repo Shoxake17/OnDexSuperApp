@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -179,8 +178,7 @@ func isOwnUploadURL(raw, folder string) bool {
 	if strings.HasPrefix(s, "/uploads/"+folder+"/") {
 		return true
 	}
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("R2_PUBLIC_URL")), "/")
-	return strings.HasPrefix(base, "https://") && strings.HasPrefix(s, base+"/"+folder+"/")
+	return hasMediaBase(s, folder)
 }
 
 func decodeStrict(raw json.RawMessage, dst any) error {

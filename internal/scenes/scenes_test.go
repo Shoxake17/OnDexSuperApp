@@ -67,3 +67,20 @@ func TestNewRejectsIncompleteConfig(t *testing.T) {
 		}
 	}
 }
+
+// Domen almashtirilgandan keyin ham bazadagi ESKI manzildan kalit ajratiladi.
+func TestObjectKeyMultipleBases(t *testing.T) {
+	bases := []string{"https://cdn.ondex.uz", "https://pub-old.r2.dev/"}
+	cases := map[string]string{
+		"https://cdn.ondex.uz/scenes/a.pck":      "scenes/a.pck",
+		"https://pub-old.r2.dev/scenes/a.pck":    "scenes/a.pck",
+		"scenes/a.pck":                           "scenes/a.pck",
+		"https://evil.example/scenes/a.pck":      "",
+		"https://cdn.ondex.uz.evil/scenes/a.pck": "",
+	}
+	for stored, want := range cases {
+		if got := ObjectKey(stored, bases...); got != want {
+			t.Errorf("ObjectKey(%q) = %q, kutilgan %q", stored, got, want)
+		}
+	}
+}

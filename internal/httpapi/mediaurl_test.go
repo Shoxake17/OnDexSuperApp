@@ -84,3 +84,41 @@ func TestIsOwnMediaURLFailsClosedWithoutR2(t *testing.T) {
 		t.Error("http bazasi qabul qilindi")
 	}
 }
+
+// Rasm domeni almashtirilganda (pub-xxx.r2.dev -> cdn.ondex.uz) bazadagi ESKI
+// manzillar hamon "bizniki" bo'lishi shart: aks holda restoran sozlamalarida
+// eski logo saqlanmaydi, 3D maket kaliti ajratilmaydi. Begona va o'xshash
+// domenlar esa rad etilishi shart.
+func TestLegacyMediaBases(t *testing.T) {
+	t.Setenv("R2_PUBLIC_URL", "https://cdn.ondex.uz")
+	t.Setenv("R2_LEGACY_PUBLIC_URLS", "https://pub-old.r2.dev/, http://insecure.example, https://pub-old2.r2.dev")
+
+	own := []string{
+		"https://cdn.ondex.uz/logos/a.webp",
+		"https://pub-old.r2.dev/logos/a.webp",
+		"https://pub-old2.r2.dev/logos/a.webp",
+	}
+	for _, u := range own {
+		if !isOwnUploadURL(u, "logos") {
+			t.Errorf("isOwnUploadURL(%q) = false, kutilgan true", u)
+		}
+		if !isOwnMediaURL(u) || !isAllowedSceneURL(u) {
+			t.Errorf("%q: isOwnMediaURL/isAllowedSceneURL true bo'lishi kerak", u)
+		}
+	}
+	foreign := []string{
+		"https://evil.example/logos/a.webp",
+		"https://cdn.ondex.uz.evil.example/logos/a.webp",   // o'xshash domen
+		"https://pub-old.r2.dev.evil.example/logos/a.webp", // o'xshash domen
+		"http://insecure.example/logos/a.webp",             // http legacy sifatida qabul qilinmaydi
+		"https://cdn.ondex.uz/covers/a.webp",               // boshqa papka
+	}
+	for _, u := range foreign {
+		if isOwnUploadURL(u, "logos") {
+			t.Errorf("isOwnUploadURL(%q) = true, kutilgan false", u)
+		}
+	}
+	if isAllowedSceneURL("https://evil.example/s.pck") {
+		t.Error("begona domen maket sifatida qabul qilindi")
+	}
+}

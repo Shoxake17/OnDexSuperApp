@@ -102,7 +102,7 @@ func (s *Server) signScene(r *http.Request, rest catalog.Restaurant) catalog.Res
 	if s.Scenes == nil {
 		return rest
 	}
-	key := scenes.ObjectKey(rest.Scene3DURL, s.MediaPublicBaseURL)
+	key := scenes.ObjectKey(rest.Scene3DURL, append([]string{s.MediaPublicBaseURL}, legacyMediaBaseURLs()...)...)
 	if key == "" {
 		return rest.PublicView()
 	}

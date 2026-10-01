@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -28,16 +27,10 @@ import (
 // qayerdan berishimiz BIR joyda belgilangan.
 // └────────────────────────────────────────────────────────────────────┘
 func isAllowedSceneURL(raw string) bool {
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("R2_PUBLIC_URL")), "/")
-	if base == "" {
-		// R2 sozlanmagan bo'lsa 3D ni yoqib bo'lmaydi. Jimgina
-		// ruxsat berishdan ko'ra rad etish xavfsizroq.
-		return false
-	}
-	if !strings.HasPrefix(base, "https://") {
-		return false
-	}
-	return strings.HasPrefix(raw, base+"/")
+	// R2 sozlanmagan bo'lsa (`mediaBaseURLs` bo'sh) 3D ni yoqib bo'lmaydi:
+	// jimgina ruxsat berishdan ko'ra rad etish xavfsizroq. Eski domenlar
+	// (`R2_LEGACY_PUBLIC_URLS`) ham qabul qilinadi.
+	return hasMediaBase(raw, "")
 }
 
 // deref — nil ko'rsatkichdan bo'sh satr.

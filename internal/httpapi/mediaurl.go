@@ -78,9 +78,48 @@ func isOwnMediaURL(raw string) bool {
 	if s == "" {
 		return true
 	}
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("R2_PUBLIC_URL")), "/")
-	if base == "" || !strings.HasPrefix(base, "https://") {
-		return false
+	return hasMediaBase(s, "")
+}
+
+// legacyMediaBaseURLs — `R2_LEGACY_PUBLIC_URLS` (vergul bilan): ESKI ochiq
+// domenlar. Rasm domeni almashtirilganda (masalan `pub-xxx.r2.dev` ->
+// `cdn.ondex.uz`) bazada eski manzilli yozuvlar qoladi. Ular hamon
+// "bizniki" deb tan olinishi shart, aks holda:
+//   - restoran sozlamalarida eski logo saqlanmaydi (`isOwnUploadURL`);
+//   - 3D maket kaliti ajratilmaydi va maket yuklanmay qoladi (`scenes.ObjectKey`).
+//
+// Faqat `https://` qabul qilinadi.
+func legacyMediaBaseURLs() []string {
+	var out []string
+	for _, p := range strings.Split(os.Getenv("R2_LEGACY_PUBLIC_URLS"), ",") {
+		p = strings.TrimRight(strings.TrimSpace(p), "/")
+		if strings.HasPrefix(p, "https://") {
+			out = append(out, p)
+		}
 	}
-	return strings.HasPrefix(s, base+"/")
+	return out
+}
+
+// mediaBaseURLs — asosiy (`R2_PUBLIC_URL`, birinchi) va eski ochiq domenlar.
+func mediaBaseURLs() []string {
+	var out []string
+	if b := strings.TrimRight(strings.TrimSpace(os.Getenv("R2_PUBLIC_URL")), "/"); strings.HasPrefix(b, "https://") {
+		out = append(out, b)
+	}
+	return append(out, legacyMediaBaseURLs()...)
+}
+
+// hasMediaBase — manzil bizning omborlardan birining ichidami
+// (`folder` berilsa, aynan shu papka ostida).
+func hasMediaBase(s, folder string) bool {
+	prefix := "/"
+	if folder != "" {
+		prefix = "/" + folder + "/"
+	}
+	for _, base := range mediaBaseURLs() {
+		if strings.HasPrefix(s, base+prefix) {
+			return true
+		}
+	}
+	return false
 }
