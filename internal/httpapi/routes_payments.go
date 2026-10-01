@@ -255,18 +255,32 @@ func (s *Server) registerPaymentRoutes(mux *http.ServeMux) {
 
 		valid, checked := false, false
 		if restaurantID, err := s.Payments.RestaurantForPayment(r.Context(), cb.InvoiceID); err == nil {
-			if cl, _, cerr := s.MC.ClientFor(r.Context(), restaurantID); cerr == nil && cl != nil {
+			if cl, creds, cerr := s.MC.ClientFor(r.Context(), restaurantID); cerr == nil && cl != nil {
 				valid, checked = cl.VerifyCallback(cb), true
+				// SUCCESS xabarida `store_id` bor: u shu restoranning ulangan kassasi
+				// bo'lishi shart. Imzo to'g'ri bo'lsa ham boshqa kassa xabarini qabul qilmaymiz.
+				if valid && cb.StoreID != "" && creds.StoreID != "" && string(cb.StoreID) != creds.StoreID {
+					slog.Error("multicard callback: kassa mos emas - rad etildi",
+						"invoice", cb.InvoiceID, "kelgan", string(cb.StoreID), "kutilgan", creds.StoreID)
+					valid = false
+				}
 			} else if cerr != nil {
 				slog.Error("multicard callback: restoran kalitini olib bo'lmadi",
 					"restaurant", restaurantID, "err", cerr)
 			}
 		}
 
+		// SUCCESS xabarida `status` maydoni YO'Q (hujjat): u faqat muvaffaqiyatli
+		// yechilgandan keyin yuboriladi. Holatsiz qoldirsak `pending` bo'lib, to'lov
+		// hech qachon tasdiqlanmasdi.
+		cbStatus := cb.Status
+		if cb.IsSuccessCallback() {
+			cbStatus = multicard.StatusSuccess
+		}
 		if err := s.Payments.HandleCallback(r.Context(), payments.CallbackData{
 			PaymentID:         cb.InvoiceID,
 			ProviderPaymentID: cb.UUID,
-			Status:            multicardpay.MapStatus(cb.Status),
+			Status:            multicardpay.MapStatus(cbStatus),
 			AmountTiyin:       cb.Amount.Int64(),
 			SignatureValid:    valid,
 			SignatureChecked:  checked,
@@ -274,13 +288,34 @@ func (s *Server) registerPaymentRoutes(mux *http.ServeMux) {
 		}); err != nil {
 			slog.Error("multicard callback qayta ishlanmadi",
 				"invoice", cb.InvoiceID, "uuid", cb.UUID, "error", err)
-			// Shlyuzga baribir 2xx: 5xx bo'lsa u xabarni besh marta
-			// takrorlaydi, natija esa o'zgarmaydi. Xato bizning
-			// tomonda qayd etilgan va to'lov `needs_review` bo'ladi.
+			// ┌─ SUCCESS XABARIGA XATODA 200 QAYTARILMAYDI ───────────────────┐
+			// Hujjatga ko'ra SUCCESS xabariga `200` va `"success": true`
+			// javob berilmasa, Multicard yechilgan to'lovni O'ZI QAYTARIB
+			// yuboradi. Biz to'lovni yozib ola olmagan bo'lsak (imzo mos
+			// kelmadi, baza ishlamadi), ENG XAVFSIZ natija shu: mijoz puli
+			// qaytadi. Avval har doim 200 qaytarilardi: pul yechilib, buyurtma
+			// tasdiqlanmay qolardi (haqiqiy sandbox'da imzo formulasi xatosi
+			// shunday ko'rindi).
+			//
+			// WEBHOOK (`status` bor) xabarida esa 200 qoladi: xato bo'lsa u
+			// shunchaki besh marta takrorlanadi, natija o'zgarmaydi.
+			// Kutilmagan holat (`NeedsReview`) xato emas (nil) va 200 oladi:
+			// pul qoladi, odam ko'rib chiqadi.
+			// └───────────────────────────────────────────────────────────────┘
+			if cb.IsSuccessCallback() {
+				w.Header().Set("Content-Type", "application/json")
+				// 5xx EMAS: bu server nosozligi emas, biznes rad etishi (monitoringda
+				// "API yiqildi" ogohlantirishi bermasligi uchun); hujjatga ko'ra
+				// 200 bo'lmagan istalgan javob yetarli.
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"success": false, "message": "callback qayta ishlanmadi", "error": "callback qayta ishlanmadi"})
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "message": "Order processed"})
 	})
 }
 

@@ -168,6 +168,10 @@ func (p *Provider) Cancel(ctx context.Context, restaurantID, providerPaymentID s
 	return wrap(cl.CancelInvoice(ctx, providerPaymentID))
 }
 
+// StatusByProviderID - Multicard holati invoys `uuid` bo'yicha so'raladi
+// (`payments.StatusByProviderID`), bizning to'lov ID'si bo'yicha emas.
+func (p *Provider) StatusByProviderID() bool { return true }
+
 // CancelsUnpaid — bu provayder TO'LANMAGAN (kutilayotgan) invoysni ham yopa
 // oladi (`payments.UnpaidCanceller`). Bir bosqichli to'lovda `held` holati
 // yo'q, shuning uchun bekor qilingan buyurtmaning to'lanmagan invoysi
@@ -184,11 +188,25 @@ func (p *Provider) Refund(ctx context.Context, restaurantID, providerPaymentID, 
 	if err != nil {
 		return err
 	}
-	ofd, err := fiscal(nil, amountTiyin, creds, "Buyurtma bekor qilindi")
-	if err != nil {
-		return err
+	// To'LIQ qaytarish (bizda har doim shunday) alohida endpoint bilan: `/partial`
+	// sandbox'da to'liq summada ham, kichik summada ham rad etilgan (`RefundFull`
+	// izohiga qarang). Summa to'lovdan KAM bo'lsagina qisman qaytariladi.
+	//
+	// To'lov summasi shlyuzdan O'QILADI, lekin o'qib bo'lmasa qaytarish YIQILMAYDI:
+	// bizda qaytarish har doim TO'LIQ, shuning uchun noma'lum holatda to'liq
+	// qaytariladi (holat API vaqtincha ishlamasa pul qaytmay qolmasin).
+	var paid int64
+	if info, perr := cl.Payment(ctx, providerPaymentID); perr == nil {
+		paid = info.Amount()
 	}
-	return wrap(cl.RefundPartial(ctx, providerPaymentID, amountTiyin, ofd))
+	if paid > 0 && amountTiyin < paid {
+		ofd, ferr := fiscal(nil, amountTiyin, creds, "Buyurtma bekor qilindi")
+		if ferr != nil {
+			return ferr
+		}
+		return wrap(cl.RefundPartial(ctx, providerPaymentID, amountTiyin, ofd))
+	}
+	return wrap(cl.RefundFull(ctx, providerPaymentID))
 }
 
 // ── Yordamchilar ────────────────────────────────────────────────────

@@ -198,6 +198,14 @@ func TestCancelAndRefundPaths(t *testing.T) {
 		t.Errorf("bekor qilish: %s %s", f.lastMethod, f.lastPath)
 	}
 
+	if err := c.RefundFull(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	// To'LIQ qaytarish: `/partial` EMAS (sandbox uni to'liq summada ham rad etgan).
+	if f.lastMethod != http.MethodDelete || f.lastPath != "/payment/u1" {
+		t.Errorf("to'liq qaytarish: %s %s", f.lastMethod, f.lastPath)
+	}
+
 	if err := c.RefundPartial(ctx, "u1", 4_500_000, okOFD(4_500_000)); err != nil {
 		t.Fatal(err)
 	}

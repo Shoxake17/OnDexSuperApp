@@ -843,6 +843,18 @@ func (s *Service) settleCardPayment(ctx context.Context, o *Order, to Status) {
 		s.persistPaymentState(ctx, o, PaymentPaid)
 	case StatusRejected, StatusCancelled:
 		if !o.PaymentState.Settled() {
+			// TO'LANMAGAN karta buyurtmasi: pul yechilmagan, lekin provayderda
+			// to'lov havolasi hamon ochiq bo'lishi mumkin. Yopilmasa mijoz uni
+			// keyin to'lab qo'yadi: pul yechiladi, buyurtma esa allaqachon yo'q
+			// (Multicard sandbox'dagi haqiqiy sinov va E2E ochgan bo'shliq).
+			//
+			// Xato bekor qilishni to'xtatmaydi: havola o'z muddati bilan o'ladi,
+			// kechikkan to'lov esa callback orqali baribir ko'rinadi. Qaysi
+			// to'lovlar yopilishini `payments.ReleaseForOrder` hal qiladi (faqat
+			// to'lanmagan invoysni yopa oladigan provayderlar uchun).
+			if rerr := s.payments.ReleaseForOrder(ctx, o.ID); rerr != nil {
+				slog.Warn("to'lanmagan to'lovni yopib bo'lmadi", "order", o.ID, "error", rerr)
+			}
 			return
 		}
 		if err := s.payments.ReleaseForOrder(ctx, o.ID); err != nil {

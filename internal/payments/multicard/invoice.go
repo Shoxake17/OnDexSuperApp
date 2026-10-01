@@ -3,8 +3,10 @@ package multicard
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/md5"  //nolint:gosec // imzo algoritmini Multicard belgilaydi, tanlov bizda emas
 	"crypto/sha1" //nolint:gosec // imzo algoritmini Multicard belgilaydi, tanlov bizda emas
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -370,7 +372,30 @@ func (c *Client) CancelInvoice(ctx context.Context, uuid string) error {
 	return c.do(ctx, http.MethodDelete, "/payment/invoice/"+url.PathEscape(id), nil, nil)
 }
 
-// RefundPartial — to'langan pulni qaytaradi (to'liq yoki qisman).
+// RefundFull - TO'LANGAN to'lovni TO'LIQ qaytaradi: `DELETE /payment/{uuid}`
+// (hujjat: "Отмена платежа / возврат средств"). Haqiqiy sandbox sinovida
+// shlyuzda holat `revert` bo'ldi.
+//
+// ┌─ NEGA `/partial` EMAS ─────────────────────────────────────────────┐
+// Avval to'liq qaytarish ham `DELETE /payment/{uuid}/partial` bilan, to'liq
+// summa va chek bilan yuborilardi. Sandbox buni IKKI usulda rad etdi:
+// to'liq summada `Сумма возврата не может быть больше суммы платежа`,
+// kichik summada `Касса не поддерживает частичную отмену`. Ya'ni
+// buyurtma rad etilganda pul HECH QACHON qaytmasdi. To'liq qaytarish uchun
+// alohida endpoint bor; `/partial` faqat kassa qo'llasa va summa kam bo'lsa.
+// └────────────────────────────────────────────────────────────────────┘
+//
+// ⚠️ To'lanmagan invoysda 404 (`ERROR_NOT_FOUND`): uni `CancelInvoice` yopadi.
+func (c *Client) RefundFull(ctx context.Context, uuid string) error {
+	id := strings.TrimSpace(uuid)
+	if id == "" {
+		return errors.New("multicard: to'lov identifikatori bo'sh")
+	}
+	return c.do(ctx, http.MethodDelete, "/payment/"+url.PathEscape(id), struct{}{}, nil)
+}
+
+// RefundPartial — to'langan pulni QISMAN qaytaradi (summa to'lovdan KAM bo'lishi
+// va kassa qisman bekor qilishni qo'llashi shart).
 //
 // ⚠️ `ofd` bu yerda ham MAJBURIY: eski chek bekor qilinib, yangisi
 // chiqariladi. Shuning uchun qaytarilayotgan summa bo'yicha chek
@@ -395,19 +420,55 @@ func (c *Client) RefundPartial(ctx context.Context, uuid string, amountTiyin int
 // ── Callback ────────────────────────────────────────────────────────
 
 // Callback — shlyuz yuboradigan xabar.
+// StoreRef - `store_id` callback'da raqam (`6`), boshqa joylarda satr bo'lishi
+// mumkin. Ikkalasini ham satr sifatida o'qiydi.
+type StoreRef string
+
+func (s *StoreRef) UnmarshalJSON(b []byte) error {
+	raw := strings.TrimSpace(string(b))
+	if raw == "null" || raw == "" {
+		*s = ""
+		return nil
+	}
+	if raw[0] == '"' {
+		var v string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		*s = StoreRef(strings.TrimSpace(v))
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err != nil {
+		return err
+	}
+	*s = StoreRef(n.String())
+	return nil
+}
+
+// Callback - shlyuz yuboradigan xabar. Multicard IKKI XIL xabar yuboradi:
+//
+//   - SUCCESS (muvaffaqiyatli yechilgandan keyin, standart): `store_id` BOR,
+//     `status` YO'Q; imzo MD5(store_id + invoice_id + amount + secret).
+//   - WEBHOOK (har holat o'zgarishida, alohida yoqiladi): `status` BOR;
+//     imzo SHA1(uuid + invoice_id + amount + secret).
+//
+// (Haqiqiy sandbox sinovi shuni ochdi: faqat SHA1 tekshirilganda har bir
+// haqiqiy SUCCESS callback "imzo noto'g'ri" deb rad etilardi.)
 type Callback struct {
-	UUID        string `json:"uuid"`
-	Amount      Tiyin  `json:"amount"`
-	InvoiceID   string `json:"invoice_id"`
-	Status      string `json:"status"`
-	BillingID   string `json:"billing_id"`
-	PaymentTime string `json:"payment_time"`
-	RefundTime  string `json:"refund_time"`
-	Phone       string `json:"phone"`
-	CardPAN     string `json:"card_pan"`
-	PS          string `json:"ps"`
-	ReceiptURL  string `json:"receipt_url"`
-	Sign        string `json:"sign"`
+	StoreID     StoreRef `json:"store_id"`
+	UUID        string   `json:"uuid"`
+	Amount      Tiyin    `json:"amount"`
+	InvoiceID   string   `json:"invoice_id"`
+	Status      string   `json:"status"`
+	BillingID   string   `json:"billing_id"`
+	PaymentTime string   `json:"payment_time"`
+	RefundTime  string   `json:"refund_time"`
+	Phone       string   `json:"phone"`
+	CardPAN     string   `json:"card_pan"`
+	PS          string   `json:"ps"`
+	ReceiptURL  string   `json:"receipt_url"`
+	Sign        string   `json:"sign"`
 }
 
 // CallbackSourceIP — shlyuz callback yuboradigan manzil (hujjatda
@@ -438,12 +499,32 @@ func (c *Client) VerifyCallback(cb Callback) bool {
 	return verifySign(cb, c.cfg.Secret)
 }
 
+// IsSuccessCallback - bu "muvaffaqiyatli yechildi" xabarimi (`status` yo'q,
+// `store_id` bor). Hujjatga ko'ra bunday xabar FAQAT muvaffaqiyatli
+// yechilgandan keyin yuboriladi.
+func (cb Callback) IsSuccessCallback() bool {
+	return cb.Status == "" && cb.StoreID != ""
+}
+
+// verifySign - ikkala xabar turining imzosini tekshiradi. Ikkalasi ham
+// SIR (secret) ni o'z ichiga oladi, shuning uchun istalgan biri to'g'ri
+// kelsa xabar haqiqiy.
 func verifySign(cb Callback, secret string) bool {
 	if secret == "" {
 		return false
 	}
-	raw := cb.UUID + cb.InvoiceID + strconv.FormatInt(cb.Amount.Int64(), 10) + secret
-	sum := sha1.Sum([]byte(raw)) //nolint:gosec // algoritmni shlyuz belgilaydi
-	want := hex.EncodeToString(sum[:])
-	return hmac.Equal([]byte(strings.ToLower(strings.TrimSpace(cb.Sign))), []byte(want))
+	got := []byte(strings.ToLower(strings.TrimSpace(cb.Sign)))
+	amount := strconv.FormatInt(cb.Amount.Int64(), 10)
+
+	// WEBHOOK: SHA1(uuid + invoice_id + amount + secret)
+	sum := sha1.Sum([]byte(cb.UUID + cb.InvoiceID + amount + secret)) //nolint:gosec // algoritmni shlyuz belgilaydi
+	if hmac.Equal(got, []byte(hex.EncodeToString(sum[:]))) {
+		return true
+	}
+	// SUCCESS: MD5(store_id + invoice_id + amount + secret) - faqat store_id kelgan bo'lsa.
+	if cb.StoreID != "" {
+		m := md5.Sum([]byte(string(cb.StoreID) + cb.InvoiceID + amount + secret)) //nolint:gosec // algoritmni shlyuz belgilaydi
+		return hmac.Equal(got, []byte(hex.EncodeToString(m[:])))
+	}
+	return false
 }

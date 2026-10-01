@@ -456,7 +456,7 @@ func (s *Service) HandleCallback(ctx context.Context, cb CallbackData) error {
 		return errors.New("imzo noto'g'ri")
 	default:
 		// Imzo tekshirilmadi (kalit yo'q) — provayderdan so'raymiz.
-		st, serr := s.provider.Status(ctx, p.RestaurantID, p.ID)
+		st, serr := s.provider.Status(ctx, p.RestaurantID, s.statusRef(p))
 		switch {
 		case serr == nil:
 			proof = "status-api"
@@ -701,6 +701,15 @@ func (s *Service) ReleaseForOrder(ctx context.Context, orderID string) error {
 	return nil
 }
 
+// statusRef - provayderdan holat so'ralganda yuboriladigan identifikator:
+// provayder uuid kutsa (`StatusByProviderID`) o'sha, aks holda bizning ID.
+func (s *Service) statusRef(p *Payment) string {
+	if sp, ok := s.provider.(StatusByProviderID); ok && sp.StatusByProviderID() && p.ProviderPaymentID != "" {
+		return p.ProviderPaymentID
+	}
+	return p.ID
+}
+
 // cancelsUnpaid — provayder to'lanmagan to'lovni ham yopa oladimi (`UnpaidCanceller`).
 func (s *Service) cancelsUnpaid() bool {
 	uc, ok := s.provider.(UnpaidCanceller)
@@ -756,6 +765,31 @@ func (s *Service) ExpireStale(ctx context.Context, limit int) (int, error) {
 	}
 	var n int
 	for _, p := range list {
+		// ┌─ YOPISHDAN OLDIN PROVAYDERDAN SO'RAYMIZ ────────────────────────┐
+		// Avval muddati o'tgan to'lov so'rovsiz `failed` qilinardi. Agar
+		// callback o'tib ketgan bo'lsa (server o'chiq edi, imzo xatosi,
+		// tarmoq), mijozdan pul YECHILGAN, buyurtma esa bekor bo'lardi va
+		// qaytarish ham bo'lmasdi. Endi haqiqiy holat so'raladi.
+		//   * pul yechilgan  -> to'lov tasdiqlanadi (callback o'rniga);
+		//   * javob yo'q    -> HOZIRCHA yopilmaydi, keyingi aylanishda qayta;
+		//   * to'lanmagan   -> avvalgidek yopiladi.
+		// └───────────────────────────────────────────────────────────────┘
+		if p.ProviderPaymentID != "" {
+			st, serr := s.provider.Status(ctx, p.RestaurantID, s.statusRef(p))
+			if serr != nil {
+				slog.Warn("muddati o'tgan to'lov: provayder holati noma'lum, yopilmadi",
+					"payment", p.ID, "order", p.OrderID, "err", serr)
+				continue
+			}
+			if st.Status == StatusPaid || st.Status == StatusHeld {
+				slog.Warn("muddati o'tgan to'lov PROVAYDERDA to'langan - tasdiqlanmoqda (callback kelmagan)",
+					"payment", p.ID, "order", p.OrderID)
+				if aerr := s.applyStatus(ctx, p, st.Status, nil, "status-api"); aerr != nil {
+					slog.Error("to'langan to'lovni tasdiqlab bo'lmadi", "payment", p.ID, "error", aerr)
+				}
+				continue
+			}
+		}
 		p.Status = StatusFailed
 		p.ReviewReason = "to'lov muddati tugadi"
 		p.UpdatedAt = now

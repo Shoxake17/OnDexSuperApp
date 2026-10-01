@@ -31,6 +31,16 @@ $mutations = @(
        old = 'case multicard.StatusSuccess:'; new = 'case multicard.StatusSuccess, multicard.StatusDraft:' },
     @{ name = 'pul: rad etilgan to''langan buyurtma puli QAYTMAYDI'; file = 'internal\orders\service.go';
        old = 'if err := s.payments.ReleaseForOrder(ctx, o.ID); err != nil {'; new = 'if err := error(nil); err != nil {' },
+    @{ name = 'pul: bekor qilingan to''lanmagan buyurtmaning invoysi provayderda yopilmaydi'; file = 'internal\orders\service.go';
+       old = 'if rerr := s.payments.ReleaseForOrder(ctx, o.ID); rerr != nil {'; new = 'if rerr := error(nil); rerr != nil {' },
+    @{ name = 'pul: invoys bekor qilish noto''g''ri endpointga ketadi (to''lov qaytarish yo''li)'; file = 'internal\payments\multicard\invoice.go';
+       old = '"/payment/invoice/"+url.PathEscape(id)'; new = '"/payment/"+url.PathEscape(id)' },
+    @{ name = 'xavfsizlik: haqiqiy SUCCESS callback (MD5, store_id) imzosi rad etiladi'; file = 'internal\payments\multicard\invoice.go';
+       old = 'm := md5.Sum([]byte(string(cb.StoreID) + cb.InvoiceID + amount + secret))'; new = 'm := md5.Sum([]byte("x" + string(cb.StoreID) + cb.InvoiceID + amount + secret))' },
+    @{ name = 'pul: SUCCESS callback (status yo''q) to''lov deb tasdiqlanmaydi'; file = 'internal\httpapi\routes_payments.go';
+       old = 'cbStatus = multicard.StatusSuccess'; new = 'cbStatus = ""' },
+    @{ name = 'pul: to''liq qaytarish /partial yo''li bilan yuboriladi (sandbox rad etadi, pul qaytmaydi)'; file = 'internal\payments\multicardpay\provider.go';
+       old = 'if paid > 0 && amountTiyin < paid {'; new = 'if paid > 0 || amountTiyin > 0 {' },
     @{ name = 'hamyon: keshbek 1% emas 2%'; file = 'internal\wallet\wallet.go';
        old = 'CashbackPercent = 1'; new = 'CashbackPercent = 2' },
     @{ name = 'validatsiya: miqdor chegarasi (100) olib tashlanadi'; file = 'internal\catalog\service.go';
@@ -46,11 +56,11 @@ $mutations = @(
     @{ name = 'nazoratchi: "kuryer topilmadi" darhol avto-bekor'; file = 'internal\orders\dispatch_state.go';
        old = 'deadline := now.Add(CourierNotFoundCancelAfter)'; new = 'deadline := now.Add(0)' },
     @{ name = 'kesh: restoran saqlangach kesh bekor qilinmaydi (yopilgan restoran ochiq ko''rinadi)'; file = 'internal\storage\cached_catalog.go';
-       old = 'c.rests.invalidate(r.ID)'; new = '_ = r.ID' },
+       old = 'c.rests.Invalidate(r.ID)'; new = '_ = r.ID' },
     @{ name = 'kesh: aksiya saqlangach kesh bekor qilinmaydi (yangi aksiya ko''rinmaydi)'; file = 'internal\storage\cached_promotions.go';
-       old = 'c.lists.invalidate(p.RestaurantID)'; new = '_ = p.RestaurantID' },
+       old = 'c.lists.Invalidate(p.RestaurantID)'; new = '_ = p.RestaurantID' },
     @{ name = 'kesh: xodim yangilangach kesh bekor qilinmaydi (eski yetkazish haqi)'; file = 'internal\storage\cached_staff.go';
-       old = 'c.Repository.Update(ctx, m, events){NL}' + [char]9 + 'c.lists.invalidate(m.RestaurantID)'; new = 'c.Repository.Update(ctx, m, events){NL}' + [char]9 + '_ = m.RestaurantID' }
+       old = 'c.Repository.Update(ctx, m, events){NL}' + [char]9 + 'c.lists.Invalidate(m.RestaurantID)'; new = 'c.Repository.Update(ctx, m, events){NL}' + [char]9 + '_ = m.RestaurantID' }
 )
 
 $survived = @()

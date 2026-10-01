@@ -158,11 +158,23 @@ type World struct {
 func NewWorld(t *testing.T, scenario string) *World { return NewWorldWith(t, scenario, Options{}) }
 
 // Options — dunyoning ixtiyoriy sozlamalari (bayroqlar).
+// LiveMulticard - haqiqiy Multicard SANDBOX sozlamalari (soxta shlyuz o'rniga).
+type LiveMulticard struct {
+	BaseURL, AppID, Secret, StoreID string
+	// NotifyURL - shlyuz callback yuboradigan HAMMA UCHUN ochiq https manzil
+	// (tunnel). `payments.NewService` nisbiy yoki http manzilni rad etadi.
+	NotifyURL string
+}
+
 type Options struct {
 	// PlatformCouriers — OnDex platforma kuryerlari (o'zi ro'yxatdan o'tadigan) yoqilgan.
 	PlatformCouriers bool
 	// OfferTTL — kuryerga taklif muddati (standart 10 s).
 	OfferTTL time.Duration
+
+	// Live - soxta shlyuz O'RNIGA haqiqiy Multicard SANDBOX (qo'lda yoqiladigan
+	// sinov: `sandbox_payment_test.go`). nil bo'lsa soxta shlyuz ishlatiladi.
+	Live *LiveMulticard
 }
 
 // NewWorldWith — NewWorld, sozlamalar bilan.
@@ -189,7 +201,14 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := box.Seal(GatewaySecret)
+	// Soxta shlyuz (standart) yoki haqiqiy sandbox (`opts.Live`).
+	mcApp, mcStore, mcBase, mcNotify, mcSecret := GatewayAppID, GatewayStore, w.Gateway.Srv.URL,
+		"https://api.example/payments/multicard/callback", GatewaySecret
+	if opts.Live != nil {
+		mcApp, mcStore, mcBase, mcNotify, mcSecret = opts.Live.AppID, opts.Live.StoreID,
+			opts.Live.BaseURL, opts.Live.NotifyURL, opts.Live.Secret
+	}
+	enc, err := box.Seal(mcSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +218,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 			{
 				ID: RestA, Name: "E2E Cafe", Kind: catalog.KindCafe, Address: "M. Fayozov ko'chasi",
 				Lat: ChustLat, Lng: ChustLng, Open: true,
-				MulticardAppID: GatewayAppID, MulticardSecretEnc: enc, MulticardStoreID: GatewayStore,
+				MulticardAppID: mcApp, MulticardSecretEnc: enc, MulticardStoreID: mcStore,
 				MulticardTaxMXIK: "10204001001000000", MulticardTaxPackageCode: "1500169",
 			},
 			{ID: RestB, Name: "E2E Boshqa", Kind: catalog.KindCafe, Lat: ChustLat, Lng: ChustLng, Open: true},
@@ -278,9 +297,9 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 				StoreID: rest.MulticardStoreID, TaxMXIK: rest.MulticardTaxMXIK,
 				TaxPackageCode: rest.MulticardTaxPackageCode,
 			}, nil
-		}, box, w.Gateway.Srv.URL, nil)
+		}, box, mcBase, nil)
 	paySvc, err := payments.NewService(w.Payments, multicardpay.New(reg), orderSvc, httpapi.NewID,
-		payments.Options{NotifyURL: "https://api.example/payments/multicard/callback"})
+		payments.Options{NotifyURL: mcNotify})
 	if err != nil {
 		t.Fatal(err)
 	}

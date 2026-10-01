@@ -28,7 +28,14 @@ type fakeProvider struct {
 	// unpaid — provayder to'lanmagan to'lovni ham yopa oladi (Multicard kabi).
 	unpaid    bool
 	cancelErr error
+
+	// byProviderID - Status provayder uuid'sini kutadi (Multicard); lastStatusRef - unga berilgan ID.
+	byProviderID  bool
+	lastStatusRef string
 }
+
+// StatusByProviderID - `payments.StatusByProviderID`.
+func (f *fakeProvider) StatusByProviderID() bool { return f.byProviderID }
 
 // CancelsUnpaid — `UnpaidCanceller`: faqat `unpaid` bayrog'i yoqilgan sinovlarda true.
 func (f *fakeProvider) CancelsUnpaid() bool { return f.unpaid }
@@ -47,7 +54,8 @@ func (f *fakeProvider) Create(_ context.Context, req CreateRequest) (*CreateResu
 	}, nil
 }
 
-func (f *fakeProvider) Status(_ context.Context, _, _ string) (*StatusResult, error) {
+func (f *fakeProvider) Status(_ context.Context, _, ref string) (*StatusResult, error) {
+	f.lastStatusRef = ref
 	if f.statusErr != nil {
 		return nil, f.statusErr
 	}

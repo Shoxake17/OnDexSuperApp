@@ -230,6 +230,17 @@ type UnpaidCanceller interface {
 	CancelsUnpaid() bool
 }
 
+// StatusByProviderID — ixtiyoriy belgi: provayderning `Status` metodi
+// provayder tomondagi IDni (Multicard: invoys `uuid`) kutadi. Belgi
+// bo'lmasa servis BIZNING to'lov ID'sini yuboradi (Octo: shop_transaction_id).
+//
+// Avval servis hamisha bizning ID'ni yuborardi: Octo uchun to'g'ri,
+// Multicard uchun esa noto'g'ri (shlyuz 404), ya'ni Multicard'da
+// "holatni shlyuzdan tasdiqlash" yo'li hech qachon ishlamagan.
+type StatusByProviderID interface {
+	StatusByProviderID() bool
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // PUL: TIYIN <-> O'NLIK SON
 // ═══════════════════════════════════════════════════════════════════

@@ -104,7 +104,24 @@ func TestRefundsOnRejectAndCancel(t *testing.T) {
 		o := w.PlaceOrder(t, w.Customer, Cart(ProdOsh, 1), "card", "e2e-r-3")
 		id, _ := o["id"].(string)
 		w.Do(t, w.Customer, "POST", "/orders/"+id+"/pay", nil).Expect(t, 200)
+		before, reversalsBefore := w.Gateway.InvoiceCancelCount(), w.Gateway.ReversalCount()
 		w.Transition(t, w.Customer, id, "cancelled")
+		// To'lanmagan invoys PROVAYDERDA ham yopilishi shart: aks holda mijoz havolani
+		// keyin to'lasa pul yechiladi, buyurtma esa yo'q (Multicard sandbox'da topilgan).
+		w.R().Checked("money.unpaid_cancel_closes_invoice_at_provider")
+		if got := w.Gateway.InvoiceCancelCount() - before; got != 1 {
+			w.Violate(t, "money.unpaid_cancel_closes_invoice_at_provider",
+				"to'lanmagan invoys provayderda yopilmadi: bekor qilish so'rovlari %d, 1 kutilgan", got)
+		}
+		// To'lanmagan invoys QAYTARISH emas, BEKOR QILISH bilan yopiladi (pul yechilmagan edi).
+		w.R().Checked("money.unpaid_cancel_is_not_a_refund")
+		if got := w.Gateway.ReversalCount() - reversalsBefore; got != 0 {
+			w.Violate(t, "money.unpaid_cancel_is_not_a_refund", "to'lanmagan invoys uchun %d ta QAYTARISH so'rovi ketdi", got)
+		}
+		w.R().Checked("money.cancel_uses_correct_endpoint")
+		if n := w.Gateway.MisroutedCount(); n != 0 {
+			w.Violate(t, "money.cancel_uses_correct_endpoint", "shlyuzga noto'g'ri yo'lga %d ta so'rov ketdi", n)
+		}
 		list, _ := w.Payments.ListByOrder(context.Background(), id)
 		for _, p := range list {
 			if st := string(p.Status); st == "paid" || st == "refunded" {

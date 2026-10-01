@@ -343,16 +343,25 @@ func TestCancelAndRefund(t *testing.T) {
 		t.Errorf("bekor qilish: %s %s", s.lastMethod, s.lastPath)
 	}
 
+	// TO'LIQ qaytarish (to'lov summasi 4_500_000): `DELETE /payment/{uuid}`.
+	// `/partial` sandbox'da to'liq summada ham rad etilgan (haqiqiy sinov).
 	if err := p.Refund(ctx, "rest-a", "mc-uuid-1", "ref-1", 4_500_000); err != nil {
 		t.Fatal(err)
 	}
-	if s.lastPath != "/payment/mc-uuid-1/partial" {
-		t.Errorf("qaytarish yo'li: %s", s.lastPath)
+	if s.lastMethod != http.MethodDelete || s.lastPath != "/payment/mc-uuid-1" {
+		t.Errorf("to'liq qaytarish: %s %s, kutilgan DELETE /payment/mc-uuid-1", s.lastMethod, s.lastPath)
 	}
-	if s.lastBody["refund_amount"] != float64(4_500_000) {
+
+	// QISMAN qaytarish (summa to'lovdan kam): `/partial`, fiskal chek bilan.
+	if err := p.Refund(ctx, "rest-a", "mc-uuid-1", "ref-2", 1_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if s.lastPath != "/payment/mc-uuid-1/partial" {
+		t.Errorf("qisman qaytarish yo'li: %s", s.lastPath)
+	}
+	if s.lastBody["refund_amount"] != float64(1_000_000) {
 		t.Errorf("summa: %v", s.lastBody["refund_amount"])
 	}
-	// Qaytarishda ham fiskal chek yuboriladi.
 	if items, _ := s.lastBody["ofd"].([]any); len(items) != 1 {
 		t.Errorf("ofd: %v", s.lastBody["ofd"])
 	}
@@ -404,5 +413,19 @@ func TestLanguageFallsBackToUzbek(t *testing.T) {
 		if got := language(in); got != want {
 			t.Errorf("language(%q): %q kutildi, %q keldi", in, want, got)
 		}
+	}
+}
+
+// To'lov summasini shlyuzdan o'qib bo'lmasa ham qaytarish YIQILMAYDI: bizda qaytarish
+// har doim to'liq, shuning uchun noma'lum holatda to'liq endpoint ishlatiladi.
+func TestRefundFallsBackToFullWhenAmountUnknown(t *testing.T) {
+	s := newStand(t)
+	s.paymentRes = "not json"
+	p := s.provider(t, connected())
+	if err := p.Refund(context.Background(), "rest-a", "mc-uuid-1", "ref-1", 4_500_000); err != nil {
+		t.Fatal(err)
+	}
+	if s.lastMethod != http.MethodDelete || s.lastPath != "/payment/mc-uuid-1" {
+		t.Errorf("to'liq qaytarish: %s %s", s.lastMethod, s.lastPath)
 	}
 }
