@@ -20,6 +20,18 @@ param(
     [string]$K6Script = 'tests\load\capacity.js'   # k6 skripti
 )
 
+# Bu skript $env: o'zgaruvchilarini SESSIYAGA yozadi. PowerShell'da skript tugagach ham ular
+# chaqiruvchi terminalda QOLADI, keyin boshqa dasturlar (masalan ondex run dagi Go API) ularni
+# oladi va .env dagi qiymatlarni BOSIB KETADI: API dev bazasi o'rniga benchmark bazasiga ulanib,
+# ishga tushmay qolgan (haqiqiy hodisa). Shuning uchun boshlang'ich qiymatlar saqlanadi va
+# chiqishda (exit da ham) tiklanadi.
+$script:EnvNames = @('ONDEX_API', 'STEPS', 'STAGE_S', 'MAX_VUS', 'SUMMARY_OUT')
+$script:EnvBackup = @{}
+foreach ($n in $script:EnvNames) { $script:EnvBackup[$n] = [Environment]::GetEnvironmentVariable($n, 'Process') }
+function Restore-ScriptEnv {
+    foreach ($n in $script:EnvNames) { [Environment]::SetEnvironmentVariable($n, $script:EnvBackup[$n], 'Process') }
+}
+try {
 $ErrorActionPreference = 'Continue'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
@@ -93,3 +105,4 @@ if (Test-Path $csv) {
 }
 Write-Host "`nHisobot: logs\load\k6-summary.json, logs\load\resources.csv"
 exit $code
+} finally { Restore-ScriptEnv }
