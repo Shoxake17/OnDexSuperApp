@@ -48,16 +48,17 @@ jobs:
             python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           r = json.load(open('logs/e2e/report.json'))
-          steps = r['steps']
+          # Go bo'sh ro'yxatni "null" yozishi mumkin; "or []" bilan himoyalanamiz.
+          steps = r.get('steps') or []
           bad = [s for s in steps if not s['passed'] and not s.get('skipped')]
           c = r['coverage']
           print('### E2E hisobot')
           print(f"- Qadamlar: {len(steps) - len(bad)} o'tdi, {len(bad)} yiqildi")
-          print(f"- Invariant buzilishi: {len(r['violations'])}")
+          print(f"- Invariant buzilishi: {len(r.get('violations') or [])}")
           print(f"- Endpoint qamrovi: {c['covered']}/{c['total']} (istisno: {c['exempt']})")
-          print(f"- So'rovlar: {len(r['calls'])}")
+          print(f"- So'rovlar: {len(r.get('calls') or [])}")
           print('\n**Eng sekin 5 endpoint (p95 ms)**')
-          for x in r['routes'][:5]:
+          for x in (r.get('routes') or [])[:5]:
               print(f"- `{x['route']}` — {x['p95_ms']:.1f}")
           PY
           fi

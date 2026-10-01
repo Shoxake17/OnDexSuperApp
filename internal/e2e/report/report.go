@@ -238,7 +238,7 @@ func (r *Recorder) Build(cov Coverage, slowBudgetMs float64, commit string) Repo
 			dups[dupKey{c.Scenario, c.Step, c.Method, c.Path, c.Actor}]++
 		}
 	}
-	var duplicates []Duplicate
+	duplicates := []Duplicate{}
 	for k, n := range dups {
 		if n >= DuplicateThreshold {
 			duplicates = append(duplicates, Duplicate{k.scenario, k.step, k.method, k.path, n})
@@ -251,18 +251,34 @@ func (r *Recorder) Build(cov Coverage, slowBudgetMs float64, commit string) Repo
 		checks[k] = v
 	}
 	return Report{
-		StartedAt:       r.started,
-		DurationMs:      float64(time.Since(r.started).Microseconds()) / 1000,
-		GitCommit:       commit,
-		Steps:           append([]Step(nil), r.steps...),
-		Calls:           append([]Call(nil), r.calls...),
-		Violations:      append([]Violation(nil), r.violations...),
+		StartedAt:  r.started,
+		DurationMs: float64(time.Since(r.started).Microseconds()) / 1000,
+		GitCommit:  commit,
+		// Bo'sh ro'yxat JSON'da "null" EMAS, "[]" bo'lishi shart: hisobotni
+		// o'qiydigan skriptlar (CI xulosasi) len(...) chaqiradi.
+		Steps:           append([]Step{}, r.steps...),
+		Calls:           append([]Call{}, r.calls...),
+		Violations:      append([]Violation{}, r.violations...),
 		InvariantChecks: checks,
-		Routes:          stats,
+		Routes:          append([]RouteStat{}, stats...),
 		Duplicates:      duplicates,
-		Coverage:        cov,
+		Coverage:        nonNilCoverage(cov),
 		SlowBudgetMs:    slowBudgetMs,
 	}
+}
+
+// nonNilCoverage - qamrovdagi bo'sh ro'yxatlarni "[]" ga aylantiradi ("null" emas).
+func nonNilCoverage(c Coverage) Coverage {
+	if c.GatedOnly == nil {
+		c.GatedOnly = []string{}
+	}
+	if c.Uncovered == nil {
+		c.Uncovered = []string{}
+	}
+	if c.Exempted == nil {
+		c.Exempted = []string{}
+	}
+	return c
 }
 
 func percentile(sorted []float64, p float64) float64 {
