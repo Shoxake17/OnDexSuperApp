@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# OnDex â€” SOATLIK zaxira (PostgreSQL + MongoDB) -> R2 `hourly/`.
+# OnDex — SOATLIK zaxira (PostgreSQL + MongoDB) -> R2 `hourly/`.
 #
-# â”Œâ”€ NEGA KERAK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+# ┌─ NEGA KERAK ────────────────────────────────────────────────────────┐
 # Kunlik zaxira (`backup.sh`, 03:15) bilan baza yo'qolsa 24 soatgacha
 # buyurtma va to'lov ma'lumoti ketishi mumkin (RPO = 24 soat). Soatlik
 # nusxa buni 1 soatga tushiradi.
@@ -10,7 +10,7 @@
 # Baza hozir KICHIK (daraja: ~50 KB), shuning uchun to'liq dump arzon.
 # Baza ~1 GB dan oshganda to'liq dump o'rniga Postgres WAL arxivlash
 # (nuqtaga tiklash) ga o'tish kerak: dump vaqti va yuki baza bilan o'sadi.
-# â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+# └─────────────────────────────────────────────────────────────────────┘
 #
 # O'RNATISH (VPS'da, bir marta):
 #   mkdir -p ~/ondex/backups-hourly
