@@ -56,6 +56,7 @@ jobs:
       matrix:
         package:
           - packages/ondex_core
+          - packages/ondex_maplibre
           - packages/ondex_menu
           - packages/ondex_support
           - apps/customer_app

@@ -3,13 +3,43 @@ package httpapi
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 //go:embed assets/map_picker.html
 var mapPickerFS embed.FS
+
+// mapPickerLibFS — OnDexMap rejimida sahifa ishlatadigan kutubxonalar
+// (maplibre-gl, pmtiles). Ular CDN'dan emas, shu serverdan beriladi:
+// uchinchi tomon skriptiga tayanmaymiz. Manba va litsenziya —
+// `assets/map_picker_lib/THIRD_PARTY_LICENSES.txt`.
+//
+//go:embed assets/map_picker_lib/maplibre-gl.js assets/map_picker_lib/maplibre-gl.css assets/map_picker_lib/pmtiles.js
+var mapPickerLibFS embed.FS
+
+// mapPickerLibTypes — `/map-picker/lib/{name}` ruxsat etilgan fayllar. Ro'yxatdan
+// tashqari nom 404 oladi (yo'l bilan o'ynash ham, boshqa embed fayllarni
+// o'qish ham mumkin emas).
+var mapPickerLibTypes = map[string]string{
+	"maplibre-gl.js":  "text/javascript; charset=utf-8",
+	"maplibre-gl.css": "text/css; charset=utf-8",
+	"pmtiles.js":      "text/javascript; charset=utf-8",
+}
+
+// originOf — "https://maps.ondex.uz/x" -> "https://maps.ondex.uz" (CSP uchun).
+func originOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
 
 // cspNoncePlaceholder — HTML ichida server tomonidan almashtiriladigan
 // belgi. Sahifada aynan shu nom bilan `<script nonce="…">` turibdi.
@@ -57,6 +87,47 @@ func (s *Server) registerMapPickerRoutes(mux *http.ServeMux) {
 			"CSP nonce'siz sahifa skripti bloklanadi")
 	}
 
+	// Kutubxonalar: fayl mazmuni o'zgarmas (embed), shuning uchun ETag
+	// mazmundan olinadi va 1 soat keshlanadi.
+	libETag := map[string]string{}
+	for name := range mapPickerLibTypes {
+		b, err := mapPickerLibFS.ReadFile("assets/map_picker_lib/" + name)
+		if err != nil {
+			panic("map_picker_lib/" + name + " embed qilinmadi: " + err.Error())
+		}
+		sum := sha256.Sum256(b)
+		libETag[name] = `"` + base64.RawURLEncoding.EncodeToString(sum[:12]) + `"`
+	}
+	mux.HandleFunc("GET /map-picker/lib/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		ct, ok := mapPickerLibTypes[name]
+		if !ok {
+			httpError(w, http.StatusNotFound, errors.New("fayl topilmadi"))
+			return
+		}
+		w.Header().Set("ETag", libETag[name])
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		if r.Header.Get("If-None-Match") == libETag[name] {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		b, err := mapPickerLibFS.ReadFile("assets/map_picker_lib/" + name)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, errors.New("fayl o'qilmadi"))
+			return
+		}
+		w.Header().Set("Content-Type", ct)
+		_, _ = w.Write(b)
+	})
+
+	// OnDexMap manzili CSP `connect-src` ga qo'shiladi: sahifa uslub,
+	// shrift va plitkalarni shu domenlardan oladi (`*.ondex.uz` — plitkalar
+	// `tiles.ondex.uz` da, uslub `maps.ondex.uz` da).
+	ondexConnect := "https://*.ondex.uz"
+	if o := originOf(s.ondexMapBase()); o != "" {
+		ondexConnect += " " + o
+	}
+
 	mux.HandleFunc("GET /map-picker", func(w http.ResponseWriter, r *http.Request) {
 		nonce, err := randomNonce()
 		if err != nil {
@@ -85,11 +156,11 @@ func (s *Server) registerMapPickerRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'none'; "+
 				"script-src 'nonce-"+nonce+"' 'strict-dynamic' https:; "+
-				"style-src 'unsafe-inline' https://fonts.googleapis.com; "+
-				"img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com; "+
-				"connect-src 'self' https://*.googleapis.com; "+
+				"style-src 'unsafe-inline' 'self' https://fonts.googleapis.com; "+
+				"img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.ondex.uz; "+
+				"connect-src 'self' https://*.googleapis.com "+ondexConnect+"; "+
 				"font-src https://fonts.gstatic.com; "+
-				"worker-src blob:; "+
+				"worker-src blob:; child-src blob:; "+
 				"frame-ancestors 'none'; base-uri 'none'")
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

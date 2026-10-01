@@ -25,6 +25,9 @@ func TestUnconfiguredServicesFailClosed(t *testing.T) {
 		w.Gated(t, c, "GET", "/geocode/reverse?lat=abc&lng=1", nil, 400, 503)
 		w.ExpectDenied(t, nil, "GET", "/geocode/reverse?lat=41&lng=71.2", nil)
 		w.Do(t, nil, "GET", "/map-picker", nil).Expect(t, 200)
+		// OnDexMap rejimida sahifa kutubxonalari shu serverdan beriladi.
+		w.Do(t, nil, "GET", "/map-picker/lib/pmtiles.js", nil).Expect(t, 200)
+		w.Do(t, nil, "GET", "/map-picker/lib/yoq.js", nil).Expect(t, 404)
 		// Ilova OnDexMap xatosi tufayli Google'ga o'tganini xabar qiladi.
 		w.Do(t, c, "POST", "/config/maps/fallback", map[string]any{"surface": "address", "reason": "test"}).Expect(t, 204)
 		w.ExpectDenied(t, nil, "POST", "/config/maps/fallback", map[string]any{"surface": "web"})

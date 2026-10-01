@@ -42,6 +42,7 @@ on:
       - 'apps/restaurant_panel/**'
       - 'apps/waiter_app/**'
       - 'packages/ondex_core/**'
+      - 'packages/ondex_maplibre/**'
       - 'image/**'
       - '**.md'
   pull_request:
