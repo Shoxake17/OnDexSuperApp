@@ -71,7 +71,10 @@ func main() {
 			defer wg.Done()
 			hdr := http.Header{"Authorization": {"Bearer " + tokens[i%len(tokens)]}}
 			t0 := time.Now()
-			c, _, err := dialer.Dial(*target, hdr)
+			c, resp, err := dialer.Dial(*target, hdr)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
 			if err != nil {
 				failed.Add(1)
 				firstFail.CompareAndSwap(nil, err.Error())

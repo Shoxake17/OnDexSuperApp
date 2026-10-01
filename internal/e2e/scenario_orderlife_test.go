@@ -131,7 +131,6 @@ func TestCourierDeclinePassesOffer(t *testing.T) {
 		orderID, _ = w.PlaceOrder(t, w.Customer, Cart(ProdOsh, 1), "cash", "e2e-d-1")["id"].(string)
 		w.Accept(t, orderID)
 		for _, c := range []*Actor{a, b} {
-			c := c
 			w.Eventually(t, c.Name+" taklif oldi", 6*time.Second, func() bool {
 				return w.Do(t, c, "GET", "/couriers/"+c.Entity+"/offer", nil).Map(t)["offer"] != nil
 			})

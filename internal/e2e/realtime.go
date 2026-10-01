@@ -48,6 +48,7 @@ func (w *World) Listen(t *testing.T, a *Actor, query string) *Feed {
 	status := 101
 	if resp != nil {
 		status = resp.StatusCode
+		_ = resp.Body.Close()
 	}
 	Rec.AddCall(report.Call{Scenario: w.scenario, Step: w.step, Method: "GET", Path: "/ws",
 		Route: MatchRoute(Routes, "GET", "/ws"), Status: status, Ms: ms, Actor: a.Name})

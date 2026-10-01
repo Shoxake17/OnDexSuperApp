@@ -104,6 +104,23 @@ linters:
           - gosec
         text: 'G(204|304)'
 
+      # `internal/e2e` (E2E sinov dunyosi) va `cmd/benchseed`, `cmd/wsload`,
+      # `cmd/e2ereport` - ishlab chiqarishga KIRMAYDI: ular sinov/yuklama
+      # vositalari. Soxta sirlar (G101), hisobot fayllarining ruxsatlari
+      # (G301/G306), operator bergan fayl yo'li (G304), sinov serveridagi
+      # fikstura javobi (G705) va rasm piksel hisobi (G115) bu yerda xavf
+      # tug'dirmaydi. Bug linterlari (bodyclose, nilerr, ...) ISHLAYVERADI.
+      - path: ^(internal/e2e/|cmd/(benchseed|wsload|e2ereport)/)
+        linters:
+          - gosec
+
+      # `report.HTML` - bitta HTML sahifani qator-qator yig'adigan
+      # generator (shablon kabi); murakkablik ko'rsatkichi unga mos emas.
+      - path: internal/e2e/report/html\.go
+        linters:
+          - gocognit
+        text: 'func `HTML`'
+
       # ┌─ MURAKKABLIK: STRUKTURAVIY ISTISNOLAR ────────────────────────┐
       # `register*Routes` o'nlab handler'ni closure sifatida ro'yxatga
       # oladi va gocognit ularning HAMMASINI bitta funksiyaga qo'shib

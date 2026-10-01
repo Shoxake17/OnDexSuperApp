@@ -117,7 +117,6 @@ func TestPromotionMatrix(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		w.Step(t, c.name, func(t *testing.T) {
 			who := w.Customer
 			if strings.Contains(c.name, "oldingi buyurtmasi yo'q") { // YANGI mijoz nomidan
@@ -214,7 +213,6 @@ func TestMoneyMatrix(t *testing.T) {
 	n := 0
 	for _, cart := range carts {
 		for _, method := range []string{"cash", "card"} {
-			cart, method := cart, method
 			n++
 			key := fmt.Sprintf("e2e-matrix-%d", n)
 			w.Step(t, fmt.Sprintf("%s · %s · yetkazish", cart.name, method), func(t *testing.T) {
@@ -238,7 +236,6 @@ func TestMoneyMatrix(t *testing.T) {
 			})
 		}
 		// Stol: yetkazish haqi yo'q, aksiya baribir qo'llanadi.
-		cart := cart
 		n++
 		key := fmt.Sprintf("e2e-matrix-%d", n)
 		w.Step(t, fmt.Sprintf("%s · stol (yetkazishsiz)", cart.name), func(t *testing.T) {

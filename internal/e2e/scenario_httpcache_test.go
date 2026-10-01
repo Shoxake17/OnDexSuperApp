@@ -58,7 +58,7 @@ func TestPublicHTTPCaching(t *testing.T) {
 	w.Step(t, "If-None-Match -> 304 tanasiz; boshqa ETag -> 200", func(t *testing.T) {
 		url := w.Srv.URL + "/restaurants/" + rid + "/menu"
 		etag := w.Do(t, nil, "GET", "/restaurants/"+rid+"/menu", nil).Header.Get("ETag")
-		get := func(inm string) *http.Response {
+		get := func(inm string) (status int, length int64) {
 			req, _ := http.NewRequest("GET", url, nil)
 			req.Header.Set("If-None-Match", inm)
 			res, err := http.DefaultClient.Do(req)
@@ -66,13 +66,13 @@ func TestPublicHTTPCaching(t *testing.T) {
 				t.Fatal(err)
 			}
 			res.Body.Close()
-			return res
+			return res.StatusCode, res.ContentLength
 		}
-		if res := get(etag); res.StatusCode != http.StatusNotModified || res.ContentLength > 0 {
-			t.Errorf("mos ETag: kod %d", res.StatusCode)
+		if code, n := get(etag); code != http.StatusNotModified || n > 0 {
+			t.Errorf("mos ETag: kod %d", code)
 		}
-		if res := get(`"eskirgan"`); res.StatusCode != 200 {
-			t.Errorf("boshqa ETag: kod %d", res.StatusCode)
+		if code, _ := get(`"eskirgan"`); code != 200 {
+			t.Errorf("boshqa ETag: kod %d", code)
 		}
 	})
 

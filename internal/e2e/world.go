@@ -224,7 +224,8 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		CourierBusy: func(ctx context.Context, courierID string) (bool, error) {
 			_, err := w.Orders.GetActiveByCourier(ctx, courierID)
 			if err != nil {
-				return false, nil
+				// Faol buyurtma yo'q (topilmadi): kuryer band emas, bu xato emas.
+				return false, nil //nolint:nilerr // topilmadi = band emas
 			}
 			return true, nil
 		},

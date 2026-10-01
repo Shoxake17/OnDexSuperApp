@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -97,7 +96,7 @@ func TestDineInFlow(t *testing.T) {
 	})
 
 	w.Step(t, "ofitsiant akkaunti Xodimlar orqali yaratiladi", func(t *testing.T) {
-		body := fmt.Sprintf(`{"first_name":"Vali","phone":"+998901110003","position":"waiter","app_access":true}`)
+		body := `{"first_name":"Vali","phone":"+998901110003","position":"waiter","app_access":true}`
 		w.Do(t, w.Owner, "POST", "/restaurants/"+RestA+"/staff", body).Expect(t, 201)
 		waiter = w.LoginAs(t, "ofitsiant", "+998901110003")
 		me := w.Do(t, waiter, "GET", "/waiter/me", nil).Expect(t, 200)

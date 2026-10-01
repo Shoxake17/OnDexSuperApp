@@ -58,7 +58,7 @@ func fillRestaurant(t *testing.T) catalog.Restaurant {
 			fv.SetInt(int64(1000 + i))
 		case reflect.Float64, reflect.Float32:
 			fv.SetFloat(float64(i) + 0.5)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			// Ma'lum ikkita ko'rsatkich maydon — qo'lda.
 			switch f.Name {
 			case "WorkingHours":
