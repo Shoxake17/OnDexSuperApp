@@ -99,6 +99,7 @@ class StaffMember {
     required this.hiredOn,
     required this.note,
     required this.salaryTiyin,
+    this.deliveryPayTiyin,
     required this.appAccess,
     required this.appAccessActive,
     required this.createdAt,
@@ -120,6 +121,11 @@ class StaffMember {
 
   /// Oylik maosh (tiyin); kiritilmagan bo'lsa null.
   final int? salaryTiyin;
+
+  /// "Buyurtmadan maosh" (tiyin) — faqat yetkazib beruvchida. Shu summa
+  /// mijozning buyurtmasiga yetkazish haqi bo'lib qo'shiladi. Oylik maosh
+  /// bilan birga bo'lmaydi.
+  final int? deliveryPayTiyin;
   final bool appAccess;
   final bool appAccessActive;
   final DateTime createdAt;
@@ -143,6 +149,7 @@ class StaffMember {
       hiredOn: DateTime.tryParse(_s(j['hired_on'])),
       note: _s(j['note']),
       salaryTiyin: _iOrNull(j['monthly_salary_tiyin']),
+      deliveryPayTiyin: _iOrNull(j['delivery_pay_tiyin']),
       appAccess: j['app_access'] == true,
       appAccessActive: j['app_access_active'] == true,
       createdAt: DateTime.tryParse(_s(j['created_at']))?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
@@ -254,12 +261,22 @@ class StaffEvent {
 }
 
 class _Overview {
-  const _Overview({required this.members, required this.summary, required this.recent, required this.positions});
+  const _Overview({
+    required this.members,
+    required this.summary,
+    required this.recent,
+    required this.positions,
+    this.customerDeliveryFeeTiyin = 0,
+  });
 
   final List<StaffMember> members;
   final StaffSummary summary;
   final List<StaffEvent> recent;
   final List<StaffPositionInfo> positions;
+
+  /// Mijoz HOZIR to'laydigan yetkazish haqi (server hisoblaydi — qoida
+  /// bitta joyda: `staff.DeliveryFee`). 0 — yetkazish bepul.
+  final int customerDeliveryFeeTiyin;
 
   factory _Overview.fromJson(Map<String, dynamic> j) => _Overview(
         members: [
@@ -267,6 +284,7 @@ class _Overview {
             if (m is Map) StaffMember.fromJson(Map<String, dynamic>.from(m)),
         ],
         summary: StaffSummary.fromJson(j['summary']),
+        customerDeliveryFeeTiyin: _i(j['customer_delivery_fee_tiyin']),
         recent: [
           for (final e in (j['recent_activity'] as List? ?? const []))
             if (e is Map) StaffEvent.fromJson(Map<String, dynamic>.from(e)),

@@ -65,7 +65,7 @@ class _CartScreenState extends State<CartScreen> {
   StreamSubscription<Cached<List<dynamic>>>? _promoSub;
 
   /// Serverdan kelgan yakuniy hisob (`data/quote_service.dart`).
-  Quote _quote = const Quote(totalTiyin: null);
+  Quote _quote = const Quote(goodsTiyin: null);
 
   /// Eskirgan javoblardan himoya shu obyekt ichida.
   final _quoteFetcher = QuoteFetcher();
@@ -123,7 +123,7 @@ class _CartScreenState extends State<CartScreen> {
     final rid = _cart.restaurantId;
     if (rid == null || _cart.isEmpty) {
       setState(() {
-        _quote = const Quote(totalTiyin: null);
+        _quote = const Quote(goodsTiyin: null);
         _quoteError = null;
       });
       return;
@@ -147,7 +147,7 @@ class _CartScreenState extends State<CartScreen> {
         _quoting = false;
         // Summani KO'RSATMAYMIZ: noto'g'ri raqam ko'rsatgandan ko'ra
         // "hisoblab bo'lmadi" deyish to'g'ri.
-        _quote = const Quote(totalTiyin: null);
+        _quote = const Quote(goodsTiyin: null);
         _quoteError = errorText(e, 'Summani hisoblab bo\'lmadi');
       });
     }
@@ -206,9 +206,12 @@ class _CartScreenState extends State<CartScreen> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            if (_quote.totalTiyin != null)
+            // Faqat TAOMLAR summasi: yetkazish haqi savatda ko'rinmaydi,
+            // u rasmiylashtirishda "Yetkazish" qatorida chiqadi.
+            if (_quote.goodsTiyin != null)
               Text(
-                formatSum(_quote.totalTiyin!),
+                formatSum(_quote.goodsTiyin!),
+                key: const ValueKey('cart-goods-total'),
                 style: const TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.bold,
@@ -282,7 +285,9 @@ class _CartScreenState extends State<CartScreen> {
         ],
       ),
       bottomNavigationBar: _Bottom(
-        quoteTiyin: _quote.totalTiyin,
+        goodsTiyin: _quote.goodsTiyin,
+        payableTiyin: _quote.payableTiyin,
+        deliveryFeeTiyin: _quote.deliveryFeeTiyin,
         subtotalTiyin: _quote.subtotalTiyin,
         discountTiyin: _quote.discountTiyin,
         promotionName: _quote.promotionName,
@@ -581,7 +586,12 @@ class _TableBanner extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════
 
 class _Bottom extends StatelessWidget {
-  final int? quoteTiyin;
+  /// Tugmada ko'rinadigan summa — faqat TAOMLAR (yetkazishsiz).
+  final int? goodsTiyin;
+
+  /// Rasmiylashtirishga o'tadigan to'lanadigan jami (yetkazish bilan).
+  final int? payableTiyin;
+  final int deliveryFeeTiyin;
   final int? subtotalTiyin;
   final int? discountTiyin;
   final String? promotionName;
@@ -592,7 +602,9 @@ class _Bottom extends StatelessWidget {
   final VoidCallback onRetry;
 
   const _Bottom({
-    required this.quoteTiyin,
+    required this.goodsTiyin,
+    required this.payableTiyin,
+    required this.deliveryFeeTiyin,
     required this.subtotalTiyin,
     required this.discountTiyin,
     required this.promotionName,
@@ -610,7 +622,7 @@ class _Bottom extends StatelessWidget {
     // shunchaki qulaylik emas: u nima to'lashini bilmagan holda
     // rozilik bergan bo'lardi.
     // └─────────────────────────────────────────────────────────────┘
-    final ready = quoteTiyin != null && !quoting;
+    final ready = goodsTiyin != null && payableTiyin != null && !quoting;
 
     // Amal ALOHIDA o'zgaruvchida: aynan shu yopilma tugmaga ham,
     // Shaddiy boshqaruviga ham beriladi. Ikki nusxa yozilsa, ulardan
@@ -619,7 +631,8 @@ class _Bottom extends StatelessWidget {
         ? () => Navigator.of(context).push(
               sheetRoute(
                 CheckoutScreen(
-                  quoteTiyin: quoteTiyin!,
+                  quoteTiyin: payableTiyin!,
+                  deliveryFeeTiyin: deliveryFeeTiyin,
                   subtotalTiyin: subtotalTiyin,
                   discountTiyin: discountTiyin,
                   promotionName: promotionName,
@@ -686,7 +699,8 @@ class _Bottom extends StatelessWidget {
                               style: TextStyle(
                                   fontSize: 15.5, fontWeight: FontWeight.bold)),
                           Text(
-                            ready ? formatSum(quoteTiyin!) : 'Summa yo\'q',
+                            ready ? formatSum(goodsTiyin!) : 'Summa yo\'q',
+                            key: const ValueKey('cart-bottom-total'),
                             style: const TextStyle(
                                 fontSize: 15.5, fontWeight: FontWeight.bold),
                           ),

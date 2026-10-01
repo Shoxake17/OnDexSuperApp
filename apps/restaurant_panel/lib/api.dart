@@ -38,9 +38,51 @@ class RestaurantApi extends ApiClient {
   Future<Map<String, dynamic>> restaurantSettings() async =>
       Map<String, dynamic>.from(await send('GET', '/restaurants/$rid/settings') as Map);
 
+  /// "Moliya" — to'lov shlyuzidagi tushum reestri (`routes_finance.go`).
+  ///
+  /// ⚠️ Raqamlar BIZNING buyurtmalar jadvalidan emas, shlyuzdan keladi:
+  /// restoran uchun haqiqiy pul — hisobiga tushgan pul. Ikkalasi farq
+  /// qilsa, shlyuz raqamiga ishoniladi.
+  ///
+  /// Do'kon ulanmagan bo'lsa ham javob 200 bo'ladi (`connected: false`) —
+  /// sahifa ulash formasini ko'rsatadi, xato emas.
+  Future<Map<String, dynamic>> finance({
+    required DateTime from,
+    required DateTime to,
+  }) async =>
+      Map<String, dynamic>.from(await send(
+          'GET',
+          '/restaurants/$rid/finance'
+              '?from=${_apiDate(from)}&to=${_apiDate(to)}') as Map);
+
+  /// To'lov hisobini ULASH: restoran o'z shlyuz kalitlarini kiritadi.
+  ///
+  /// ⚠️ [secret] server tomonda SHIFRLANIB saqlanadi va hech qachon
+  /// qaytarilmaydi. Saqlashdan oldin server kalitlarni va kassani
+  /// shlyuzda tekshiradi — javob pul qaysi hisobga tushishini aytadi.
+  Future<Map<String, dynamic>> connectFinance({
+    required String applicationId,
+    required String secret,
+    required String storeId,
+  }) async =>
+      Map<String, dynamic>.from(await send('POST', '/restaurants/$rid/finance/connect', {
+        'application_id': applicationId,
+        'secret': secret,
+        'store_id': storeId,
+      }) as Map);
+
+  /// Ulanishni uzish — kalitlar bazadan butunlay o'chadi.
+  Future<void> disconnectFinance() =>
+      send('DELETE', '/restaurants/$rid/finance/connect');
+
   /// Faqat ruxsat etilgan maydonlar: `logo_url`, `cover_url`, `description`,
-  /// `working_hours` (null — cheklanmagan), `payment_methods`. Boshqa maydon
-  /// yuborilsa server 403/400 qaytaradi.
+  /// `working_hours` (null — cheklanmagan), `payment_methods`.
+  /// Boshqa maydon yuborilsa server 403/400 qaytaradi.
+  ///
+  /// Yetkazib berish narxi bu yerda EMAS: u yetkazib beruvchining maosh
+  /// usulidan kelib chiqadi ("Xodimlar" sahifasi).
+  ///
+  /// To'lov hisobi bu yerdan O'ZGARMAYDI — [connectFinance] ga qarang.
   Future<Map<String, dynamic>> updateRestaurantSettings(Map<String, Object?> patch) async =>
       Map<String, dynamic>.from(
           await send('PATCH', '/restaurants/$rid/settings', patch) as Map);

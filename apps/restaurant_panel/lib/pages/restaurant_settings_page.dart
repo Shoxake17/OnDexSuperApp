@@ -152,6 +152,9 @@ class _Settings {
     required this.payCash,
     required this.payTerminal,
     required this.payOnline,
+    required this.payPayme,
+    required this.payClick,
+    required this.payUzum,
     required this.onlineAvailable,
   });
 
@@ -168,6 +171,9 @@ class _Settings {
   final bool payCash;
   final bool payTerminal;
   final bool payOnline;
+  final bool payPayme;
+  final bool payClick;
+  final bool payUzum;
   final bool onlineAvailable;
 
   factory _Settings.fromJson(Map<String, dynamic> j) {
@@ -195,6 +201,9 @@ class _Settings {
       payCash: pm['cash'] == true,
       payTerminal: pm['card_terminal'] == true,
       payOnline: pm['card_online'] == true,
+      payPayme: pm['payme'] == true,
+      payClick: pm['click'] == true,
+      payUzum: pm['uzum'] == true,
       onlineAvailable: j['online_payments_available'] == true,
     );
   }
@@ -209,6 +218,9 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
   bool _payCash = true;
   bool _payTerminal = false;
   bool _payOnline = true;
+  bool _payPayme = false;
+  bool _payClick = false;
+  bool _payUzum = false;
 
   bool _loading = true;
   String? _loadError;
@@ -299,6 +311,9 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
       payCash: old.payCash,
       payTerminal: old.payTerminal,
       payOnline: old.payOnline,
+      payPayme: old.payPayme,
+      payClick: old.payClick,
+      payUzum: old.payUzum,
       onlineAvailable: fresh.onlineAvailable,
     );
   }
@@ -312,6 +327,9 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
     _payCash = s.payCash;
     _payTerminal = s.payTerminal;
     _payOnline = s.payOnline;
+    _payPayme = s.payPayme;
+    _payClick = s.payClick;
+    _payUzum = s.payUzum;
   }
 
   String? _hoursKey(List<_DayHours>? h) =>
@@ -326,11 +344,19 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
       if (_coverUrl != s.coverUrl) 'cover_url': _coverUrl,
       if (_hoursKey(_hours) != _hoursKey(s.hours))
         'working_hours': _hours == null ? null : {'days': [for (final d in _hours!) d.toJson()]},
-      if (_payCash != s.payCash || _payTerminal != s.payTerminal || _payOnline != s.payOnline)
+      if (_payCash != s.payCash ||
+          _payTerminal != s.payTerminal ||
+          _payOnline != s.payOnline ||
+          _payPayme != s.payPayme ||
+          _payClick != s.payClick ||
+          _payUzum != s.payUzum)
         'payment_methods': {
           'cash': _payCash,
           'card_terminal': _payTerminal,
           'card_online': _payOnline,
+          'payme': _payPayme,
+          'click': _payClick,
+          'uzum': _payUzum,
           // Platforma qoidasi — doim yoqilgan (server `false` ni rad etadi).
           'ondex_wallet': true,
         },
@@ -339,7 +365,8 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
 
   bool get _dirty => _patch.isNotEmpty;
 
-  bool get _paymentsValid => _payCash || _payTerminal || _payOnline;
+  bool get _paymentsValid =>
+      _payCash || _payTerminal || _payOnline || _payPayme || _payClick || _payUzum;
 
   void _toast(String m) {
     if (!mounted) return;
@@ -550,12 +577,18 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
                     cash: _payCash,
                     terminal: _payTerminal,
                     online: _payOnline,
+                    payme: _payPayme,
+                    click: _payClick,
+                    uzum: _payUzum,
                     onlineAvailable: s.onlineAvailable,
                     valid: _paymentsValid,
                     onWalletLocked: () => _toast('OnDex Wallet doim yoqilgan — uni o\'chirib bo\'lmaydi'),
                     onCash: (v) => setState(() => _payCash = v),
                     onTerminal: (v) => setState(() => _payTerminal = v),
                     onOnline: (v) => setState(() => _payOnline = v),
+                    onPayme: (v) => setState(() => _payPayme = v),
+                    onClick: (v) => setState(() => _payClick = v),
+                    onUzum: (v) => setState(() => _payUzum = v),
                   ),
                   const SizedBox(height: 16),
                   const _NotificationsCard(),

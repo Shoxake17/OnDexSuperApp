@@ -420,14 +420,6 @@ class _InfoCard extends StatelessWidget {
                   style: _hint),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: OnDexColors.pageBg, borderRadius: BorderRadius.circular(10)),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-            ),
-          ),
         ],
       ),
     );
@@ -706,23 +698,43 @@ class _PaymentsCard extends StatelessWidget {
     required this.cash,
     required this.terminal,
     required this.online,
+    required this.payme,
+    required this.click,
+    required this.uzum,
     required this.onlineAvailable,
     required this.valid,
     required this.onWalletLocked,
     required this.onCash,
     required this.onTerminal,
     required this.onOnline,
+    required this.onPayme,
+    required this.onClick,
+    required this.onUzum,
   });
 
   final bool cash;
   final bool terminal;
   final bool online;
+  final bool payme;
+  final bool click;
+  final bool uzum;
   final bool onlineAvailable;
   final bool valid;
   final VoidCallback onWalletLocked;
   final ValueChanged<bool> onCash;
   final ValueChanged<bool> onTerminal;
   final ValueChanged<bool> onOnline;
+  final ValueChanged<bool> onPayme;
+  final ValueChanged<bool> onClick;
+  final ValueChanged<bool> onUzum;
+
+  /// Onlayn usul: yoqish uchun to'lov hisobi ulangan bo'lishi kerak
+  /// (server ham rad etadi), o'chirish har doim mumkin.
+  ValueChanged<bool>? _onlineHandler(bool current, ValueChanged<bool> h) =>
+      onlineAvailable || current ? h : null;
+
+  String _onlineCaption(String text) =>
+      onlineAvailable ? text : 'Avval Moliya bo\'limida to\'lov hisobini ulang';
 
   @override
   Widget build(BuildContext context) {
@@ -747,27 +759,36 @@ class _PaymentsCard extends StatelessWidget {
         switchKey: const ValueKey('pay-online'),
         leading: const _PayIcon(icon: Icons.credit_card_rounded, color: OnDexColors.info, bg: OnDexColors.infoBg),
         title: 'Onlayn karta',
-        caption: onlineAvailable ? 'Uzcard, Humo — oldindan' : 'Tizimda hali ulanmagan',
+        caption: _onlineCaption('Uzcard, Humo — oldindan'),
         value: online,
         // Ulanmagan tizimni YOQIB bo'lmaydi (server ham rad etadi), faqat o'chirish mumkin.
-        onChanged: onlineAvailable || online ? onOnline : null,
+        onChanged: _onlineHandler(online, onOnline),
       ),
-      // Click va Payme — alohida; tizimga hali ulanmagan, yoqib bo'lmaydi.
-      const _PayTile(
-        switchKey: ValueKey('pay-click'),
-        leading: _BrandLogo(asset: 'assets/payments/click.png'),
+      // Payme / Click / Uzum — har biri ALOHIDA: o'chirilgan usul mijozga
+      // ko'rinmaydi va server ham u bilan to'lovni rad etadi.
+      _PayTile(
+        switchKey: const ValueKey('pay-click'),
+        leading: const _BrandLogo(asset: 'assets/payments/click.png'),
         title: 'Click',
-        caption: 'Tez orada',
-        value: false,
-        onChanged: null,
+        caption: _onlineCaption('Click ilovasi orqali'),
+        value: click,
+        onChanged: _onlineHandler(click, onClick),
       ),
-      const _PayTile(
-        switchKey: ValueKey('pay-payme'),
-        leading: _BrandLogo(asset: 'assets/payments/payme.png'),
+      _PayTile(
+        switchKey: const ValueKey('pay-payme'),
+        leading: const _BrandLogo(asset: 'assets/payments/payme.png'),
         title: 'Payme',
-        caption: 'Tez orada',
-        value: false,
-        onChanged: null,
+        caption: _onlineCaption('Payme ilovasi orqali'),
+        value: payme,
+        onChanged: _onlineHandler(payme, onPayme),
+      ),
+      _PayTile(
+        switchKey: const ValueKey('pay-uzum'),
+        leading: const _BrandLogo(asset: 'assets/payments/uzum.png'),
+        title: 'Uzum',
+        caption: _onlineCaption('Uzum ilovasi orqali'),
+        value: uzum,
+        onChanged: _onlineHandler(uzum, onUzum),
       ),
       // OnDex Wallet — platforma qoidasi: DOIM yoqilgan. Kalit faol ko'rinadi,
       // bosilsa holati o'zgarmaydi, faqat sababi aytiladi.

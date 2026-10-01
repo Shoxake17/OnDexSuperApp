@@ -19,6 +19,7 @@ const _positions = [
   {'key': 'cook_assistant', 'title': 'Oshpaz yordamchisi', 'group': 'kitchen', 'app_access': false},
   {'key': 'waiter', 'title': 'Ofitsiant', 'group': 'hall', 'app_access': true},
   {'key': 'cashier', 'title': 'Kassir', 'group': 'cashier', 'app_access': false},
+  {'key': 'courier', 'title': 'Yetkazib beruvchi', 'group': 'delivery', 'app_access': true},
   {'key': 'other', 'title': 'Boshqa', 'group': 'other', 'app_access': false},
 ];
 
@@ -33,6 +34,7 @@ Map<String, dynamic> _member(
   String status = 'active',
   bool access = false,
   int? salary,
+  int? deliveryPay,
   Map<String, dynamic>? schedule,
 }) =>
     {
@@ -51,6 +53,7 @@ Map<String, dynamic> _member(
       'hired_on': '2026-09-01',
       'note': '',
       'monthly_salary_tiyin': salary,
+      'delivery_pay_tiyin': deliveryPay,
       'app_access': access,
       'app_access_active': access && status == 'active',
       'created_at': '2026-09-01T10:00:00Z',
@@ -58,7 +61,8 @@ Map<String, dynamic> _member(
       'dismissed_at': null,
     };
 
-Map<String, dynamic> _overview({List<Map<String, dynamic>>? items}) => {
+Map<String, dynamic> _overview({List<Map<String, dynamic>>? items, int customerDeliveryFee = 0}) => {
+      'customer_delivery_fee_tiyin': customerDeliveryFee,
       'items': items ??
           [
             _member('m1', 1, 'Azizbek', 'Karimov', 'head_chef',
@@ -505,6 +509,197 @@ void main() {
       expect(find.text('Yakshanba'), findsOneWidget);
       expect(find.text('Kiritilmagan'), findsWidgets);
       expect(requests.where((r) => r.url.path == '/restaurants/rest-a/staff/m2/activity'), hasLength(1));
+    });
+  });
+
+  // ┌─ YETKAZIB BERUVCHI: OYLIK YOKI BUYURTMADAN MAOSH ─────────────────┐
+  // Maosh usuli mijoz to'laydigan yetkazish haqini belgilaydi: oylikda
+  // yetkazish BEPUL, buyurtmadan maoshda shu summa mijozga qo'shiladi.
+  // └───────────────────────────────────────────────────────────────────┘
+  Future<void> openNewCourier(WidgetTester tester) async {
+    await _tap(tester, find.byKey(const ValueKey('staff-add')));
+    await tester.enterText(find.byKey(const ValueKey('form-first')), 'Jasur');
+    await tester.enterText(find.byKey(const ValueKey('form-phone')), '901112233');
+    await _tap(tester, find.byKey(const ValueKey('form-position')));
+    await tester.tap(find.text('Yetkazib beruvchi').last);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('maosh bloklari faqat yetkazib beruvchida ko\'rinadi', (tester) async {
+    await _run(tester, body: (_) async {
+      await _tap(tester, find.byKey(const ValueKey('staff-add')));
+      expect(find.byKey(const ValueKey('pay-mode-monthly')), findsNothing);
+      expect(find.byKey(const ValueKey('pay-mode-per-order')), findsNothing);
+      expect(find.byKey(const ValueKey('form-salary')), findsOneWidget);
+
+      await _tap(tester, find.byKey(const ValueKey('form-position')));
+      await tester.tap(find.text('Yetkazib beruvchi').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pay-mode-monthly')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pay-mode-per-order')), findsOneWidget);
+      expect(find.text('Oylik maosh'), findsOneWidget);
+      expect(find.text('Buyurtmadan maosh'), findsOneWidget);
+      // Boshida oylik tanlangan: "buyurtmadan" maydoni yo'q.
+      expect(find.byKey(const ValueKey('form-delivery-pay')), findsNothing);
+    });
+  });
+
+  testWidgets('buyurtmadan maosh: summa tiyinda yuboriladi, oylik maosh bo\'sh ketadi', (tester) async {
+    await _run(tester, body: (requests) async {
+      await openNewCourier(tester);
+      await _tap(tester, find.byKey(const ValueKey('pay-mode-per-order')));
+      expect(find.byKey(const ValueKey('form-delivery-pay')), findsOneWidget);
+      expect(find.byKey(const ValueKey('form-salary')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('form-delivery-pay')), '8000');
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('form-delivery-pay'))).controller!.text, '8 000');
+
+      await _tap(tester, find.byKey(const ValueKey('form-save')));
+      final body = jsonDecode(_writes(requests).single.body) as Map<String, dynamic>;
+      expect(body['position'], 'courier');
+      expect(body['delivery_pay_tiyin'], 800000); // 8 000 so'm
+      // Ikkalasi birga ketmaydi: oylik aniq null.
+      expect(body['monthly_salary_tiyin'], isNull);
+    });
+  });
+
+  testWidgets('oylik maosh tanlansa buyurtmadan maosh yuborilmaydi', (tester) async {
+    await _run(tester, body: (requests) async {
+      await openNewCourier(tester);
+      // Avval "buyurtmadan"ni tanlab summa yozadi, so'ng oylikka qaytadi.
+      await _tap(tester, find.byKey(const ValueKey('pay-mode-per-order')));
+      await tester.enterText(find.byKey(const ValueKey('form-delivery-pay')), '8000');
+      await _tap(tester, find.byKey(const ValueKey('pay-mode-monthly')));
+      await tester.enterText(find.byKey(const ValueKey('form-salary')), '3500000');
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.byKey(const ValueKey('form-save')));
+      final body = jsonDecode(_writes(requests).single.body) as Map<String, dynamic>;
+      expect(body['monthly_salary_tiyin'], 350000000);
+      expect(body.containsKey('delivery_pay_tiyin'), isFalse);
+    });
+  });
+
+  testWidgets('buyurtmadan maosh: bo\'sh yoki juda katta summa yuborilmaydi', (tester) async {
+    await _run(tester, body: (requests) async {
+      await openNewCourier(tester);
+      await _tap(tester, find.byKey(const ValueKey('pay-mode-per-order')));
+
+      await _tap(tester, find.byKey(const ValueKey('form-save')));
+      expect(find.text('Har bir yetkazishdan beriladigan summani kiriting'), findsOneWidget);
+
+      // Ortiqcha nol: 8 000 o'rniga 800 000.
+      await tester.enterText(find.byKey(const ValueKey('form-delivery-pay')), '800000');
+      await _tap(tester, find.byKey(const ValueKey('form-save')));
+      expect(find.text('Buyurtmadan maosh 100 000 so\'mdan oshmasin'), findsOneWidget);
+      expect(_writes(requests), isEmpty);
+
+      // Chegaraning o'zi o'tadi.
+      await tester.enterText(find.byKey(const ValueKey('form-delivery-pay')), '100000');
+      await _tap(tester, find.byKey(const ValueKey('form-save')));
+      expect((jsonDecode(_writes(requests).single.body) as Map)['delivery_pay_tiyin'], 10000000);
+    });
+  });
+
+  testWidgets('tahrirlash: saqlangan usul tanlangan ko\'rinadi', (tester) async {
+    final items = [
+      _member('c1', 1, 'Sherzod', 'Kuryer', 'courier', access: true, deliveryPay: 800000),
+      _member('c2', 2, 'Bahodir', 'Kuryer', 'courier', access: true, salary: 350000000),
+    ];
+    await _run(
+      tester,
+      respond: (r) => r.method == 'GET' && r.url.path == '/restaurants/rest-a/staff'
+          ? _json(_overview(items: items, customerDeliveryFee: 800000))
+          : null,
+      body: (_) async {
+        await _tap(tester, find.byKey(const ValueKey('edit-c1')));
+        expect(find.byKey(const ValueKey('form-delivery-pay')), findsOneWidget);
+        expect(tester.widget<TextField>(find.byKey(const ValueKey('form-delivery-pay'))).controller!.text, '8 000');
+        expect(find.byKey(const ValueKey('form-salary')), findsNothing);
+      },
+    );
+  });
+
+  testWidgets('usulni almashtirish: oylik -> buyurtmadan faqat kerakli maydonlar', (tester) async {
+    final items = [_member('c2', 2, 'Bahodir', 'Kuryer', 'courier', access: true, salary: 350000000)];
+    await _run(
+      tester,
+      respond: (r) => r.method == 'GET' && r.url.path == '/restaurants/rest-a/staff'
+          ? _json(_overview(items: items))
+          : null,
+      body: (requests) async {
+        await _tap(tester, find.byKey(const ValueKey('edit-c2')));
+        expect(find.byKey(const ValueKey('form-salary')), findsOneWidget);
+        await _tap(tester, find.byKey(const ValueKey('pay-mode-per-order')));
+        await tester.enterText(find.byKey(const ValueKey('form-delivery-pay')), '6000');
+        await _tap(tester, find.byKey(const ValueKey('form-save')));
+        final patch = _writes(requests).single;
+        expect(patch.method, 'PATCH');
+        expect(jsonDecode(patch.body), {'monthly_salary_tiyin': null, 'delivery_pay_tiyin': 600000});
+      },
+    );
+  });
+
+  testWidgets('usulni almashtirish: buyurtmadan -> oylik eskisini tozalaydi', (tester) async {
+    final items = [_member('c1', 1, 'Sherzod', 'Kuryer', 'courier', access: true, deliveryPay: 800000)];
+    await _run(
+      tester,
+      respond: (r) => r.method == 'GET' && r.url.path == '/restaurants/rest-a/staff'
+          ? _json(_overview(items: items))
+          : null,
+      body: (requests) async {
+        await _tap(tester, find.byKey(const ValueKey('edit-c1')));
+        await _tap(tester, find.byKey(const ValueKey('pay-mode-monthly')));
+        await tester.enterText(find.byKey(const ValueKey('form-salary')), '3500000');
+        await _tap(tester, find.byKey(const ValueKey('form-save')));
+        expect(jsonDecode(_writes(requests).single.body),
+            {'monthly_salary_tiyin': 350000000, 'delivery_pay_tiyin': null});
+      },
+    );
+  });
+
+  testWidgets('xodim kartochkasi: buyurtmadan maosh ko\'rsatiladi', (tester) async {
+    final items = [_member('c1', 1, 'Sherzod', 'Kuryer', 'courier', access: true, deliveryPay: 800000)];
+    await _run(
+      tester,
+      respond: (r) => r.method == 'GET' && r.url.path == '/restaurants/rest-a/staff'
+          ? _json(_overview(items: items))
+          : null,
+      body: (_) async {
+        await _tap(tester, find.byKey(const ValueKey('row-c1')));
+        expect(find.text('Buyurtmadan maosh'), findsOneWidget);
+        expect(find.textContaining('har yetkazishdan'), findsOneWidget);
+        expect(find.text('Oylik maosh'), findsNothing);
+      },
+    );
+  });
+
+  // Tushuntirish matnlari va "Mijoz uchun yetkazish" kartasi so'rov bo'yicha
+  // olib tashlangan: sahifada ular bo'lmasligi kerak.
+  testWidgets('ortiqcha tushuntirish matnlari va karta yo\'q', (tester) async {
+    final items = [_member('c1', 1, 'Sherzod', 'Kuryer', 'courier', access: true, deliveryPay: 800000)];
+    await _run(
+      tester,
+      respond: (r) => r.method == 'GET' && r.url.path == '/restaurants/rest-a/staff'
+          ? _json(_overview(items: items, customerDeliveryFee: 800000))
+          : null,
+      body: (_) async {
+        expect(find.text('Mijoz uchun yetkazish'), findsNothing);
+        expect(find.textContaining('to\'laydi'), findsNothing);
+        await _tap(tester, find.byKey(const ValueKey('edit-c1')));
+        for (final t in ['Rasmiylashtirish', 'Maxfiy', 'Menyuda va savatda']) {
+          expect(find.textContaining(t), findsNothing, reason: t);
+        }
+      },
+    );
+  });
+
+  testWidgets('maosh bloklari tor oynada ham sig\'adi (420px)', (tester) async {
+    await _run(tester, size: const Size(420, 1000), body: (_) async {
+      await openNewCourier(tester);
+      await _tap(tester, find.byKey(const ValueKey('pay-mode-per-order')));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('form-delivery-pay')), findsOneWidget);
     });
   });
 }

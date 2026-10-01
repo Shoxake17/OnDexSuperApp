@@ -24,15 +24,39 @@ void main() async {
   runApp(const RestaurantApp());
 }
 
+/// Mahalliy ishlab chiqish rejimimi (API shu kompyuterda). Production
+/// build'da `false`.
+bool isLocalDevApi([String url = baseUrl]) {
+  final host = Uri.tryParse(url)?.host ?? '';
+  return host == 'localhost' || host == '127.0.0.1' || host == '[::1]' || host == '::1';
+}
+
 class RestaurantApp extends StatelessWidget {
-  const RestaurantApp({super.key});
+  const RestaurantApp({super.key, this.selectableText});
+
+  /// `null` — avtomatik: faqat mahalliy dev rejimida matnni belgilab
+  /// nusxalash mumkin (xato matni, ID, summa va h.k.). Production'da
+  /// yoqilmaydi.
+  final bool? selectableText;
 
   @override
   Widget build(BuildContext context) {
+    final selectable = selectableText ?? isLocalDevApi();
     return MaterialApp(
       title: 'OnDex — Restoran paneli',
       debugShowCheckedModeBanner: false,
       theme: buildOnDexTheme(),
+      builder: selectable
+          ? (context, child) => Overlay(
+                // `SelectionArea` Overlay talab qiladi, `builder` esa
+                // Navigator (va uning Overlay'i) ustida turadi.
+                initialEntries: [
+                  OverlayEntry(
+                    builder: (_) => SelectionArea(child: child ?? const SizedBox.shrink()),
+                  ),
+                ],
+              )
+          : null,
       home: const _Root(),
     );
   }

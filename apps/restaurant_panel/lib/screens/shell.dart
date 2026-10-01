@@ -6,8 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import '../live.dart';
 import '../notification_center.dart';
-import '../pages/coming_soon_page.dart';
 import '../pages/dashboard_page.dart';
+import '../pages/finance_page.dart';
 import '../pages/help_page.dart';
 import '../pages/menu_page.dart';
 import '../pages/notifications_page.dart';
@@ -27,6 +27,7 @@ const _iDashboard = 0;
 const _iOrders = 1;
 const _iMenu = 2;
 const _iStatistics = 5;
+const _iFinance = 6;
 const _iSettings = 7;
 const _iStaff = 8;
 const _iNotifications = 9;
@@ -232,6 +233,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
     3: 'Aksiyalar',
     4: 'Stollar',
     _iStatistics: 'Statistika',
+    _iFinance: 'Moliya',
     _iSettings: 'Sozlamalar',
     8: 'Xodimlar',
     9: 'Bildirishnomalar',
@@ -319,13 +321,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
         return const TablesPage();
       case _iStatistics:
         return StatisticsPage(controller: _stats);
-      case 6:
-        return const ComingSoonPage(
-          title: 'Moliya',
-          icon: Icons.account_balance_wallet_rounded,
-          description:
-              'To\'lov tarixi, komissiya tafsiloti, bank rekvizitlari — to\'lov tizimi (Payme/Click) ulanganidan keyin qo\'shiladi.',
-        );
+      case _iFinance:
+        return const FinancePage();
       case _iSettings:
         return RestaurantSettingsPage(
           guard: _settingsGuard,

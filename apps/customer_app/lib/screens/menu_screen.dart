@@ -601,7 +601,9 @@ class _MenuScreenState extends State<MenuScreen> {
     try {
       final q = await _quoteFetcher.fetch(_id);
       if (!mounted || q == null) return; // eskirgan javob
-      setState(() => _quoteTiyin = q.totalTiyin);
+      // Menyuda FAQAT taomlar summasi: yetkazish haqi bu yerda
+      // qo'shilmaydi, u rasmiylashtirishda ko'rinadi.
+      setState(() => _quoteTiyin = q.goodsTiyin);
     } catch (_) {
       // Anonim foydalanuvchi yoki tarmoq xatosi — vizual taxmin.
       if (mounted) setState(() => _quoteTiyin = null);

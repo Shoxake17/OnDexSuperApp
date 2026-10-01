@@ -90,10 +90,17 @@ class CustomerApi extends ApiClient {
   /// real buyurtma yaratmaydi. createOrder() bilan bir xil backend
   /// mantig'idan foydalanadi, shuning uchun bu yerda ko'rsatilgan
   /// summa buyurtma yaratilganda yozilgan summa bilan har doim mos keladi.
+  ///
+  /// [dineIn] — stol buyurtmasi: server yetkazish haqini 0 deb hisoblaydi.
+  /// Berilmasa server YETKAZISH deb oladi.
   Future<Map<String, dynamic>> quote(
-          String restaurantId, List<Map<String, dynamic>> items) async =>
+          String restaurantId, List<Map<String, dynamic>> items,
+          {bool dineIn = false}) async =>
       Map<String, dynamic>.from(await send(
-          'POST', '/restaurants/$restaurantId/quote', {'items': items}));
+          'POST', '/restaurants/$restaurantId/quote', {
+        'items': items,
+        if (dineIn) 'dine_in': true,
+      }));
 
   /// Turkum (yoki nom) bo'yicha BARCHA restoranlardagi mos taomlarni
   /// qidiradi — restoranga bog'liq emas. Har bir natijada qaysi
@@ -245,10 +252,20 @@ class CustomerApi extends ApiClient {
   /// ochtiradi. Bu kerak, chunki urinish bank tomonda o'lgan bo'lishi
   /// mumkin (OTP kodini xato kiritish yoki SMS ni ko'p marta so'rash),
   /// va o'sha havolani qayta ochish yordam bermaydi.
+  /// [paymentSystem] — mijoz AYNAN bitta ilovani tanlagan bo'lsa
+  /// (`payme`, `click`, `uzum`). Bo'sh bo'lsa universal to'lov
+  /// sahifasi ochiladi: karta va barcha xizmatlar bir joyda.
   Future<Map<String, dynamic>> startPayment(String orderId,
-          {bool retry = false}) async =>
-      Map<String, dynamic>.from(
-          await send('POST', '/orders/$orderId/pay${retry ? '?retry=1' : ''}'));
+      {bool retry = false, String paymentSystem = ''}) async {
+    final q = <String>[
+      if (retry) 'retry=1',
+      if (paymentSystem.isNotEmpty)
+        'ps=${Uri.encodeQueryComponent(paymentSystem)}',
+    ];
+    final suffix = q.isEmpty ? '' : '?${q.join('&')}';
+    return Map<String, dynamic>.from(
+        await send('POST', '/orders/$orderId/pay$suffix'));
+  }
 
   /// To'lov holati — mijoz to'lov sahifasidan qaytgach shu yerdan
   /// kuzatiladi (`payment_state`: awaiting/held/paid/failed).

@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
+import '../widgets/panel_cards.dart';
 import '../widgets/date_range_dialog.dart';
 import '../widgets/order_card_header.dart'
     show isDineInOrder, parseOrderAt, shortOrderNumber;
@@ -69,12 +70,8 @@ const _weekdays = [
 const _maxRangeDays = 366;
 
 const _pagePadding = EdgeInsets.fromLTRB(20, 18, 20, 18);
-const _gap = 14.0;
 const _chartsRowHeight = 272.0;
 const _tablesRowHeight = 292.0;
-
-/// Shundan tor bo'lganda juft kartochkalar ustma-ust tushadi.
-const _splitBreakpoint = 1000.0;
 
 /// Donut ranglari — namunadagi tartibda. Oxirgisi "Boshqa" uchun ham.
 const _productPalette = <Color>[
@@ -86,9 +83,6 @@ const _productPalette = <Color>[
 ];
 const _otherProductColor = Color(0xFFB9AFA3);
 const _insightsBg = Color(0xFFFFF8F1);
-
-const _headStyle = TextStyle(
-    fontSize: 11.5, color: OnDexColors.inkFaint, fontWeight: FontWeight.w600);
 
 // ─── Formatlash ───────────────────────────────────────────────────────────
 
@@ -611,7 +605,7 @@ class StatisticsToolbar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
-                  child: _RangeButton(
+                  child: RangeButton(
                     label: controller.historyRange == null
                         ? 'Barcha vaqt'
                         : _rangeLabel(controller.historyRange!),
@@ -633,7 +627,7 @@ class StatisticsToolbar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
-                  child: _RangeButton(
+                  child: RangeButton(
                     label: _rangeLabel(controller.range),
                     onTap: () => controller.pickRange(context),
                   ),
@@ -695,7 +689,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
       if (c.error != null && !c.loading) {
         return SingleChildScrollView(
           padding: _pagePadding,
-          child: _ErrorPanel(message: c.error!, onRetry: c.load),
+          child: ErrorPanel(message: c.error!, onRetry: c.load),
         );
       }
       return const Center(child: CircularProgressIndicator());
@@ -711,7 +705,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
               if (c.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _ErrorBanner(
+                  child: ErrorBanner(
                     message: 'Yangi ma\'lumot yuklanmadi: ${c.error}. '
                         'Ko\'rsatilayotgan davr: ${_dateLong(data.from)} - ${_dateLong(data.to)}.',
                     onRetry: c.load,
@@ -726,16 +720,16 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildKpis(data),
-                    const SizedBox(height: _gap),
-                    _SplitRow(
+                    const SizedBox(height: kPanelGap),
+                    SplitRow(
                       height: _chartsRowHeight,
                       leftFlex: 13,
                       rightFlex: 7,
                       left: _buildRevenueCard(c, data),
                       right: _ProductsDonutCard(data: data),
                     ),
-                    const SizedBox(height: _gap),
-                    _SplitRow(
+                    const SizedBox(height: kPanelGap),
+                    SplitRow(
                       height: _tablesRowHeight,
                       leftFlex: 9,
                       rightFlex: 11,
@@ -746,7 +740,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                       right: _RecentOrdersTable(
                           orders: c._recentOrders, onSeeAll: c.openHistory),
                     ),
-                    const SizedBox(height: _gap),
+                    const SizedBox(height: kPanelGap),
                     _InsightsStrip(data: data),
                   ],
                 ),
@@ -778,34 +772,34 @@ class _StatisticsPageState extends State<StatisticsPage> {
         ? '+${formatSum(c.inProgressTiyin)} jarayonda (${_count(c.inProgress)})'
         : null;
     final reserveNote = revenueNote != null;
-    return _ResponsiveWrap(
+    return ResponsiveWrap(
       minItemWidth: 180,
       spacing: 12,
       children: [
-        _KpiCard(
+        KpiCard(
           label: 'Jami tushum',
           value: formatSum(c.revenueTiyin),
           icon: Icons.payments_outlined,
           color: OnDexColors.primary,
           background: OnDexColors.primaryTint,
-          delta: _Delta(c.revenueTiyin, p.revenueTiyin),
+          delta: Delta(c.revenueTiyin, p.revenueTiyin),
           note: revenueNote,
           reserveNote: reserveNote,
           hint: 'Faqat bajarilgan (yetkazilgan yoki stolga berilgan) buyurtmalar — '
               'mijoz haqiqatan to\'lagan, chegirmadan keyingi summa. Hali yakunlanmagan '
               'buyurtmalar summasi alohida ko\'rsatiladi va tushumga qo\'shilmaydi.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Jami buyurtmalar',
           value: _count(c.orders),
           icon: Icons.inventory_2_outlined,
           color: OnDexColors.info,
           background: OnDexColors.infoBg,
-          delta: _Delta(c.orders, p.orders),
+          delta: Delta(c.orders, p.orders),
           reserveNote: reserveNote,
           hint: 'Davrda kelgan barcha buyurtmalar. To\'lanmagan karta buyurtmalari kirmaydi.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'O\'rtacha buyurtma',
           // Bajarilgan buyurtma bo'lmasa — bo'sh chiziq emas, "0 so'm";
           // nega nol ekani solishtirish qatorida yoziladi.
@@ -814,29 +808,29 @@ class _StatisticsPageState extends State<StatisticsPage> {
           color: OnDexColors.purple,
           background: OnDexColors.purpleBg,
           delta: c.avgOrderTiyin == null
-              ? const _Delta.missing('Bajarilgan buyurtma yo\'q')
+              ? const Delta.missing('Bajarilgan buyurtma yo\'q')
               : p.avgOrderTiyin == null
-                  ? _Delta.none
-                  : _Delta(c.avgOrderTiyin!, p.avgOrderTiyin!),
+                  ? Delta.none
+                  : Delta(c.avgOrderTiyin!, p.avgOrderTiyin!),
           reserveNote: reserveNote,
           hint: 'Jami tushum ÷ bajarilgan buyurtmalar soni. Bajarilgan buyurtma bo\'lmasa 0.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Bajarilgan buyurtmalar',
           value: _count(c.completed),
           icon: Icons.check_circle_outline_rounded,
           color: OnDexColors.success,
           background: OnDexColors.successBg,
-          delta: _Delta(c.completed, p.completed),
+          delta: Delta(c.completed, p.completed),
           reserveNote: reserveNote,
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Bekor qilinganlar',
           value: _count(c.cancelled),
           icon: Icons.highlight_off_rounded,
           color: OnDexColors.danger,
           background: OnDexColors.dangerBg,
-          delta: _Delta(c.cancelled, p.cancelled, higherIsBetter: false),
+          delta: Delta(c.cancelled, p.cancelled, higherIsBetter: false),
           reserveNote: reserveNote,
           hint: 'Restoran rad etgan yoki bekor qilingan buyurtmalar.',
         ),
@@ -875,324 +869,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
 // ─── Solishtirish (o'tgan davrga nisbatan) ──────────────────────────────
 
-class _Delta {
-  final num current;
-  final num previous;
-
-  /// Qaysi yo'nalish yaxshi: tushum o'sishi yaxshi, bekor qilinganlar
-  /// yoki tayyorlash vaqti o'sishi — yomon.
-  final bool higherIsBetter;
-  final bool available;
-
-  /// Solishtirib bo'lmaganda foiz o'rniga yoziladigan sabab.
-  final String reason;
-
-  const _Delta(this.current, this.previous, {this.higherIsBetter = true})
-      : available = true,
-        reason = '';
-
-  const _Delta.missing(this.reason)
-      : current = 0,
-        previous = 0,
-        higherIsBetter = true,
-        available = false;
-
-  static const none = _Delta.missing('O\'tgan davrda ma\'lumot yo\'q');
-}
-
-class _DeltaLine extends StatelessWidget {
-  final _Delta delta;
-
-  const _DeltaLine({required this.delta});
-
-  static const _rest = TextStyle(fontSize: 11, color: OnDexColors.inkDim);
-
-  @override
-  Widget build(BuildContext context) {
-    if (!delta.available) {
-      return Text(delta.reason, maxLines: 1, overflow: TextOverflow.ellipsis, style: _rest);
-    }
-    if (delta.previous == 0) {
-      // Nolga bo'lib foiz chiqarib bo'lmaydi — "+∞%" o'rniga halol matn.
-      return Text(
-          delta.current == 0 ? 'O\'tgan davr bilan bir xil' : 'O\'tgan davrda ma\'lumot yo\'q',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: _rest);
-    }
-    final pct = (delta.current - delta.previous) / delta.previous.abs() * 100;
-    final rounded = pct.round();
-    if (rounded == 0) {
-      return const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.remove_rounded, size: 12, color: OnDexColors.inkDim),
-          SizedBox(width: 3),
-          Flexible(
-            child: Text('0% o\'tgan davrga',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: _rest),
-          ),
-        ],
-      );
-    }
-    final up = pct > 0;
-    final good = up == delta.higherIsBetter;
-    final color = good ? OnDexColors.success : OnDexColors.danger;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-            size: 12, color: color),
-        const SizedBox(width: 3),
-        Flexible(
-          child: Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: '${up ? '+' : '-'}${rounded.abs()}%',
-                style: TextStyle(color: color, fontWeight: FontWeight.w700),
-              ),
-              const TextSpan(text: ' o\'tgan davrga'),
-            ]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _rest,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 // ─── Qurilish bloklari ──────────────────────────────────────────────────
-
-class _Panel extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-
-  const _Panel({
-    required this.child,
-    this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 14),
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: OnDexColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: OnDexColors.cardBorder),
-        ),
-        child: child,
-      );
-}
-
-/// Elementlarni sig'adigan qadar teng ustunlarga taqsimlaydi.
-///
-/// Kenglik PASTGA yaxlitlanadi: aks holda suzuvchi nuqta xatosi tufayli
-/// ustunlar yig'indisi konteynerdan bir necha pikselga oshib, oxirgi
-/// kartochka sababsiz keyingi qatorga tushib ketardi.
-class _ResponsiveWrap extends StatelessWidget {
-  final double minItemWidth;
-  final double spacing;
-  final List<Widget> children;
-
-  const _ResponsiveWrap({
-    required this.minItemWidth,
-    required this.spacing,
-    required this.children,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final columns = ((c.maxWidth + spacing) / (minItemWidth + spacing))
-          .floor()
-          .clamp(1, children.length);
-      final width = ((c.maxWidth - spacing * (columns - 1)) / columns).floorToDouble();
-      return Wrap(
-        spacing: spacing,
-        runSpacing: spacing,
-        children: [for (final child in children) SizedBox(width: width, child: child)],
-      );
-    });
-  }
-}
-
-/// Qat'iy balandlikdagi ikki kartochka yonma-yon (namunadagi nisbatda);
-/// tor ekranda ustma-ust.
-class _SplitRow extends StatelessWidget {
-  final double height;
-  final int leftFlex;
-  final int rightFlex;
-  final Widget left;
-  final Widget right;
-
-  const _SplitRow({
-    required this.height,
-    required this.leftFlex,
-    required this.rightFlex,
-    required this.left,
-    required this.right,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      if (c.maxWidth >= _splitBreakpoint) {
-        return SizedBox(
-          height: height,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: leftFlex, child: left),
-              const SizedBox(width: _gap),
-              Expanded(flex: rightFlex, child: right),
-            ],
-          ),
-        );
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(height: height, child: left),
-          const SizedBox(height: _gap),
-          SizedBox(height: height, child: right),
-        ],
-      );
-    });
-  }
-}
-
-class _HintIcon extends StatelessWidget {
-  final String message;
-
-  const _HintIcon({required this.message});
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-        message: message,
-        waitDuration: const Duration(milliseconds: 250),
-        child: const Icon(Icons.info_outline_rounded,
-            size: 15, color: OnDexColors.inkFaint),
-      );
-}
-
-class _CardTitle extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? hint;
-  final Widget? trailing;
-
-  const _CardTitle({
-    required this.icon,
-    required this.title,
-    this.hint,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Sarlavha ICHKI qatorda, butun qolgan joy `Expanded` da: aks holda
-    // `Flexible` + `Spacer` bo'sh joyni teng bo'lib, o'ngdagi tugma chetga
-    // yetmay qolardi (`top_bar.dart` dagi xuddi shu xato).
-    return SizedBox(
-      height: 32,
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Icon(icon, size: 19, color: OnDexColors.primary),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: OnDexColors.ink)),
-                ),
-                if (hint != null) ...[
-                  const SizedBox(width: 6),
-                  _HintIcon(message: hint!),
-                ],
-              ],
-            ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyText extends StatelessWidget {
-  final String text;
-
-  const _EmptyText(this.text);
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, color: OnDexColors.inkDim)),
-      );
-}
-
-/// Qat'iy kenglikdagi jadval katagi. Matn sig'masa KESILMAYDI, biroz
-/// kichrayadi — summa va sonlar to'liq o'qilishi shart.
-Widget _cell(double width, Widget child) => SizedBox(
-      width: width,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: FittedBox(
-            fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child),
-      ),
-    );
-
-class _RangeButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _RangeButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    // Ko'rinishi yuqori paneldagi odatiy sana tugmasi bilan bir xil.
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: OnDexColors.cardBorder),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.calendar_today_rounded,
-                size: 15, color: OnDexColors.inkDim),
-            const SizedBox(width: 9),
-            Flexible(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      color: OnDexColors.ink,
-                      fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 6),
-            const Icon(Icons.keyboard_arrow_down_rounded,
-                size: 17, color: OnDexColors.inkDim),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ExportButton extends StatelessWidget {
   final bool busy;
@@ -1218,60 +895,6 @@ class _ExportButton extends StatelessWidget {
               width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.file_download_outlined, size: 17),
       label: const Text('Eksport'),
-    );
-  }
-}
-
-class _ErrorPanel extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorPanel({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return _Panel(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-      child: Column(
-        children: [
-          const Icon(Icons.bar_chart_rounded, size: 40, color: OnDexColors.inkFaint),
-          const SizedBox(height: 12),
-          Text(message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: OnDexColors.ink)),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('Qayta urinish')),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorBanner({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: OnDexColors.dangerBg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline_rounded, size: 18, color: OnDexColors.danger),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message,
-                style: const TextStyle(fontSize: 13, color: OnDexColors.ink)),
-          ),
-          TextButton(onPressed: onRetry, child: const Text('Qayta urinish')),
-        ],
-      ),
     );
   }
 }
@@ -1349,121 +972,6 @@ class _ProductThumb extends StatelessWidget {
 
 // ─── Kartochkalar ───────────────────────────────────────────────────────
 
-class _KpiCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final Color background;
-  /// `null` — solishtiriladigan davr yo'q (masalan butun tarix); o'rniga
-  /// [caption] yoziladi.
-  final _Delta? delta;
-  final String? caption;
-  final String? hint;
-
-  /// Qo'shimcha izoh (masalan "+144 000 so'm jarayonda (2 ta)").
-  final String? note;
-
-  /// Izoh qatori uchun joy ajratilsinmi — bitta qatordagi kartochkalar
-  /// bir xil balandlikda turishi uchun, izohi bo'lmaganlarida ham.
-  final bool reserveNote;
-
-  const _KpiCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.background,
-    required this.delta,
-    this.caption,
-    this.hint,
-    this.note,
-    this.reserveNote = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final badge = Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(10)),
-      child: Icon(icon, size: 20, color: color),
-    );
-    // Ikonka CHAPDA (namunadagi kabi): tepada alohida qator egallamaydi,
-    // kartochka balandligi shu sababli deyarli uchdan biriga kamaydi.
-    return _Panel(
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-      child: Row(
-        children: [
-          if (hint == null)
-            badge
-          else
-            Tooltip(
-              message: hint!,
-              waitDuration: const Duration(milliseconds: 250),
-              child: badge,
-            ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        color: OnDexColors.inkDim,
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 3),
-                // Katta summa tor kartochkaga sig'masa kesilmaydi —
-                // kichrayadi ("24 180 000 so'm" to'liq o'qilishi SHART).
-                SizedBox(
-                  width: double.infinity,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(value,
-                        maxLines: 1,
-                        style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: OnDexColors.ink)),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                if (delta != null)
-                  _DeltaLine(delta: delta!)
-                else
-                  Text(caption ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, color: OnDexColors.inkDim)),
-                if (reserveNote) ...[
-                  const SizedBox(height: 3),
-                  SizedBox(
-                    height: 14,
-                    child: note == null
-                        ? null
-                        : Text(note!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: OnDexColors.amber,
-                                fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ChartCard extends StatelessWidget {
   final String title;
   final String hint;
@@ -1481,12 +989,12 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    return PanelCard(
       padding: const EdgeInsets.fromLTRB(16, 14, 14, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CardTitle(
+          CardTitle(
             icon: Icons.show_chart_rounded,
             title: title,
             hint: hint,
@@ -1501,14 +1009,6 @@ class _ChartCard extends StatelessWidget {
   }
 }
 
-class _LegendEntry {
-  final String label;
-  final int value;
-  final Color color;
-
-  const _LegendEntry(this.label, this.value, this.color);
-}
-
 /// "Buyurtmalar bo'yicha mahsulotlar" — sotilgan donalar ulushi.
 class _ProductsDonutCard extends StatelessWidget {
   final _Stats data;
@@ -1516,19 +1016,19 @@ class _ProductsDonutCard extends StatelessWidget {
   const _ProductsDonutCard({required this.data});
 
   /// Eng ko'p sotilgan mahsulotlar, qolgani bitta "Boshqa" bo'lagi.
-  static List<_LegendEntry> _entries(_Stats d) {
+  static List<LegendEntry> _entries(_Stats d) {
     final total = d.soldQty;
     final products = d.topProducts;
     final slots = _productPalette.length;
     final shown = products.length <= slots ? products : products.take(slots - 1).toList();
     final entries = [
       for (var i = 0; i < shown.length; i++)
-        _LegendEntry(shown[i].name.isEmpty ? 'Nomsiz taom' : shown[i].name, shown[i].qty,
+        LegendEntry(shown[i].name.isEmpty ? 'Nomsiz taom' : shown[i].name, shown[i].qty,
             _productPalette[i]),
     ];
     final rest = total - shown.fold<int>(0, (sum, p) => sum + p.qty);
     if (rest > 0) {
-      entries.add(_LegendEntry('Boshqa', rest,
+      entries.add(LegendEntry('Boshqa', rest,
           shown.length < slots ? _productPalette[shown.length] : _otherProductColor));
     }
     return entries;
@@ -1538,11 +1038,11 @@ class _ProductsDonutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = data.soldQty;
     final entries = _entries(data);
-    return _Panel(
+    return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _CardTitle(
+          const CardTitle(
             icon: Icons.bar_chart_rounded,
             title: 'Buyurtmalar bo\'yicha mahsulotlar',
             hint: 'Bajarilgan buyurtmalarda sotilgan taomlar soni (dona) va ulushi.',
@@ -1550,7 +1050,7 @@ class _ProductsDonutCard extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: total == 0
-                ? _EmptyText(data.current.inProgress > 0
+                ? EmptyText(data.current.inProgress > 0
                     ? 'Yakunlangan sotuv yo\'q · ${_count(data.current.inProgress)} buyurtma jarayonda'
                     : 'Bu davrda sotuv yo\'q')
                 : LayoutBuilder(builder: (context, c) {
@@ -1582,7 +1082,8 @@ class _ProductsDonutCard extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              for (final e in entries) _LegendLine(entry: e, total: total),
+                              for (final e in entries)
+                                LegendLine(entry: e, total: total, valueText: _count(e.value.toInt())),
                             ],
                           ),
                         ),
@@ -1590,40 +1091,6 @@ class _ProductsDonutCard extends StatelessWidget {
                     );
                   }),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LegendLine extends StatelessWidget {
-  final _LegendEntry entry;
-  final int total;
-
-  const _LegendLine({required this.entry, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    const numbers = TextStyle(fontSize: 12.5, color: OnDexColors.inkDim);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: entry.color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(entry.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, color: OnDexColors.ink)),
-          ),
-          const SizedBox(width: 8),
-          _cell(58, Text(_count(entry.value), style: numbers)),
-          _cell(42, Text('${(entry.value * 100 / total).round()}%', style: numbers)),
         ],
       ),
     );
@@ -1643,11 +1110,11 @@ class _TopProductsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
+    return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _CardTitle(
+          const CardTitle(
             icon: Icons.emoji_events_rounded,
             title: 'Eng ko\'p sotilgan mahsulotlar',
             hint: 'Bajarilgan buyurtmalar. Summa menyu narxida — buyurtma darajasidagi '
@@ -1656,7 +1123,7 @@ class _TopProductsTable extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: products.isEmpty
-                ? _EmptyText(inProgress > 0
+                ? EmptyText(inProgress > 0
                     ? 'Yakunlangan sotuv yo\'q · ${_count(inProgress)} buyurtma jarayonda'
                     : 'Bu davrda sotilgan mahsulot yo\'q')
                 : LayoutBuilder(builder: (context, c) {
@@ -1675,13 +1142,13 @@ class _TopProductsTable extends StatelessWidget {
                             ),
                             child: Row(
                               children: [
-                                _cell(26, const Text('#', style: _headStyle)),
+                                panelCell(26, const Text('#', style: kTableHeadStyle)),
                                 const SizedBox(width: 40),
                                 const Expanded(
                                   child: Text('Mahsulot nomi',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: _headStyle),
+                                      style: kTableHeadStyle),
                                 ),
                                 if (showCategory)
                                   const SizedBox(
@@ -1689,10 +1156,10 @@ class _TopProductsTable extends StatelessWidget {
                                     child: Text('Kategoriya',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: _headStyle),
+                                        style: kTableHeadStyle),
                                   ),
-                                _cell(70, const Text('Sotilgan', style: _headStyle)),
-                                _cell(112, const Text('Summa', style: _headStyle)),
+                                panelCell(70, const Text('Sotilgan', style: kTableHeadStyle)),
+                                panelCell(112, const Text('Summa', style: kTableHeadStyle)),
                               ],
                             ),
                           ),
@@ -1741,7 +1208,7 @@ class _TopProductRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _cell(
+          panelCell(
               26,
               Text('$rank',
                   style: const TextStyle(
@@ -1771,11 +1238,11 @@ class _TopProductRow extends StatelessWidget {
                     style: const TextStyle(fontSize: 12, color: OnDexColors.inkDim)),
               ),
             ),
-          _cell(
+          panelCell(
               70,
               Text(_count(product.qty),
                   style: const TextStyle(fontSize: 12.5, color: OnDexColors.ink))),
-          _cell(
+          panelCell(
               112,
               Text(formatSum(product.salesTiyin),
                   style: const TextStyle(
@@ -1805,11 +1272,11 @@ class _RecentOrdersTable extends StatelessWidget {
                   .compareTo(parseOrderAt(a['created_at']) ?? DateTime(0))))
             .take(_visible)
             .toList();
-    return _Panel(
+    return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CardTitle(
+          CardTitle(
             icon: Icons.schedule_rounded,
             title: 'So\'nggi buyurtmalar',
             hint: 'Tanlangan davrdan qat\'i nazar — eng oxirgi kelgan buyurtmalar.',
@@ -1833,7 +1300,7 @@ class _RecentOrdersTable extends StatelessWidget {
                     child: SizedBox(
                         width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)))
                 : list.isEmpty
-                    ? const _EmptyText('Hali buyurtma yo\'q')
+                    ? const EmptyText('Hali buyurtma yo\'q')
                     : LayoutBuilder(builder: (context, c) {
                         final showCustomer = c.maxWidth >= 640;
                         final showTime = c.maxWidth >= 440;
@@ -1897,18 +1364,18 @@ class _OrderTableHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _cell(_colId, const Text('ID', style: _headStyle)),
+          panelCell(_colId, const Text('ID', style: kTableHeadStyle)),
           if (showTime)
             fullDate
-                ? _cell(_colDateTime, const Text('Sana va vaqt', style: _headStyle))
-                : _cell(_colTime, const Text('Vaqt', style: _headStyle)),
-          if (showCustomer) _cell(_colCustomer, const Text('Mijoz', style: _headStyle)),
+                ? panelCell(_colDateTime, const Text('Sana va vaqt', style: kTableHeadStyle))
+                : panelCell(_colTime, const Text('Vaqt', style: kTableHeadStyle)),
+          if (showCustomer) panelCell(_colCustomer, const Text('Mijoz', style: kTableHeadStyle)),
           const Expanded(
             child: Text('Mahsulotlar',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: _headStyle),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: kTableHeadStyle),
           ),
-          _cell(_colSum, const Text('Summa', style: _headStyle)),
-          _cell(_colStatus, const Text('Holat', style: _headStyle)),
+          panelCell(_colSum, const Text('Summa', style: kTableHeadStyle)),
+          panelCell(_colStatus, const Text('Holat', style: kTableHeadStyle)),
         ],
       ),
     );
@@ -1946,16 +1413,16 @@ class _RecentOrderRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _cell(
+          panelCell(
               _colId,
               Text(shortOrderNumber(order),
                   style: const TextStyle(
                       fontSize: 12.5, fontWeight: FontWeight.w600, color: OnDexColors.ink))),
           if (showTime)
             fullDate
-                ? _cell(_colDateTime,
+                ? panelCell(_colDateTime,
                     Text(_orderDateTime(parseOrderAt(order['created_at'])), style: dim))
-                : _cell(_colTime, Text(_orderTime(parseOrderAt(order['created_at'])), style: dim)),
+                : panelCell(_colTime, Text(_orderTime(parseOrderAt(order['created_at'])), style: dim)),
           if (showCustomer)
             SizedBox(
               width: _colCustomer,
@@ -1976,12 +1443,12 @@ class _RecentOrderRow extends StatelessWidget {
                       style: const TextStyle(fontSize: 12.5, color: OnDexColors.ink)),
             ),
           ),
-          _cell(
+          panelCell(
               _colSum,
               Text(formatSum(_int(order['total_tiyin'])),
                   style: const TextStyle(
                       fontSize: 12.5, fontWeight: FontWeight.w700, color: OnDexColors.ink))),
-          _cell(
+          panelCell(
             _colStatus,
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -2035,24 +1502,24 @@ class _InsightsStrip extends StatelessWidget {
         icon: Icons.person_add_alt_outlined,
         label: 'Yangi mijozlar',
         value: _count(c.newCustomers),
-        footer: _DeltaLine(delta: _Delta(c.newCustomers, p.newCustomers)),
+        footer: DeltaLine(delta: Delta(c.newCustomers, p.newCustomers)),
       ),
       _Insight(
         icon: Icons.groups_outlined,
         label: 'Qaytgan mijozlar',
         value: _count(c.returningCustomers),
-        footer: _DeltaLine(delta: _Delta(c.returningCustomers, p.returningCustomers)),
+        footer: DeltaLine(delta: Delta(c.returningCustomers, p.returningCustomers)),
       ),
       _Insight(
         icon: Icons.timer_outlined,
         label: 'O\'rtacha tayyorlash vaqti',
         value: '${c.avgPrepMinutes ?? 0} daqiqa',
-        footer: _DeltaLine(
+        footer: DeltaLine(
           delta: c.avgPrepMinutes == null
-              ? const _Delta.missing('Tayyorlangan buyurtma yo\'q')
+              ? const Delta.missing('Tayyorlangan buyurtma yo\'q')
               : p.avgPrepMinutes == null
-                  ? _Delta.none
-                  : _Delta(c.avgPrepMinutes!, p.avgPrepMinutes!, higherIsBetter: false),
+                  ? Delta.none
+                  : Delta(c.avgPrepMinutes!, p.avgPrepMinutes!, higherIsBetter: false),
         ),
       ),
     ];
@@ -2075,7 +1542,7 @@ class _InsightsStrip extends StatelessWidget {
             ],
           );
         }
-        return _ResponsiveWrap(minItemWidth: 230, spacing: 10, children: items);
+        return ResponsiveWrap(minItemWidth: 230, spacing: 10, children: items);
       }),
     );
   }

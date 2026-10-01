@@ -140,6 +140,69 @@ String _phoneLocal(String? e164) {
   return '${d.substring(0, 2)} ${d.substring(2, 5)} ${d.substring(5, 7)} ${d.substring(7)}';
 }
 
+/// Maosh usuli bloki (yetkazib beruvchi): tanlangan blok ajralib turadi.
+class _PayModeCard extends StatelessWidget {
+  const _PayModeCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.caption,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String caption;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$title. $caption',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: selected ? OnDexColors.primaryTint : OnDexColors.cardBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: selected ? OnDexColors.primary : OnDexColors.cardBorder, width: selected ? 1.6 : 1),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 22, color: selected ? OnDexColors.primary : OnDexColors.inkDim),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: OnDexColors.ink)),
+                    Text(caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11.5, color: OnDexColors.inkDim)),
+                  ],
+                ),
+              ),
+              if (selected) const Icon(Icons.check_circle_rounded, size: 18, color: OnDexColors.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Qo'shish / tahrirlash ────────────────────────────────────────────
 
 class _StaffFormDialog extends StatefulWidget {
@@ -158,6 +221,9 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
   late final _phone = TextEditingController(text: _phoneLocal(widget.member?.phone));
   late final _note = TextEditingController(text: widget.member?.note ?? '');
   late final _salary = TextEditingController(text: _moneyInput(widget.member?.salaryTiyin));
+  late final _deliveryPay = TextEditingController(text: _moneyInput(widget.member?.deliveryPayTiyin));
+  // Yetkazib beruvchining maosh usuli: true — buyurtmadan, false — oylik.
+  late bool _perOrder = widget.member?.deliveryPayTiyin != null;
   late String _position = widget.member?.position ?? '';
   late DateTime? _hiredOn = widget.member?.hiredOn;
   late bool _hasSchedule = widget.member == null || widget.member!.schedule != null;
@@ -179,12 +245,23 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
     _phone.dispose();
     _note.dispose();
     _salary.dispose();
+    _deliveryPay.dispose();
     super.dispose();
   }
+
+  bool get _isCourier => _position == 'courier';
+
+  /// "Buyurtmadan maosh" faqat yetkazib beruvchida amal qiladi.
+  bool get _perOrderMode => _isCourier && _perOrder;
 
   /// So'mda kiritiladi, serverga tiyinda ketadi; bo'sh — kiritilmagan.
   int? get _salaryTiyin {
     final d = _digits(_salary.text);
+    return d.isEmpty ? null : int.parse(d) * 100;
+  }
+
+  int? get _deliveryPayTiyin {
+    final d = _digits(_deliveryPay.text);
     return d.isEmpty ? null : int.parse(d) * 100;
   }
 
@@ -200,7 +277,12 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
         'hired_on': _hiredOn == null ? null : _ymd(_hiredOn!),
         'note': _note.text.trim(),
         'app_access': _accessAllowed && _appAccess,
-        'monthly_salary_tiyin': _salaryTiyin,
+        // Ikki usul bir-birini istisno qiladi: biri yuborilsa, ikkinchisi
+        // aniq `null` (server ikkalasini birga qabul qilmaydi).
+        'monthly_salary_tiyin': _perOrderMode ? null : _salaryTiyin,
+        // Kalit faqat "buyurtmadan maosh"da yuboriladi; yo'q bo'lsa tahrirda
+        // `_patch` uni `null` deb hisoblaydi va eski qiymatni tozalaydi.
+        if (_perOrderMode) 'delivery_pay_tiyin': _deliveryPayTiyin,
       };
 
   /// Faqat o'zgargan maydonlar — server ham shuni kutadi.
@@ -218,6 +300,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
       if (b['note'] != m.note) 'note': b['note'],
       if (b['app_access'] != m.appAccess) 'app_access': b['app_access'],
       if (b['monthly_salary_tiyin'] != m.salaryTiyin) 'monthly_salary_tiyin': b['monthly_salary_tiyin'],
+      if (b['delivery_pay_tiyin'] != m.deliveryPayTiyin) 'delivery_pay_tiyin': b['delivery_pay_tiyin'],
     };
   }
 
@@ -226,6 +309,14 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
     if (_digits(_phone.text).length != 9) return 'Telefon raqamini to\'liq kiriting (9 ta raqam)';
     if (_position.isEmpty) return 'Lavozimni tanlang';
     if (_hasSchedule && _days.isEmpty) return 'Kamida bitta ish kunini tanlang';
+    if (_perOrderMode) {
+      final pay = _deliveryPayTiyin;
+      if (pay == null || pay <= 0) return 'Har bir yetkazishdan beriladigan summani kiriting';
+      // Server chegarasi bilan bir xil (`staff.MaxDeliveryPayTiyin`). Eng xavfli
+      // xato — ortiqcha nol: 8 000 o'rniga 80 000 mijozga shunday ko'rinadi.
+      if (pay > 10000000) return 'Buyurtmadan maosh 100 000 so\'mdan oshmasin';
+      return null;
+    }
     final salary = _salaryTiyin;
     if (salary != null && salary <= 0) return 'Oylik maosh 0 dan katta bo\'lsin yoki bo\'sh qoldiring';
     if (salary != null && salary > 100000000000) return 'Oylik maosh 1 mlrd so\'mdan oshmasin';
@@ -394,18 +485,64 @@ class _StaffFormDialogState extends State<_StaffFormDialog> {
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey('form-salary'),
-          controller: _salary,
-          keyboardType: TextInputType.number,
-          inputFormatters: [_MoneyFormatter()],
-          decoration: _input('Oylik maosh (ixtiyoriy)', hint: 'Masalan: 3 500 000', suffixText: 'so\'m'),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
-          child: Text('Maxfiy: faqat restoran egasiga ko\'rinadi va hisobotda ishlatiladi.',
-              style: TextStyle(fontSize: 11.5, color: OnDexColors.inkFaint)),
-        ),
+        if (_isCourier) ...[
+          // ┌─ YETKAZIB BERUVCHI: IKKI XIL MAOSH ───────────────────────┐
+          // Maosh usuli MIJOZ to'laydigan yetkazish haqini belgilaydi:
+          //   oylik maosh      -> yetkazish mijoz uchun BEPUL;
+          //   buyurtmadan maosh -> shu summa mijozning buyurtmasiga qo'shiladi.
+          // └───────────────────────────────────────────────────────────┘
+          const Text('Maosh usuli',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: OnDexColors.inkDim)),
+          const SizedBox(height: 6),
+          LayoutBuilder(builder: (context, box) {
+            final wide = box.maxWidth >= 420;
+            final monthly = _PayModeCard(
+              key: const ValueKey('pay-mode-monthly'),
+              icon: Icons.calendar_month_rounded,
+              title: 'Oylik maosh',
+              caption: 'Yetkazish mijoz uchun BEPUL',
+              selected: !_perOrder,
+              onTap: () => setState(() => _perOrder = false),
+            );
+            final perOrder = _PayModeCard(
+              key: const ValueKey('pay-mode-per-order'),
+              icon: Icons.delivery_dining_rounded,
+              title: 'Buyurtmadan maosh',
+              caption: 'Summa mijozga qo\'shiladi',
+              selected: _perOrder,
+              onTap: () => setState(() => _perOrder = true),
+            );
+            return wide
+                ? Row(children: [Expanded(child: monthly), const SizedBox(width: 10), Expanded(child: perOrder)])
+                : Column(children: [monthly, const SizedBox(height: 8), perOrder]);
+          }),
+          const SizedBox(height: 12),
+          if (_perOrder) ...[
+            TextField(
+              key: const ValueKey('form-delivery-pay'),
+              controller: _deliveryPay,
+              keyboardType: TextInputType.number,
+              inputFormatters: [_MoneyFormatter()],
+              decoration: _input('Har bir yetkazishdan *', hint: 'Masalan: 8 000', suffixText: 'so\'m'),
+            ),
+          ] else ...[
+            TextField(
+              key: const ValueKey('form-salary'),
+              controller: _salary,
+              keyboardType: TextInputType.number,
+              inputFormatters: [_MoneyFormatter()],
+              decoration: _input('Oylik maosh (ixtiyoriy)', hint: 'Masalan: 3 500 000', suffixText: 'so\'m'),
+            ),
+          ],
+        ] else ...[
+          TextField(
+            key: const ValueKey('form-salary'),
+            controller: _salary,
+            keyboardType: TextInputType.number,
+            inputFormatters: [_MoneyFormatter()],
+            decoration: _input('Oylik maosh (ixtiyoriy)', hint: 'Masalan: 3 500 000', suffixText: 'so\'m'),
+          ),
+        ],
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.fromLTRB(14, 10, 10, 14),
@@ -679,7 +816,11 @@ class _StaffDetailsDialogState extends State<_StaffDetailsDialog> {
         if (m.schedule != null)
           info(Icons.weekend_outlined, 'Dam olish kunlari',
               m.schedule!.offDays.isEmpty ? 'Yo\'q' : [for (final d in m.schedule!.offDays) _weekdayFull[d - 1]].join(', ')),
-        info(Icons.payments_outlined, 'Oylik maosh', m.salaryTiyin == null ? 'Kiritilmagan' : formatMoney(m.salaryTiyin!)),
+        if (m.deliveryPayTiyin != null)
+          info(Icons.payments_outlined, 'Buyurtmadan maosh',
+              '${formatMoney(m.deliveryPayTiyin!)} · har yetkazishdan')
+        else
+          info(Icons.payments_outlined, 'Oylik maosh', m.salaryTiyin == null ? 'Kiritilmagan' : formatMoney(m.salaryTiyin!)),
         info(Icons.event_outlined, 'Ishga kirgan sana', m.hiredOn == null ? 'Kiritilmagan' : _dmy(m.hiredOn!)),
         info(Icons.phone_iphone_rounded, 'Ilovaga kirish', access),
         info(Icons.person_add_alt_outlined, 'Qo\'shilgan', _dmy(m.createdAt)),

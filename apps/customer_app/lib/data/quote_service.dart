@@ -16,9 +16,22 @@ import 'cart_store.dart';
 /// Endi so'rov ham, javobni o'qish ham, eskirgan javobdan himoya ham
 /// SHU YERDA. Pul mantig'i bitta joyda bo'lishi shart.
 /// └───────────────────────────────────────────────────────────────────┘
+///
+/// ┌─ YETKAZISH HAQI FAQAT RASMIYLASHTIRISHDA ─────────────────────────┐
+/// Server `total_tiyin` ga yetkazish haqini ALLAQACHON qo'shadi. Menyu
+/// va savatda mijoz hali yetkazish usulini ham, manzilini ham tanlamagan:
+/// u yerda faqat TAOMLAR summasi ([goodsTiyin]) ko'rsatiladi. Yetkazish
+/// haqi ([deliveryFeeTiyin]) va to'lanadigan jami ([payableTiyin]) —
+/// faqat rasmiylashtirish ekranida.
+///
+/// Ikkala summa ATAYLAB turli nomda: `totalTiyin` kabi bitta nom ikki
+/// ma'noda ishlatilsa, savat summasi checkout'ga o'tib ketardi.
+/// └───────────────────────────────────────────────────────────────────┘
 class Quote {
   const Quote({
-    required this.totalTiyin,
+    required this.goodsTiyin,
+    this.payableTiyin,
+    this.deliveryFeeTiyin = 0,
     this.subtotalTiyin,
     this.discountTiyin,
     this.promotionName,
@@ -26,11 +39,19 @@ class Quote {
     this.lineTotals = const {},
   });
 
-  /// Yakuniy summa. `null` — server ishonchli raqam bermadi.
+  /// TAOMLAR summasi (chegirmadan keyin, yetkazish haqisiz) — menyu va
+  /// savatda ko'rsatiladi. `null` — server ishonchli raqam bermadi.
   ///
   /// 0 yoki manfiy qiymat ATAYLAB `null` ga aylantiriladi: noto'g'ri
   /// sozlangan aksiya "bepul buyurtma" ko'rinishini bermasligi kerak.
-  final int? totalTiyin;
+  final int? goodsTiyin;
+
+  /// TO'LANADIGAN jami = taomlar + yetkazish haqi. Faqat
+  /// rasmiylashtirishda ishlatiladi. `null` — ishonchsiz.
+  final int? payableTiyin;
+
+  /// Yetkazish haqi (tiyin). 0 — bepul yoki stol buyurtmasi.
+  final int deliveryFeeTiyin;
 
   final int? subtotalTiyin;
   final int? discountTiyin;
@@ -43,7 +64,11 @@ class Quote {
   /// `product_id` -> chegirmadan keyingi qator summasi (tiyin).
   final Map<String, int> lineTotals;
 
-  bool get isUsable => totalTiyin != null && totalTiyin! > 0;
+  bool get isUsable =>
+      goodsTiyin != null &&
+      goodsTiyin! > 0 &&
+      payableTiyin != null &&
+      payableTiyin! > 0;
 }
 
 /// Savat holatidan server hisobini so'raydi.
@@ -69,11 +94,15 @@ class QuoteFetcher {
   Future<Quote?> fetch(String restaurantId) async {
     final cart = CartStore.instance;
     if (cart.isEmpty || cart.restaurantId != restaurantId) {
-      return const Quote(totalTiyin: null);
+      return const Quote(goodsTiyin: null);
     }
 
     final seq = ++_seq;
-    final res = await api.quote(restaurantId, itemsPayload());
+    // Stol (dine-in) buyurtmasida kuryer yo'q — server yetkazish haqini
+    // 0 deb hisoblashi uchun buni AYTISH shart (aks holda stolda ham haq
+    // qo'shilgan summa ko'rinardi).
+    final res = await api.quote(restaurantId, itemsPayload(),
+        dineIn: cart.isDineIn);
     if (seq != _seq) return null; // eskirgan javob
     return parseQuote(res);
   }
@@ -100,8 +129,15 @@ List<Map<String, dynamic>> itemsPayload() => [
 /// bo'lardi.
 Quote parseQuote(Map<String, dynamic> res) {
   final total = (res['total_tiyin'] as num?)?.toInt();
+  // Eski server `delivery_fee_tiyin` bermaydi — haq yo'q deb olinadi.
+  final rawFee = (res['delivery_fee_tiyin'] as num?)?.toInt() ?? 0;
+  final fee = rawFee > 0 ? rawFee : 0;
+  final payable = (total != null && total > 0) ? total : null;
+  final goods = (payable != null && payable - fee > 0) ? payable - fee : null;
   return Quote(
-    totalTiyin: (total != null && total > 0) ? total : null,
+    goodsTiyin: goods,
+    payableTiyin: payable,
+    deliveryFeeTiyin: fee,
     subtotalTiyin: (res['subtotal_tiyin'] as num?)?.toInt(),
     discountTiyin: (res['discount_tiyin'] as num?)?.toInt(),
     promotionName: res['promotion_name'] as String?,

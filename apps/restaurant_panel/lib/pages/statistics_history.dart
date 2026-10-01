@@ -227,9 +227,9 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
     return LayoutBuilder(builder: (context, box) {
       final top = <Widget>[
         _buildHeader(),
-        const SizedBox(height: _gap),
+        const SizedBox(height: kPanelGap),
         _buildKpis(),
-        const SizedBox(height: _gap),
+        const SizedBox(height: kPanelGap),
       ];
       // Past yoki tor oynada jadvalga joy qolmaydi — butun sahifa
       // aylanadi, jadval esa o'z balandligini saqlaydi.
@@ -321,11 +321,11 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
     } else {
       ordersCaption = _range == null ? 'Hali buyurtma yo\'q' : 'Bu davrda buyurtma yo\'q';
     }
-    return _ResponsiveWrap(
+    return ResponsiveWrap(
       minItemWidth: 180,
       spacing: 12,
       children: [
-        _KpiCard(
+        KpiCard(
           label: 'Jami buyurtmalar',
           value: _count(s.orders),
           icon: Icons.inventory_2_outlined,
@@ -336,7 +336,7 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
           reserveNote: reserve,
           hint: 'Barcha buyurtmalar. To\'lanmagan karta buyurtmalari kirmaydi.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Jami tushum',
           value: formatSum(s.revenueTiyin),
           icon: Icons.payments_outlined,
@@ -349,7 +349,7 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
           hint: 'Faqat bajarilgan (yetkazilgan yoki stolga berilgan) buyurtmalar. Hali '
               'yakunlanmaganlar summasi alohida ko\'rsatiladi va tushumga qo\'shilmaydi.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'O\'rtacha buyurtma',
           value: formatSum(s.avgOrderTiyin ?? 0),
           icon: Icons.trending_up_rounded,
@@ -360,7 +360,7 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
           reserveNote: reserve,
           hint: 'Jami tushum ÷ bajarilgan buyurtmalar soni. Bajarilgan buyurtma bo\'lmasa 0.',
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Bajarilgan buyurtmalar',
           value: _count(s.completed),
           icon: Icons.check_circle_outline_rounded,
@@ -370,7 +370,7 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
           caption: '${_percent(s.completed, s.orders)} buyurtmalardan',
           reserveNote: reserve,
         ),
-        _KpiCard(
+        KpiCard(
           label: 'Bekor qilinganlar',
           value: _count(s.cancelled),
           icon: Icons.highlight_off_rounded,
@@ -386,12 +386,12 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
   }
 
   Widget _buildTable() {
-    return _Panel(
+    return PanelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           LayoutBuilder(builder: (context, c) {
-            const title = _CardTitle(
+            const title = CardTitle(
               icon: Icons.receipt_long_rounded,
               title: 'Buyurtmalar ro\'yxati',
               hint: 'Eng yangisidan. Pastga aylantirilganda keyingi buyurtmalar o\'zi yuklanadi.',
@@ -450,7 +450,7 @@ class _OrderHistoryViewState extends State<_OrderHistoryView> {
     }
     if (_orders.isEmpty) {
       final all = _status == 'all';
-      return _EmptyText(_range == null
+      return EmptyText(_range == null
           ? (all ? 'Hali buyurtma yo\'q' : 'Bu holatdagi buyurtma yo\'q')
           : (all ? 'Bu davrda buyurtma yo\'q' : 'Bu davrda shu holatdagi buyurtma yo\'q'));
     }

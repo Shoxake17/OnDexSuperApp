@@ -20,6 +20,9 @@ Map<String, dynamic> _settings({
   bool cash = true,
   bool terminal = false,
   bool online = true,
+  bool payme = false,
+  bool click = false,
+  bool uzum = false,
   bool onlineAvailable = true,
   bool withHours = true,
 }) =>
@@ -43,7 +46,14 @@ Map<String, dynamic> _settings({
               ],
             }
           : null,
-      'payment_methods': {'cash': cash, 'card_terminal': terminal, 'card_online': online},
+      'payment_methods': {
+        'cash': cash,
+        'card_terminal': terminal,
+        'card_online': online,
+        'payme': payme,
+        'click': click,
+        'uzum': uzum,
+      },
       'online_payments_available': onlineAvailable,
       'timezone': 'Asia/Tashkent',
       'editable': ['logo_url', 'cover_url', 'description', 'working_hours', 'payment_methods'],
@@ -231,7 +241,15 @@ void main() {
       await tester.pumpAndSettle();
       final body = jsonDecode(_patches(requests).single.body) as Map<String, dynamic>;
       expect(body, {
-        'payment_methods': {'cash': false, 'card_terminal': true, 'card_online': false, 'ondex_wallet': true},
+        'payment_methods': {
+          'cash': false,
+          'card_terminal': true,
+          'card_online': false,
+          'payme': false,
+          'click': false,
+          'uzum': false,
+          'ondex_wallet': true,
+        },
       });
     });
   });
@@ -243,18 +261,79 @@ void main() {
     });
   });
 
-  testWidgets('Click va Payme — alohida, haqiqiy logotip rasmi, "Tez orada"', (tester) async {
+  // ┌─ PAYME / CLICK / UZUM — HAQIQIY KALITLAR ─────────────────────────┐
+  // Har biri alohida yoqiladi/o'chiriladi. O'chirilgani mijozga
+  // ko'rinmaydi (server ham rad etadi) — shuning uchun bu yerdagi qiymat
+  // aynan serverga yuboriladi.
+  // └───────────────────────────────────────────────────────────────────┘
+  testWidgets('Payme, Click, Uzum — haqiqiy logotip va ishlaydigan kalit', (tester) async {
     await _run(tester, body: (_) async {
       expect(_assetImage('assets/payments/click.png'), findsOneWidget);
       expect(_assetImage('assets/payments/payme.png'), findsOneWidget);
-      expect(find.text('Click'), findsOneWidget);
-      expect(find.text('Payme'), findsOneWidget);
-      expect(find.text('Tez orada'), findsNWidgets(2));
-      for (final key in ['pay-click', 'pay-payme']) {
-        final s = tester.widget<Switch>(find.byKey(ValueKey(key)));
-        expect(s.value, isFalse);
-        expect(s.onChanged, isNull);
+      expect(_assetImage('assets/payments/uzum.png'), findsOneWidget);
+      for (final t in ['Click', 'Payme', 'Uzum']) {
+        expect(find.text(t), findsOneWidget);
       }
+      expect(find.text('Tez orada'), findsNothing);
+      for (final key in ['pay-click', 'pay-payme', 'pay-uzum']) {
+        final s = tester.widget<Switch>(find.byKey(ValueKey(key)));
+        expect(s.value, isFalse, reason: key);
+        expect(s.onChanged, isNotNull, reason: key);
+      }
+    });
+  });
+
+  testWidgets('Uzum yoqilsa FAQAT uzum o\'zgaradi va serverga yuboriladi', (tester) async {
+    await _run(tester, body: (requests) async {
+      await _tapKey(tester, 'pay-uzum');
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('pay-uzum'))).value, isTrue);
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('pay-click'))).value, isFalse);
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('pay-payme'))).value, isFalse);
+
+      await tester.tap(find.byKey(const ValueKey('settings-save')));
+      await tester.pumpAndSettle();
+      final body = jsonDecode(_patches(requests).single.body) as Map<String, dynamic>;
+      expect(body, {
+        'payment_methods': {
+          'cash': true,
+          'card_terminal': false,
+          'card_online': true,
+          'payme': false,
+          'click': false,
+          'uzum': true,
+          'ondex_wallet': true,
+        },
+      });
+    });
+  });
+
+  testWidgets('saqlangan Payme/Click/Uzum holati kalitlarda ko\'rinadi', (tester) async {
+    await _run(tester, initial: _settings(payme: true, click: false, uzum: true), body: (_) async {
+      bool on(String k) => tester.widget<Switch>(find.byKey(ValueKey(k))).value;
+      expect(on('pay-payme'), isTrue);
+      expect(on('pay-click'), isFalse);
+      expect(on('pay-uzum'), isTrue);
+    });
+  });
+
+  testWidgets('faqat Uzum yoqiq bo\'lsa ham to\'lov usullari yaroqli', (tester) async {
+    await _run(tester, initial: _settings(cash: false, online: false, uzum: true), body: (_) async {
+      expect(find.text('Kamida bitta to\'lov usuli yoqilgan bo\'lishi kerak'), findsNothing);
+    });
+  });
+
+  testWidgets('hisob ulanmagan bo\'lsa Payme/Click/Uzum yoqib bo\'lmaydi, sababi aytiladi', (tester) async {
+    await _run(tester, initial: _settings(online: false, onlineAvailable: false), body: (_) async {
+      for (final key in ['pay-click', 'pay-payme', 'pay-uzum']) {
+        expect(tester.widget<Switch>(find.byKey(ValueKey(key))).onChanged, isNull, reason: key);
+      }
+      expect(find.textContaining('Moliya'), findsWidgets);
+    });
+  });
+
+  testWidgets('hisob ulanmagan, lekin yoqilgan usulni O\'CHIRISH mumkin', (tester) async {
+    await _run(tester, initial: _settings(uzum: true, onlineAvailable: false), body: (_) async {
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('pay-uzum'))).onChanged, isNotNull);
     });
   });
 

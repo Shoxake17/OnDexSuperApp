@@ -82,3 +82,4 @@ flutter:
     # fayllar) — "Restoran sozlamalari" → "To'lov usullari".
     - assets/payments/click.png
     - assets/payments/payme.png
+    - assets/payments/uzum.png

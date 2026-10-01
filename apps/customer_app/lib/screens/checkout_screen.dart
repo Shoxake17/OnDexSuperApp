@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../widgets/common.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
+import '../data/payment_options.dart';
 import '../widgets/agent_overlay.dart' show AgentCheckoutConfirmAnchor;
 import '../widgets/app_text_field.dart';
 import '../widgets/page_sheet.dart';
@@ -28,17 +30,16 @@ import 'tracking_screen.dart';
 // almashtirish kerakligi bir qarashda ko'rinsin, kod bo'ylab tarqalib
 // ketmasin.
 //
-// ENG MUHIM QOIDA: mock qiymatlar PULGA TEGMAYDI. Yetkazish va xizmat
-// haqi 0 — chunki server ularni hisoblamaydi va mijozdan olmaydi.
-// Agar bu yerga 15 000 yozilsa, ekranda ko'ringan "Jami" serverda
-// yoziladigan summadan FARQ QILARDI: mijoz bir raqamga rozi bo'lib,
-// boshqasini to'lardi. Shuning uchun ular 0 va "Bepul" deb chiziladi.
+// ENG MUHIM QOIDA: mock qiymatlar PULGA TEGMAYDI. Xizmat yig'imi 0 —
+// chunki server uni hisoblamaydi va mijozdan olmaydi. Agar bu yerga
+// 15 000 yozilsa, ekranda ko'ringan "Jami" serverda yoziladigan
+// summadan FARQ QILARDI: mijoz bir raqamga rozi bo'lib, boshqasini
+// to'lardi.
+//
+// YETKAZISH HAQI endi mock EMAS: u serverdan keladi (`delivery_fee_tiyin`,
+// yetkazib beruvchining maosh usulidan) va faqat SHU ekranda
+// "Yetkazish" qatorida ko'rinadi.
 // └───────────────────────────────────────────────────────────────────┘
-
-/// Yetkazish haqi. MOCK: backend `QuoteResult` da bunday maydon yo'q.
-/// 0 — hozir yetkazish uchun haq OLINMAYDI, ya'ni bu qiymat ayni
-/// paytda HAQIQATGA MOS.
-const int _mockDeliveryFeeTiyin = 0;
 
 /// Xizmat yig'imi. MOCK: backendda yo'q, olinmaydi.
 const int _mockServiceFeeTiyin = 0;
@@ -55,11 +56,9 @@ const String _mockEtaFallback = '25–40 daqiqa';
 /// kartasi va katta tugma.
 ///
 /// OLINMADI va NEGA:
-///   * "Yetkazish" va "Xizmat yig'imi" qatorlari — backend bunday
-///     summalarni UMUMAN hisoblamaydi. `QuoteResult` faqat
-///     subtotal/discount/total qaytaradi (`internal/orders/service.go`).
-///     Ularni chizish mijozga hech qachon to'lamaydigan raqamni
-///     ko'rsatish bo'lardi.
+///   * "Xizmat yig'imi" qatori — backend uni hisoblamaydi. Uni chizish
+///     mijozga hech qachon to'lamaydigan raqamni ko'rsatish bo'lardi.
+///     ("Yetkazish" qatori esa HAQIQIY: `QuoteResult.delivery_fee_tiyin`.)
 ///   * "Kupon yoki promokod" — aksiyalar AVTOMATIK qo'llanadi
 ///     (`promotions.ApplyBest`), kod bo'yicha chegirma tizimi yo'q.
 ///   * "Izoh qoldirish" — `POST /orders` bunday maydonni qabul
@@ -85,7 +84,12 @@ const String _mockEtaFallback = '25–40 daqiqa';
 /// xil bo'lishi shart.
 /// └───────────────────────────────────────────────────────────────────┘
 class CheckoutScreen extends StatefulWidget {
+  /// TO'LANADIGAN jami (taomlar + yetkazish haqi) — serverning `total_tiyin`.
   final int quoteTiyin;
+
+  /// Yetkazish haqi (tiyin), `quoteTiyin` ga ALLAQACHON qo'shilgan.
+  /// 0 — bepul yoki stol buyurtmasi.
+  final int deliveryFeeTiyin;
   final int? subtotalTiyin;
   final int? discountTiyin;
   final String? promotionName;
@@ -103,6 +107,7 @@ class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
     required this.quoteTiyin,
+    this.deliveryFeeTiyin = 0,
     this.subtotalTiyin,
     this.discountTiyin,
     this.promotionName,
@@ -143,6 +148,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, dynamic>? _restaurant;
 
   late int _total = widget.quoteTiyin;
+  late int _deliveryFee = widget.deliveryFeeTiyin;
   late int? _subtotal = widget.subtotalTiyin;
   late int? _discount = widget.discountTiyin;
   late String? _promotionName = widget.promotionName;
@@ -211,10 +217,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             orElse: () => <String, dynamic>{},
           );
       if (mounted && found != null && found.isNotEmpty) {
-        setState(() => _restaurant = found);
+        setState(() {
+          _restaurant = found;
+          _ensureSelectedMethodVisible();
+        });
       }
     } catch (_) {
       // Yetkazish vaqti ko'rsatilmaydi — qolgani ishlayveradi.
+    }
+    // Keshdagi ro'yxat eskirgan bo'lishi mumkin: restoran to'lov usulini
+    // yaqinda o'chirgan bo'lsa mijoz uni ko'rib qolmasligi uchun
+    // to'lov usullari yangi javobdan olinadi.
+    try {
+      final fresh = await api.restaurant(rid);
+      if (!mounted || fresh.isEmpty) return;
+      setState(() {
+        _restaurant = {...?_restaurant, ...fresh};
+        _ensureSelectedMethodVisible();
+      });
+    } catch (_) {
+      // Tarmoq xatosi: keshdagi qiymat qoladi, server baribir tekshiradi.
     }
   }
 
@@ -246,7 +268,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // Ishonchsiz summa (0 yoki manfiy) ekrandagi hisobni
         // O'ZGARTIRMAYDI — savatdan kelgan qiymat qoladi.
         if (!q.isUsable) return;
-        _total = q.totalTiyin!;
+        _total = q.payableTiyin!;
+        _deliveryFee = q.deliveryFeeTiyin;
         _subtotal = q.subtotalTiyin;
         _discount = q.discountTiyin;
         _promotionName = q.promotionName;
@@ -301,9 +324,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// └───────────────────────────────────────────────────────────────┘
   Future<bool> _startCardPayment(String orderId) async {
     try {
-      final p = await api.startPayment(orderId);
+      // Mijoz aynan bitta ilovani tanlagan bo'lsa (`channel`), server
+      // o'sha ilovaga to'g'ridan-to'g'ri havola qaytaradi; bo'sh
+      // bo'lsa — universal to'lov sahifasi.
+      final p = await api.startPayment(orderId,
+          paymentSystem: _payMethod.channel);
       final url = (p['pay_url'] as String?) ?? '';
       if (url.isEmpty) throw Exception('havola bo\'sh');
+
+      // ┌─ ILOVA HAVOLASI WEBVIEW'DA OCHILMAYDI ────────────────────┐
+      // Mijoz Payme/Click/Uzum ni tanlasa, shlyuz o'sha ilovaga
+      // havola (Universal/App Link) qaytaradi. U `https://` bilan
+      // boshlanadi, lekin WEBVIEW ICHIDA yuklansa Android App Link
+      // mexanizmi ISHLAMAYDI — ilova ochilmaydi, oddiy veb sahifa
+      // ko'rinadi va mijoz "nega Payme ochilmadi?" deb qoladi.
+      //
+      // Shuning uchun kanal tanlangan bo'lsa havola TIZIMGA
+      // uzatiladi: o'rnatilgan bo'lsa ilova, bo'lmasa brauzer
+      // ochiladi. Mijoz qaytgach holatni kuzatuv ekrani serverdan
+      // so'rab oladi (WebView'dagi kabi).
+      // └────────────────────────────────────────────────────────────┘
+      if (_payMethod.channel.isNotEmpty) {
+        final opened = await launchUrl(Uri.parse(url),
+            mode: LaunchMode.externalApplication);
+        // Ochilmasa WebView zaxira yo'l bo'lib qoladi — mijoz
+        // to'lovsiz qolib ketmasin.
+        if (opened) return true;
+      }
 
       if (!mounted) return false;
       await Navigator.of(context).push<bool>(
@@ -374,7 +421,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // shu yerda bekor qilamiz: mijoz "buyurtma berildi" deb
       // o'ylab qolmasligi kerak.
       // └───────────────────────────────────────────────────────────┘
-      if (_payMethod == _PayMethod.card) {
+      if (_payMethod.isOnline) {
         final orderId = (order['id'] as String?) ?? '';
         final ok = await _startCardPayment(orderId);
         if (!ok) return; // xato ekranda ko'rsatildi, savat saqlanib qoldi
@@ -602,6 +649,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // ── To'lov usuli (MOCK) ───────────────────────────────────────────
 
+  /// Usul shu restoranda mijozga KO'RSATILADIMI.
+  ///
+  /// ┌─ FAQAT RESTORAN YOQQAN USULLAR KO'RINADI ──────────────────────┐
+  /// Restoran paneldagi "To'lov usullari" da Naqd / Bank kartasi /
+  /// Payme / Click / Uzum ni alohida yoqadi. Server shu tanlovdan
+  /// `payment_options` ni hisoblaydi (sozlama VA to'lov hisobi ulangan
+  /// bo'lishi): o'chirilgan usul bu yerda KULRANG emas, UMUMAN yo'q.
+  /// Server `/pay` da ham shuni tekshiradi — bu yerdagi yashirish
+  /// mijozga qulaylik, to'siq esa serverda.
+  ///
+  /// `payment_options` yo'q bo'lsa (restoran hali yuklanmagan yoki eski
+  /// server) usul OCHIQ qoladi: oxirgi so'z baribir serverniki, yuklanish
+  /// paytida hamma usulni yashirish mijozni chalg'itardi.
+  /// └────────────────────────────────────────────────────────────────┘
+  bool _methodAvailable(_PayMethod m) =>
+      paymentOptionVisible(_restaurant?['payment_options'], m.optionKey);
+
+  List<_PayMethod> get _visibleMethods =>
+      [for (final m in _PayMethod.values) if (_methodAvailable(m)) m];
+
+  /// Tanlangan usul yashirilgan bo'lsa (restoran uni o'chirgan) birinchi
+  /// ko'rinadigan usulga o'tadi — mijoz ko'rinmaydigan usul bilan
+  /// buyurtma berib yubormasligi uchun.
+  void _ensureSelectedMethodVisible() {
+    if (_methodAvailable(_payMethod)) return;
+    final visible = _visibleMethods;
+    if (visible.isEmpty) return;
+    _payMethod = visible.contains(_PayMethod.cash)
+        ? _PayMethod.cash
+        : visible.first;
+  }
+
   Widget _payMethodCard() {
     return _Card(
       child: Column(
@@ -619,17 +698,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ],
             ),
           ),
-          for (var i = 0; i < _PayMethod.values.length; i++) ...[
+          if (_visibleMethods.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Text(
+                'Bu restoran hozircha to\'lov usulini qabul qilmayapti. '
+                'Keyinroq urinib ko\'ring.',
+                key: ValueKey('no-pay-methods'),
+                style: TextStyle(fontSize: 13.5, color: Color(0xFF757575)),
+              ),
+            ),
+          for (var i = 0; i < _visibleMethods.length; i++) ...[
             if (i > 0) const Divider(height: 1, indent: 60, endIndent: 16),
             _PayMethodRow(
-              method: _PayMethod.values[i],
-              selected: _payMethod == _PayMethod.values[i],
-              // Ishlamaydigan usul TANLANMAYDI (bug.md 81-band):
-              // `onTap: null` bo'lsa `InkWell` bosishga javob
-              // bermaydi va qator xiralashadi.
-              onTap: _PayMethod.values[i].available
-                  ? () => setState(() => _payMethod = _PayMethod.values[i])
-                  : null,
+              key: ValueKey('pay-method-${_visibleMethods[i].name}'),
+              method: _visibleMethods[i],
+              selected: _payMethod == _visibleMethods[i],
+              onTap: () => setState(() => _payMethod = _visibleMethods[i]),
             ),
           ],
         ],
@@ -688,17 +773,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 value: '− ${formatSum(disc)}',
                 color: const Color(0xFF16A34A),
               ),
-            // Yetkazish: qiymat 0 bo'lsa "Bepul" — bu HAQIQAT, chunki
-            // server yetkazish haqini umuman hisoblamaydi.
-            _TotalLine(
-              label: 'Yetkazish',
-              value: _mockDeliveryFeeTiyin == 0
-                  ? 'Bepul'
-                  : formatSum(_mockDeliveryFeeTiyin),
-              color: _mockDeliveryFeeTiyin == 0
-                  ? const Color(0xFF16A34A)
-                  : null,
-            ),
+            // Yetkazish haqi FAQAT shu ekranda ko'rinadi (menyu va savatda
+            // yo'q) va HAQIQIY: serverdan keladi, "Jami" ga allaqachon
+            // qo'shilgan. Stol buyurtmasida kuryer yo'q — qator umuman
+            // chizilmaydi.
+            if (!_isDineIn)
+              _TotalLine(
+                key: const ValueKey('checkout-delivery-line'),
+                label: 'Yetkazish',
+                value: _deliveryFee <= 0 ? 'Bepul' : formatSum(_deliveryFee),
+                color: _deliveryFee <= 0 ? const Color(0xFF16A34A) : null,
+              ),
             if (_mockServiceFeeTiyin > 0)
               _TotalLine(
                 label: 'Xizmat yig\'imi',
@@ -715,9 +800,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 Text(
-                  // Jami — SERVER qiymati. Yuqoridagi mock qatorlar
-                  // unga QO'SHILMAYDI: ular 0 va serverda ham yo'q.
+                  // Jami — SERVER qiymati (yetkazish haqi bilan).
+                  // Yuqoridagi mock qator (xizmat yig'imi) 0 va unga
+                  // QO'SHILMAYDI: u serverda ham yo'q.
                   formatSum(_total),
+                  key: const ValueKey('checkout-total'),
                   style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -734,7 +821,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // ── Pastki tugma ──────────────────────────────────────────────────
 
   Widget _bottomBar() {
-    final ready = !_submitting && !_quoting && _total > 0;
+    final ready = !_submitting &&
+        !_quoting &&
+        _total > 0 &&
+        _methodAvailable(_payMethod);
 
     return SafeArea(
       child: Padding(
@@ -966,6 +1056,7 @@ const _kUzcard = 'assets/payments/uzcard.png';
 const _kHumo = 'assets/payments/humo.png';
 const _kPayme = 'assets/payments/payme.png';
 const _kClick = 'assets/payments/click.png';
+const _kUzum = 'assets/payments/uzum.png';
 
 enum _PayMethod {
   /// Chap tomonda umumiy karta ikoni, O'NG tomonda esa qabul
@@ -986,46 +1077,50 @@ enum _PayMethod {
     iconColor: Color(0xFF2E7D32),
   ),
 
-  /// Payme va Click uchun ikon O'RNIGA brend logotipi turadi — ular
-  /// tanilgan belgilar va umumiy ikonka ularni tanib olishni
+  /// Payme, Click va Uzum uchun ikon O'RNIGA brend logotipi turadi —
+  /// ular tanilgan belgilar va umumiy ikonka ularni tanib olishni
   /// qiyinlashtirardi.
   ///
-  /// ┌─ TUZATILGAN NOSOZLIK (bug.md 81-band) ──────────────────────────┐
-  /// Bu ikkalasi TANLANARDI, lekin buyurtma yuborishda
+  /// ┌─ ENDI ISHLAYDI (ilgari "Tez orada" edi) ────────────────────────┐
+  /// Avval bu usullar `available: false` edi, chunki Octo'ning
+  /// so'rovi to'lov tizimini qabul qilmasdi — u faqat o'z sahifasiga
+  /// havola qaytarardi.
   ///
-  ///	paymentMethod: _payMethod == _PayMethod.card ? 'card' : 'cash'
+  /// Multicard (Rahmat) esa qabul qiladi: `POST /payment` da
+  /// `payment_system` berilsa, javobda AYNAN o'sha ilovaga havola
+  /// (deeplink) keladi. Shuning uchun uchalasi ham haqiqiy variantga
+  /// aylandi.
   ///
-  /// degan shart ularni NAQD ga aylantirardi. Ya'ni mijoz "Payme"
-  /// tanlab, "to'ladim" deb o'ylardi; kuryer esa eshik oldida naqd
-  /// pul so'rardi. Bu — mijozning ishonchini yo'qotadigan xato.
-  ///
-  /// Payme/Click uchun ALOHIDA oqim UMUMAN yozilmagan: Octo'ning
-  /// `prepare_payment` so'rovi to'lov usulini qabul qilmaydi
-  /// (`internal/payments/octo/octo.go`), u faqat o'z sahifasiga
-  /// havola qaytaradi.
-  ///
-  /// Shuning uchun ular endi KO'RINADI, lekin TANLANMAYDI —
-  /// `available: false`. Ro'yxatdan butunlay olib tashlamadik:
-  /// mijoz ularni izlaydi va "yo'q ekan" degan javob "umuman
-  /// ko'rinmaydi" dan aniqroq.
+  /// ⚠️ Buyurtmaning to'lov USULI baribir `card` bo'lib qoladi
+  /// (`apiValue`): Payme ham, Click ham — onlayn to'lov. Farq faqat
+  /// mijoz qaysi ilovada to'lashida va u `channel` orqali ketadi.
   /// └──────────────────────────────────────────────────────────────────┘
   payme(
     title: 'Payme',
-    subtitle: 'Tez orada',
+    subtitle: 'Payme ilovasida',
     icon: Icons.account_balance_wallet_outlined,
     tile: Colors.white,
     iconColor: Color(0xFF00838F),
     logo: _kPayme,
-    available: false,
+    channel: 'payme',
   ),
   click(
     title: 'Click',
-    subtitle: 'Tez orada',
+    subtitle: 'Click ilovasida',
     icon: Icons.bolt,
     tile: Colors.white,
     iconColor: Color(0xFFC62828),
     logo: _kClick,
-    available: false,
+    channel: 'click',
+  ),
+  uzum(
+    title: 'Uzum',
+    subtitle: 'Uzum Bank ilovasida',
+    icon: Icons.account_balance_outlined,
+    tile: Colors.white,
+    iconColor: Color(0xFF7000FF),
+    logo: _kUzum,
+    channel: 'uzum',
   );
 
   /// Serverga yuboriladigan qiymat (`POST /orders` dagi
@@ -1040,14 +1135,31 @@ enum _PayMethod {
   /// yangi qiymat qo'shilsa kod KOMPILYATSIYA BO'LMAYDI va muallif
   /// qaror qabul qilishga majbur bo'ladi.
   /// └──────────────────────────────────────────────────────────────────┘
+  ///
+  /// ⚠️ Payme/Click/Uzum ham `card`: server `cash`/`card`/`wallet`
+  /// dan boshqasini QABUL QILMAYDI va qilmasligi ham kerak — bular
+  /// to'lov usuli emas, to'lov KANALI.
   String get apiValue => switch (this) {
+        _PayMethod.card ||
+        _PayMethod.payme ||
+        _PayMethod.click ||
+        _PayMethod.uzum =>
+          'card',
+        _PayMethod.cash => 'cash',
+      };
+
+  /// Oldindan to'lanadigan usulmi (to'lov sahifasi ochiladimi).
+  bool get isOnline => this != _PayMethod.cash;
+
+  /// Serverning `payment_options` dagi kaliti. `switch` — yangi usul
+  /// qo'shilsa kompilyator kalit yozishni TALAB qiladi (jimgina
+  /// "ko'rinadi" bo'lib qolmasin).
+  String get optionKey => switch (this) {
         _PayMethod.card => 'card',
         _PayMethod.cash => 'cash',
-        // Bular tanlana olmaydi (`available: false`), lekin qiymat
-        // baribir to'g'ri bo'lishi kerak — ular ulanganda bu yer
-        // yangilanadi.
         _PayMethod.payme => 'payme',
         _PayMethod.click => 'click',
+        _PayMethod.uzum => 'uzum',
       };
 
   final String title;
@@ -1064,9 +1176,9 @@ enum _PayMethod {
   /// Qator oxirida chiziladigan logotiplar.
   final List<String> trailingLogos;
 
-  /// Usul HOZIR ishlaydimi. `false` bo'lsa qator ko'rinadi, lekin
-  /// tanlanmaydi (bug.md 81-band).
-  final bool available;
+  /// To'lov shlyuziga yuboriladigan XIZMAT kodi (`?ps=`). Bo'sh —
+  /// universal to'lov sahifasi (karta va hammasi bir joyda).
+  final String channel;
 
   const _PayMethod({
     required this.title,
@@ -1076,7 +1188,7 @@ enum _PayMethod {
     required this.iconColor,
     this.logo,
     this.trailingLogos = const [],
-    this.available = true,
+    this.channel = '',
   });
 }
 
@@ -1089,6 +1201,7 @@ class _PayMethodRow extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _PayMethodRow({
+    super.key,
     required this.method,
     required this.selected,
     required this.onTap,
@@ -1448,7 +1561,8 @@ class _TotalLine extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
-  const _TotalLine({required this.label, required this.value, this.color});
+  const _TotalLine(
+      {super.key, required this.label, required this.value, this.color});
 
   @override
   Widget build(BuildContext context) {
