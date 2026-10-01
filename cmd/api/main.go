@@ -31,8 +31,10 @@ import (
 	"chustapp/internal/geo"
 	"chustapp/internal/httpapi"
 	"chustapp/internal/images"
+	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
 	"chustapp/internal/notify"
+	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
@@ -1406,7 +1408,16 @@ func main() {
 	// ---------- HTTP qatlami ----------
 	// Barcha endpointlar `internal/httpapi` da (routes_*.go). Bu yerda
 	// faqat bog'liqliklar yig'iladi â€” Express'dagi `app.js` kabi.
+	// GOOGLE_MAP bayrog'i: true (standart) — Google, false — OnDexMap (Google zaxira).
+	// Mijoz har doim yaratiladi: "OnDex Xarita" ekrani rejimdan qat'i nazar unga tayanadi.
+	mapMode := mapprovider.FromValue(os.Getenv("GOOGLE_MAP"))
+	ondexMapClient := ondexmap.New(os.Getenv("ONDEXMAP_API_URL"))
+	slog.Info("xarita manbasi", "rejim", string(mapMode), "ondexmap", ondexMapClient.Base())
+
 	api := httpapi.New(httpapi.Deps{
+		MapMode:            mapMode,
+		OndexMap:           ondexMapClient,
+		OndexMapBase:       ondexMapClient.Base(),
 		OrderRepo:          orderRepo,
 		StatsSource:        statsSource,
 		HistorySource:      historySource,

@@ -32,8 +32,10 @@ import (
 	"chustapp/internal/favorites"
 	"chustapp/internal/firebaseauth"
 	"chustapp/internal/images"
+	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
 	"chustapp/internal/notify"
+	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
@@ -76,6 +78,13 @@ type Deps struct {
 	// Directions — yo'l hisoblovchi. `nil` — Google Directions API
 	// (`directions.go`); testlar soxtasini beradi.
 	Directions DirectionsFunc
+	// MapMode — GOOGLE_MAP bayrog'i (internal/mapprovider). Bo'sh qiymat —
+	// Google. OnDexMap rejimi faqat OndexMap ham berilgan bo'lsa ishlaydi.
+	MapMode mapprovider.Mode
+	// OndexMap — OnDexMap /v1 mijozi. nil bo'lsa hamma narsa Google'da qoladi.
+	OndexMap ondexmap.API
+	// OndexMapBase — ilovalarga /config/maps orqali beriladigan OnDexMap manzili.
+	OndexMapBase string
 	// Voice — ovozli yo'l ko'rsatish (restoran nomi bor ibora, Gemini TTS).
 	// `nil` bo'lsa endpoint 503, ilova umumiy iborani aytadi.
 	Voice *voice.Service

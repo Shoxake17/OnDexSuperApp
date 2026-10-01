@@ -25,6 +25,9 @@ type DirectionsResult struct {
 	DistanceMeters  int
 	DurationSeconds int
 	Steps           []RouteStep
+	// Source — yo'l qaysi manbadan kelgani ("ondexmap"; bo'sh — Google).
+	// Faqat log uchun: pullik Google so'rovlarini OnDexMap'nikidan ajratadi.
+	Source string
 }
 
 // RouteStep — aytiladigan manevr va u bajariladigan nuqta (kuryer ilovasining
@@ -48,6 +51,10 @@ func (s *Server) directions() DirectionsFunc {
 	if s.Directions != nil {
 		return s.Directions
 	}
+	// GOOGLE_MAP=false: avval OnDexMap, ishlamasa Google (mapsconfig.go).
+	if s.useOndexMap() {
+		return s.directionsOndexThenGoogle
+	}
 	return googleDirections
 }
 
@@ -67,13 +74,22 @@ const (
 // shu satrlar manba va buyurtma bo'yicha sanaladi.
 const directionsLogMsg = "google_directions"
 
+// ondexDirectionsLogMsg — OnDexMap'dan olingan yo'l (bepul, o'z serverimiz).
+const ondexDirectionsLogMsg = "ondexmap_directions"
+
 // routeBetween — Google Directions'ga BARCHA so'rovlar shu yerdan o'tadi va
 // har biri loglanadi. `ref` — buyurtma ID'si yoki (kuryer ilovasi uchun)
 // foydalanuvchi ID'si; koordinata logga YOZILMAYDI (shaxsiy ma'lumot).
 func (s *Server) routeBetween(ctx context.Context, source, ref string, from, to tracking.Point, mode string) (DirectionsResult, error) {
 	start := time.Now()
 	res, err := s.directions()(ctx, from, to, mode)
-	slog.Info(directionsLogMsg,
+	// Faqat PULLIK Google so'rovlari `google_directions` bilan loglanadi —
+	// OnDexMap'nikini shu hisobga qo'shsak, tejash o'lchovi buziladi.
+	msg := directionsLogMsg
+	if res.Source == sourceOndexMap {
+		msg = ondexDirectionsLogMsg
+	}
+	slog.Info(msg,
 		"manba", source, "ref", ref, "ok", err == nil,
 		"ms", time.Since(start).Milliseconds())
 	return res, err

@@ -147,6 +147,11 @@ var Registry = []Var{
 	{Name: "GOOGLE_GEOCODING_API_KEY", Effect: "manzil aniqlash va masofa hisobi o'chadi", DeployRequired: true},
 	{Name: "YANDEX_GEOCODER_API_KEY", Effect: "manzil aniqlash faqat Google'ga tayanadi", DeployRequired: true},
 	{Name: "DGIS_API_KEY", Effect: "manzil aniqlash faqat Google'ga tayanadi", DeployRequired: true},
+	// `GOOGLE_MAP=false` — hamma joyda OnDexMap (Google faqat zaxira). Bo'sh/
+	// tushunarsiz qiymat Google'ni beradi, shuning uchun yo'q bo'lishi hech
+	// narsani buzmaydi, faqat almashtirish imkoni yo'qoladi.
+	{Name: "GOOGLE_MAP", Effect: "xarita manbasini almashtirib bo'lmaydi: doim Google (OnDexMap yoqilmaydi)", DeployRequired: true},
+	{Name: "ONDEXMAP_API_URL", Effect: "standart OnDexMap manzili (https://maps.ondex.uz) ishlatiladi"},
 
 	// ---------- SMS ----------
 	{Name: "ESKIZ_EMAIL", Effect: "SMS yuborilmaydi — OTP kodlar LOGGA tushadi (bug.md 47-band)", DeployRequired: true},

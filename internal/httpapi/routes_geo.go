@@ -13,16 +13,10 @@ import (
 )
 
 func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /config/maps", s.auth(nil,
-		func(w http.ResponseWriter, r *http.Request) {
-			key := os.Getenv("GOOGLE_MAPS_API_KEY")
-			if key == "" {
-				httpError(w, http.StatusServiceUnavailable,
-					errors.New("xarita kaliti sozlanmagan (.env: GOOGLE_MAPS_API_KEY)"))
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]string{"maps_api_key": key})
-		}))
+	// GET /config/maps — xarita manbasi (GOOGLE_MAP) va kalitlar (mapsconfig.go).
+	mux.HandleFunc("GET /config/maps", s.auth(nil, s.handleMapsConfig))
+	// POST /config/maps/fallback — ilova OnDexMap xatosi tufayli Google'ga o'tganini xabar qiladi.
+	mux.HandleFunc("POST /config/maps/fallback", s.auth(nil, rateLimitedGeo(s.handleMapsFallback)))
 
 	// GET /geocode/reverse?lat=..&lng=.. — koordinatani manzil matniga
 	// aylantiradi. Google Geocoding API'ni SERVERDAN chaqiramiz (brauzerdan
@@ -35,6 +29,12 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 			lng, errLng := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
 			if errLat != nil || errLng != nil {
 				httpError(w, http.StatusBadRequest, errors.New("lat/lng noto'g'ri"))
+				return
+			}
+			// GOOGLE_MAP=false: avval OnDexMap; u ma'lumot bermasa yoki yiqilgan
+			// bo'lsa — pastdagi Google zanjiri.
+			if addr, ok := s.ondexReverse(r.Context(), lat, lng); ok {
+				writeJSON(w, http.StatusOK, map[string]string{"address": addr})
 				return
 			}
 			// DIQQAT: bu yerda GOOGLE_MAPS_API_KEY emas, ALOHIDA
@@ -93,6 +93,10 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 				writeJSON(w, http.StatusOK, []map[string]string{})
 				return
 			}
+			if out, ok := s.ondexSuggestions(r.Context(), input); ok {
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
 			key := os.Getenv("GOOGLE_GEOCODING_API_KEY")
 			if key == "" {
 				httpError(w, http.StatusServiceUnavailable,
@@ -137,6 +141,16 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 			placeID := strings.TrimSpace(r.URL.Query().Get("place_id"))
 			if placeID == "" {
 				httpError(w, http.StatusBadRequest, errors.New("place_id kerak"))
+				return
+			}
+			// OnDexMap taklifi: koordinata va matn ID ichida (mapsconfig.go).
+			if strings.HasPrefix(placeID, ondexPlacePrefix) {
+				lat, lng, text, ok := parseOndexPlaceID(placeID)
+				if !ok {
+					httpError(w, http.StatusBadRequest, errors.New("place_id noto'g'ri"))
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"lat": lat, "lng": lng, "address": text})
 				return
 			}
 			key := os.Getenv("GOOGLE_GEOCODING_API_KEY")
