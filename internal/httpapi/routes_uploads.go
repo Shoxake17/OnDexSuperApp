@@ -113,7 +113,7 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 				prefix = "logos"
 			}
 			key := prefix + "/" + NewID() + ".webp"
-			url, err := s.ImageStore.Upload(r.Context(), key, bytes.NewReader(webpBytes), int64(len(webpBytes)), "image/webp")
+			url, err := uploadImmutable(r.Context(), s.ImageStore, key, webpBytes, "image/webp")
 			if err != nil {
 				slog.Error("rasm yuklashda xato", "err", err)
 				httpError(w, http.StatusInternalServerError, errors.New("rasm saqlashda xato"))
@@ -157,8 +157,7 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 			// bilan boshqa kitobning muqovasini bosib ketish mumkin
 			// bo'lardi.
 			key := "book-covers/" + NewID() + ".webp"
-			url, err := s.ImageStore.Upload(r.Context(), key,
-				bytes.NewReader(webpBytes), int64(len(webpBytes)), "image/webp")
+			url, err := uploadImmutable(r.Context(), s.ImageStore, key, webpBytes, "image/webp")
 			if err != nil {
 				slog.Error("muqova yuklashda xato", "err", err)
 				httpError(w, http.StatusInternalServerError, errors.New("rasm saqlashda xato"))
@@ -234,8 +233,7 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 			// ishlatilmaydi. Fayl imzo bo'yicha PDF ekani tekshirilgan,
 			// shuning uchun bu yolg'on emas va brauzerning mazmunni
 			// o'zicha aniqlashiga yo'l qo'ymaydi.
-			url, err := s.ImageStore.Upload(r.Context(), key,
-				bytes.NewReader(raw), int64(len(raw)), "application/pdf")
+			url, err := uploadImmutable(r.Context(), s.ImageStore, key, raw, "application/pdf")
 			if err != nil {
 				slog.Error("PDF yuklashda xato", "err", err)
 				httpError(w, http.StatusInternalServerError, errors.New("PDF saqlashda xato"))
