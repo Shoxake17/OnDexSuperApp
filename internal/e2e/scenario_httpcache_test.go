@@ -35,9 +35,12 @@ func TestPublicHTTPCaching(t *testing.T) {
 			if r.Header.Get("ETag") == "" {
 				t.Errorf("%s: ETag yo'q", p)
 			}
+			if got := r.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("%s: ACAO = %q (umumiy kesh uchun * bo'lishi kerak)", p, got)
+			}
 			vary := strings.Join(r.Header.Values("Vary"), ",")
-			if !strings.Contains(vary, "Authorization") || !strings.Contains(vary, "Origin") {
-				t.Errorf("%s: Vary = %q (Origin va Authorization bo'lishi kerak)", p, vary)
+			if !strings.Contains(vary, "Authorization") || strings.Contains(vary, "Origin") {
+				t.Errorf("%s: Vary = %q (Authorization bo'lishi, Origin bo'lmasligi kerak)", p, vary)
 			}
 		}
 	})

@@ -15,8 +15,9 @@
 // (ETag bilan: trafik tejaladi, lekin umumiy keshga tushmaydi).
 // Xato javoblar (4xx/5xx) `no-store`: vaqtinchalik xato keshda qolmasin.
 //
-// Vary: Origin (CORS javobni origin bo'yicha o'zgartiradi) va
-// Authorization (yuqoridagi ikki xil javob kesh kalitida aralashmasin).
+// Ochiq javob: `Access-Control-Allow-Origin: *`, `Vary: Authorization`
+// (origin'ga bog'liq emas - umumiy kesh nusxasi hamma uchun to'g'ri).
+// Shaxsiy javob: origin aks ettiriladi, `Vary: Origin, Authorization`.
 // └────────────────────────────────────────────────────────────────┘
 package httpapi
 
@@ -75,6 +76,16 @@ func publicCache(maxAge, swr int, next http.HandlerFunc) http.HandlerFunc {
 			h.Set("Cache-Control", "private, no-cache")
 		} else {
 			h.Set("Cache-Control", public)
+			// Umumiy kesh (Cloudflare) `Vary: Origin` ni hisobga OLMAYDI: bitta
+			// javob hamma so'rovchiga beriladi. CORS middleware esa
+			// `Access-Control-Allow-Origin` ni so'rov Origin'iga qarab qo'yadi
+			// (native ilovada Origin yo'q -> sarlavha yo'q). Bunday nusxa keshga
+			// tushsa, brauzer panellari uni CORS xatosi bilan rad etardi.
+			// Shuning uchun ochiq (anonim) javob origin'ga BOG'LIQ EMAS: `*`.
+			// Xavfsiz: bu ma'lumot allaqachon hammaga ochiq, token/cookie yo'q.
+			h.Set("Access-Control-Allow-Origin", "*")
+			h.Del("Vary")
+			h.Add("Vary", "Authorization")
 		}
 		sum := sha256.Sum256(rec.body.Bytes())
 		etag := `"` + hex.EncodeToString(sum[:12]) + `"`

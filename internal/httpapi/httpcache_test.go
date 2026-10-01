@@ -31,9 +31,13 @@ func TestPublicCache_AnonymousIsPublicWithETag(t *testing.T) {
 	if rec.Header().Get("ETag") == "" {
 		t.Fatal("ETag yo'q")
 	}
+	// Umumiy kesh nusxasi origin'ga bog'liq bo'lmasligi shart.
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, kutilgan *", got)
+	}
 	vary := strings.Join(rec.Header().Values("Vary"), ",")
-	if !strings.Contains(vary, "Origin") || !strings.Contains(vary, "Authorization") {
-		t.Fatalf("Vary = %q", vary)
+	if strings.Contains(vary, "Origin") || !strings.Contains(vary, "Authorization") {
+		t.Fatalf("Vary = %q (Authorization bo'lishi, Origin bo'lmasligi kerak)", vary)
 	}
 }
 
@@ -49,6 +53,10 @@ func TestPublicCache_AuthenticatedNeverPublic(t *testing.T) {
 		cc := rec.Header().Get("Cache-Control")
 		if strings.Contains(cc, "public") || !strings.Contains(cc, "private") {
 			t.Errorf("%s: Cache-Control = %q (private bo'lishi kerak)", tc.name, cc)
+		}
+		// Shaxsiy javobda `*` bo'lmaydi: origin aks ettiriladi (CORS middleware).
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); got == "*" {
+			t.Errorf("%s: shaxsiy javobda ACAO=* bo'lmasligi kerak", tc.name)
 		}
 	}
 }
@@ -86,5 +94,35 @@ func TestPublicCache_HeadHasNoBody(t *testing.T) {
 	rec := cacheReq(cachedHandler(200, "a"), "HEAD", "/x", nil)
 	if rec.Code != 200 || rec.Body.Len() != 0 || rec.Header().Get("ETag") == "" {
 		t.Fatalf("HEAD: kod %d, tana %d", rec.Code, rec.Body.Len())
+	}
+}
+
+// Haqiqiy CORS middleware bilan: ochiq javob origin'ga bog'liq emas (`*`),
+// tokenli javob esa ruxsat etilgan origin'ni aks ettiradi.
+func TestPublicCache_WithRealCORS(t *testing.T) {
+	const origin = "https://panel.example"
+	h := withCORS(http.HandlerFunc(cachedHandler(200, "a")), []string{origin}, false)
+	get := func(hdr map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/x", nil)
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	// Native ilova (Origin yo'q) ham, brauzer ham BIR XIL nusxani oladi.
+	for name, hdr := range map[string]map[string]string{
+		"native":  nil,
+		"brauzer": {"Origin": origin},
+		"begona":  {"Origin": "https://boshqa.example"},
+	} {
+		if got := get(hdr).Header().Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Errorf("%s: ACAO = %q, kutilgan *", name, got)
+		}
+	}
+	rec := get(map[string]string{"Origin": origin, "Authorization": "Bearer t"})
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != origin {
+		t.Errorf("tokenli: ACAO = %q, kutilgan %q", got, origin)
 	}
 }
