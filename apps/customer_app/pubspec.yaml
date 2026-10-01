@@ -18,6 +18,10 @@ dependencies:
   # affitsiant ilovasi bilan AYNI kod.
   ondex_menu:
     path: ../../packages/ondex_menu
+  # OnDexMap'ni MapLibre bilan chizish (uslub, joy belgilari, brend,
+  # hudud chegaralari) — kuryer ilovasi bilan umumiy.
+  ondex_maplibre:
+    path: ../../packages/ondex_maplibre
   flutter:
     sdk: flutter
   http: ^1.2.0
@@ -143,11 +147,6 @@ flutter:
     - assets/uz_flag.png
     # Buyurtma kuzatuvi xaritasi: kuryer mashinasi (yuqoridan ko'rinish).
     - assets/map/
-    # ⚠️ Ichki papka ALOHIDA yoziladi: `assets/map/` faqat o'sha
-    # papkadagi fayllarni oladi, ost-papkalarni emas.
-    #
-    # Bu yerda OnDexMap xaritasidagi joy pinlari
-    # (`web/public/org-icons/` dan ko'chirilgan, 128 px ga
-    # kichraytirilgan — `poi_icons.dart` izohiga qarang).
-    - assets/map/poi/
+    # OnDexMap joy pinlari `packages/ondex_maplibre/assets/poi/` da
+    # (kuryer ilovasi bilan umumiy; `poi_icons.dart` izohiga qarang).
     - shorebird.yaml

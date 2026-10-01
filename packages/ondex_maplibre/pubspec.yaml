@@ -1,0 +1,26 @@
+name: ondex_maplibre
+description: OnDexMap xaritasini MapLibre bilan chizish uchun UMUMIY qism (uslub, joy belgilari, brend yorlig'i, hudud chegaralari). Mijoz va kuryer ilovalari ishlatadi.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.7.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  maplibre_gl: ^0.27.1
+  # Joy belgilari (`poi_icons.dart`) shu paketdagi glifdan chiziladi.
+  lucide_icons_flutter: ^3.1.20
+  # Atribut sahifasini tizim brauzerida ochish (`ondex_brand.dart`).
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  assets:
+    # Joy pinlari (`poi_icons.dart`): `packages/ondex_maplibre/assets/poi/...`
+    - assets/poi/
