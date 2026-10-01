@@ -34,9 +34,8 @@ dependencies:
   geolocator: ^13.0.1
   google_maps_flutter: ^2.10.0
   # OnDexMap xaritasi (`lib/map/`). Google Maps'ning O'RNIGA emas,
-  # YONIDA: qaysi biri ishlashini `--dart-define=ONDEX_MAP` hal qiladi
-  # (`lib/map/map_backend.dart` izohiga qarang). Flag o'chiq bo'lsa bu
-  # kod ishga tushmaydi.
+  # YONIDA: qaysi biri ishlashini serverdagi `GOOGLE_MAP` bayrog'i hal qiladi
+  # (`lib/map/map_backend.dart` izohiga qarang).
   #
   # MapLibre Native PMTiles'ni O'ZI qo'llaydi, shuning uchun OnDexMap
   # uslubi (`tiles/style.json`) o'zgarishsiz ishlaydi va qo'shimcha

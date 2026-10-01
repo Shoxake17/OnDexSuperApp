@@ -78,6 +78,17 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   ml.MapLibreMapController? _ctrl;
   bool _styleReady = false;
+
+  /// Uslub o'z vaqtida yuklanmadi — xato va "Qayta urinish" ko'rsatiladi.
+  ///
+  /// ⚠️ Bu ekran HECH QACHON Google'ga tushmaydi (`GOOGLE_MAP` bayrog'idan
+  /// qat'i nazar): u aynan OnDexMap'ni ko'rsatish uchun. Buyurtma oqimi
+  /// ekranlaridan farqi shu.
+  bool _mapFailed = false;
+
+  /// Har "Qayta urinish" da oshadi — xarita vidjeti qayta yaratiladi.
+  int _mapAttempt = 0;
+  Timer? _styleWatchdog;
   bool _satellite = false;
   ml.LatLng _center = _chust;
   /// Joriy masshtab.
@@ -137,10 +148,32 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
   void initState() {
     super.initState();
     _readLocPerm();
+    _armStyleWatchdog();
+  }
+
+  /// Uslub [kOndexStyleTimeout] ichida yuklanmasa xato ko'rsatiladi
+  /// (`maplibre_gl` uslub xatosi uchun callback bermaydi).
+  void _armStyleWatchdog() {
+    _styleWatchdog?.cancel();
+    _styleWatchdog = Timer(kOndexStyleTimeout, () {
+      if (mounted && !_styleReady) setState(() => _mapFailed = true);
+    });
+  }
+
+  void _retryMap() {
+    _symbols.clear();
+    _routeLine = null;
+    _styleReady = false;
+    setState(() {
+      _mapFailed = false;
+      _mapAttempt++;
+    });
+    _armStyleWatchdog();
   }
 
   @override
   void dispose() {
+    _styleWatchdog?.cancel();
     _debounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
@@ -538,6 +571,7 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       body: Stack(
         children: [
           _buildMap(),
+          if (_mapFailed) _buildMapError(),
           // Brend pastki panel USTIDA: aks holda u panel ortida
           // qolib, umuman ko'rinmasdi.
           OndexMapBrand(bottom: _sheetHeight + pastki + 4),
@@ -628,7 +662,7 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
 
   Widget _buildMap() {
     return ml.MapLibreMap(
-      key: ValueKey(_satellite),
+      key: ValueKey('$_satellite-$_mapAttempt'),
       styleString: _satellite ? ondexSatelliteStyle : kOndexStyleUrl,
       initialCameraPosition:
           ml.CameraPosition(target: _center, zoom: _zoomLevel),
@@ -636,6 +670,8 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       onMapCreated: (c) => _ctrl = c,
       onStyleLoadedCallback: () async {
         _styleReady = true;
+        _styleWatchdog?.cancel();
+        if (_mapFailed && mounted) setState(() => _mapFailed = false);
         // Uslub almashgach belgilar va chiziq yo'qoladi — qaytaramiz.
         _symbols.clear();
         _routeLine = null;
@@ -668,6 +704,42 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
       myLocationRenderMode: ml.MyLocationRenderMode.normal,
       tiltGesturesEnabled: false,
       attributionButtonMargins: kOndexHideAttribution,
+    );
+  }
+
+  /// Xarita yuklanmadi: xato va "Qayta urinish" (Google'ga tushmaydi).
+  Widget _buildMapError() {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.white,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off, size: 48, color: Color(0xFF71717A)),
+                const SizedBox(height: 12),
+                const Text(
+                  'Xarita yuklanmadi',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Internetni tekshirib, qayta urinib ko\'ring.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF71717A)),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _retryMap,
+                  child: const Text('Qayta urinish'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -765,7 +837,11 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
               _symbols.clear();
               _routeLine = null;
               _styleReady = false;
-              setState(() => _satellite = !_satellite);
+              setState(() {
+                _satellite = !_satellite;
+                _mapFailed = false;
+              });
+              _armStyleWatchdog();
             },
           ),
           const SizedBox(height: 10),

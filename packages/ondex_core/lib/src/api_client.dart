@@ -245,9 +245,16 @@ class ApiClient {
   }
 
   /// Google Maps kaliti — server `.env` dan beradi (faqat login qilganlarga).
+  ///
+  /// `GOOGLE_MAP=false` rejimida serverda kalit bo'lmasligi mumkin — bu
+  /// holda Google yo'li ishlamaydi va chaqiruvchi xatoni ushlaydi.
   Future<String> mapsApiKey() async {
     final d = await send('GET', '/config/maps');
-    return d['maps_api_key'] as String;
+    final key = d is Map ? d['maps_api_key'] : null;
+    if (key is! String || key.isEmpty) {
+      throw ApiException('Google xaritasi sozlanmagan');
+    }
+    return key;
   }
 
   /// Koordinatadan manzil matni (`GET /geocode/reverse`).

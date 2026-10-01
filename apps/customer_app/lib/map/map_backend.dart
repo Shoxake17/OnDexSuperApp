@@ -1,46 +1,41 @@
 /// XARITA MOTORINI TANLASH — Google Maps yoki OnDexMap.
 ///
-/// ┌─ NEGA FLAG, DARHOL ALMASHTIRISH EMAS ──────────────────────────────┐
-/// Bu ilova Play Market'da tarqalgan va odamlar undan har kuni
-/// foydalanadi. Xarita — buyurtma oqimining ikki muhim joyida:
-/// manzil tanlash va kuryerni kuzatish. Ikkalasi ham buzilsa mijoz
-/// buyurtma bera olmaydi yoki kuryer qayerdaligini ko'rmaydi.
+/// ┌─ BAYROQ SERVERDA (`GOOGLE_MAP`) ───────────────────────────────────┐
+/// Qaysi motor ishlatilishini ilova EMAS, server hal qiladi: `.env` dagi
+/// `GOOGLE_MAP` qiymati `GET /config/maps` orqali keladi
+/// (`ondex_core` → `MapConfigService`). Ilovani qayta qurish shart emas.
 ///
-/// Shuning uchun OnDexMap yonma-yon qo'shiladi, o'rniga emas:
+///   * `GOOGLE_MAP=true`  — buyurtma oqimi (manzil tanlash, kuzatuv)
+///     Google Maps bilan;
+///   * `GOOGLE_MAP=false` — o'sha ekranlar OnDexMap bilan.
 ///
-///   * flag O'CHIQ (standart) — ilova AYNAN hozirgidek ishlaydi,
-///     Google Maps kodiga bitta belgi ham tegilmagan;
-///   * flag YOQIQ — o'sha ekranlar OnDexMap bilan chiziladi.
-///
-/// Ikkala yo'l bir xil vazifani bajaradi: bir xil markazni tanlash,
-/// bir xil kuryer harakati, bir xil natija tashqariga qaytadi.
+/// "OnDex Xarita" ekrani bundan mustasno: u HAR DOIM OnDexMap va hech
+/// qachon Google'ga tushmaydi.
 /// └────────────────────────────────────────────────────────────────────┘
 ///
-/// ┌─ NEGA KOMPILYATSIYA VAQTIDA ───────────────────────────────────────┐
-/// Flag `--dart-define` bilan beriladi, serverdan EMAS. Sabab: xarita
-/// motorini masofadan almashtirish — ilovaning eng ko'p ko'riladigan
-/// ekranini ishga tushgandan keyin o'zgartirish demakdir. Noto'g'ri
-/// javob, kesh yoki buzilgan sozlama minglab qurilmada bir vaqtda
-/// xaritani o'chirib qo'yishi mumkin edi.
-///
-/// Kompilyatsiya vaqtidagi flag esa `false` bo'lsa OnDexMap kodini
-/// tree-shaking butunlay olib tashlaydi: u ishga tushmaydi ham,
-/// build'ga ham kirmaydi.
-///
-/// ⚠️ Shu sababli flagni Shorebird patch'i bilan YOQIB BO'LMAYDI —
-/// u yangi release build talab qiladi.
+/// ┌─ OnDexMap ISHLAMASA ───────────────────────────────────────────────┐
+/// Buyurtma oqimidagi ekranlar xarita o'rniga xato ko'rsatmaydi: uslub
+/// yuklanmasa yoki javob kelmasa `MapConfigService.reportOndexFailure`
+/// chaqiriladi va ilova [MapConfigService.failureCooldown] davomida
+/// Google'da turadi. Bu — xarita buyurtma berish va kuryerni kuzatishning
+/// ikki muhim joyi bo'lgani uchun.
 /// └────────────────────────────────────────────────────────────────────┘
 ///
-/// Yoqish:
-/// ```
-/// flutter build apk --dart-define=ONDEX_MAP=true
-/// ```
+/// Standart (server javob bermagan, qiymat hech qachon olinmagan) —
+/// Google: bu ilgarigi production xatti-harakati.
 library;
 
-/// OnDexMap yoqilganmi.
+import 'package:ondex_core/ondex_core.dart' show MapConfigService;
+
+/// Buyurtma oqimi ekranlari hozir OnDexMap bilan chizilsinmi.
 ///
-/// Standart `false`: hozirgi production xatti-harakati o'zgarmaydi.
-const bool kUseOnDexMap = bool.fromEnvironment('ONDEX_MAP');
+/// Ekran ochilganda BIR MARTA o'qiladi (xarita ish paytida motor
+/// almashtirmaydi) — faqat OnDexMap xatosida Google'ga tushadi.
+bool get useOndexMapNow => MapConfigService.instance.useOndexMap;
+
+/// OnDexMap uslubi shuncha vaqtda yuklanmasa — ishlamayapti deb hisoblanadi
+/// va buyurtma oqimi ekrani Google'ga o'tadi.
+const Duration kOndexStyleTimeout = Duration(seconds: 10);
 
 /// OnDexMap serverining manzili.
 const String kOndexApiBase = 'https://maps.ondex.uz';

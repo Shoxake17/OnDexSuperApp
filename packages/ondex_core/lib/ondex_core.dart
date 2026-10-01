@@ -26,6 +26,8 @@ export 'src/format.dart';
 // (bug.md 70-band).
 export 'src/legal.dart';
 export 'src/live_bus.dart';
+// Xarita manbasi (`GOOGLE_MAP` bayrog'i serverdan) va Google'ga qaytish.
+export 'src/maps/map_config.dart';
 // Google Maps JS yuklovchisi — veb'da haqiqiy, qolgan nishonlarda stub.
 export 'src/maps/maps_loader.dart';
 export 'src/order_status.dart';

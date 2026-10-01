@@ -6,37 +6,49 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ondex_core/ondex_core.dart';
 
-/// XARITA FLAGI TESTLARI.
+/// XARITA MANBASI TESTLARI (`GOOGLE_MAP`, serverdan).
 ///
-/// ┌─ BU FAYL IKKI MARTA ISHLAYDI ──────────────────────────────────────┐
-/// `kUseOnDexMap` — kompilyatsiya vaqtidagi doimiy, uni test ichida
-/// o'zgartirib bo'lmaydi. Shuning uchun testlar flagning JORIY
-/// qiymatiga qarab kutilgan natijani tekshiradi va to'liq qamrov
-/// uchun ikki marta ishga tushiriladi:
-///
-///   flutter test
-///   flutter test --dart-define=ONDEX_MAP=true
-///
-/// Ikkalasi ham CI'da bajariladi. Faqat birinchisi ishlatilsa,
-/// OnDexMap yo'lidagi kompilyatsiya xatosi ham sezilmay qolardi.
-/// └────────────────────────────────────────────────────────────────────┘
+/// Bayroq endi kompilyatsiya doimiysi emas — `MapConfigService` orqali
+/// serverdan keladi, shuning uchun har ikki rejim ham bitta test
+/// ishga tushishida tekshiriladi.
 void main() {
   const chust = gm.LatLng(41.0030, 71.2360);
+  final svc = MapConfigService.instance;
 
-  group('flag', () {
-    test('standart holatda Google Maps ishlaydi', () {
-      // Bu tasdiq ataylab qattiq: flagning standart qiymati
-      // tasodifan `true` ga o'zgarib ketsa, production build jimgina
-      // xarita motorini almashtirardi.
-      const fromEnv = bool.fromEnvironment('ONDEX_MAP');
-      expect(kUseOnDexMap, fromEnv);
-      if (!fromEnv) {
-        expect(kUseOnDexMap, isFalse, reason: 'standart — Google Maps');
-      }
-    });
+  MapConfig cfg(MapProvider p) => MapConfig(
+    provider: p,
+    googleAvailable: true,
+    ondexApiBase: MapConfig.defaults.ondexApiBase,
+    ondexStyleUrl: MapConfig.defaults.ondexStyleUrl,
+  );
+
+  setUp(() {
+    svc.reportOndexRecovered();
+    svc.setConfigForTest(MapConfig.defaults);
   });
 
+  group('manba tanlovi', () {
+    test('standart — Google Maps', () {
+      // Qiymat hech qachon olinmagan bo'lsa (server javob bermagan)
+      // ilova Google'da turadi: bu ilgarigi production xatti-harakati.
+      expect(useOndexMapNow, isFalse);
+    });
+
+    test('server "ondexmap" desa — OnDexMap', () {
+      svc.setConfigForTest(cfg(MapProvider.ondexmap));
+      expect(useOndexMapNow, isTrue);
+    });
+
+    test('OnDexMap xatosidan keyin — Google, tiklangach yana OnDexMap', () {
+      svc.setConfigForTest(cfg(MapProvider.ondexmap));
+      svc.reportOndexFailure('address', 'test');
+      expect(useOndexMapNow, isFalse);
+      svc.reportOndexRecovered();
+      expect(useOndexMapNow, isTrue);
+    });
+  });
   group('OnDexMap teskari geokodlash hududi', () {
     test('Chust — hudud ichida', () {
       expect(ondexReverseCovers(41.0030, 71.2360), isTrue);
@@ -49,8 +61,14 @@ void main() {
     });
 
     test('chegaraning aynan o\'zi — ichkarida', () {
-      expect(ondexReverseCovers(kOndexReverseMinLat, kOndexReverseMinLng), isTrue);
-      expect(ondexReverseCovers(kOndexReverseMaxLat, kOndexReverseMaxLng), isTrue);
+      expect(
+        ondexReverseCovers(kOndexReverseMinLat, kOndexReverseMinLng),
+        isTrue,
+      );
+      expect(
+        ondexReverseCovers(kOndexReverseMaxLat, kOndexReverseMaxLng),
+        isTrue,
+      );
     });
 
     test('chegaradan bir chetga chiqsa — tashqarida', () {
@@ -60,13 +78,16 @@ void main() {
   });
 
   group('sun\'iy yo\'ldosh uslubi', () {
-    test('OnDexMap proksisi orqali, provayderga to\'g\'ridan-to\'g\'ri emas', () {
-      // Tile manzili to'g'ridan-to'g'ri provayderga ketsa, kalit
-      // ilovaga tushib qolardi — u SERVERDA qolishi kerak.
-      expect(ondexSatelliteStyle, contains('maps.ondex.uz/tiles/satellite'));
-      expect(ondexSatelliteStyle, isNot(contains('arcgisonline')));
-      expect(ondexSatelliteStyle, isNot(contains('googleapis')));
-    });
+    test(
+      'OnDexMap proksisi orqali, provayderga to\'g\'ridan-to\'g\'ri emas',
+      () {
+        // Tile manzili to'g'ridan-to'g'ri provayderga ketsa, kalit
+        // ilovaga tushib qolardi — u SERVERDA qolishi kerak.
+        expect(ondexSatelliteStyle, contains('maps.ondex.uz/tiles/satellite'));
+        expect(ondexSatelliteStyle, isNot(contains('arcgisonline')));
+        expect(ondexSatelliteStyle, isNot(contains('googleapis')));
+      },
+    );
 
     test('kredit bo\'sh emas', () {
       // Atributsiz uslub litsenziya talabini buzardi.
@@ -80,77 +101,88 @@ void main() {
     });
   });
 
-  // ┌─ NEGA FAQAT GOOGLE REJIMIDA ─────────────────────────────────────┐
+  // ┌─ NEGA OnDexMap VIDJETI TEKSHIRILMAYDI ───────────────────────────┐
   // `MapLibreMap` widget testida platform kanalini talab qiladi va
   // daraxt tarqatilayotganda `LateInitializationError: _channel`
-  // bilan yiqiladi — bu paketning test muhitidagi cheklovi, bizning
-  // kodimizniki emas (nativ xarita oynasi testda mavjud emas).
+  // bilan yiqiladi — bu paketning test muhitidagi cheklovi (nativ xarita
+  // oynasi testda mavjud emas). Shuning uchun bu yerda faqat Google
+  // yo'li chiziladi; OnDexMap yo'li qurilmada sinaladi.
   //
-  // OnDexMap yo'lining KOMPILYATSIYASI baribir tekshiriladi: bu fayl
-  // `--dart-define=ONDEX_MAP=true` bilan ham ishga tushiriladi va
-  // qolgan testlar o'sha kodni import qiladi. Xatti-harakatni esa
-  // qurilmada sinash kerak.
+  // Eng muhim kafolat esa shu yerda tekshiriladi: server "ondexmap"
+  // desa-yu OnDexMap yaqinda yiqilgan bo'lsa, ekran MapLibre'ni UMUMAN
+  // yaratmay, Google bilan ochiladi.
   // └──────────────────────────────────────────────────────────────────┘
-  group('xarita vidjeti flagga bo\'ysunadi', skip: kUseOnDexMap, () {
-    testWidgets('PanMap to\'g\'ri motorni tanlaydi', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SizedBox(
-          width: 300,
-          height: 300,
-          child: PanMap(
-            initialCenter: chust,
-            initialZoom: 16,
-            satellite: false,
-            onCameraMove: (_, _) {},
-            onCameraIdle: () {},
-            onReady: (_) {},
-          ),
+  group('xarita vidjeti manbaga bo\'ysunadi', () {
+    Widget pan() => MaterialApp(
+      home: SizedBox(
+        width: 300,
+        height: 300,
+        child: PanMap(
+          initialCenter: chust,
+          initialZoom: 16,
+          satellite: false,
+          onCameraMove: (_, _) {},
+          onCameraIdle: () {},
+          onReady: (_) {},
         ),
-      ));
+      ),
+    );
 
-      if (kUseOnDexMap) {
-        expect(find.byType(ml.MapLibreMap), findsOneWidget);
-        expect(find.byType(gm.GoogleMap), findsNothing);
-      } else {
-        expect(find.byType(gm.GoogleMap), findsOneWidget);
-        expect(find.byType(ml.MapLibreMap), findsNothing);
-      }
+    Widget track() => MaterialApp(
+      home: SizedBox(
+        width: 300,
+        height: 300,
+        child: TrackMap(
+          initialCenter: chust,
+          markers: const [],
+          lines: const [],
+          onReady: (_) {},
+          onUserMoved: () {},
+        ),
+      ),
+    );
+
+    testWidgets('PanMap: Google rejimida GoogleMap', (tester) async {
+      await tester.pumpWidget(pan());
+      expect(find.byType(gm.GoogleMap), findsOneWidget);
+      expect(find.byType(ml.MapLibreMap), findsNothing);
     });
 
-    testWidgets('TrackMap to\'g\'ri motorni tanlaydi', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SizedBox(
-          width: 300,
-          height: 300,
-          child: TrackMap(
-            initialCenter: chust,
-            markers: const [],
-            lines: const [],
-            onReady: (_) {},
-            onUserMoved: () {},
-          ),
-        ),
-      ));
+    testWidgets('TrackMap: Google rejimida GoogleMap', (tester) async {
+      await tester.pumpWidget(track());
+      expect(find.byType(gm.GoogleMap), findsOneWidget);
+      expect(find.byType(ml.MapLibreMap), findsNothing);
+    });
 
-      if (kUseOnDexMap) {
-        expect(find.byType(ml.MapLibreMap), findsOneWidget);
-        expect(find.byType(gm.GoogleMap), findsNothing);
-      } else {
-        expect(find.byType(gm.GoogleMap), findsOneWidget);
-        expect(find.byType(ml.MapLibreMap), findsNothing);
-      }
+    testWidgets('PanMap: OnDexMap yiqilgan bo\'lsa Google bilan ochiladi', (
+      tester,
+    ) async {
+      svc.setConfigForTest(cfg(MapProvider.ondexmap));
+      svc.reportOndexFailure('address', 'test');
+      await tester.pumpWidget(pan());
+      expect(find.byType(gm.GoogleMap), findsOneWidget);
+      expect(find.byType(ml.MapLibreMap), findsNothing);
+    });
+
+    testWidgets('TrackMap: OnDexMap yiqilgan bo\'lsa Google bilan ochiladi', (
+      tester,
+    ) async {
+      svc.setConfigForTest(cfg(MapProvider.ondexmap));
+      svc.reportOndexFailure('tracking', 'test');
+      await tester.pumpWidget(track());
+      expect(find.byType(gm.GoogleMap), findsOneWidget);
+      expect(find.byType(ml.MapLibreMap), findsNothing);
     });
   });
-
   group('TrackMarker', () {
     TrackMarker marker({double rotation = 0}) => TrackMarker(
-          id: 'courier',
-          point: chust,
-          image: null,
-          sizeDip: 22,
-          imageWidthPx: 66,
-          rotation: rotation,
-        );
+      id: 'courier',
+      point: chust,
+      image: null,
+      sizeDip: 22,
+      imageWidthPx: 66,
+      rotation: rotation,
+    );
 
     test('burilish o\'zgarsa belgi YANGI hisoblanadi', () {
       // Tenglik noto'g'ri bo'lsa xarita mashinani burmay qo'yardi.

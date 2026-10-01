@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 // `SystemUiOverlayStyle` uchun — tizim paneli uslubi shu ekranda
 // belgilanadi (izohga qarang).
 import 'package:flutter/services.dart';
+import 'package:ondex_core/ondex_core.dart' show MapConfigService;
 
+import '../api.dart' show api;
 import '../data/ai_status.dart';
 import '../services/push.dart';
 import '../widgets/bottom_nav.dart';
@@ -79,6 +81,10 @@ class _HomeShellState extends State<HomeShell> {
     // `await` qilinmaydi: tarmoq so'rovi ekran chizilishini kutib
     // turmasligi kerak.
     PushService.instance.start();
+    // Xarita manbasi (serverdagi `GOOGLE_MAP` bayrog'i) — sessiya ochilishi
+    // bilan yangilanadi. `await` yo'q va xato otmaydi: javob kelmasa oxirgi
+    // ma'lum qiymat (yoki Google) ishlayveradi.
+    MapConfigService.instance.refresh(api.send);
   }
 
   @override

@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+import 'package:ondex_core/ondex_core.dart' show MapConfigService;
 
 import 'map_backend.dart';
 import 'ondex_brand.dart';
@@ -123,9 +124,21 @@ class TrackMap extends StatefulWidget {
 }
 
 class _TrackMapState extends State<TrackMap> {
+  /// Motor ekran ochilganda BIR MARTA tanlanadi (`GOOGLE_MAP`, serverdan).
+  /// OnDexMap ishlamasa Google'ga tushadi: yangi xarita `onReady` ni qayta
+  /// chaqiradi va belgilar/chiziqlar o'sha paytdagi qiymatlardan chiziladi.
+  late bool _ondex = useOndexMapNow;
+
+  void _ondexFailed(String reason) {
+    if (!_ondex || !mounted) return;
+    MapConfigService.instance.reportOndexFailure('tracking', reason);
+    setState(() => _ondex = false);
+  }
+
   @override
-  Widget build(BuildContext context) =>
-      kUseOnDexMap ? _OndexTrackMap(widget) : _GoogleTrackMap(widget);
+  Widget build(BuildContext context) => _ondex
+      ? _OndexTrackMap(widget, onFailure: _ondexFailed)
+      : _GoogleTrackMap(widget);
 }
 
 /// Xarita sahifa ichida (`ListView`) turadi: busiz barmoq xaritani
@@ -250,8 +263,11 @@ class _GoogleTrackMapState extends State<_GoogleTrackMap>
    ══════════════════════════════════════════════════════════════════════ */
 
 class _OndexTrackMap extends StatefulWidget {
-  const _OndexTrackMap(this.cfg);
+  const _OndexTrackMap(this.cfg, {required this.onFailure});
   final TrackMap cfg;
+
+  /// OnDexMap ishlamadi — chaqiruvchi Google'ga o'tadi.
+  final void Function(String reason) onFailure;
 
   @override
   State<_OndexTrackMap> createState() => _OndexTrackMapState();
@@ -261,6 +277,25 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
     implements TrackMapController {
   ml.MapLibreMapController? _ctrl;
   bool _styleReady = false;
+  Timer? _watchdog;
+
+  @override
+  void initState() {
+    super.initState();
+    // Uslub [kOndexStyleTimeout] ichida yuklanmasa — OnDexMap ishlamayapti
+    // (`maplibre_gl` uslub xatosi uchun callback bermaydi).
+    _watchdog = Timer(kOndexStyleTimeout, () {
+      if (mounted && !_styleReady) {
+        widget.onFailure('uslub ${kOndexStyleTimeout.inSeconds} s ichida yuklanmadi');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _watchdog?.cancel();
+    super.dispose();
+  }
 
   /// Xaritaga yuklangan rasmlar (`addImage` nomi bo'yicha).
   final _loadedImages = <String>{};
@@ -396,6 +431,8 @@ class _OndexTrackMapState extends State<_OndexTrackMap>
       // `addImage` manba topa olmay xato beradi.
       onStyleLoadedCallback: () async {
         _styleReady = true;
+        _watchdog?.cancel();
+        MapConfigService.instance.reportOndexRecovered();
         _loadedImages.clear();
         // Joy belgilari uslubda emas (`poi_icons.dart`) — busiz
         // kuzatuv xaritasi ham bo'm-bo'sh ko'rinadi.

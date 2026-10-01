@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+import 'package:ondex_core/ondex_core.dart' show MapConfigService;
 
 import 'map_backend.dart';
 import 'ondex_brand.dart';
@@ -67,9 +68,21 @@ class PanMap extends StatefulWidget {
 }
 
 class _PanMapState extends State<PanMap> {
+  /// Motor ekran ochilganda BIR MARTA tanlanadi (`GOOGLE_MAP`, serverdan).
+  /// Xarita ish paytida o'zi almashmaydi — faqat OnDexMap xatosida
+  /// Google'ga tushadi (`_ondexFailed`).
+  late bool _ondex = useOndexMapNow;
+
+  void _ondexFailed(String reason) {
+    if (!_ondex || !mounted) return;
+    MapConfigService.instance.reportOndexFailure('address', reason);
+    setState(() => _ondex = false);
+  }
+
   @override
-  Widget build(BuildContext context) =>
-      kUseOnDexMap ? _OndexPanMap(widget) : _GooglePanMap(widget);
+  Widget build(BuildContext context) => _ondex
+      ? _OndexPanMap(widget, onFailure: _ondexFailed)
+      : _GooglePanMap(widget);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -132,8 +145,11 @@ class _GooglePanMapState extends State<_GooglePanMap> implements PanMapControlle
    ══════════════════════════════════════════════════════════════════════ */
 
 class _OndexPanMap extends StatefulWidget {
-  const _OndexPanMap(this.cfg);
+  const _OndexPanMap(this.cfg, {required this.onFailure});
   final PanMap cfg;
+
+  /// OnDexMap ishlamadi — chaqiruvchi Google'ga o'tadi.
+  final void Function(String reason) onFailure;
 
   @override
   State<_OndexPanMap> createState() => _OndexPanMapState();
@@ -141,6 +157,38 @@ class _OndexPanMap extends StatefulWidget {
 
 class _OndexPanMapState extends State<_OndexPanMap> implements PanMapController {
   ml.MapLibreMapController? _ctrl;
+  Timer? _watchdog;
+
+  @override
+  void initState() {
+    super.initState();
+    _armWatchdog();
+  }
+
+  /// Uslub [kOndexStyleTimeout] ichida yuklanmasa — OnDexMap ishlamayapti.
+  /// `maplibre_gl` uslub xatosi uchun callback bermaydi, shuning uchun
+  /// "yuklandi" signalining kelmasligi yagona ishonchli belgi.
+  void _armWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer(kOndexStyleTimeout, () {
+      if (mounted) {
+        widget.onFailure('uslub ${kOndexStyleTimeout.inSeconds} s ichida yuklanmadi');
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_OndexPanMap old) {
+    super.didUpdateWidget(old);
+    // Oddiy ↔ sun'iy yo'ldosh: xarita qayta yaratiladi, uslub qayta yuklanadi.
+    if (old.cfg.satellite != widget.cfg.satellite) _armWatchdog();
+  }
+
+  @override
+  void dispose() {
+    _watchdog?.cancel();
+    super.dispose();
+  }
 
   @override
   Future<void> animateTo(gm.LatLng target, double zoom) async {
@@ -184,6 +232,8 @@ class _OndexPanMapState extends State<_OndexPanMap> implements PanMapController 
       // `poi_icons.dart` izohiga qarang. Busiz xarita bo'm-bo'sh
       // ko'rinadi: na do'kon, na kafe nomi.
       onStyleLoadedCallback: () async {
+        _watchdog?.cancel();
+        MapConfigService.instance.reportOndexRecovered();
         final c = _ctrl;
         if (c != null && mounted) {
           await loadPoiIcons(c);

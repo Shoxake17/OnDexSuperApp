@@ -216,8 +216,10 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
   Future<void> _loadMaps() async {
     // OnDexMap'da yuklanadigan SDK yo'q — uslub xaritaning o'zi bilan
     // keladi (`address_screen.dart` dagi bilan bir xil sabab).
-    if (kUseOnDexMap) {
+    if (useOndexMapNow) {
       setState(() => _mapsReady = true);
+      // Zaxira: OnDexMap yiqilsa Google'ga tushiladi (`address_screen.dart`).
+      ensureGoogleMapsLoaded(api.mapsApiKey).catchError((_) {});
       return;
     }
     try {

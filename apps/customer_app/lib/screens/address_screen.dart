@@ -152,9 +152,13 @@ class _AddressScreenState extends State<AddressScreen> {
     // OnDexMap'da yuklanadigan SDK yo'q: uslub xaritaning o'zi bilan
     // keladi. Google yo'lida esa (ayniqsa web'da) skript avval
     // yuklanishi kerak, aks holda xarita bo'sh chiqadi.
-    if (kUseOnDexMap) {
+    if (useOndexMapNow) {
       setState(() => _mapsReady = true);
       _scheduleResolve(_center);
+      // Zaxira: OnDexMap yiqilsa xarita Google'ga tushadi — veb'da uning
+      // skripti oldindan yuklab qo'yiladi. Kutilmaydi va xato bermaydi
+      // (mobil'da bu hech narsa qilmaydi).
+      ensureGoogleMapsLoaded(api.mapsApiKey).catchError((_) {});
       return;
     }
     try {
