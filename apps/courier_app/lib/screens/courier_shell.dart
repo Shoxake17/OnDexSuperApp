@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import '../location_reporter.dart';
+import '../map/courier_map.dart';
 import '../offer_alert.dart';
 import '../offer_recovery.dart';
 import '../push.dart';
@@ -66,7 +67,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   double _panelHeight = 0;
 
   // ---- Xarita ----
-  GoogleMapController? _mapController;
+  CourierMapController? _mapController;
   bool _mapsReady = false;
   bool _mapsFailed = false;
   LatLng? _myPosition;
@@ -120,7 +121,6 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
 
   // ---- Marshrut chizig'i ----
   String _vehicleType = 'moped';
-  Set<Polyline> _polylines = {};
   List<LatLng> _routePoints = const [];
   int _routeRequestSeq = 0; // eskirgan so'rov natijasini rad etish uchun
   // Google Directions qachon qayta so'raladi (`route_throttle.dart`).
@@ -140,6 +140,8 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
 
   // ---- Yo'nalish o'qi (kuryer belgisi) ----
   BitmapDescriptor? _navIcon;
+  // OnDexMap uchun xuddi shu o'q (PNG baytlari bilan).
+  CourierMarkerImage? _navImage;
   double _navBearing = 0;
 
   // ---- Restoran belgisi: logotip + aniq nuqta ----
@@ -155,6 +157,9 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
 
   BitmapDescriptor? _restaurantIcon;
   final Map<String, BitmapDescriptor> _restaurantIconCache = {};
+  // OnDexMap uchun xuddi shu belgi (PNG baytlari bilan).
+  CourierMarkerImage? _restaurantImage;
+  final Map<String, CourierMarkerImage> _restaurantImageCache = {};
 
   // Yangi taklif ovozi — qabul/rad etilguncha (yoki muddati tugaguncha).
   final _offerPlayer = AudioPlayer();
@@ -168,6 +173,10 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
     _connectWs();
     _init();
     _loadMaps();
+    // Xarita manbasi (serverdagi `GOOGLE_MAP`) fonda yangilanadi: bu safar
+    // xarita oxirgi ma'lum qiymat bilan chiziladi (internet sekin bo'lsa ham
+    // kutmaymiz), yangisi keyingi ochilishda ishlaydi. Xato otmaydi.
+    unawaited(MapConfigService.instance.refresh(api.send));
     _refreshMyLocation();
     unawaited(_loadVoicePreference());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -177,7 +186,25 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
       }).catchError((Object e, StackTrace st) {
         debugPrint('[navi] icon yuklashda XATO: $e\n$st');
       });
+      _loadNavImage().then((image) {
+        if (mounted) setState(() => _navImage = image);
+      }).catchError((Object e, StackTrace st) {
+        debugPrint('[navi] OnDexMap rasmi yuklashda XATO: $e\n$st');
+      });
     });
+  }
+
+  /// Yo'nalish o'qining PNG baytlari — OnDexMap xaritasi uchun.
+  Future<CourierMarkerImage> _loadNavImage() async {
+    final bytes = (await rootBundle.load('assets/navi.png')).buffer.asUint8List();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    return CourierMarkerImage(
+      bytes: bytes,
+      widthPx: frame.image.width,
+      heightPx: frame.image.height,
+      sizeDip: 56,
+    );
   }
 
   Future<BitmapDescriptor> _buildNavArrowIcon() async {
@@ -247,8 +274,15 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
     final picture = recorder.endRecording();
     final rendered = await picture.toImage(_restaurantIconWidth.toInt(), _restaurantIconHeight.toInt());
     final byteData = await rendered.toByteData(format: ui.ImageByteFormat.png);
-    final icon = BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
+    final png = byteData!.buffer.asUint8List();
+    final icon = BitmapDescriptor.bytes(png);
     _restaurantIconCache[cacheKey] = icon;
+    _restaurantImageCache[cacheKey] = CourierMarkerImage(
+      bytes: png,
+      widthPx: _restaurantIconWidth.toInt(),
+      heightPx: _restaurantIconHeight.toInt(),
+      sizeDip: _restaurantIconWidth,
+    );
     return icon;
   }
 
@@ -349,6 +383,14 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   }
 
   Future<void> _loadMaps() async {
+    // OnDexMap'da yuklanadigan SDK yo'q: uslub xaritaning o'zi bilan keladi
+    // (`GOOGLE_MAP=false`, serverdan). Google skripti esa zaxira uchun
+    // fonda yuklab qo'yiladi (veb'da; mobil'da bu hech narsa qilmaydi).
+    if (MapConfigService.instance.useOndexMap) {
+      setState(() => _mapsReady = true);
+      ensureGoogleMapsLoaded(api.mapsApiKey).catchError((_) {});
+      return;
+    }
     try {
       await ensureGoogleMapsLoaded(api.mapsApiKey);
       if (mounted) setState(() => _mapsReady = true);
@@ -527,6 +569,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
         _activeOrder = null;
         _arrivedAtRestaurant = false;
         _restaurantIcon = null;
+        _restaurantImage = null;
         _resetRoute();
       });
       // Bekor qilish JIM bo'lmasligi kerak (kuryer ilovasi auditi, 9-band).
@@ -829,16 +872,6 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   /// `setState` ichida chaqiriladi.
   void _setRoutePoints(List<LatLng> points) {
     _routePoints = points;
-    _polylines = points.length < 2
-        ? {}
-        : {
-            Polyline(
-              polylineId: const PolylineId('route'),
-              points: points,
-              color: kBrandColor,
-              width: 5,
-            ),
-          };
   }
 
   /// Chiziq va orqa sanoqni tozalaydi (`setState` ichida).
@@ -1003,9 +1036,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   Future<void> _animateTo(LatLng target, double zoom) async {
     _programmaticMoves++;
     try {
-      await _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: zoom)),
-      );
+      await _mapController?.animateTo(target, zoom);
     } finally {
       _programmaticMoves--;
       _mapCenter = target;
@@ -1115,6 +1146,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
         _deliveryAddressKey = null;
         _activeRestaurant = null;
         _restaurantIcon = null;
+        _restaurantImage = null;
         _panelExpanded = true;
       }
       _loadingActiveOrder = false;
@@ -1136,7 +1168,12 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
         final rLng = (rest['lng'] as num?)?.toDouble() ?? 0;
         if (rLat != 0 || rLng != 0) _focusCamera(LatLng(rLat, rLng));
         _buildRestaurantIcon(restaurantId, rest['logo_url'] as String?).then((icon) {
-          if (mounted) setState(() => _restaurantIcon = icon);
+          if (mounted) {
+            setState(() {
+              _restaurantIcon = icon;
+              _restaurantImage = _restaurantImageCache[restaurantId];
+            });
+          }
         }).catchError((Object e, StackTrace st) {
           debugPrint('[restaurant-icon] yuklashda XATO: $e\n$st');
         });
@@ -1199,6 +1236,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
           _activeOrder = null;
           _arrivedAtRestaurant = false;
           _restaurantIcon = null;
+          _restaurantImage = null;
           _resetRoute();
         });
       }
@@ -1244,8 +1282,8 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
-  Set<Marker> _buildMarkers() {
-    final markers = <Marker>{};
+  List<CourierMarker> _buildMarkers() {
+    final markers = <CourierMarker>[];
     final order = _activeOrder;
 
     LatLng? destination;
@@ -1263,14 +1301,18 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
     final me = _myPosition;
     if (me != null) {
       if (destination != null) _navBearing = _bearingBetween(me, destination);
-      markers.add(Marker(
-        markerId: const MarkerId('me'),
-        position: me,
-        icon: _navIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+      markers.add(CourierMarker(
+        id: 'me',
+        point: me,
+        googleIcon: _navIcon,
+        googleHue: BitmapDescriptor.hueAzure,
         anchor: const Offset(0.5, 0.5),
         rotation: _navBearing,
         flat: true,
-        infoWindow: const InfoWindow(title: 'Siz'),
+        title: 'Siz',
+        imageKey: 'nav',
+        image: _navImage,
+        fallbackColor: const Color(0xFF1E88E5),
       ));
     }
     if (order != null) {
@@ -1279,30 +1321,34 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
         final lat = (_activeRestaurant?['lat'] as num?)?.toDouble() ?? 0;
         final lng = (_activeRestaurant?['lng'] as num?)?.toDouble() ?? 0;
         if (lat != 0 || lng != 0) {
-          markers.add(Marker(
-            markerId: const MarkerId('restaurant'),
-            position: LatLng(lat, lng),
-            icon: _restaurantIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          markers.add(CourierMarker(
+            id: 'restaurant',
+            point: LatLng(lat, lng),
+            googleIcon: _restaurantIcon,
+            googleHue: BitmapDescriptor.hueOrange,
             anchor: _restaurantIcon != null ? const Offset(0.5, _restaurantIconAnchorY) : const Offset(0.5, 1.0),
-            infoWindow: InfoWindow(title: _activeRestaurant?['name'] as String? ?? 'Restoran'),
+            title: _activeRestaurant?['name'] as String? ?? 'Restoran',
+            imageKey: 'restaurant-${_activeRestaurant?['id']}',
+            image: _restaurantImage,
+            fallbackColor: const Color(0xFFF97316),
           ));
         }
       } else {
         final lat = (order['delivery_lat'] as num?)?.toDouble() ?? 0;
         final lng = (order['delivery_lng'] as num?)?.toDouble() ?? 0;
         if (lat != 0 || lng != 0) {
-          markers.add(Marker(
-            markerId: const MarkerId('delivery'),
-            position: LatLng(lat, lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-            infoWindow: const InfoWindow(title: 'Mijoz manzili'),
+          markers.add(CourierMarker(
+            id: 'delivery',
+            point: LatLng(lat, lng),
+            googleHue: BitmapDescriptor.hueGreen,
+            title: 'Mijoz manzili',
+            fallbackColor: const Color(0xFF16A34A),
           ));
         }
       }
     }
     return markers;
   }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -1501,25 +1547,19 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   Widget _buildMapLayer() {
     if (_mapsFailed) return const Center(child: Text('Xarita yuklanmadi', style: TextStyle(color: kInkMuted)));
     if (!_mapsReady) return const Center(child: CircularProgressIndicator());
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(target: _myPosition ?? _chustCenter, zoom: _currentZoom),
-      mapType: _mapType,
-      onMapCreated: (c) => _mapController = c,
-      onCameraMove: (pos) {
-        if (_programmaticMoves > 0) return;
-        _mapCenter = pos.target;
-        _currentZoom = pos.zoom;
-      },
-      // Xaritaning ko'rinadigan qismi panel ustida: kamera markazi va
-      // marshrut panel ostiga yashirinmasin.
-      padding: EdgeInsets.only(bottom: _panelHeight),
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
+    return CourierMap(
+      initialCenter: _myPosition ?? _chustCenter,
+      initialZoom: _currentZoom,
+      satellite: _mapType == MapType.hybrid,
       markers: _buildMarkers(),
-      polylines: _polylines,
-    );
-  }
+      route: _routePoints,
+      routeColor: kBrandColor,
+      bottomPadding: _panelHeight,
+      onReady: (c) => _mapController = c,
+      onCameraMove: (center, zoom) {
+        if (_programmaticMoves > 0) return;
+        _mapCenter = center;
+        _currentZoom = zoom;
+      },
+    );  }
 }

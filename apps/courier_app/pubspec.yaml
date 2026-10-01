@@ -9,6 +9,10 @@ environment:
 dependencies:
   ondex_core:
     path: ../../packages/ondex_core
+  # OnDexMap'ni MapLibre bilan chizish (uslub, joy belgilari, brend) — mijoz
+  # ilovasi bilan umumiy.
+  ondex_maplibre:
+    path: ../../packages/ondex_maplibre
   flutter:
     sdk: flutter
   http: ^1.2.0
@@ -20,6 +24,9 @@ dependencies:
   web_socket_channel: ^3.0.0
   geolocator: ^13.0.1
   google_maps_flutter: ^2.10.0
+  # OnDexMap xaritasi (GOOGLE_MAP=false, serverdan): Google'ning O'RNIGA emas,
+  # YONIDA — qaysi biri ishlashini server hal qiladi (lib/map/courier_map.dart).
+  maplibre_gl: ^0.27.1
   web: ^1.1.0
   # Google Maps veb'da xom HTML platform-view (HtmlElementView) sifatida
   # chiziladi — Flutter'ning gesture arenasidan TASHQARIDA. Shuning uchun

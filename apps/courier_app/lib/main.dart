@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:ondex_maplibre/ondex_maplibre.dart' show initOndexMap;
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'api.dart';
@@ -18,6 +19,12 @@ final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // OnDexMap (MapLibre) rejimi birinchi xaritadan OLDIN sozlanadi va
+  // xarita manbasining oxirgi ma'lum qiymati (serverdagi `GOOGLE_MAP`)
+  // o'qiladi — ikkalasi ham Google rejimiga ta'sir qilmaydi.
+  initOndexMap();
+  await MapConfigService.instance.init();
 
   // Mahsulot tahlili. Kalit (ONDEX_POSTHOG_KEY) berilmagan bo'lsa
   // hech narsa yuborilmaydi va hech qanday kechikish qo'shilmaydi.
