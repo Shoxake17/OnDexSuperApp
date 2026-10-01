@@ -236,7 +236,7 @@ func TestStatusMapsAndParsesAmount(t *testing.T) {
 		  "octo_payment_UUID":"uuid-1","status":"waiting_for_capture",
 		  "total_sum":437278.66,"refunded_sum":0}}`
 	})
-	st, err := c.Status(context.Background(), "pay-1")
+	st, err := c.Status(context.Background(), "", "pay-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestCaptureAndCancel(t *testing.T) {
 		return 200, `{"error":0,"data":{"octo_payment_UUID":"uuid-1","status":"succeeded"}}`
 	})
 
-	if err := c.Capture(context.Background(), "uuid-1", 1200000); err != nil {
+	if err := c.Capture(context.Background(), "", "uuid-1", 1200000); err != nil {
 		t.Fatal(err)
 	}
 	if got["accept_status"] != "capture" {
@@ -288,7 +288,7 @@ func TestCaptureAndCancel(t *testing.T) {
 		t.Errorf("final_amount: %v", got["final_amount"])
 	}
 
-	if err := c.Cancel(context.Background(), "uuid-1"); err != nil {
+	if err := c.Cancel(context.Background(), "", "uuid-1"); err != nil {
 		t.Fatal(err)
 	}
 	if got["accept_status"] != "cancel" {
@@ -309,7 +309,7 @@ func TestRefund(t *testing.T) {
 		got = body
 		return 200, `{"error":0,"data":{"octo_payment_UUID":"uuid-1","refund_id":"r1","status":"succeeded"}}`
 	})
-	if err := c.Refund(context.Background(), "uuid-1", "refund-1", 500000); err != nil {
+	if err := c.Refund(context.Background(), "", "uuid-1", "refund-1", 500000); err != nil {
 		t.Fatal(err)
 	}
 	if got["shop_refund_id"] != "refund-1" {

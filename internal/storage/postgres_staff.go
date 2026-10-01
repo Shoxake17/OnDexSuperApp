@@ -23,7 +23,8 @@ type PgStaffRepo struct{ pool *pgxpool.Pool }
 func NewPgStaffRepo(pool *pgxpool.Pool) *PgStaffRepo { return &PgStaffRepo{pool: pool} }
 
 const staffColumns = `id, restaurant_id, number, first_name, last_name, phone, position, status,
-	schedule, hired_on, note, app_access, user_id, created_at, updated_at, dismissed_at, monthly_salary_tiyin`
+	schedule, hired_on, note, app_access, user_id, created_at, updated_at, dismissed_at, monthly_salary_tiyin,
+	delivery_pay_tiyin`
 
 func mapStaffErr(err error) error {
 	if err == nil {
@@ -67,7 +68,7 @@ func scanStaffInto(row pgx.Row, m *staff.Member) error {
 	)
 	if err := row.Scan(&m.ID, &m.RestaurantID, &m.Number, &m.FirstName, &m.LastName, &m.Phone,
 		&position, &status, &schedule, &m.HiredOn, &m.Note, &m.AppAccess, &userID,
-		&m.CreatedAt, &m.UpdatedAt, &m.DismissedAt, &m.SalaryTiyin); err != nil {
+		&m.CreatedAt, &m.UpdatedAt, &m.DismissedAt, &m.SalaryTiyin, &m.DeliveryPayTiyin); err != nil {
 		return err
 	}
 	m.Position = staff.Position(position)
@@ -121,10 +122,10 @@ func (r *PgStaffRepo) Create(ctx context.Context, m *staff.Member, events []staf
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO staff_members (`+staffColumns+`)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		m.ID, m.RestaurantID, number, m.FirstName, m.LastName, m.Phone, string(m.Position), string(m.Status),
 		sched, m.HiredOn, m.Note, m.AppAccess, nullableText(m.UserID), m.CreatedAt, m.UpdatedAt, m.DismissedAt,
-		m.SalaryTiyin,
+		m.SalaryTiyin, m.DeliveryPayTiyin,
 	); err != nil {
 		return mapStaffErr(err)
 	}
@@ -153,10 +154,12 @@ func (r *PgStaffRepo) Update(ctx context.Context, m *staff.Member, events []staf
 		UPDATE staff_members
 		SET first_name = $3, last_name = $4, phone = $5, position = $6, status = $7,
 		    schedule = $8::jsonb, hired_on = $9, note = $10, app_access = $11, user_id = $12,
-		    updated_at = $13, dismissed_at = $14, monthly_salary_tiyin = $15
+		    updated_at = $13, dismissed_at = $14, monthly_salary_tiyin = $15,
+		    delivery_pay_tiyin = $16
 		WHERE id = $1 AND restaurant_id = $2`,
 		m.ID, m.RestaurantID, m.FirstName, m.LastName, m.Phone, string(m.Position), string(m.Status),
-		sched, m.HiredOn, m.Note, m.AppAccess, nullableText(m.UserID), m.UpdatedAt, m.DismissedAt, m.SalaryTiyin)
+		sched, m.HiredOn, m.Note, m.AppAccess, nullableText(m.UserID), m.UpdatedAt, m.DismissedAt,
+		m.SalaryTiyin, m.DeliveryPayTiyin)
 	if err != nil {
 		return mapStaffErr(err)
 	}

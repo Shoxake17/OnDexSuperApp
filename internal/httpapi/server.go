@@ -36,6 +36,7 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
+	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/ratelimit"
@@ -142,6 +143,19 @@ type Deps struct {
 	// OctoClient â€” callback imzosini tekshirish uchun. `Payments`
 	// bilan birga to'ldiriladi.
 	OctoClient *octo.Client
+
+	// Multicard — Multicard (Rahmat) shlyuzi: restoran Moliya
+	// bo'limidagi tushum reestri. `nil` bo'lsa Moliya sahifasi
+	// "shlyuz sozlanmagan" holatini ko'rsatadi va qolgan hamma narsa
+	// normal ishlayveradi (Octo'dan MUSTAQIL — ikkisi bir-birini
+	// bilmaydi).
+	// MC — restoranning to'lov shlyuzi ulanishi
+	// (`internal/payments/mcconnect`). Reyestr ichida: platforma
+	// kalitlari, shlyuz manzili, sirlarni shifrlagich va klient keshi.
+	//
+	// `nil` bo'lsa Moliya bo'limi butunlay o'chiq va karta orqali
+	// to'lov yaratilmaydi; qolgan hamma narsa ishlayveradi.
+	MC *mcconnect.Registry
 
 	// WalletSvc â€” OnDex Wallet (`internal/wallet`). `nil` bo'lsa
 	// `GET /wallet` 503 qaytaradi, checkout'da "wallet" to'lov usuli
@@ -354,6 +368,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerTrackingRoutes(mux)
 	s.registerVoiceRoutes(mux)
 	s.registerStatsRoutes(mux)
+	s.registerFinanceRoutes(mux)
 	s.registerRestaurantSettingsRoutes(mux)
 	s.registerStaffRoutes(mux)
 	s.registerAlertRoutes(mux)

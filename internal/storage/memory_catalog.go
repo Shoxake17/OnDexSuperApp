@@ -25,6 +25,7 @@ func cloneRestaurant(x catalog.Restaurant) catalog.Restaurant {
 	x.OpenNow = nil
 	x.ClosedReason = ""
 	x.OpenChangesAt = nil
+	x.PaymentOptions = nil
 	return x
 }
 

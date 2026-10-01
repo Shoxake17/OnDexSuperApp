@@ -86,6 +86,36 @@ type CreateRequest struct {
 	AmountTiyin int64
 	Description string
 
+	// RestaurantID — pul KIMNING hisobiga tushishini belgilaydi.
+	//
+	// ┌─ NEGA PROVAYDERGA KERAK ───────────────────────────────────────┐
+	// OnDex ko'p ijarachili: har restoran to'lov tizimi bilan O'Z
+	// shartnomasini tuzadi va pul to'g'ridan-to'g'ri uning hisobiga
+	// tushadi. Ya'ni "qaysi kalit bilan so'rov yuborish" savolining
+	// javobi RESTORANGA bog'liq — bitta global kalit yetmaydi.
+	// └────────────────────────────────────────────────────────────────┘
+	RestaurantID string
+
+	// Items — fiskal chek satrlari. Ba'zi provayderlarda (Multicard)
+	// ular MAJBURIY: usiz to'lov umuman yaratilmaydi.
+	Items []Item
+
+	// Channel — mijoz tanlagan TO'LOV XIZMATI ("payme", "click",
+	// "uzum"). Bo'sh bo'lsa provayderning universal to'lov sahifasi
+	// ochiladi va mijoz usulni o'sha yerda tanlaydi.
+	//
+	// ┌─ NEGA ALOHIDA MAYDON ──────────────────────────────────────────┐
+	// Buyurtmaning to'lov USULI (`cash`/`card`/`wallet`) o'zgarmaydi:
+	// Payme ham, Click ham — onlayn to'lov, ya'ni `card`. Farq faqat
+	// MIJOZ qaysi ilovada to'lashida.
+	//
+	// Uni buyurtma usuliga aylantirish butun holat mashinasiga,
+	// statistikaga va hisobotlarga tegib ketardi; bu yerda esa u
+	// faqat to'lov yaratishga ta'sir qiladi va qayta urinishda
+	// o'zgarishi ham mumkin.
+	// └────────────────────────────────────────────────────────────────┘
+	Channel string
+
 	// Hold — true bo'lsa pul darhol yechilmaydi, BLOKLANADI
 	// (`auto_capture=false`). Buyurtma qabul qilinganda `Capture`,
 	// rad etilganda `Cancel` chaqiriladi.
@@ -144,23 +174,49 @@ type StatusResult struct {
 	Raw []byte
 }
 
+// Item — fiskal chek satri.
+//
+// Summalar TIYINDA. `TotalTiyin` `Qty * UnitPriceTiyin` ga TENG
+// BO'LMASLIGI mumkin: chegirma qatorlar bo'yicha taqsimlanganda
+// bo'linmaydigan qoldiq chiqadi va u oxirgi qatorga qo'shiladi.
+// Muhimi — satrlar yig'indisi to'lov summasiga ANIQ teng bo'lishi.
+type Item struct {
+	Name           string
+	Qty            int
+	UnitPriceTiyin int64
+	TotalTiyin     int64
+}
+
 // Provider — to'lov provayderi.
+//
+// ⚠️ Har amalda `restaurantID` bor: OnDex ko'p ijarachili va
+// provayder kaliti restoranga bog'liq (`CreateRequest.RestaurantID`
+// izohiga qarang). Bitta ijarachili provayderlar uni e'tiborsiz
+// qoldiradi.
 type Provider interface {
-	// Name — bazaga yoziladigan qisqa nom ("octo").
+	// Name — bazaga yoziladigan qisqa nom ("octo", "multicard").
 	Name() string
 	// Create — to'lov yaratadi.
 	Create(ctx context.Context, req CreateRequest) (*CreateResult, error)
 	// Status — HAQIQIY holatni provayderdan so'raydi.
-	Status(ctx context.Context, paymentID string) (*StatusResult, error)
+	Status(ctx context.Context, restaurantID, providerPaymentID string) (*StatusResult, error)
 	// Capture — bloklangan pulni yechadi (ikki bosqichli to'lov).
 	// `amountTiyin` boshlang'ich summadan KICHIK bo'lishi mumkin.
-	Capture(ctx context.Context, providerPaymentID string, amountTiyin int64) error
-	// Cancel — blokni bo'shatadi (mijozdan pul yechilmaydi).
-	Cancel(ctx context.Context, providerPaymentID string) error
+	//
+	// Bir bosqichli provayderda (pul darhol yechiladi) bu amal
+	// KERAK EMAS va `ErrNotSupported` qaytaradi.
+	Capture(ctx context.Context, restaurantID, providerPaymentID string, amountTiyin int64) error
+	// Cancel — blokni bo'shatadi yoki to'lanmagan to'lovni yopadi
+	// (mijozdan pul yechilmaydi).
+	Cancel(ctx context.Context, restaurantID, providerPaymentID string) error
 	// Refund — yechilgan pulni qaytaradi. `refundID` — bizning
 	// tomondagi unikal ID (takroriy qaytarishdan himoya).
-	Refund(ctx context.Context, providerPaymentID, refundID string, amountTiyin int64) error
+	Refund(ctx context.Context, restaurantID, providerPaymentID, refundID string, amountTiyin int64) error
 }
+
+// ErrNotSupported — provayder bu amalni qo'llamaydi (masalan bir
+// bosqichli to'lovda `Capture`).
+var ErrNotSupported = errors.New("to'lov provayderi bu amalni qo'llamaydi")
 
 // ═══════════════════════════════════════════════════════════════════
 // PUL: TIYIN <-> O'NLIK SON

@@ -35,6 +35,9 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/payments"
+	"chustapp/internal/payments/mcconnect"
+	"chustapp/internal/payments/multicard"
+	"chustapp/internal/payments/multicardpay"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/ratelimit"
@@ -42,6 +45,7 @@ import (
 	"chustapp/internal/safego"
 	"chustapp/internal/scenes"
 	"chustapp/internal/search"
+	"chustapp/internal/secretstore"
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/storage"
@@ -73,6 +77,17 @@ var devMode bool
 
 // devEnvValue â€” dev rejimni yoqadigan YAGONA qiymat.
 const devEnvValue = "development"
+
+// listenAddr — server tinglaydigan manzil. Standart `:8080`; faqat benchmark
+// uchun `go build -ldflags "-X main.listenAddr=:18081"` bilan almashtiriladi
+// (muhit o'zgaruvchisi EMAS: u `appenv` reyestri va deploy compose'iga
+// kirgan bo'lardi, bu esa production sozlamasini ortiqcha ochib qo'yardi).
+var listenAddr = ":8080"
+
+// entityCacheTTL — narxlash yo'lidagi restoran/taom/aksiya/xodimlar keshining
+// eskirish chegarasi. Shu jarayonda yozish keshni darhol bekor qiladi, shuning
+// uchun bu qiymat faqat BOSHQA jarayon (admin vositalari) yozganda ahamiyatli.
+const entityCacheTTL = 2 * time.Second
 
 // loadDotEnv â€” loyiha ildizidagi .env faylni o'qiydi (bor bo'lsa).
 // Tizim muhitida allaqachon o'rnatilgan o'zgaruvchilar ustun turadi.
@@ -224,7 +239,7 @@ func main() {
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		pool, err := pgxpool.New(ctx, dbURL)
+		pool, err := storage.NewPool(ctx, dbURL)
 		if err != nil {
 			slog.Error("PostgreSQL konfiguratsiya xatosi", "err", err)
 			os.Exit(1)
@@ -429,6 +444,15 @@ func main() {
 			"Production'da bu MAJBURIY (katalog faqat MongoDB'da saqlanadi).")
 		os.Exit(1)
 	}
+
+	// ---------- Narxlash yo'lidagi takroriy o'qishlar uchun QISQA kesh ----------
+	//
+	// Restoran, taom va aksiya har `/quote` va buyurtmada bazadan qayta
+	// o'qilardi (yuklama sinovida aynan shular to'yinishga olib keldi).
+	// Dekoratorlar yozishda kalitni DARHOL bekor qiladi, shuning uchun
+	// o'zgarish shu jarayonda lahzada ko'rinadi (`storage/ttlcache.go`).
+	catalogRepo = storage.NewCachedCatalog(catalogRepo, entityCacheTTL)
+	promotionsRepo = storage.NewCachedPromotions(promotionsRepo, entityCacheTTL)
 
 	// ---------- Mahsulot rasmlari: Cloudflare R2 yoki lokal disk ----------
 	var imageStore images.Store
@@ -950,10 +974,59 @@ func main() {
 	orderSvc := orders.NewService(orderRepo, alertsSvc.WrapOrders(notifier), httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
 
-	// Yetkazib berish haqi — restoran o'zi belgilaydi (`delivery_fee_tiyin`).
-	// Ulanmasa haq umuman hisoblanmaydi, ya'ni buni unutib qoldirish
-	// jimgina "hamma yerda bepul" degani bo'lardi.
-	orderSvc.WithDelivery(httpapi.NewDeliveryPricer(catalogRepo))
+	// ── Multicard (Rahmat) — restoran Moliya bo'limi ──
+	//
+	// Kalitlar bo'lmasa klient `nil` bo'lib qoladi va Moliya sahifasi
+	// "shlyuz sozlanmagan" holatini ko'rsatadi. Bu Octo'ga UMUMAN
+	// ta'sir qilmaydi: ikkala provayder bir-biridan mustaqil.
+	multicardBaseURL := os.Getenv("MULTICARD_BASE_URL")
+	var multicardClient *multicard.Client
+	if mc, err := multicard.New(multicard.Config{
+		BaseURL:       multicardBaseURL,
+		ApplicationID: os.Getenv("MULTICARD_APPLICATION_ID"),
+		Secret:        os.Getenv("MULTICARD_SECRET"),
+	}); err == nil {
+		multicardClient = mc
+		slog.Info("rejim: Multicard (Rahmat) platforma kalitlari ulandi",
+			"manzil", multicardBaseURL, "sinov", multicard.IsSandbox(multicardBaseURL))
+	} else {
+		slog.Warn("MULTICARD_APPLICATION_ID/SECRET yo'q — OnDex shartnomasi ostidagi " +
+			"restoranlar uchun Moliya bo'limi o'chiq (o'z kalitlari bilan ulanish ishlayveradi)")
+	}
+
+	// ── Sirlarni shifrlash (restoranning O'Z to'lov kalitlari) ──
+	//
+	// Kalit bo'lmasa imkoniyat O'CHIQ bo'ladi: `secret` ni bazaga ochiq
+	// matnda yozishdan ko'ra, ulash tugmasini umuman bermaslik to'g'ri.
+	var secrets *secretstore.Box
+	if b, err := secretstore.New(os.Getenv("SECRETS_ENC_KEY")); err == nil {
+		secrets = b
+	} else if errors.Is(err, secretstore.ErrNoKey) {
+		slog.Warn("SECRETS_ENC_KEY yo'q — restoran o'z to'lov kalitlarini ulay olmaydi")
+	} else {
+		// Kalit BERILGAN, lekin yaroqsiz — bu jimgina o'tib ketmasligi
+		// kerak: deploy paytida yozuv xato ketgan.
+		slog.Error("SECRETS_ENC_KEY yaroqsiz — imkoniyat o'chirildi", "err", err)
+	}
+
+	// Restoran bo'yicha shlyuz ulanishi: Moliya bo'limi ham, karta
+	// orqali to'lov ham SHU reyestrdan klient oladi — ikkisi bir xil
+	// kalit bilan ishlashi uchun (`internal/payments/mcconnect`).
+	mcRegistry := mcconnect.NewRegistry(
+		func(ctx context.Context, restaurantID string) (mcconnect.Credentials, error) {
+			rest, err := catalogRepo.GetRestaurant(ctx, restaurantID)
+			if err != nil {
+				return mcconnect.Credentials{}, err
+			}
+			return mcconnect.Credentials{
+				AppID:          rest.MulticardAppID,
+				SecretEnc:      rest.MulticardSecretEnc,
+				StoreID:        rest.MulticardStoreID,
+				TaxMXIK:        rest.MulticardTaxMXIK,
+				TaxPackageCode: rest.MulticardTaxPackageCode,
+			}, nil
+		},
+		secrets, multicardBaseURL, multicardClient)
 
 	// â”€â”€ OnDex Wallet (keshbek + hamyondan to'lash) â”€â”€
 	//
@@ -1023,6 +1096,9 @@ func main() {
 		staffRepo = storage.NewMemoryStaffRepo()
 		slog.Warn("rejim: in-memory (xodimlar) — xodimlar ro'yxati server qayta ishga tushganda yo'qoladi")
 	}
+	// Yetkazish haqi har narxlashda xodimlar ro'yxatini o'qiydi; yozishda kesh
+	// darhol bekor qilinadi (pul: eski haq ko'rinmasligi kerak).
+	staffRepo = storage.NewCachedStaff(staffRepo, entityCacheTTL)
 	staffSvc := staff.NewService(staffRepo, &staff.UserAccounts{
 		Users: userRepo, Couriers: courierRepo, Revoked: revokedSessions, NewID: httpapi.NewID,
 		// Yetkazma o'rtasidagi kuryerning kirishi yopilmaydi — buyurtma
@@ -1035,6 +1111,15 @@ func main() {
 			return err == nil, err
 		},
 	}).WithObserver(alertsSvc.StaffEvents)
+
+	// Yetkazib berish haqi — yetkazib beruvchining MAOSH USULIDAN kelib
+	// chiqadi (`staff.DeliveryFee`): "buyurtmadan maosh" bo'lsa shu summa
+	// mijozga qo'shiladi, oylik maosh bo'lsa yetkazish bepul. Restoran
+	// uni alohida kiritmaydi.
+	//
+	// Ulanmasa haq umuman hisoblanmaydi, ya'ni buni unutib qoldirish
+	// jimgina "hamma yerda bepul" degani bo'lardi.
+	orderSvc.WithDelivery(httpapi.NewDeliveryPricer(staffRepo))
 
 	// â”€â”€ Tashqi AI agentlar (integratsiya sheriklari) â”€â”€
 	//
@@ -1110,50 +1195,122 @@ func main() {
 	// qaytaradi, qolgan hamma narsa avvalgidek. Ya'ni to'lovni
 	// bosqichma-bosqich yoqish mumkin.
 	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// ┌─ QAYSI PROVAYDER ──────────────────────────────────────────────┐
+	// Multicard (Rahmat) — ASOSIY: shartnoma tuzilgan va pul
+	// to'g'ridan-to'g'ri restoran hisobiga tushadi. Octo bilan
+	// shartnoma tuzilmadi; kodi kelajak uchun qoldirilgan, lekin
+	// Multicard sozlangan bo'lsa u ISHLATILMAYDI.
+	//
+	// Ikkalasining farqi oqimda ham bor: Octo ikki bosqichli (pul
+	// bloklanadi, restoran qabul qilgach yechiladi), Multicard esa bir
+	// bosqichli (pul darhol tushadi, rad etilsa QAYTARILADI). Buyurtma
+	// kodi ikkalasini ham bir xil ko'radi (`payments.Service`).
+	// └────────────────────────────────────────────────────────────────┘
 	var octoClient *octo.Client
 	var paymentSvc *payments.Service
-	if shopID := strings.TrimSpace(os.Getenv("OCTO_SHOP_ID")); shopID != "" {
-		id, err := strconv.ParseInt(shopID, 10, 64)
-		if err != nil {
-			slog.Error("OCTO_SHOP_ID raqam bo'lishi kerak", "qiymat", shopID, "err", err)
-			os.Exit(1)
-		}
-		octoClient, err = octo.New(octo.Config{
-			ShopID: id,
-			Secret: os.Getenv("OCTO_SECRET"),
-			// Imzo kaliti (`unique_key`) Octo texnik jamoasidan
-			// alohida olinadi. Bo'sh bo'lsa imzo tekshirilmaydi va
-			// to'lov FAQAT provayder API'si orqali tasdiqlanadi.
-			SignatureKey: os.Getenv("OCTO_SIGNATURE_KEY"),
-			// Standart holda TEST rejimi: `.env` da ataylab
-			// `OCTO_TEST=false` yozilmaguncha haqiqiy pul
-			// harakatlanmaydi.
-			Test: !strings.EqualFold(strings.TrimSpace(os.Getenv("OCTO_TEST")), "false"),
-		})
-		if err != nil {
-			// Kalit berilgan-u, noto'g'ri bo'lsa â€” JIMGINA o'chirib
-			// qo'yilmaydi: aks holda karta to'lovi ishlamayotganini
-			// hech kim sezmasdi.
-			slog.Error("Octo sozlanmadi", "err", err)
-			os.Exit(1)
-		}
+	var payProvider payments.Provider
+	var payCallbackPath, payProviderName string
+	if mcRegistry.BaseURL() != "" {
+		payProvider = multicardpay.New(mcRegistry)
+		payCallbackPath, payProviderName = "/payments/multicard/callback", "Multicard (Rahmat)"
 
+		// ┌─ SINOV / JONLI MUHIT MOSLIGI ──────────────────────────────┐
+		// Multicard'da `OCTO_TEST` kabi bayroq yo'q — farq faqat
+		// MANZILDA. Xato yozilsa ikki tomonlama zarar, va ikkalasi
+		// ham JIMGINA sodir bo'ladi (bug.md 43-band bilan bir xil
+		// toifa). Shuning uchun nomuvofiqlik `slog.Error` bilan
+		// aytiladi: u monitoringga tushadi.
+		//
+		// `os.Exit(1)` EMAS — ataylab: integratsiya aynan sinov
+		// stendida boshlanadi va serverni to'xtatish o'sha ishni
+		// imkonsiz qilardi.
+		// └────────────────────────────────────────────────────────────┘
+		sandbox := multicard.IsSandbox(mcRegistry.BaseURL())
+		switch {
+		case !devMode && sandbox:
+			slog.Error("DIQQAT: muhit PRODUCTION, lekin to'lov shlyuzi SINOV manzilida. " +
+				"Pul YECHILMAYDI, buyurtma esa \"to'langan\" bo'lib restoranga ketadi. " +
+				"`.env` da MULTICARD_BASE_URL=https://" + multicard.ProdHost + " bo'lishi kerak.")
+		case devMode && !sandbox:
+			slog.Error("DIQQAT: muhit DEV, lekin to'lov shlyuzi JONLI manzilda — " +
+				"sinov to'lovlarida HAQIQIY pul yechiladi. Sinov uchun " +
+				"MULTICARD_BASE_URL=https://" + multicard.SandboxHost)
+		}
+	}
+
+	if payProvider == nil {
+		if shopID := strings.TrimSpace(os.Getenv("OCTO_SHOP_ID")); shopID != "" {
+			id, err := strconv.ParseInt(shopID, 10, 64)
+			if err != nil {
+				slog.Error("OCTO_SHOP_ID raqam bo'lishi kerak", "qiymat", shopID, "err", err)
+				os.Exit(1)
+			}
+			octoClient, err = octo.New(octo.Config{
+				ShopID: id,
+				Secret: os.Getenv("OCTO_SECRET"),
+				// Imzo kaliti (`unique_key`) Octo texnik jamoasidan
+				// alohida olinadi. Bo'sh bo'lsa imzo tekshirilmaydi va
+				// to'lov FAQAT provayder API'si orqali tasdiqlanadi.
+				SignatureKey: os.Getenv("OCTO_SIGNATURE_KEY"),
+				// Standart holda TEST rejimi: `.env` da ataylab
+				// `OCTO_TEST=false` yozilmaguncha haqiqiy pul
+				// harakatlanmaydi.
+				Test: !strings.EqualFold(strings.TrimSpace(os.Getenv("OCTO_TEST")), "false"),
+			})
+			if err != nil {
+				// Kalit berilgan-u, noto'g'ri bo'lsa — JIMGINA o'chirib
+				// qo'yilmaydi: aks holda karta to'lovi ishlamayotganini
+				// hech kim sezmasdi.
+				slog.Error("Octo sozlanmadi", "err", err)
+				os.Exit(1)
+			}
+			payProvider = octoClient
+			payCallbackPath, payProviderName = "/payments/octo/callback", "Octo"
+
+			// ┌─ TUZATILGAN NOSOZLIK (bug.md 43-band) ─────────────────┐
+			// `OCTO_TEST` ning standarti — `true`. Fail-safe tanlov
+			// mantiqiy: tasodifan haqiqiy pul olinmasin. LEKIN
+			// production'da bu holat hech qanday ogohlantirish
+			// bermasdi: sinov rejimida pul YECHILMAYDI, buyurtma esa
+			// "to'langan" bo'lib restoranga ketaveradi.
+			//
+			// `os.Exit(1)` EMAS — ataylab: integratsiya aynan sinov
+			// rejimida boshlanadi. `slog.Error` monitoringga tushadi.
+			// └────────────────────────────────────────────────────────┘
+			if !devMode && octoClient.TestMode() {
+				slog.Error("DIQQAT: karta to'lovi SINOV rejimida, lekin muhit PRODUCTION. " +
+					"Pul YECHILMAYDI, buyurtma esa \"to'langan\" bo'lib restoranga ketadi. " +
+					"Haqiqiy pul uchun `.env` da ANIQ `OCTO_TEST=false` yozing.")
+			}
+		}
+	}
+
+	if payProvider != nil {
 		var paymentRepo payments.Repository
 		if pgPool != nil {
 			paymentRepo = storage.NewPostgresPaymentRepo(pgPool)
 		} else {
 			paymentRepo = storage.NewMemoryPaymentRepo()
-			slog.Warn("rejim: in-memory (to'lovlar) â€” server qayta ishga tushganda yo'qoladi")
+			slog.Warn("rejim: in-memory (to'lovlar) — server qayta ishga tushganda yo'qoladi")
 		}
 
 		notifyURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_API_URL")), "/") +
-			"/payments/octo/callback"
-		paymentSvc, err = payments.NewService(paymentRepo, octoClient, orderSvc,
+			payCallbackPath
+		// To'lovdan keyin mijoz qaytariladigan manzil. Nomi
+		// provayderdan MUSTAQIL (`PAYMENT_RETURN_URL`); eski
+		// `OCTO_RETURN_URL` moslik uchun qoldirilgan, chunki u
+		// jonli serverlarning `.env` fayllarida allaqachon bor.
+		returnURL := strings.TrimSpace(os.Getenv("PAYMENT_RETURN_URL"))
+		if returnURL == "" {
+			returnURL = strings.TrimSpace(os.Getenv("OCTO_RETURN_URL"))
+		}
+		var err error
+		paymentSvc, err = payments.NewService(paymentRepo, payProvider, orderSvc,
 			httpapi.NewID, payments.Options{
-				ReturnURL:  strings.TrimSpace(os.Getenv("OCTO_RETURN_URL")),
+				ReturnURL:  returnURL,
 				NotifyURL:  notifyURL,
 				TTLMinutes: 30,
-				// Dalilsiz callback'ga ishonish â€” FAQAT dev.
+				// Dalilsiz callback'ga ishonish — FAQAT dev.
 				// `payments.NewService` uni production'da rad etadi.
 				TrustCallbackWithoutProof: devMode && strings.EqualFold(
 					strings.TrimSpace(os.Getenv("OCTO_TRUST_CALLBACK_DEV")), "true"),
@@ -1164,38 +1321,17 @@ func main() {
 			os.Exit(1)
 		}
 		// Buyurtma qabul qilinganda pulni yechish / rad etilganda
-		// bo'shatish shu bog'lanish orqali ishlaydi.
+		// bo'shatish (Multicard'da — QAYTARISH) shu bog'lanish orqali.
 		orderSvc.WithPayments(paymentSvc)
 		// Pul haqiqatan yechilganda — restoranga "To'lov qabul qilindi".
 		paymentSvc.OnPaid(func(p payments.Payment) {
 			alertsSvc.PaymentReceived(p.RestaurantID, p.ID, p.OrderID, p.AmountTiyin)
 		})
-		// â”Œâ”€ TUZATILGAN NOSOZLIK (bug.md 43-band) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-		// `OCTO_TEST` ning standarti â€” `true` (kodda ham, compose'da
-		// ham). Fail-safe tanlov mantiqiy: tasodifan haqiqiy pul
-		// olinmasin. LEKIN production'da bu holat hech qanday
-		// ogohlantirish bermasdi â€” log faqat `"test", true` deb
-		// yozardi, xato darajasida emas.
-		//
-		// Sinov rejimida karta HAQIQATDA yechilmaydi, lekin oqim
-		// to'liq o'tadi: `status: succeeded` keladi, buyurtma
-		// "to'langan" bo'ladi va restoranga yuboriladi. Ya'ni PUL
-		// OLINMASDAN buyurtma bajariladi.
-		//
-		// `os.Exit(1)` EMAS â€” ataylab: yangi do'kon Octo bilan aynan
-		// sinov rejimida integratsiyani boshlaydi va serverni
-		// to'xtatish o'sha ishni imkonsiz qilardi. `slog.Error` esa
-		// monitoring/alertga tushadi va ko'zdan qochmaydi.
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-		if !devMode && octoClient.TestMode() {
-			slog.Error("DIQQAT: karta to'lovi SINOV rejimida, lekin muhit PRODUCTION. " +
-				"Pul YECHILMAYDI, buyurtma esa \"to'langan\" bo'lib restoranga ketadi. " +
-				"Haqiqiy pul uchun `.env` da ANIQ `OCTO_TEST=false` yozing.")
-		}
-		slog.Info("rejim: karta orqali to'lov (Octo) yoqilgan",
-			"shop_id", id, "test", octoClient.TestMode(), "callback", notifyURL)
+		slog.Info("rejim: karta orqali to'lov yoqilgan",
+			"provayder", payProviderName, "callback", notifyURL)
 	} else {
-		slog.Warn("OCTO_SHOP_ID yo'q â€” karta orqali to'lov O'CHIQ, buyurtmalar faqat naqd")
+		slog.Warn("to'lov provayderi sozlanmagan — karta orqali to'lov O'CHIQ, " +
+			"buyurtmalar faqat naqd (MULTICARD_BASE_URL yoki OCTO_SHOP_ID kerak)")
 	}
 
 	// Dispatch matching engine â€” Google Distance Matrix orqali HAQIQIY ETA.
@@ -1301,6 +1437,7 @@ func main() {
 		TableOrders:        tableOrders,
 		Payments:           paymentSvc,
 		OctoClient:         octoClient,
+		MC:                 mcRegistry,
 		WalletSvc:          walletSvc,
 		Dispatcher:         dispatcher,
 		DevMode:            devMode,
@@ -1361,7 +1498,7 @@ func main() {
 		api.RunDispatchWatchdog(context.Background(), queue)
 	}
 
-	addr := ":8080"
+	addr := listenAddr
 	// ANIQ timeout'lar â€” `http.ListenAndServe` nol-qiymatli serverdan
 	// foydalanadi, ya'ni o'qish/yozish CHEKSIZ kutadi. Bir necha o'nlab
 	// sekin (baytma-bayt yozadigan) ulanish barcha goroutine'larni band

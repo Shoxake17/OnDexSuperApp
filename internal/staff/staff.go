@@ -27,6 +27,12 @@ const (
 	// MaxSalaryTiyin — oylik maosh chegarasi (1 mlrd so'm): xato kiritilgan
 	// qo'shimcha nollar hisobotni buzmasin.
 	MaxSalaryTiyin int64 = 100_000_000_000
+	// MaxDeliveryPayTiyin — "buyurtmadan maosh" chegarasi (100 000 so'm).
+	//
+	// Chegara PANELDAGI XATO uchun: bu summa MIJOZNING yetkazish haqiga
+	// aylanadi. Ortiqcha nol (8 000 o'rniga 80 000) mijozni buyurtmadan
+	// qaytarardi.
+	MaxDeliveryPayTiyin int64 = 10_000_000
 )
 
 var (
@@ -50,6 +56,14 @@ var (
 	ErrNoteChars         = invalid("izohda ko'rinmas boshqaruv belgilari bo'lishi mumkin emas")
 	ErrAccessNotAllowed  = invalid("bu lavozim uchun OnDex ilovasi yo'q — ilovaga kirishni faqat ofitsiant va yetkazib beruvchiga ochish mumkin")
 	ErrBadSalary         = invalid("oylik maosh 0 dan katta va 1 mlrd so'mdan oshmasligi kerak")
+
+	ErrBadDeliveryPay = invalid(fmt.Sprintf(
+		"buyurtmadan maosh 0 dan katta va %d so'mdan oshmasligi kerak", MaxDeliveryPayTiyin/100))
+	// ErrPayModeConflict — kuryer yo oylik oladi, yo buyurtmadan. Ikkalasi
+	// birga bo'lsa mijoz uchun yetkazish haqi nima bo'lishi noaniq.
+	ErrPayModeConflict = invalid("yetkazib beruvchi yo oylik maosh oladi, yo buyurtmadan — ikkalasini birga kiritib bo'lmaydi")
+	// ErrDeliveryPayNotCourier — buyurtmadan maosh faqat yetkazib beruvchiga.
+	ErrDeliveryPayNotCourier = invalid("buyurtmadan maosh faqat yetkazib beruvchi uchun belgilanadi")
 )
 
 func validSalary(v *int64) (*int64, error) {
@@ -61,6 +75,68 @@ func validSalary(v *int64) (*int64, error) {
 	}
 	x := *v
 	return &x, nil
+}
+
+func validDeliveryPay(v *int64) (*int64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	if *v <= 0 || *v > MaxDeliveryPayTiyin {
+		return nil, ErrBadDeliveryPay
+	}
+	x := *v
+	return &x, nil
+}
+
+// checkPayMode — maosh usullari qoidalari: buyurtmadan maosh faqat
+// kuryerda va oylik maosh bilan birga bo'lmaydi.
+//
+// Qoida BIR joyda: yaratish va tahrirlash ikkalasi ham shuni chaqiradi,
+// aks holda biri unutilib, ziddiyatli yozuv bazaga tushardi.
+func checkPayMode(m *Member) error {
+	if m.DeliveryPayTiyin == nil {
+		return nil
+	}
+	if m.Position != PositionCourier {
+		return ErrDeliveryPayNotCourier
+	}
+	if m.SalaryTiyin != nil {
+		return ErrPayModeConflict
+	}
+	return nil
+}
+
+// DeliveryFee — MIJOZ to'laydigan yetkazish haqi (tiyin).
+//
+// ┌─ QOIDA ───────────────────────────────────────────────────────────┐
+// Yetkazish haqini restoran alohida kiritmaydi: u yetkazib beruvchining
+// MAOSH USULIDAN kelib chiqadi.
+//
+//   - "buyurtmadan maosh" — kuryer har yetkazishdan shuncha oladi va
+//     aynan shu summa mijozning buyurtmasiga qo'shiladi;
+//   - "oylik maosh" (yoki maosh kiritilmagan) — haq kuryerning
+//     maoshiga kiritilgan, shuning uchun mijoz uchun yetkazish BEPUL.
+//
+// Faqat HOZIR ishlay oladigan kuryerlar hisobga olinadi
+// (`AccessEffective`: faol + ilovaga kirish ochiq). Ta'tildagi yoki
+// ishdan bo'shagan kuryerning narxi mijozga ta'sir qilmasligi kerak.
+//
+// Bir nechta kuryer bo'lib, ularning narxi turlicha bo'lsa — ENG
+// YUQORISI olinadi: mijozga bitta raqam ko'rsatiladi va u eng qimmat
+// kuryerning haqini ham qoplashi kerak. Oylik kuryer olib borgan
+// buyurtmada farq restoranda qoladi (u uchun bu shartnomaviy qaror).
+// └───────────────────────────────────────────────────────────────────┘
+func DeliveryFee(members []*Member) int64 {
+	var fee int64
+	for _, m := range members {
+		if m == nil || m.Position != PositionCourier || !m.AccessEffective() || m.DeliveryPayTiyin == nil {
+			continue
+		}
+		if v := *m.DeliveryPayTiyin; v > fee {
+			fee = v
+		}
+	}
+	return fee
 }
 
 func sameSalary(a, b *int64) bool {
@@ -188,6 +264,11 @@ type Member struct {
 	// SalaryTiyin — oylik maosh (tiyin), ixtiyoriy. Maxfiy: logga va
 	// faoliyat jurnaliga QIYMATI yozilmaydi.
 	SalaryTiyin *int64
+	// DeliveryPayTiyin — "buyurtmadan maosh": har yetkazilgan buyurtma
+	// uchun kuryerga beriladigan haq (tiyin). Faqat yetkazib beruvchida va
+	// oylik maosh bilan BIRGA emas. Mijozning yetkazish haqi shundan
+	// kelib chiqadi (`DeliveryFee`). Maxfiy: logga qiymati yozilmaydi.
+	DeliveryPayTiyin *int64
 	// AppAccess — restoranning TANLOVI ("ilovaga kirish ochiq bo'lsin").
 	// Haqiqiy kirish `AccessEffective` — faol va ilovali lavozimda.
 	AppAccess bool
@@ -227,6 +308,10 @@ func cloneMember(m Member) Member {
 	if m.SalaryTiyin != nil {
 		v := *m.SalaryTiyin
 		m.SalaryTiyin = &v
+	}
+	if m.DeliveryPayTiyin != nil {
+		v := *m.DeliveryPayTiyin
+		m.DeliveryPayTiyin = &v
 	}
 	return m
 }

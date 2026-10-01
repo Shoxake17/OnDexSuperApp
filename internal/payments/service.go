@@ -74,6 +74,9 @@ type OrderSink interface {
 	// OrderAmountTiyin — buyurtmaning HAQIQIY summasi. To'lov summasi
 	// mijozdan emas, AYNAN shu yerdan olinadi.
 	OrderAmountTiyin(ctx context.Context, orderID string) (int64, error)
+	// OrderFiscalLines — chek satrlari. Yig'indisi
+	// `OrderAmountTiyin` ga ANIQ teng bo'lishi SHART.
+	OrderFiscalLines(ctx context.Context, orderID string) ([]Item, error)
 	// OnPaymentHeld — pul bloklandi (yoki yechildi): buyurtma endi
 	// oshxonaga tushishi mumkin.
 	OnPaymentHeld(ctx context.Context, orderID string) error
@@ -279,7 +282,9 @@ const minRetryAge = 60 * time.Second
 // yosh bo'lsa yangisi yaratilmaydi (aks holda har bosishda Octo'da
 // yangi tranzaksiya paydo bo'lardi).
 // └───────────────────────────────────────────────────────────────────┘
-func (s *Service) StartForOrder(ctx context.Context, orderID, customerID, restaurantID, description string, retry bool) (*Payment, error) {
+// [channel] — mijoz tanlagan to'lov xizmati (payme/click/uzum).
+// Bo'sh bo'lsa universal to'lov sahifasi ochiladi.
+func (s *Service) StartForOrder(ctx context.Context, orderID, customerID, restaurantID, description, channel string, retry bool) (*Payment, error) {
 	existing, err := s.repo.ListByOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -312,6 +317,22 @@ func (s *Service) StartForOrder(ctx context.Context, orderID, customerID, restau
 	if amount <= 0 {
 		return nil, errors.New("to'lov summasi noto'g'ri")
 	}
+	lines, err := s.orders.OrderFiscalLines(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	// ⚠️ Chek summasi to'lov summasiga TENG bo'lishi SHART. Bu yerda
+	// tekshirilmasa, xato faqat provayder rad etganda (yoki undan
+	// ham yomoni — soliq idorasida) bilinardi.
+	var lineSum int64
+	for _, it := range lines {
+		lineSum += it.TotalTiyin
+	}
+	if len(lines) > 0 && lineSum != amount {
+		return nil, fmt.Errorf(
+			"chek satrlari yig'indisi (%d) buyurtma summasiga (%d) teng emas",
+			lineSum, amount)
+	}
 
 	p := &Payment{
 		ID:           s.idgen(),
@@ -339,12 +360,15 @@ func (s *Service) StartForOrder(ctx context.Context, orderID, customerID, restau
 		Description: description,
 		// IKKI BOSQICHLI: pul bloklanadi, restoran qabul qilgandan
 		// keyin yechiladi.
-		Hold:       true,
-		ReturnURL:  s.returnURL,
-		NotifyURL:  s.notifyURL,
-		TTLMinutes: s.ttlMinutes,
-		Language:   "uz",
-		CustomerID: customerID,
+		Hold:         true,
+		RestaurantID: restaurantID,
+		Items:        lines,
+		Channel:      channel,
+		ReturnURL:    s.returnURL,
+		NotifyURL:    s.notifyURL,
+		TTLMinutes:   s.ttlMinutes,
+		Language:     "uz",
+		CustomerID:   customerID,
 	})
 	if err != nil {
 		p.Status = StatusFailed
@@ -422,7 +446,7 @@ func (s *Service) HandleCallback(ctx context.Context, cb CallbackData) error {
 		return errors.New("imzo noto'g'ri")
 	default:
 		// Imzo tekshirilmadi (kalit yo'q) — provayderdan so'raymiz.
-		st, serr := s.provider.Status(ctx, p.ID)
+		st, serr := s.provider.Status(ctx, p.RestaurantID, p.ID)
 		switch {
 		case serr == nil:
 			proof = "status-api"
@@ -576,7 +600,7 @@ func (s *Service) CaptureForOrder(ctx context.Context, orderID string, amountTiy
 	if amountTiyin <= 0 || amountTiyin > p.AmountTiyin {
 		amountTiyin = p.AmountTiyin
 	}
-	if err := s.provider.Capture(ctx, p.ProviderPaymentID, amountTiyin); err != nil {
+	if err := s.provider.Capture(ctx, p.RestaurantID, p.ProviderPaymentID, amountTiyin); err != nil {
 		return fmt.Errorf("to'lovni tasdiqlab bo'lmadi: %w", err)
 	}
 	t := s.now()
@@ -602,7 +626,7 @@ func (s *Service) CaptureForOrder(ctx context.Context, orderID string, amountTiy
 		if other.ID == p.ID || other.Status != StatusHeld || other.ProviderPaymentID == "" {
 			continue
 		}
-		if cerr := s.provider.Cancel(ctx, other.ProviderPaymentID); cerr != nil {
+		if cerr := s.provider.Cancel(ctx, other.RestaurantID, other.ProviderPaymentID); cerr != nil {
 			slog.Error("ortiqcha blokni bo'shatib bo'lmadi",
 				"payment", other.ID, "order", orderID, "error", cerr)
 			continue
@@ -628,12 +652,12 @@ func (s *Service) ReleaseForOrder(ctx context.Context, orderID string) error {
 	for _, p := range list {
 		switch p.Status {
 		case StatusHeld:
-			if err := s.provider.Cancel(ctx, p.ProviderPaymentID); err != nil {
+			if err := s.provider.Cancel(ctx, p.RestaurantID, p.ProviderPaymentID); err != nil {
 				return fmt.Errorf("blokni bo'shatib bo'lmadi: %w", err)
 			}
 			p.Status = StatusCanceled
 		case StatusPaid:
-			if err := s.provider.Refund(ctx, p.ProviderPaymentID, s.idgen(), p.AmountTiyin); err != nil {
+			if err := s.provider.Refund(ctx, p.RestaurantID, p.ProviderPaymentID, s.idgen(), p.AmountTiyin); err != nil {
 				return fmt.Errorf("pulni qaytarib bo'lmadi: %w", err)
 			}
 			p.Status = StatusRefunded
@@ -660,6 +684,26 @@ func (s *Service) heldPayment(ctx context.Context, orderID string) (*Payment, er
 		}
 	}
 	return nil, nil
+}
+
+// RestaurantForPayment — to'lov qaysi restoranga tegishli.
+//
+// ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+// Ko'p ijarachili provayderda callback IMZOSI restoranning O'Z siri
+// bilan hisoblanadi. Imzoni tekshirish uchun esa avval "bu qaysi
+// restoranning to'lovi?" degan savolga javob kerak — va u faqat
+// bizning yozuvimizda bor.
+//
+// ⚠️ Bu FAQAT kalitni topish uchun. Xabarning o'ziga baribir
+// ishonilmaydi: imzo tekshirilgandan keyin ham holat
+// `HandleCallback` qoidalari bo'yicha qayta ishlanadi.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Service) RestaurantForPayment(ctx context.Context, paymentID string) (string, error) {
+	p, err := s.repo.GetByID(ctx, paymentID)
+	if err != nil {
+		return "", err
+	}
+	return p.RestaurantID, nil
 }
 
 // ListByOrder — buyurtmaning to'lov urinishlari (HTTP qatlami uchun).

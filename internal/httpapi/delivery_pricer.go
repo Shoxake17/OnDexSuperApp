@@ -3,40 +3,46 @@ package httpapi
 import (
 	"context"
 
-	"chustapp/internal/catalog"
+	"chustapp/internal/staff"
 )
 
-// catalogDeliveryPricer — `orders.DeliveryPricer` ni katalog ustiga
+// staffDeliveryPricer — `orders.DeliveryPricer` ni xodimlar ustiga
 // bog'laydi.
 //
 // ┌─ NEGA KO'PRIK KERAK ──────────────────────────────────────────────┐
-// `orders` paketi `catalog` ni import qilmaydi (buyurtma xizmati menyu
+// `orders` paketi `staff` ni import qilmaydi (buyurtma xizmati xodimlar
 // tuzilmasini bilishi shart emas) va shunday qolishi kerak. Shu sabab
 // bog'lash HTTP qatlamida — ikkala paketni ham shu yer ko'radi.
 // └───────────────────────────────────────────────────────────────────┘
 //
-// Qoidaning O'ZI bu yerda EMAS, `catalog.EffectiveDeliveryFee` da:
-// bepul chegarasi, stol buyurtmasi va 0 = bepul — hammasi bitta
-// joyda. Bu tur faqat restoranni topib beradi.
-type catalogDeliveryPricer struct {
-	repo catalog.Repository
+// Qoidaning O'ZI bu yerda EMAS, `staff.DeliveryFee` da: "buyurtmadan
+// maosh" bo'lsa shu summa, oylik maosh bo'lsa BEPUL. Bu tur faqat
+// restoranning xodimlarini topib beradi va stol buyurtmasini ajratadi.
+type staffDeliveryPricer struct {
+	repo staff.Repository
 }
 
 // NewDeliveryPricer — `orders.Service.WithDelivery` uchun.
-func NewDeliveryPricer(repo catalog.Repository) catalogDeliveryPricer {
-	return catalogDeliveryPricer{repo: repo}
+func NewDeliveryPricer(repo staff.Repository) staffDeliveryPricer {
+	return staffDeliveryPricer{repo: repo}
 }
 
 // DeliveryFee — `orders.DeliveryPricer`.
 //
-// Restoran topilmasa haq 0 EMAS, XATO qaytadi: topilmagan restoran
-// uchun buyurtma baribir yaratilmaydi, lekin bu yerda jimgina 0
-// qaytarilsa sabab yashirinib, keyin "nega haq olinmadi?" degan
-// tushunarsiz holat chiqardi.
-func (p catalogDeliveryPricer) DeliveryFee(ctx context.Context, restaurantID string, orderTotalTiyin int64, dineIn bool) (int64, error) {
-	rest, err := p.repo.GetRestaurant(ctx, restaurantID)
+// STOL buyurtmasida haq har doim 0: ofitsiant stolga olib boradi, kuryer
+// ishtirok etmaydi. Bu tekshiruv xodimlar ro'yxatiga murojaatdan OLDIN —
+// stol buyurtmasi uchun ortiqcha so'rov ketmasin.
+//
+// Ro'yxatni o'qib bo'lmasa haq 0 EMAS, XATO qaytadi: jimgina "bepul"
+// deb hisoblansa mijoz bir narxni ko'rib, boshqasini to'lashi (yoki
+// restoran haqsiz yetkazib berishi) mumkin edi.
+func (p staffDeliveryPricer) DeliveryFee(ctx context.Context, restaurantID string, _ int64, dineIn bool) (int64, error) {
+	if dineIn {
+		return 0, nil
+	}
+	members, err := p.repo.List(ctx, restaurantID)
 	if err != nil {
 		return 0, err
 	}
-	return rest.EffectiveDeliveryFee(orderTotalTiyin, dineIn), nil
+	return staff.DeliveryFee(members), nil
 }

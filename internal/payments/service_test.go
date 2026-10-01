@@ -40,28 +40,28 @@ func (f *fakeProvider) Create(_ context.Context, req CreateRequest) (*CreateResu
 	}, nil
 }
 
-func (f *fakeProvider) Status(_ context.Context, _ string) (*StatusResult, error) {
+func (f *fakeProvider) Status(_ context.Context, _, _ string) (*StatusResult, error) {
 	if f.statusErr != nil {
 		return nil, f.statusErr
 	}
 	return &StatusResult{Status: f.status, PaidAmountTiyin: f.statusSum}, nil
 }
 
-func (f *fakeProvider) Capture(_ context.Context, _ string, amount int64) error {
+func (f *fakeProvider) Capture(_ context.Context, _, _ string, amount int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.captured = append(f.captured, amount)
 	return nil
 }
 
-func (f *fakeProvider) Cancel(_ context.Context, _ string) error {
+func (f *fakeProvider) Cancel(_ context.Context, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.canceled++
 	return nil
 }
 
-func (f *fakeProvider) Refund(_ context.Context, _, _ string, _ int64) error {
+func (f *fakeProvider) Refund(_ context.Context, _, _, _ string, _ int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.refunded++
@@ -78,6 +78,12 @@ type fakeOrders struct {
 func (f *fakeOrders) OrderAmountTiyin(context.Context, string) (int64, error) {
 	return f.amount, nil
 }
+
+// OrderFiscalLines — bitta satr: yig'indi summaga teng.
+func (f *fakeOrders) OrderFiscalLines(context.Context, string) ([]Item, error) {
+	return []Item{{Name: "Buyurtma", Qty: 1, UnitPriceTiyin: f.amount, TotalTiyin: f.amount}}, nil
+}
+
 func (f *fakeOrders) OnPaymentHeld(context.Context, string) error   { f.held++; return nil }
 func (f *fakeOrders) OnPaymentFailed(context.Context, string) error { f.failed++; return nil }
 
@@ -176,7 +182,7 @@ func TestCallbackWithoutProofIsNotTrusted(t *testing.T) {
 	ord := &fakeOrders{amount: 1200000}
 	svc, repo := newTestService(t, prov, ord, Options{})
 
-	p, err := svc.StartForOrder(context.Background(), "order-1", "cust", "rest", "test", false)
+	p, err := svc.StartForOrder(context.Background(), "order-1", "cust", "rest", "test", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +212,7 @@ func TestCallbackWithBadSignatureRejected(t *testing.T) {
 	prov := &fakeProvider{status: StatusPaid}
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	err := svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusPaid,
@@ -231,7 +237,7 @@ func TestCallbackWithValidSignatureAccepted(t *testing.T) {
 	prov := &fakeProvider{statusErr: errors.New("status API buzuq")}
 	ord := &fakeOrders{amount: 1200000}
 	svc, repo := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	if err := svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, ProviderPaymentID: p.ProviderPaymentID,
@@ -274,12 +280,12 @@ func TestSignatureIsBoundToPayment(t *testing.T) {
 	ctx := context.Background()
 
 	// Hujumchining haqiqiy (kichik) to'lovi.
-	victimPay, err := svc.StartForOrder(ctx, "order-attacker", "c", "r", "d", false)
+	victimPay, err := svc.StartForOrder(ctx, "order-attacker", "c", "r", "d", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Nishon — boshqa buyurtmaning to'lovi.
-	target, err := svc.StartForOrder(ctx, "order-target", "c", "r", "d", false)
+	target, err := svc.StartForOrder(ctx, "order-target", "c", "r", "d", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +324,7 @@ func TestUnboundPaymentDoesNotTrustSignature(t *testing.T) {
 	svc, repo := newTestService(t, prov, ord, Options{})
 	ctx := context.Background()
 
-	p, _ := svc.StartForOrder(ctx, "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(ctx, "order-1", "c", "r", "d", "", false)
 	// Bog'lanishni sun'iy ravishda uzamiz (Update ulgurmagan holat).
 	p.ProviderPaymentID = ""
 	if err := repo.Update(ctx, p); err != nil {
@@ -347,7 +353,7 @@ func TestCallbackConfirmedByStatusAPI(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 1200000}
 	ord := &fakeOrders{amount: 1200000}
 	svc, repo := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	// Callback "to'landi" deydi, API esa "bloklandi" — API ustun.
 	if err := svc.HandleCallback(context.Background(), CallbackData{
@@ -366,7 +372,7 @@ func TestCallbackRejectsUnderpayment(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 500000}
 	ord := &fakeOrders{amount: 1200000}
 	svc, repo := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	if err := svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 500000,
@@ -389,7 +395,7 @@ func TestCallbackIsIdempotent(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 1000}
 	ord := &fakeOrders{amount: 1000}
 	svc, _ := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	cb := CallbackData{PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1000}
 	for i := 0; i < 5; i++ {
@@ -407,7 +413,7 @@ func TestLateCallbackDoesNotRevertFinalStatus(t *testing.T) {
 	prov := &fakeProvider{status: StatusPaid, statusSum: 1000}
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	_ = svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusPaid, AmountTiyin: 1000,
@@ -513,7 +519,7 @@ func TestDevTrustAcceptsCallback(t *testing.T) {
 	prov := &fakeProvider{statusErr: errors.New("500")}
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{TrustCallbackWithoutProof: true})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	if err := svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1000,
@@ -536,7 +542,7 @@ func TestStartUsesOrderAmount(t *testing.T) {
 	ord := &fakeOrders{amount: 4321000}
 	svc, _ := newTestService(t, prov, ord, Options{})
 
-	p, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,8 +561,8 @@ func TestStartReusesActivePayment(t *testing.T) {
 	ord := &fakeOrders{amount: 1000}
 	svc, _ := newTestService(t, prov, ord, Options{})
 
-	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
-	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
+	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,12 +579,12 @@ func TestStartRetryOpensNewPayment(t *testing.T) {
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{})
 
-	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	// Urinish "eskirgan" bo'lsin, aks holda spamdan himoya ishlaydi.
 	svc.now = func() time.Time { return time.Now().Add(2 * minRetryAge) }
 
-	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", true)
+	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,8 +603,8 @@ func TestStartRetryIgnoredForFreshAttempt(t *testing.T) {
 	ord := &fakeOrders{amount: 1000}
 	svc, _ := newTestService(t, prov, ord, Options{})
 
-	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
-	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", true)
+	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
+	second, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,9 +621,9 @@ func TestLateCallbackOnClosedAttemptIsAccepted(t *testing.T) {
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{})
 
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	svc.now = func() time.Time { return time.Now().Add(2 * minRetryAge) }
-	if _, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", true); err != nil {
+	if _, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -641,9 +647,9 @@ func TestCaptureReleasesExtraHolds(t *testing.T) {
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{})
 
-	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	first, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	svc.now = func() time.Time { return time.Now().Add(2 * minRetryAge) }
-	second, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", true)
+	second, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", true)
 
 	for _, id := range []string{first.ID, second.ID} {
 		if err := svc.HandleCallback(context.Background(), CallbackData{
@@ -675,11 +681,11 @@ func TestStartRefusesWhenAlreadyPaid(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 1000}
 	ord := &fakeOrders{amount: 1000}
 	svc, _ := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	_ = svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1000})
 
-	if _, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false); !errors.Is(err, ErrAlreadyPaid) {
+	if _, err := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false); !errors.Is(err, ErrAlreadyPaid) {
 		t.Errorf("ErrAlreadyPaid kutilgan edi: %v", err)
 	}
 }
@@ -692,7 +698,7 @@ func TestCaptureAndRelease(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 1200000}
 	ord := &fakeOrders{amount: 1200000}
 	svc, _ := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	_ = svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1200000})
 
@@ -718,7 +724,7 @@ func TestReleaseCancelsHold(t *testing.T) {
 	prov := &fakeProvider{status: StatusHeld, statusSum: 1000}
 	ord := &fakeOrders{amount: 1000}
 	svc, _ := newTestService(t, prov, ord, Options{})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 	_ = svc.HandleCallback(context.Background(), CallbackData{
 		PaymentID: p.ID, Status: StatusHeld, AmountTiyin: 1000})
 
@@ -735,7 +741,7 @@ func TestExpireStale(t *testing.T) {
 	prov := &fakeProvider{}
 	ord := &fakeOrders{amount: 1000}
 	svc, repo := newTestService(t, prov, ord, Options{TTLMinutes: 1})
-	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", false)
+	p, _ := svc.StartForOrder(context.Background(), "order-1", "c", "r", "d", "", false)
 
 	// Vaqtni oldinga suramiz.
 	svc.now = func() time.Time { return time.Now().Add(2 * time.Hour) }

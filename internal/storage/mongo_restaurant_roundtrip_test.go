@@ -29,6 +29,8 @@ import (
 // (`Restaurant.WithOpenState` har so'rovda qaytadan hisoblaydi).
 var computedFields = map[string]bool{
 	"OpenNow": true, "ClosedReason": true, "OpenChangesAt": true,
+	// Mijozga ko'rinadigan to'lov usullari (`WithPaymentOptions`).
+	"PaymentOptions": true,
 }
 
 // fillRestaurant — har bir maydonga NOLDAN FARQLI qiymat qo'yadi.
@@ -64,7 +66,13 @@ func fillRestaurant(t *testing.T) catalog.Restaurant {
 					Days: []catalog.DayHours{{Day: 1, Enabled: true, Open: "09:00", Close: "23:00"}},
 				}))
 			case "PaymentMethods":
-				fv.Set(reflect.ValueOf(&catalog.PaymentMethods{Cash: true, CardOnline: true}))
+				// Har bir bayroq YOQILGAN: yangi usul (Payme/Click/Uzum)
+				// Mongo'ga yozilmay qolsa, nol qiymat bilan qaytib, test
+				// buni ko'rmay o'tib ketmasligi uchun.
+				fv.Set(reflect.ValueOf(&catalog.PaymentMethods{
+					Cash: true, CardTerminal: true, CardOnline: true,
+					Payme: true, Click: true, Uzum: true,
+				}))
 			default:
 				t.Fatalf("YANGI ko'rsatkich maydon %q — bu testni kengaytiring "+
 					"va `restaurantDoc`/`toDomain` da ham hisobga oling", f.Name)

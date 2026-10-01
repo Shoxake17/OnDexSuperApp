@@ -41,12 +41,15 @@ type staffMemberView struct {
 	HiredOn       *string         `json:"hired_on"`
 	Note          string          `json:"note"`
 	// MonthlySalaryTiyin — faqat restoran egasi/admin ko'radigan javobda.
-	MonthlySalaryTiyin *int64     `json:"monthly_salary_tiyin"`
-	AppAccess          bool       `json:"app_access"`
-	AppAccessActive    bool       `json:"app_access_active"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	DismissedAt        *time.Time `json:"dismissed_at"`
+	MonthlySalaryTiyin *int64 `json:"monthly_salary_tiyin"`
+	// DeliveryPayTiyin — "buyurtmadan maosh" (faqat yetkazib beruvchida).
+	// Bu ham faqat restoran egasi/admin ko'radigan javobda.
+	DeliveryPayTiyin *int64     `json:"delivery_pay_tiyin"`
+	AppAccess        bool       `json:"app_access"`
+	AppAccessActive  bool       `json:"app_access_active"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DismissedAt      *time.Time `json:"dismissed_at"`
 }
 
 func staffView(m *staff.Member) staffMemberView {
@@ -54,7 +57,8 @@ func staffView(m *staff.Member) staffMemberView {
 		ID: m.ID, Number: m.Number, Code: m.Code(), FirstName: m.FirstName, LastName: m.LastName,
 		FullName: m.FullName(), Phone: m.Phone, Position: string(m.Position),
 		PositionTitle: m.Position.Title(), Status: string(m.Status), StatusTitle: m.Status.Title(),
-		Schedule: m.Schedule, Note: m.Note, MonthlySalaryTiyin: m.SalaryTiyin, AppAccess: m.AppAccess,
+		Schedule: m.Schedule, Note: m.Note, MonthlySalaryTiyin: m.SalaryTiyin,
+		DeliveryPayTiyin: m.DeliveryPayTiyin, AppAccess: m.AppAccess,
 		AppAccessActive: m.AccessEffective() && m.UserID != "",
 		CreatedAt:       m.CreatedAt, UpdatedAt: m.UpdatedAt, DismissedAt: m.DismissedAt,
 	}
@@ -178,6 +182,11 @@ func (s *Server) registerStaffRoutes(mux *http.ServeMux) {
 				"statuses":        statuses,
 				"timezone":        "Asia/Tashkent",
 				"max_members":     staff.MaxMembersPerRestaurant,
+				// Mijoz hozir to'laydigan yetkazish haqi (tiyin): faol
+				// yetkazib beruvchilarning maosh usulidan hisoblanadi
+				// (`staff.DeliveryFee`). Panel buni "mijoz nimani
+				// ko'radi" deb ko'rsatadi — qoida bitta joyda.
+				"customer_delivery_fee_tiyin": staff.DeliveryFee(ov.Members),
 			})
 		}))
 
@@ -202,6 +211,8 @@ func (s *Server) registerStaffRoutes(mux *http.ServeMux) {
 				Note      string          `json:"note"`
 				AppAccess bool            `json:"app_access"`
 				Salary    *int64          `json:"monthly_salary_tiyin"`
+				// DeliveryPay — "buyurtmadan maosh" (faqat yetkazib beruvchi).
+				DeliveryPay *int64 `json:"delivery_pay_tiyin"`
 			}
 			dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, staffBodyLimit))
 			dec.DisallowUnknownFields()
@@ -212,7 +223,7 @@ func (s *Server) registerStaffRoutes(mux *http.ServeMux) {
 			m, err := s.StaffSvc.Create(r.Context(), restaurantID, claimsFrom(r).Subject, staff.Input{
 				FirstName: req.FirstName, LastName: req.LastName, Phone: req.Phone, Position: req.Position,
 				Schedule: req.Schedule, HiredOn: req.HiredOn, Note: req.Note, AppAccess: req.AppAccess,
-				SalaryTiyin: req.Salary,
+				SalaryTiyin: req.Salary, DeliveryPayTiyin: req.DeliveryPay,
 			})
 			if err != nil {
 				staffHTTPError(w, err)
@@ -279,6 +290,14 @@ func (s *Server) registerStaffRoutes(mux *http.ServeMux) {
 					var b bool
 					err = decodeStrict(v, &b)
 					p.AppAccess = &b
+				case "delivery_pay_tiyin":
+					if string(v) == "null" {
+						p.ClearDeliveryPay = true
+					} else {
+						var n int64
+						err = decodeStrict(v, &n)
+						p.DeliveryPayTiyin = &n
+					}
 				case "monthly_salary_tiyin":
 					if string(v) == "null" {
 						p.ClearSalary = true

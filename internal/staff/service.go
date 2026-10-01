@@ -61,6 +61,9 @@ type Input struct {
 	AppAccess bool
 	// SalaryTiyin — oylik maosh, ixtiyoriy (nil — kiritilmagan).
 	SalaryTiyin *int64
+	// DeliveryPayTiyin — "buyurtmadan maosh" (faqat yetkazib beruvchi,
+	// oylik maosh bilan birga emas).
+	DeliveryPayTiyin *int64
 }
 
 // Patch — tahrirlash; nil maydon o'zgarmaydi.
@@ -79,6 +82,10 @@ type Patch struct {
 	// SalaryTiyin — yangi maosh; ClearSalary — maoshni olib tashlash.
 	SalaryTiyin *int64
 	ClearSalary bool
+	// DeliveryPayTiyin — yangi "buyurtmadan maosh"; ClearDeliveryPay —
+	// olib tashlash.
+	DeliveryPayTiyin *int64
+	ClearDeliveryPay bool
 }
 
 func (s *Service) newEvent(m *Member, actorID string, kind EventKind, from, to string) (Event, error) {
@@ -149,6 +156,10 @@ func (s *Service) Create(ctx context.Context, restaurantID, actorID string, in I
 	if err != nil {
 		return nil, err
 	}
+	deliveryPay, err := validDeliveryPay(in.DeliveryPayTiyin)
+	if err != nil {
+		return nil, err
+	}
 	if in.AppAccess && !pos.AllowsAppAccess() {
 		return nil, ErrAccessNotAllowed
 	}
@@ -159,7 +170,11 @@ func (s *Service) Create(ctx context.Context, restaurantID, actorID string, in I
 	m := &Member{
 		ID: id, RestaurantID: restaurantID, FirstName: first, LastName: last, Phone: phone,
 		Position: pos, Status: StatusActive, Schedule: sched, HiredOn: hired, Note: note,
-		AppAccess: in.AppAccess, SalaryTiyin: salary, CreatedAt: now, UpdatedAt: now,
+		AppAccess: in.AppAccess, SalaryTiyin: salary, DeliveryPayTiyin: deliveryPay,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := checkPayMode(m); err != nil {
+		return nil, err
 	}
 
 	list, err := s.repo.List(ctx, restaurantID)
@@ -299,6 +314,35 @@ func (s *Service) Update(ctx context.Context, restaurantID, id, actorID string, 
 			events = append(events, ev)
 			m.SalaryTiyin = next
 		}
+	}
+	if p.ClearDeliveryPay || p.DeliveryPayTiyin != nil {
+		var next *int64
+		if !p.ClearDeliveryPay {
+			v, err := validDeliveryPay(p.DeliveryPayTiyin)
+			if err != nil {
+				return nil, err
+			}
+			next = v
+		}
+		if !sameSalary(next, m.DeliveryPayTiyin) {
+			// Maosh o'zgargani sifatida yoziladi (qiymat YOZILMAYDI):
+			// alohida hodisa turi jurnal ko'rinishini murakkablashtirardi.
+			ev, err := s.newEvent(&m, actorID, EventSalaryChanged, "", "")
+			if err != nil {
+				return nil, err
+			}
+			events = append(events, ev)
+			m.DeliveryPayTiyin = next
+		}
+	}
+	// Lavozim kuryerdan boshqasiga o'tsa "buyurtmadan maosh" ham ketadi:
+	// u faqat yetkazib beruvchiga tegishli va jimgina qolib, mijozning
+	// yetkazish haqiga ta'sir qilishda davom etmasligi kerak.
+	if m.Position != PositionCourier && m.DeliveryPayTiyin != nil && p.DeliveryPayTiyin == nil {
+		m.DeliveryPayTiyin = nil
+	}
+	if err := checkPayMode(&m); err != nil {
+		return nil, err
 	}
 	if p.AppAccess != nil {
 		if *p.AppAccess && !m.Position.AllowsAppAccess() {

@@ -47,6 +47,17 @@ paths = [
   # Haqiqiy `.env` esa `.gitignore` da va hech qachon commit
   # qilinmaydi — buni alohida tekshirdik.
   '''^\.env\.example$''',
+
+  # -- E2E sinov dunyosi va lokal benchmark --
+  #
+  # `internal/e2e/world.go` dagi `encKey` - E2E dunyosi uchun o'ylab
+  # topilgan shifrlash kaliti (xotiradagi soxta ombor, hech qayerda
+  # ishlatilmaydi). `scripts/bench.ps1` dagi JWT_SECRET - lokal
+  # benchmark konteynerlari (127.0.0.1) uchun bir martalik sir; u bilan
+  # imzolangan token faqat shu izolyatsiyalangan API'da yaroqli.
+  # Istisno aynan shu ikki fayl bilan cheklangan (butun papka emas).
+  '''^internal/e2e/world\.go$''',
+  '''^scripts/bench\.ps1$''',
 ]
 
 regexes = [

@@ -1,0 +1,90 @@
+# OnDex — server oqimlari E2E (ssenariylar + invariantlar + qamrov ratcheti).
+#
+# Alohida workflow: hisobot (HTML/JSON) artefakt sifatida saqlanadi va
+# mutatsiya tekshiruvi (suite sezgirligi) jadval bo'yicha ishlaydi.
+# Suite tez (~4 s) va `deploy.yml` dagi `go test ./...` ham uni o'z ichiga
+# oladi, shuning uchun ratchet deploy darvozasi hamdir.
+
+name: E2E - Server flows
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1' # har dushanba: mutatsiya tekshiruvi
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flows:
+    name: Scenarios + invariants + coverage ratchet (-race)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: Run E2E (race detector)
+        run: go test -race -count=1 ./internal/e2e/...
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f logs/e2e/report.json ]; then
+            python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r = json.load(open('logs/e2e/report.json'))
+          steps = r['steps']
+          bad = [s for s in steps if not s['passed'] and not s.get('skipped')]
+          c = r['coverage']
+          print('### E2E hisobot')
+          print(f"- Qadamlar: {len(steps) - len(bad)} o'tdi, {len(bad)} yiqildi")
+          print(f"- Invariant buzilishi: {len(r['violations'])}")
+          print(f"- Endpoint qamrovi: {c['covered']}/{c['total']} (istisno: {c['exempt']})")
+          print(f"- So'rovlar: {len(r['calls'])}")
+          print('\n**Eng sekin 5 endpoint (p95 ms)**')
+          for x in r['routes'][:5]:
+              print(f"- `{x['route']}` — {x['p95_ms']:.1f}")
+          PY
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report
+          path: logs/e2e/
+          if-no-files-found: ignore
+
+  mutation:
+    name: Suite sensitivity (mutation check)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: Mutation check
+        shell: powershell
+        run: .\scripts\e2e-mutation.ps1

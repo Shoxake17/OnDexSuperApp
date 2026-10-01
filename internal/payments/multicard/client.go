@@ -18,6 +18,7 @@
 package multicard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,10 +34,16 @@ import (
 
 // Config — platforma darajasidagi kalitlar.
 //
-// ⚠️ `ApplicationID`/`Secret` — OnDex'ning O'Z kalitlari, restoranniki
-// EMAS. Har restoran alohida `store_id` bilan ajratiladi. Shu sababli
-// sir bitta joyda (serverda, `.env` da) turadi va hech qachon panelga
-// yoki ilovaga chiqmaydi.
+// ⚠️ `ApplicationID`/`Secret` IKKI manbadan kelishi mumkin:
+//
+//  1. OnDex'ning platforma kalitlari (`.env`, `MULTICARD_*`) — OnDex
+//     shartnomasi ostidagi restoranlar uchun;
+//  2. RESTORANNING O'Z kalitlari — u Multicard bilan o'zi shartnoma
+//     tuzgan bo'lsa. Ular bazada SHIFRLANGAN holda yotadi
+//     (`internal/secretstore`) va hech qachon panelga qaytarilmaydi.
+//
+// Ikkinchi holatda pul to'g'ridan-to'g'ri restoranning o'z bank
+// hisobiga tushadi va OnDex oraliqda turmaydi.
 type Config struct {
 	BaseURL       string
 	ApplicationID string
@@ -62,6 +69,63 @@ type Client struct {
 	expires time.Time
 }
 
+// ProdHost / SandboxHost — shlyuzning jonli va sinov manzillari.
+//
+// ┌─ NEGA KODDA ──────────────────────────────────────────────────────┐
+// Multicard'da Octo'dagi `OCTO_TEST` kabi ALOHIDA bayroq YO'Q: sinov
+// va jonli muhit faqat MANZIL bilan ajraladi. Ya'ni `.env` dagi
+// bitta satr xato yozilsa:
+//
+//   - production sinov manziliga qarasa — mijoz "to'ladi", pul
+//     OLINMAYDI, buyurtma esa restoranga ketaveradi;
+//   - dev jonli manzilga qarasa — sinov paytida HAQIQIY pul yechiladi.
+//
+// Ikkalasi ham jimgina sodir bo'ladi. `IsSandbox` shu farqni kodga
+// ma'lum qiladi va server ishga tushganda ogohlantiradi
+// (`cmd/api/main.go`) — xato deploy paytida ko'rinadi, birinchi
+// to'lovda emas.
+// └───────────────────────────────────────────────────────────────────┘
+const (
+	ProdHost    = "mesh.multicard.uz"
+	SandboxHost = "dev-mesh.multicard.uz"
+)
+
+// IsSandbox — manzil SINOV stendimi.
+//
+// Noma'lum manzil (masalan mahalliy soxta server) ham sinov deb
+// qaraladi: fail-safe tomoni — "jonli" deb xato hisoblashdan ko'ra
+// ortiqcha ogohlantirish yaxshi.
+func IsSandbox(baseURL string) bool {
+	h := strings.ToLower(strings.TrimSpace(baseURL))
+	h = strings.TrimPrefix(strings.TrimPrefix(h, "https://"), "http://")
+	h = strings.TrimSuffix(h, "/")
+	if i := strings.IndexAny(h, "/:"); i >= 0 {
+		h = h[:i]
+	}
+	return h != ProdHost
+}
+
+// DefaultTimeout — shlyuzga bitta so'rovning eng uzun muddati.
+//
+// ┌─ NEGA MIJOZ ILOVASINIKIDAN ANCHA QISQA ───────────────────────────┐
+// Timeout SHART: `package http` da standarti YO'Q va yarim ochiq
+// ulanish so'rovni abadiy osib qo'yardi.
+//
+// Lekin UZUNLIGI ham muhim. Mijoz ilovasining HTTP muddati 20 soniya
+// (`ondex_core.ApiClient`). Bu yerda ham 20 bo'lsa poyga chiqadi:
+// shlyuz javob bermasa server 20 soniyadan KEYIN 502 qaytaradi,
+// ilova esa AYNAN 20-soniyada taslim bo'lib "Serverga ulanib
+// bo'lmadi — internetni tekshiring" deydi. Ya'ni foydalanuvchi
+// internetini ayblaydi, aslida esa shlyuz o'chiq va server buni
+// aniq aytmoqchi edi.
+//
+// To'lov yaratishda eng ko'pi ikki so'rov ketadi (`/auth` +
+// `/payment/invoice`), ya'ni eng yomon holat 2×8 = 16 soniya —
+// ilovaning 20 soniyasidan ichkarida. Shlyuz 8 soniyada javob
+// bermasa, u amalda ishlamayapti.
+// └───────────────────────────────────────────────────────────────────┘
+const DefaultTimeout = 8 * time.Second
+
 var (
 	// ErrNotConfigured — kalitlar berilmagan (funksiya o'chiq).
 	ErrNotConfigured = errors.New("multicard: MULTICARD_APPLICATION_ID/SECRET berilmagan")
@@ -79,9 +143,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	c := &Client{cfg: cfg, http: cfg.HTTP, now: cfg.Now}
 	if c.http == nil {
-		// Timeout SHART: `package http` da standarti YO'Q va yarim
-		// ochiq ulanish so'rovni abadiy osib qo'yardi.
-		c.http = &http.Client{Timeout: 20 * time.Second}
+		c.http = &http.Client{Timeout: DefaultTimeout}
 	}
 	if c.now == nil {
 		c.now = time.Now
@@ -184,15 +246,35 @@ func (c *Client) token_(ctx context.Context) (string, error) {
 
 // get — avtorizatsiyalangan GET va qobiqni ochish.
 func (c *Client) get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+// do — avtorizatsiyalangan so'rov va qobiqni ochish.
+//
+// `body` `nil` bo'lmasa JSON sifatida yuboriladi. Multicard `DELETE`
+// da ham tana kutadi (qisman qaytarish), shuning uchun metod alohida
+// parametr.
+func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	tok, err := c.token_(ctx)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+path, nil)
+	var rdr io.Reader
+	if body != nil {
+		b, merr := json.Marshal(body)
+		if merr != nil {
+			return merr
+		}
+		rdr = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.cfg.BaseURL+path, rdr)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return err
@@ -335,6 +417,104 @@ func (h History) RefundedTiyin() int64 {
 		}
 	}
 	return sum.Int64()
+}
+
+// ── Do'kon (kassa) ma'lumoti ────────────────────────────────────────
+
+// StoreInfo — `GET /payment/store/{id}` javobi (kerakli qismi).
+//
+// ┌─ NEGA BU KERAK ───────────────────────────────────────────────────┐
+// Restoran kalitlarini kiritganda ularni SAQLASHDAN OLDIN tekshirish
+// kerak. Faqat `POST /auth` yetarli emas: kalitlar to'g'ri bo'lib,
+// do'kon raqami xato bo'lishi mumkin (aynan shunday bo'ldi — "65"
+// kiritilib, xato faqat Moliya sahifasi ochilganda bilindi).
+//
+// Bundan tashqari javob PULNING QAYERGA tushishini aytadi: hisob
+// raqami, tashkilot nomi, STIR. Restoran ulashni tasdiqlashdan oldin
+// o'z rekvizitlarini ko'rishi kerak — noto'g'ri do'kon raqami
+// kiritilsa pul BEGONA hisobga ketadi.
+// └───────────────────────────────────────────────────────────────────┘
+type StoreInfo struct {
+	ID    int    `json:"id"`
+	UUID  string `json:"uuid"`
+	Title string `json:"title"`
+
+	// ┌─ FISKAL STANDART QIYMATLAR ────────────────────────────────────┐
+	// `ofd` har to'lovda MAJBURIY, uning ichida esa `mxik` va
+	// `package_code` kerak. Har taomga alohida kod kiritish restoran
+	// uchun og'ir bo'lardi, shuning uchun kassaning STANDART qiymati
+	// ishlatiladi — u ulash paytida o'qib olinadi va saqlanadi.
+	//
+	// `TaxRegistration`: 0 — fiskallashtirish O'CHIQ.
+	// └────────────────────────────────────────────────────────────────┘
+	TaxMXIK         string `json:"tax_mxik"`
+	TaxPackageCode  string `json:"tax_package_code"`
+	TaxRegistration int    `json:"tax_registration"`
+
+	Merchant struct {
+		Name string `json:"name"`
+		TIN  string `json:"tin"`
+	} `json:"merchant"`
+
+	// MerchantAccount — pul tushadigan bank rekvizitlari.
+	MerchantAccount struct {
+		AccountNo    string `json:"account_no"`
+		MFO          string `json:"mfo"`
+		OfficialName string `json:"official_name"`
+	} `json:"merchant_account"`
+
+	// Contract.Fee — komissiya foizi. ⚠️ Shartnomaga bog'liq va
+	// do'kondan do'konga farq qiladi, shuning uchun kodda QADALMAYDI
+	// (sinov stendida 1.5% o'lchandi, egasi 2% degan edi).
+	Contract struct {
+		Num Str `json:"num"`
+		Fee struct {
+			Up   Str `json:"up"`
+			Down Str `json:"down"`
+		} `json:"fee"`
+	} `json:"contract"`
+}
+
+// Str — SON ham, SATR ham bo'lishi mumkin bo'lgan matnli maydon.
+//
+// `Tiyin` bilan bir xil sabab: Multicard bir maydonni ikki xil turda
+// qaytaradi va bu hujjatda yozilmagan. Hujjatda `contract.fee.up`
+// SATR deb ko'rsatilgan, sinov stendi esa SON qaytardi (2026-09-30 da
+// o'lchandi) — qattiq `string` bilan butun ulash oqimi yiqilardi.
+type Str string
+
+func (s *Str) UnmarshalJSON(b []byte) error {
+	t := strings.TrimSpace(string(b))
+	if t == "null" || t == "" {
+		*s = ""
+		return nil
+	}
+	if t[0] == '"' {
+		var v string
+		if err := json.Unmarshal(b, &v); err != nil {
+			return err
+		}
+		*s = Str(v)
+		return nil
+	}
+	*s = Str(t)
+	return nil
+}
+
+func (s Str) String() string { return string(s) }
+
+// Store — do'kon ma'lumoti. Kalitlar bu do'konga ega bo'lmasa shlyuz
+// xato qaytaradi — aynan shu tekshiruv uchun ishlatiladi.
+func (c *Client) Store(ctx context.Context, storeID string) (*StoreInfo, error) {
+	id := strings.TrimSpace(storeID)
+	if id == "" {
+		return nil, errors.New("multicard: store_id bo'sh")
+	}
+	var s StoreInfo
+	if err := c.get(ctx, "/payment/store/"+url.PathEscape(id), &s); err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 // HistoryQuery — reestr so'rovi.

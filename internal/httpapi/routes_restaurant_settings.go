@@ -32,12 +32,22 @@ import (
 // klient "saqlandi" deb o'ylab qolardi.
 // └───────────────────────────────────────────────────────────────────────┘
 
-// `delivery_fee_tiyin` restoranning O'ZIGA ochiq: u o'z kuryeri bilan
-// ishlaydi va narxni o'zi belgilaydi. OnDex bu puldan hech narsa
-// olmaydi, ya'ni bu shartnomaga tegmaydigan, kundalik sozlama.
 var restaurantEditableFields = []string{
 	"logo_url", "cover_url", "description", "working_hours", "payment_methods",
-	"delivery_fee_tiyin", "delivery_free_from_tiyin",
+}
+
+// movedFields — ilgari shu yerda tahrirlangan, endi BOSHQA joyda
+// boshqariladigan maydonlar va qayerdaligi.
+//
+// Oddiy "noma'lum maydon" deb rad etilsa, eski klient yoki panel
+// foydalanuvchisi nima bo'lganini tushunmaydi. Aniq matn uni to'g'ri
+// joyga yo'naltiradi.
+var movedFields = map[string]string{
+	"delivery_fee_tiyin": "yetkazib berish haqi endi \"Xodimlar\" bo'limida: " +
+		"yetkazib beruvchining maosh usulidan (buyurtmadan maosh yoki oylik) kelib chiqadi",
+	"delivery_free_from_tiyin": "bepul yetkazish chegarasi olib tashlangan: yetkazib berish haqi " +
+		"endi yetkazib beruvchining maosh usulidan kelib chiqadi (\"Xodimlar\" bo'limi)",
+	"multicard_store_id": "to'lov hisobi \"Moliya\" bo'limida ulanadi",
 }
 
 // restaurantLockedFields — faqat admin o'zgartiradigan maydonlar.
@@ -64,47 +74,89 @@ type restaurantSettingsView struct {
 	WorkingHours            *catalog.WorkingHours  `json:"working_hours"`
 	PaymentMethods          catalog.PaymentMethods `json:"payment_methods"`
 	OnlinePaymentsAvailable bool                   `json:"online_payments_available"`
-	// DeliveryFeeTiyin — 0 bepul. `DeliveryFeeMax` — panel kiritishni
-	// shu yerda cheklashi uchun (chegara serverda ham tekshiriladi).
-	DeliveryFeeTiyin      int64    `json:"delivery_fee_tiyin"`
-	DeliveryFreeFromTiyin int64    `json:"delivery_free_from_tiyin"`
-	DeliveryFeeMax        int64    `json:"delivery_fee_max_tiyin"`
-	Timezone              string   `json:"timezone"`
-	Editable              []string `json:"editable"`
-	Locked                []string `json:"locked"`
+	// To'lov ulanishi — FAQAT ko'rish uchun. O'zgartirish
+	// `POST /restaurants/{id}/finance/connect` orqali (u kalitlarni
+	// shlyuzda tekshiradi). `secret` bu yerda ham, boshqa hech qayerda
+	// ham qaytarilmaydi.
+	MulticardStoreID string   `json:"multicard_store_id"`
+	MulticardAppID   string   `json:"multicard_app_id"`
+	Timezone         string   `json:"timezone"`
+	Editable         []string `json:"editable"`
+	Locked           []string `json:"locked"`
 }
 
 func (s *Server) restaurantSettings(ctx context.Context, rest *catalog.Restaurant) restaurantSettingsView {
 	return restaurantSettingsView{
-		ID:                      rest.ID,
-		Name:                    rest.Name,
-		Kind:                    string(rest.Kind),
-		KindTitle:               rest.Kind.Title(),
-		Phone:                   restaurantPhoneFor(ctx, s.UserRepo, rest.ID),
-		Address:                 rest.Address,
-		LogoURL:                 rest.LogoURL,
-		CoverURL:                rest.CoverURL,
-		Description:             rest.Description,
-		DescriptionMax:          catalog.MaxDescriptionLen,
-		Open:                    rest.Open,
-		OpenNow:                 rest.AcceptingOrdersAt(time.Now()),
-		WorkingHours:            rest.WorkingHours,
-		PaymentMethods:          rest.EffectivePaymentMethods(),
-		OnlinePaymentsAvailable: s.Payments != nil,
-		DeliveryFeeTiyin:        rest.DeliveryFeeTiyin,
-		DeliveryFreeFromTiyin:   rest.DeliveryFreeFromTiyin,
-		DeliveryFeeMax:          catalog.MaxDeliveryFeeTiyin,
+		ID:             rest.ID,
+		Name:           rest.Name,
+		Kind:           string(rest.Kind),
+		KindTitle:      rest.Kind.Title(),
+		Phone:          restaurantPhoneFor(ctx, s.UserRepo, rest.ID),
+		Address:        rest.Address,
+		LogoURL:        rest.LogoURL,
+		CoverURL:       rest.CoverURL,
+		Description:    rest.Description,
+		DescriptionMax: catalog.MaxDescriptionLen,
+		Open:           rest.Open,
+		OpenNow:        rest.AcceptingOrdersAt(time.Now()),
+		WorkingHours:   rest.WorkingHours,
+		PaymentMethods: rest.EffectivePaymentMethods(),
+		// Onlayn usullarni YOQISH uchun ikkalasi shart: tizimda to'lov
+		// xizmati bor VA shu restoran shlyuzda kassaga ulangan. Ulanmagan
+		// restoran Uzum'ni yoqib qo'ysa, mijozga baribir ko'rinmasdi
+		// (`PaymentOptions`) va restoran "nega chiqmayapti?" deb qolardi.
+		OnlinePaymentsAvailable: s.Payments != nil && rest.Connected(),
+		MulticardStoreID:        rest.MulticardStoreID,
+		MulticardAppID:          rest.MulticardAppID,
 		Timezone:                "Asia/Tashkent",
 		Editable:                slices.Clone(restaurantEditableFields),
 		Locked:                  []string{"name", "kind", "phone", "address"},
 	}
 }
 
+// newlyEnabledOnline — `pm` da YANGIDAN yoqilayotgan onlayn usullarni
+// tekshiradi. Yoqib bo'lmaydigan bo'lsa (usul nomi, sabab) qaytaradi.
+//
+// Ikki sabab:
+//   - tizimda to'lov xizmati umuman yo'q (`s.Payments == nil`);
+//   - restoran shlyuzda kassaga ULANMAGAN (faqat Rahmat muhitida —
+//     `s.MC` sozlangan bo'lsa): ulanmagan restoran yoqsa ham mijozga
+//     ko'rinmaydi (`PaymentOptions`), restoran esa "nega chiqmayapti?"
+//     deb qoladi. Aniq xabar uni Moliya bo'limiga yo'naltiradi.
+func (s *Server) newlyEnabledOnline(rest *catalog.Restaurant, pm catalog.PaymentMethods) (string, string) {
+	old := rest.EffectivePaymentMethods()
+	type method struct {
+		title   string
+		on, was bool
+	}
+	for _, m := range []method{
+		{"Bank kartasi", pm.CardOnline, old.CardOnline},
+		{"Payme", pm.Payme, old.Payme},
+		{"Click", pm.Click, old.Click},
+		{"Uzum", pm.Uzum, old.Uzum},
+	} {
+		if !m.on || m.was {
+			continue // o'chirilmoqda yoki allaqachon yoqilgan edi
+		}
+		if s.Payments == nil {
+			return m.title, "onlayn to'lov tizimda hali ulanmagan — uni yoqib bo'lmaydi"
+		}
+		if s.MC.CanConnect() && !rest.Connected() {
+			return m.title, "avval \"Moliya\" bo'limida to'lov hisobini ulang — shundan keyin yoqiladi"
+		}
+	}
+	return "", ""
+}
+
 // withOpenState — ochiq restoran javobiga "hozir buyurtma qabul qiladimi",
 // sababi va holat o'zgaradigan payt qo'shiladi (`Restaurant.WithOpenState`).
 // Keshdan KEYIN hisoblanadi: vaqtga bog'liq qiymat keshda eskirmasin.
+//
+// Shu yerda mijozga ko'rinadigan TO'LOV USULLARI ham qo'shiladi
+// (`payment_options`): ochiq javob qaerdan chiqmasin, mijoz ilovasi
+// bir xil ma'lumotni oladi — restoran yoqqan VA shlyuzga ulangan usullar.
 func withOpenState(v catalog.Restaurant) catalog.Restaurant {
-	return v.WithOpenState(time.Now())
+	return v.WithOpenState(time.Now()).WithPaymentOptions()
 }
 
 // isOwnUploadURL — manzil AYNAN bizning yuklash endpointimiz bergan rasm
@@ -208,6 +260,10 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 				}
 			}
 			for _, k := range keys {
+				if where, moved := movedFields[k]; moved {
+					httpError(w, http.StatusBadRequest, fmt.Errorf("%q bu yerda o'zgartirilmaydi: %s", k, where))
+					return
+				}
 				if !slices.Contains(restaurantEditableFields, k) {
 					httpError(w, http.StatusBadRequest, fmt.Errorf("noma'lum maydon: %q", k))
 					return
@@ -310,56 +366,29 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 				}
 				// Ulanmagan to'lov tizimini YANGIDAN yoqib bo'lmaydi: mijoz
 				// uni tanlab, har safar "mavjud emas" xatosini olardi.
-				if pm.CardOnline && s.Payments == nil && !rest.EffectivePaymentMethods().CardOnline {
-					httpError(w, http.StatusBadRequest,
-						errors.New("onlayn karta to'lovi tizimda hali ulanmagan — uni yoqib bo'lmaydi"))
+				// Faqat YANGI yoqilayotgan usullar tekshiriladi — oldin
+				// yoqilgan, keyin tizim o'chgan bo'lsa, restoran uni
+				// baribir o'chira olishi kerak.
+				if name, bad := s.newlyEnabledOnline(rest, pm); bad != "" {
+					httpError(w, http.StatusBadRequest, fmt.Errorf("%s: %s", name, bad))
 					return
 				}
 				rest.PaymentMethods = &pm
 				changed = append(changed, "payment_methods")
 			}
 
-			// ┌─ YETKAZIB BERISH NARXI ────────────────────────────────┐
-			// Ikkala maydon BIRGA tekshiriladi, chunki qoida ikkisiga
-			// birdan tegishli: faqat bittasi yuborilgan bo'lsa ham
-			// ikkinchisining SAQLANGAN qiymati bilan solishtiriladi.
-			// Alohida tekshirilsa "bepul chegarasi bor, narx yo'q"
-			// kabi ma'nosiz juftlik yozilib qolardi.
+			// ┌─ TO'LOV SHLYUZI SOZLAMALAR ORQALI O'ZGARMAYDI ─────────┐
+			// `multicard_store_id` ATAYLAB bu yerda emas. Pul manzilini
+			// belgilaydigan yagona eshik —
+			// `POST /restaurants/{id}/finance/connect`: u kalitlarni va
+			// kassani SAQLASHDAN OLDIN shlyuzda tekshiradi va pul
+			// tushadigan hisobni javobda ko'rsatadi.
+			//
+			// Bu yerda ham ruxsat berilsa, tekshirilmagan raqam
+			// yozilardi va xato faqat Moliya sahifasi ochilganda
+			// bilinardi — aynan shunday bo'lgan edi ("65" kiritildi,
+			// xato bir kundan keyin chiqdi).
 			// └────────────────────────────────────────────────────────┘
-			if _, a := raw["delivery_fee_tiyin"]; a || raw["delivery_free_from_tiyin"] != nil {
-				fee, freeFrom := rest.DeliveryFeeTiyin, rest.DeliveryFreeFromTiyin
-				for _, f := range []struct {
-					key    string
-					target *int64
-				}{
-					{"delivery_fee_tiyin", &fee},
-					{"delivery_free_from_tiyin", &freeFrom},
-				} {
-					v, ok := raw[f.key]
-					if !ok {
-						continue
-					}
-					var n int64
-					if err := json.Unmarshal(v, &n); err != nil {
-						httpError(w, http.StatusBadRequest,
-							fmt.Errorf("%s butun son (tiyin) bo'lishi kerak", f.key))
-						return
-					}
-					*f.target = n
-				}
-				if err := catalog.ValidateDeliveryFee(fee, freeFrom); err != nil {
-					httpError(w, http.StatusBadRequest, err)
-					return
-				}
-				if fee != rest.DeliveryFeeTiyin {
-					rest.DeliveryFeeTiyin = fee
-					changed = append(changed, "delivery_fee_tiyin")
-				}
-				if freeFrom != rest.DeliveryFreeFromTiyin {
-					rest.DeliveryFreeFromTiyin = freeFrom
-					changed = append(changed, "delivery_free_from_tiyin")
-				}
-			}
 
 			if len(changed) > 0 {
 				if err := s.CatalogRepo.SaveRestaurant(r.Context(), rest); err != nil {

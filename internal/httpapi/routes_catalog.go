@@ -11,6 +11,19 @@ import (
 	"chustapp/internal/users"
 )
 
+// annotatePaymentOptions — mijozga ko'rinadigan to'lov usullarini ro'yxat
+// keshga yozilishidan OLDIN hisoblaydi.
+//
+// Sabab: keshdan o'qilganda `MulticardStoreID` (json:"-") bo'sh bo'ladi va
+// "ulangan"lik aniqlanmay qoladi (`catalog.PaymentOptions` izohi).
+func annotatePaymentOptions(list []*catalog.Restaurant) {
+	for _, rest := range list {
+		if rest != nil {
+			rest.PaymentOptions = rest.WithPaymentOptions().PaymentOptions
+		}
+	}
+}
+
 func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// GET /restaurants â€” ochiq: mijoz ilovasining bosh sahifasi. Eng ko'p
 	// so'raladigan endpoint (har mijoz ilova ochganda) â€” shuning uchun
@@ -28,7 +41,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// Kesh TO'LIQ ro'yxatni saqlaydi va filtr undan KEYIN qo'llanadi —
 	// shunda kesh kaliti shaharlarga bo'linib ketmaydi.
 	// └────────────────────────────────────────────────────────────────┘
-	mux.HandleFunc("GET /restaurants", s.optionalAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /restaurants", publicCache(5, 30, s.optionalAuth(func(w http.ResponseWriter, r *http.Request) {
 		var list []*catalog.Restaurant
 		if s.Cache.GetJSON(r.Context(), restaurantsCacheKey, &list) {
 			// Maket havolasi kesh ICHIGA tushmaydi — sabab
@@ -41,19 +54,20 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusInternalServerError, err)
 			return
 		}
+		annotatePaymentOptions(list)
 		s.Cache.SetJSON(r.Context(), restaurantsCacheKey, list, 30*time.Second)
 		writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
-	}))
+	})))
 
 	// GET /restaurants/{id} â€” bitta restoran ma'lumoti (ochiq)
-	mux.HandleFunc("GET /restaurants/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /restaurants/{id}", publicCache(5, 30, func(w http.ResponseWriter, r *http.Request) {
 		rest, err := s.CatalogRepo.GetRestaurant(r.Context(), r.PathValue("id"))
 		if err != nil {
 			httpError(w, http.StatusNotFound, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, s.sceneViewOne(r, rest))
-	})
+	}))
 
 	// GET /restaurants/{id}/orders â€” restoranning o'z buyurtmalari (yoki admin)
 	mux.HandleFunc("GET /restaurants/{id}/orders", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
@@ -116,9 +130,9 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// taom turkumlari ro'yxati (yagona manba â€” restoran paneli va mijoz
 	// ilovasi ikkalasi ham shundan foydalanadi, ular orasida yozilishi
 	// farq qilib ketmasligi uchun).
-	mux.HandleFunc("GET /categories", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /categories", publicCache(3600, 86400, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, catalog.PredefinedCategories)
-	})
+	}))
 
 	// publicProducts â€” OCHIQ javob uchun nusxa: restoranning ichki
 	// maydonlari (`catalog.Product.PublicView`) kesiladi. Ro'yxat
@@ -153,7 +167,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// Ombor qatlamida esa `$lookup` filtrdan keyinga ko'chirildi va
 	// natijaga chegara qo'yildi (`mongo_catalog.go`).
 	// └────────────────────────────────────────────────────────────────┘
-	mux.HandleFunc("GET /products/search", rateLimitedSearch(
+	mux.HandleFunc("GET /products/search", rateLimitedSearch(publicCache(5, 30,
 		func(w http.ResponseWriter, r *http.Request) {
 			q := strings.TrimSpace(r.URL.Query().Get("q"))
 			if q == "" {
@@ -183,12 +197,12 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			// eng ko'pi bilan shuncha kechikib ko'rinadi.
 			s.Cache.SetJSON(r.Context(), cacheKey, list, 30*time.Second)
 			writeJSON(w, http.StatusOK, list)
-		}))
+		})))
 
 	// GET /restaurants/{id}/menu â€” ochiq. Har mijoz restoran menyusini
 	// ochganda so'raladi â€” Redis'da 30s keshlanadi, mahsulot
 	// qo'shilganda/tahrirlanganda/o'chirilganda kesh darhol tozalanadi.
-	mux.HandleFunc("GET /restaurants/{id}/menu", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /restaurants/{id}/menu", publicCache(5, 30, func(w http.ResponseWriter, r *http.Request) {
 		restaurantID := r.PathValue("id")
 		if _, err := s.CatalogRepo.GetRestaurant(r.Context(), restaurantID); err != nil {
 			httpError(w, http.StatusNotFound, err)
@@ -210,7 +224,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		list = publicProducts(list)
 		s.Cache.SetJSON(r.Context(), menuCacheKey(restaurantID), list, 30*time.Second)
 		writeJSON(w, http.StatusOK, list)
-	})
+	}))
 
 	// GET /restaurants/{id}/products â€” restoran panelining TO'LIQ ro'yxati.
 	//

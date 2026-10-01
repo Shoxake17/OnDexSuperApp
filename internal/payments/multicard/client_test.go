@@ -23,6 +23,7 @@ type fakeServer struct {
 	expiry       string
 	historyBody  string
 	authStatus   int
+	storeBody    string
 }
 
 func (f *fakeServer) start(t *testing.T) *httptest.Server {
@@ -60,6 +61,21 @@ func (f *fakeServer) start(t *testing.T) *httptest.Server {
 			           "payment_amount":40000000,"commission_amount":600000,
 			           "card_pan":"860030******5959","payment_time":"2026-09-30 14:36:31",
 			           "refund_time":null}]}}`
+		}
+		_, _ = w.Write([]byte(body))
+	})
+	mux.HandleFunc("GET /payment/store/{id}", func(w http.ResponseWriter, r *http.Request) {
+		body := f.storeBody
+		if body == "" {
+			// ⚠️ SHAKL HAQIQIY STENDDAN (do'kon 6, 2026-09-30):
+			// `contract.fee.up` hujjatda SATR deb yozilgan, amalda esa
+			// SON ham keladi; `merchant_account` maydonlari BO'SH
+			// bo'lishi mumkin.
+			body = `{"success":true,"data":{"id":6,"uuid":"a1df872e-d5aa-11ee-8de8-005056b4367d",
+			  "title":"Multicard",
+			  "merchant":{"name":"Тестовый мерчант","tin":"307578794"},
+			  "merchant_account":{"account_no":"","mfo":"","official_name":""},
+			  "contract":{"num":"POS/8042","fee":{"up":0,"down":1.5}}}}`
 		}
 		_, _ = w.Write([]byte(body))
 	})
@@ -212,5 +228,55 @@ func TestStoreIDRequired(t *testing.T) {
 		From: time.Now().Add(-time.Hour), To: time.Now(),
 	}); err == nil {
 		t.Error("bo'sh store_id xato berishi kerak")
+	}
+	if _, err := c.Store(context.Background(), "  "); err == nil {
+		t.Error("Store: bo'sh store_id xato berishi kerak")
+	}
+}
+
+// Do'kon ma'lumoti — ulashni tekshirish uchun ishlatiladi, shuning
+// uchun PULNING QAYERGA tushishini aytadigan maydonlar to'g'ri
+// o'qilishi SHART.
+func TestStoreInfoParsesRealShape(t *testing.T) {
+	f := &fakeServer{}
+	c := newClient(t, f.start(t))
+	s, err := c.Store(context.Background(), "6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ID != 6 || s.Title != "Multicard" {
+		t.Errorf("id/title: %d %q", s.ID, s.Title)
+	}
+	if s.Merchant.TIN != "307578794" {
+		t.Errorf("tin: %q", s.Merchant.TIN)
+	}
+	if s.Contract.Num != "POS/8042" {
+		t.Errorf("shartnoma: %q", s.Contract.Num)
+	}
+	// SON sifatida kelgan komissiya matnga aylanadi (hujjat SATR deydi).
+	if s.Contract.Fee.Down != "1.5" || s.Contract.Fee.Up != "0" {
+		t.Errorf("komissiya: up=%q down=%q", s.Contract.Fee.Up, s.Contract.Fee.Down)
+	}
+}
+
+// `Str` — son, satr, `null` va bo'sh qiymatlarni bir xil o'qiydi.
+func TestStrAcceptsNumberStringNull(t *testing.T) {
+	cases := map[string]Str{
+		`"1.5"`:   "1.5",
+		`1.5`:     "1.5",
+		`2`:       "2",
+		`null`:    "",
+		`""`:      "",
+		`"POS/1"`: "POS/1",
+	}
+	for raw, want := range cases {
+		var got Str
+		if err := got.UnmarshalJSON([]byte(raw)); err != nil {
+			t.Errorf("%s: %v", raw, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s: %q kutildi, %q keldi", raw, want, got)
+		}
 	}
 }

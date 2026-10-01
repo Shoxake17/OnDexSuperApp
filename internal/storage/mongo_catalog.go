@@ -47,11 +47,21 @@ type mongoRestaurant struct {
 	RatingCount   int     `bson:"rating_count"`
 	ETAMinMinutes int     `bson:"eta_min_minutes"`
 	ETAMaxMinutes int     `bson:"eta_max_minutes"`
-	// Yetkazib berish narxi — restoranning o'z sozlamasi. Eski
-	// hujjatlarda yo'q va nol qiymat aynan to'g'ri ma'noni beradi:
-	// 0 = BEPUL.
-	DeliveryFeeTiyin      int64 `bson:"delivery_fee_tiyin"`
-	DeliveryFreeFromTiyin int64 `bson:"delivery_free_from_tiyin"`
+	// Yetkazib berish narxi bu yerda ENDI YO'Q: u yetkazib beruvchining
+	// maosh usulidan kelib chiqadi (`staff.DeliveryFee`). Eski hujjatlarda
+	// `delivery_fee_tiyin` / `delivery_free_from_tiyin` qolgan bo'lishi
+	// mumkin — BSON ularni jimgina e'tiborsiz qoldiradi.
+	// Multicard (Rahmat) do'koni. Bo'sh — to'lov shlyuziga ulanmagan.
+	MulticardStoreID string `bson:"multicard_store_id"`
+	// Restoranning O'Z shlyuz kalitlari. secret SHIFRLANGAN
+	// (internal/secretstore) — bazada ochiq matn yotmaydi.
+	MulticardAppID         string `bson:"multicard_app_id,omitempty"`
+	MulticardSecretEnc     string `bson:"multicard_secret_enc,omitempty"`
+	MulticardStoreTitle    string `bson:"multicard_store_title,omitempty"`
+	MulticardAccountMasked string `bson:"multicard_account_masked,omitempty"`
+	// Fiskal chek standartlari (kassa sozlamasidan).
+	MulticardTaxMXIK        string `bson:"multicard_tax_mxik,omitempty"`
+	MulticardTaxPackageCode string `bson:"multicard_tax_package_code,omitempty"`
 	// 3D maket: bo'sh bo'lsa restoranda 3D yo'q. Eski hujjatlarda
 	// bu maydonlar yo'q va BSON ularni bo'sh qoldiradi.
 	Scene3DURL    string `bson:"scene_3d_url"`
@@ -67,7 +77,10 @@ func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 		WorkingHours: d.WorkingHours, PaymentMethods: d.PaymentMethods,
 		Rating: d.Rating, RatingCount: d.RatingCount,
 		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
-		DeliveryFeeTiyin: d.DeliveryFeeTiyin, DeliveryFreeFromTiyin: d.DeliveryFreeFromTiyin,
+		MulticardStoreID: d.MulticardStoreID,
+		MulticardAppID:   d.MulticardAppID, MulticardSecretEnc: d.MulticardSecretEnc,
+		MulticardStoreTitle: d.MulticardStoreTitle, MulticardAccountMasked: d.MulticardAccountMasked,
+		MulticardTaxMXIK: d.MulticardTaxMXIK, MulticardTaxPackageCode: d.MulticardTaxPackageCode,
 		Scene3DURL: d.Scene3DURL, Scene3DSHA256: d.Scene3DSHA256, Scene3DBytes: d.Scene3DBytes,
 	}
 }
@@ -80,7 +93,10 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 		WorkingHours: x.WorkingHours, PaymentMethods: x.PaymentMethods,
 		Rating: x.Rating, RatingCount: x.RatingCount,
 		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
-		DeliveryFeeTiyin: x.DeliveryFeeTiyin, DeliveryFreeFromTiyin: x.DeliveryFreeFromTiyin,
+		MulticardStoreID: x.MulticardStoreID,
+		MulticardAppID:   x.MulticardAppID, MulticardSecretEnc: x.MulticardSecretEnc,
+		MulticardStoreTitle: x.MulticardStoreTitle, MulticardAccountMasked: x.MulticardAccountMasked,
+		MulticardTaxMXIK: x.MulticardTaxMXIK, MulticardTaxPackageCode: x.MulticardTaxPackageCode,
 		Scene3DURL: x.Scene3DURL, Scene3DSHA256: x.Scene3DSHA256, Scene3DBytes: x.Scene3DBytes,
 	}
 }

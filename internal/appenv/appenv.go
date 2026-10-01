@@ -174,6 +174,26 @@ var Registry = []Var{
 	// uchun compose'da ataylab yo'q.
 	{Name: "OCTO_TRUST_CALLBACK_DEV", Effect: "faqat dev: imzosiz callback qabul qilinadi", DeployRequired: false},
 
+	// ---------- To'lov (Multicard / Rahmat) ----------
+	//
+	// Bular OnDex'ning PLATFORMA kalitlari, restoranniki emas: har
+	// restoran alohida `store_id` bilan ajratiladi (`multicard_store_id`).
+	{Name: "MULTICARD_BASE_URL", Effect: "Moliya bo'limi O'CHIQ — tushum reestri ko'rinmaydi", DeployRequired: true},
+	{Name: "MULTICARD_APPLICATION_ID", Effect: "Moliya bo'limi o'chiq", DeployRequired: true},
+	{Name: "MULTICARD_SECRET", Effect: "Moliya bo'limi o'chiq", DeployRequired: true},
+	// Restoran O'Z to'lov kalitlarini kiritganda ular shu kalit bilan
+	// shifrlanadi. Yo'q bo'lsa "hisobni ulash" tugmasi umuman
+	// ishlamaydi — sirni ochiq matnda saqlashdan ko'ra shunisi to'g'ri.
+	{Name: "SECRETS_ENC_KEY", Effect: "restoran o'z to'lov hisobini ULAY OLMAYDI (kalitlarni shifrlab bo'lmaydi)", DeployRequired: true},
+	// To'lovdan keyin mijoz qaytariladigan manzil — provayderdan
+	// mustaqil nom. Eski `OCTO_RETURN_URL` moslik uchun qoladi.
+	{Name: "PAYMENT_RETURN_URL", Effect: "to'lovdan keyin mijoz to'lov sahifasida qolib ketadi", DeployRequired: true},
+	//
+	// `MULTICARD_LIVE` va `MULTICARD_STORE_ID` bu ro'yxatda ATAYIN yo'q:
+	// ular faqat `payments/multicard/live_test.go` da o'qiladi, serverga
+	// aloqasi yo'q. Reyestr ishlab chiqarish kodi o'qiydigan nomlarni
+	// sanaydi (`TestRegistryHasNoStaleEntries` shuni qulflaydi).
+
 	// ---------- AI (Shaddiy + Gemini) ----------
 	{Name: "SHADDIY_AI_URL", Effect: "AI yordamchisi BUTUNLAY o'chiq (/ai/* → 503)", DeployRequired: true},
 	{Name: "SHADDIY_API_KEY", Effect: "AI yordamchisi butunlay o'chiq", DeployRequired: true},

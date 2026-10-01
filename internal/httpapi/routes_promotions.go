@@ -15,7 +15,7 @@ import (
 )
 
 func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /restaurants/{id}/active-promotions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /restaurants/{id}/active-promotions", publicCache(5, 30, func(w http.ResponseWriter, r *http.Request) {
 		restaurantID := r.PathValue("id")
 		list, err := s.PromotionsRepo.ListByRestaurant(r.Context(), restaurantID)
 		if err != nil {
@@ -59,7 +59,7 @@ func (s *Server) registerPromotionRoutes(mux *http.ServeMux) {
 			})
 		}
 		writeJSON(w, http.StatusOK, out)
-	})
+	}))
 
 	// GET /restaurants/{id}/promotions
 	mux.HandleFunc("GET /restaurants/{id}/promotions", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},

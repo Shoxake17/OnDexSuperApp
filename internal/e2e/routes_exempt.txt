@@ -1,0 +1,2 @@
+# E2E ratchet: hali ssenariysiz endpointlar. Format: METHOD /yo'l  # sabab
+# (hozir bo'sh: barcha endpointlar ssenariyda urilgan)

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"chustapp/internal/payments"
 	"chustapp/internal/promotions"
 )
 
@@ -235,8 +236,18 @@ func (s *Service) priceCart(ctx context.Context, restaurantID string, items []It
 	if err != nil {
 		return subtotal, 0, applied, lineDiscounts, err
 	}
+	// Oldingi buyurtmalar soni FAQAT sodiqlik aksiyasi ("N ta buyurtmadan
+	// keyin") uchun kerak (`promotions.isEligible`). Bunday aksiya bo'lmasa
+	// har narxlashda `COUNT(*)` so'rovi ortiqcha edi — natija aynan bir xil.
 	var previousOrders int
-	if customerID != "" {
+	needPrevious := false
+	for _, p := range promos {
+		if p.Type == promotions.TypeLoyalty && p.MinPreviousOrders > 0 {
+			needPrevious = true
+			break
+		}
+	}
+	if customerID != "" && needPrevious {
 		previousOrders, err = s.repo.CountByCustomerAndRestaurant(ctx, customerID, restaurantID)
 		if err != nil {
 			return subtotal, 0, applied, lineDiscounts, err
@@ -575,6 +586,97 @@ func (s *Service) OrderAmountTiyin(ctx context.Context, orderID string) (int64, 
 		return 0, err
 	}
 	return o.TotalTiyin, nil
+}
+
+// OrderFiscalLines — chek satrlari (`payments.OrderSink`).
+//
+// ┌─ YIG'INDI TO'LOV SUMMASIGA ANIQ TENG BO'LISHI SHART ──────────────┐
+// Fiskal chek soliq idorasiga ketadi: undagi summa haqiqiy to'lovdan
+// farq qilsa, keyin tuzatib bo'lmaydi.
+//
+// Qiyinligi shunda: buyurtmada chegirma BUTUN savatga tegishli
+// (`DiscountTiyin`), chekda esa u qatorlarga bo'linishi kerak.
+// Shuning uchun chegirmadan KEYINGI summa qatorlar bo'yicha ULUSHGA
+// qarab taqsimlanadi, bo'linmagan qoldiq esa oxirgi qatorga
+// qo'shiladi — shunda yig'indi har doim aniq to'g'ri keladi.
+//
+// Yetkazib berish haqi ALOHIDA satr: u taom emas va chekda shunday
+// ko'rinishi kerak.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Service) OrderFiscalLines(ctx context.Context, orderID string) ([]payments.Item, error) {
+	o, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return fiscalLines(o), nil
+}
+
+func fiscalLines(o *Order) []payments.Item {
+	goods := o.TotalTiyin - o.DeliveryFeeTiyin
+	if goods < 0 {
+		goods = 0
+	}
+
+	// Ulushlar: qator narxi × soni (chegirmadan oldingi).
+	weights := make([]int64, len(o.Items))
+	var totalWeight int64
+	for i, it := range o.Items {
+		unit := it.PriceTiyin
+		if it.DiscountPriceTiyin > 0 && it.DiscountPriceTiyin < unit {
+			unit = it.DiscountPriceTiyin
+		}
+		w := unit * int64(it.Qty)
+		if w < 0 {
+			w = 0
+		}
+		weights[i] = w
+		totalWeight += w
+	}
+
+	lines := make([]payments.Item, 0, len(o.Items)+1)
+	var allocated int64
+	last := -1
+	for i, it := range o.Items {
+		if it.Qty <= 0 {
+			continue
+		}
+		var lineTotal int64
+		if totalWeight > 0 {
+			lineTotal = goods * weights[i] / totalWeight
+		}
+		allocated += lineTotal
+		lines = append(lines, payments.Item{
+			Name:           it.Name,
+			Qty:            it.Qty,
+			UnitPriceTiyin: lineTotal / int64(it.Qty),
+			TotalTiyin:     lineTotal,
+		})
+		last = len(lines) - 1
+	}
+	// Bo'linmagan qoldiq — oxirgi qatorga. Aks holda yig'indi bir
+	// necha tiyinga kam chiqardi va shlyuz chekni rad etardi.
+	if last >= 0 && allocated != goods {
+		lines[last].TotalTiyin += goods - allocated
+		if q := int64(lines[last].Qty); q > 0 {
+			lines[last].UnitPriceTiyin = lines[last].TotalTiyin / q
+		}
+	}
+	if last < 0 && goods > 0 {
+		// Qatorsiz buyurtma (bo'lmasligi kerak, lekin chek summasi
+		// baribir to'g'ri bo'lishi SHART).
+		lines = append(lines, payments.Item{
+			Name: "Buyurtma", Qty: 1, UnitPriceTiyin: goods, TotalTiyin: goods,
+		})
+	}
+	if o.DeliveryFeeTiyin > 0 {
+		lines = append(lines, payments.Item{
+			Name:           "Yetkazib berish",
+			Qty:            1,
+			UnitPriceTiyin: o.DeliveryFeeTiyin,
+			TotalTiyin:     o.DeliveryFeeTiyin,
+		})
+	}
+	return lines
 }
 
 // OnPaymentHeld — pul bloklandi (yoki yechildi). Buyurtma endi

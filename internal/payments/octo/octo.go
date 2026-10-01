@@ -264,7 +264,9 @@ type statusRequest struct {
 // Status — HAQIQIY holatni Octo'dan so'raydi (callback'dagi ma'lumotga
 // ishonmasdan). Hujjatda bu ham `prepare_payment` metodi, faqat uchta
 // parametr bilan.
-func (c *Client) Status(ctx context.Context, paymentID string) (*payments.StatusResult, error) {
+// Octo BITTA ijarachili: estaurantID e'tiborsiz qoldiriladi (pul
+// har doim OnDex hisobiga tushadi).
+func (c *Client) Status(ctx context.Context, _ string, paymentID string) (*payments.StatusResult, error) {
 	resp, raw, err := c.post(ctx, "/prepare_payment", statusRequest{
 		ShopID:            c.cfg.ShopID,
 		Secret:            c.cfg.Secret,
@@ -309,7 +311,7 @@ type acceptRequest struct {
 }
 
 // Capture — bloklangan pulni yechadi (`set_accept`, accept_status=capture).
-func (c *Client) Capture(ctx context.Context, providerPaymentID string, amountTiyin int64) error {
+func (c *Client) Capture(ctx context.Context, _ string, providerPaymentID string, amountTiyin int64) error {
 	if amountTiyin <= 0 {
 		return errors.New("octo: yechiladigan summa musbat bo'lishi kerak")
 	}
@@ -326,7 +328,7 @@ func (c *Client) Capture(ctx context.Context, providerPaymentID string, amountTi
 
 // Cancel — blokni bo'shatadi (`set_accept`, accept_status=cancel).
 // Mijozdan pul YECHILMAYDI va qaytarish (refund) kutish ham kerak emas.
-func (c *Client) Cancel(ctx context.Context, providerPaymentID string) error {
+func (c *Client) Cancel(ctx context.Context, _ string, providerPaymentID string) error {
 	_, _, err := c.post(ctx, "/set_accept", acceptRequest{
 		ShopID:          c.cfg.ShopID,
 		Secret:          c.cfg.Secret,
@@ -349,7 +351,7 @@ type refundRequest struct {
 // Refund — YECHILGAN pulni qaytaradi. Faqat `succeeded` to'lovlar
 // uchun; ikki bosqichli sxemada bu kamdan-kam kerak bo'ladi (buyurtma
 // rad etilsa `Cancel` yetarli).
-func (c *Client) Refund(ctx context.Context, providerPaymentID, refundID string, amountTiyin int64) error {
+func (c *Client) Refund(ctx context.Context, _ string, providerPaymentID, refundID string, amountTiyin int64) error {
 	if amountTiyin <= 0 {
 		return errors.New("octo: qaytariladigan summa musbat bo'lishi kerak")
 	}

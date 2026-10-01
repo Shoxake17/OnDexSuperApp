@@ -17,6 +17,9 @@ import (
 	"chustapp/internal/ws"
 )
 
+// staffTestGoodsTiyin — `prod-a` narxi: 35 000 so'm.
+const staffTestGoodsTiyin = 3_500_000
+
 type staffFixture struct {
 	h        http.Handler
 	jwt      map[string]string
@@ -55,20 +58,30 @@ func staffServer(t *testing.T) staffFixture {
 	mk("customer", "u-c", users.RoleCustomer, "", "+998900000075")
 
 	catalogRepo := storage.NewMemoryCatalogRepo(
-		[]catalog.Restaurant{{ID: testRestA, Name: "Book Cafe", Open: true}, {ID: testRestB, Name: "B", Open: true}}, nil)
+		[]catalog.Restaurant{{ID: testRestA, Name: "Book Cafe", Open: true}, {ID: testRestB, Name: "B", Open: true}},
+		// Narxlash testlari uchun bitta taom (yetkazish haqi xodimlar
+		// ustiga qurilgan — `routes_delivery_pay_test.go`).
+		[]catalog.Product{{ID: "prod-a", RestaurantID: testRestA, Name: "Osh",
+			PriceTiyin: staffTestGoodsTiyin, Available: true}})
 	courierRepo := storage.NewMemoryCourierRepo()
 	orderRepo := storage.NewMemoryOrderRepo()
-	svc := staff.NewService(storage.NewMemoryStaffRepo(),
+	staffRepo := storage.NewMemoryStaffRepo()
+	svc := staff.NewService(staffRepo,
 		&staff.UserAccounts{Users: userRepo, Couriers: courierRepo, Revoked: revoked, NewID: NewID,
 			CourierBusy: func(ctx context.Context, courierID string) (bool, error) {
 				return courierHasActiveOrder(ctx, orderRepo, courierID)
 			}})
+	orderSvc := orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo())
+	// Yetkazish haqi — yetkazib beruvchining maosh usulidan (`cmd/api/main.go`
+	// dagi bilan bir xil ulanish).
+	orderSvc.WithDelivery(NewDeliveryPricer(staffRepo))
 	h := New(Deps{
 		UserRepo:       userRepo,
 		CatalogRepo:    catalogRepo,
+		CatalogSvc:     catalog.NewService(catalogRepo),
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      orderRepo,
-		OrderSvc:       orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
+		OrderSvc:       orderSvc,
 		CourierRepo:    courierRepo,
 		Tokens:         tokens,
 		Revoked:        revoked,

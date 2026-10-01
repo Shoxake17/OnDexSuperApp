@@ -66,28 +66,88 @@ type Restaurant struct {
 	ETAMinMinutes int `json:"eta_min_minutes"`
 	ETAMaxMinutes int `json:"eta_max_minutes"`
 
-	// ┌─ YETKAZIB BERISH NARXI ────────────────────────────────────────┐
-	// Restoran O'Z kuryeri bilan ishlaydi va narxni O'ZI belgilaydi.
-	// OnDex bu puldan hech narsa olmaydi — u to'liq restoranga tushadi
-	// (daromad modeli: buyurtmadan foiz emas, oyiga qat'iy obuna).
+	// ┌─ YETKAZIB BERISH NARXI BU YERDA EMAS ──────────────────────────┐
+	// Avval restoranda `DeliveryFeeTiyin` va `DeliveryFreeFromTiyin`
+	// maydonlari bor edi. Ular OLIB TASHLANDI: yetkazish haqi endi
+	// yetkazib beruvchining MAOSH USULIDAN kelib chiqadi
+	// (`staff.DeliveryFee`) — "buyurtmadan maosh" bo'lsa shu summa
+	// mijozga qo'shiladi, oylik maosh bo'lsa yetkazish bepul.
 	//
-	// 0 — BEPUL, "belgilanmagan" emas. Yetkazish narxi ixtiyoriy
-	// tushuncha: ko'p kafe uni umuman olmaydi va standart holat aynan
-	// shu bo'lishi kerak (mavjud restoranlarda hech narsa o'zgarmaydi).
-	//
-	// ⚠️ Bu narx STOL buyurtmasiga QO'SHILMAYDI — `EffectiveDeliveryFee`
-	// ga qarang.
+	// Ikki joyda bir xil narsani saqlash noaniqlik tug'dirardi: qaysi
+	// biri haqiqiy? Mongo'dagi eski hujjatlarda bu maydonlar qolishi
+	// mumkin — `bson` ularni jimgina e'tiborsiz qoldiradi.
 	// └────────────────────────────────────────────────────────────────┘
-	DeliveryFeeTiyin int64 `json:"delivery_fee_tiyin"`
 
-	// DeliveryFreeFromTiyin — savat shu summadan katta yoki teng bo'lsa
-	// yetkazish bepul. 0 — qoida ishlatilmaydi.
+	// PaymentOptions — mijozga ko'rinadigan to'lov usullari (HISOBLANADI,
+	// bazaga yozilmaydi): `WithPaymentOptions`.
+	PaymentOptions *PaymentOptions `json:"payment_options,omitempty"`
+
+	// ┌─ MULTICARD (RAHMAT) ULANISHI ──────────────────────────────────┐
+	// Restoran to'lov shlyuziga IKKI yo'l bilan ulanishi mumkin:
 	//
-	// Taqqoslash CHEGIRMADAN KEYINGI summa bilan: mijoz ekranda
-	// ko'rayotgan raqam o'sha. Chegirmagacha bo'lgan summa bilan
-	// solishtirilsa, 100 000 lik savat 20% chegirma bilan 80 000 ga
-	// tushib, mijoz baribir "bepul yetkazish" ni ko'rardi.
-	DeliveryFreeFromTiyin int64 `json:"delivery_free_from_tiyin"`
+	//  1. **O'Z shartnomasi bilan** — `MulticardAppID` +
+	//     `MulticardSecretEnc` to'ldirilgan. Pul to'g'ridan-to'g'ri
+	//     restoranning bank hisobiga tushadi, OnDex oraliqda turmaydi
+	//     va foiz olmaydi (biznes modeli aynan shu).
+	//  2. **OnDex shartnomasi ostida** — kalitlar bo'sh, faqat
+	//     `MulticardStoreID` bor; platforma kalitlari ishlatiladi
+	//     (`MULTICARD_*`).
+	//
+	// Ikkalasida ham bo'sh `MulticardStoreID` = ulanmagan.
+	//
+	// ⚠️ Pul shu do'konning bank rekvizitlariga tushadi, ya'ni
+	// noto'g'ri ID kiritilsa restoran BOSHQA birovning tushumini
+	// ko'radi. Shuning uchun ulash SAQLASHDAN OLDIN shlyuzda
+	// tekshiriladi va o'zgarish audit jurnaliga yoziladi
+	// (`routes_finance.go`).
+	// └────────────────────────────────────────────────────────────────┘
+	// ┌─ `json:"-"` ATAYLAB ────────────────────────────────────────────┐
+	// `GET /restaurants` va `GET /restaurants/{id}` shu strukturani
+	// TO'G'RIDAN-TO'G'RI mijozga qaytaradi (`routes_catalog.go`). Ya'ni
+	// bu yerdagi har qanday `json` tegi OMMAGA chiqadi.
+	//
+	// To'lov ulanishi hech bir mijozga kerak emas, shifrlangan
+	// `secret` esa oflayn hujum uchun tayyor nishon bo'lardi. Shuning
+	// uchun BARCHASI JSON'dan chiqarib tashlangan.
+	//
+	// Bu ma'lumotni ko'rishi kerak bo'lgan joylar o'z turlaridan
+	// foydalanadi: `restaurantSettingsView` va `financeResponse`.
+	// Saqlash JSON'ga BOG'LIQ EMAS: Mongo `bson` teglari bilan
+	// alohida strukturaga yozadi (`internal/storage/mongo_catalog.go`).
+	//
+	// Qoida `TestPublicRestaurantHidesPaymentFields` da qulflangan.
+	// └────────────────────────────────────────────────────────────────┘
+	MulticardStoreID string `json:"-"`
+
+	// MulticardAppID — restoranning O'Z `application_id` si.
+	MulticardAppID string `json:"-"`
+
+	// MulticardSecretEnc — restoranning `secret` i, SHIFRLANGAN
+	// (`internal/secretstore`). Ochiq matnda hech qayerda saqlanmaydi.
+	MulticardSecretEnc string `json:"-"`
+
+	// MulticardStoreTitle — shlyuzdan olingan kassa nomi (ulash
+	// paytida). Panel "nimaga ulangansiz" degan savolga shlyuzga
+	// so'rov yubormasdan javob berishi uchun.
+	MulticardStoreTitle string `json:"-"`
+
+	// MulticardAccountMasked — pul tushadigan hisob raqamining oxirgi
+	// raqamlari. To'liq raqam SAQLANMAYDI: u bizga kerak emas, lekin
+	// restoran ulanish to'g'riligini shu bilan tekshiradi.
+	MulticardAccountMasked string `json:"-"`
+
+	// ┌─ FISKAL CHEK STANDARTLARI ─────────────────────────────────────┐
+	// Multicard'da to'lov yaratish uchun `ofd` MAJBURIY, uning ichida
+	// esa har satr uchun IKPU (`mxik`) va qadoq kodi kerak. Har taomga
+	// alohida kod kiritish restoran uchun og'ir, shuning uchun
+	// KASSANING standart qiymati ishlatiladi — u ulash paytida
+	// shlyuzdan o'qib olinadi.
+	//
+	// Bo'sh bo'lsa karta orqali to'lov YARATILMAYDI: fiskal cheksiz
+	// to'lov qonunga zid va shlyuz ham rad etadi.
+	// └────────────────────────────────────────────────────────────────┘
+	MulticardTaxMXIK        string `json:"-"`
+	MulticardTaxPackageCode string `json:"-"`
 
 	// ┌─ 3D MAKET ─────────────────────────────────────────────────────┐
 	// Ba'zi restoranlarning ichki maketi 3D da chizilgan: mijoz ilova
