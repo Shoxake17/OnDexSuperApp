@@ -218,6 +218,18 @@ type Provider interface {
 // bosqichli to'lovda `Capture`).
 var ErrNotSupported = errors.New("to'lov provayderi bu amalni qo'llamaydi")
 
+// UnpaidCanceller — ixtiyoriy imkoniyat: provayder TO'LANMAGAN (kutilayotgan)
+// to'lovni ham `Cancel` bilan yopa oladi.
+//
+// Nega alohida belgi: `Cancel` Octo'da bloklangan pulni bo'shatadi
+// (`set_accept=cancel`), to'lanmagan to'lovda esa uning xatti-harakati
+// kafolatlanmagan. Bir bosqichli provayderda (Multicard) `held` holati umuman
+// yo'q, ya'ni bekor qilingan buyurtmaning to'lanmagan invoysini yopishning
+// yagona yo'li shu. Belgi bo'lmasa servis `pending` to'lovlarga tegmaydi.
+type UnpaidCanceller interface {
+	CancelsUnpaid() bool
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // PUL: TIYIN <-> O'NLIK SON
 // ═══════════════════════════════════════════════════════════════════

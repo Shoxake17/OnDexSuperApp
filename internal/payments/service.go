@@ -307,6 +307,16 @@ func (s *Service) StartForOrder(ctx context.Context, orderID, customerID, restau
 			if uerr := s.repo.Update(ctx, p); uerr != nil {
 				return nil, uerr
 			}
+			// Bir bosqichli provayderda (Multicard) eski invoys ochiq qolsa,
+			// mijoz ikkalasini to'lashi va pul IKKI MARTA yechilishi mumkin.
+			// Shuning uchun eskisi provayderda ham yopiladi (xato bo'lsa ham
+			// davom etamiz: yangi urinish ochilishi kerak).
+			if s.cancelsUnpaid() && p.ProviderPaymentID != "" {
+				if cerr := s.provider.Cancel(ctx, p.RestaurantID, p.ProviderPaymentID); cerr != nil {
+					slog.Warn("eski urinish invoysini yopib bo'lmadi",
+						"payment", p.ID, "order", orderID, "err", cerr)
+				}
+			}
 		}
 	}
 
@@ -661,6 +671,25 @@ func (s *Service) ReleaseForOrder(ctx context.Context, orderID string) error {
 				return fmt.Errorf("pulni qaytarib bo'lmadi: %w", err)
 			}
 			p.Status = StatusRefunded
+		case StatusPending:
+			// Buyurtma bekor qilindi, to'lanmagan invoys esa provayderda hamon
+			// ochiq: mijoz havolani keyin to'lasa, pul yechiladi, buyurtma esa
+			// allaqachon yo'q. Shuning uchun uni provayderda yopamiz.
+			//
+			// XATO bekor qilishni TO'XTATMAYDI: invoys o'z muddati bilan o'ladi,
+			// kechikkan to'lov esa callback orqali baribir ko'rinadi (`applyStatus`).
+			// Eng ko'p uchraydigan xato - invoys ayni paytda to'lanib bo'lgan:
+			// u holda holatni o'zgartirmaymiz, to'lov xabari keladi.
+			if !s.cancelsUnpaid() || p.ProviderPaymentID == "" {
+				continue
+			}
+			if err := s.provider.Cancel(ctx, p.RestaurantID, p.ProviderPaymentID); err != nil {
+				slog.Warn("to'lanmagan invoysni yopib bo'lmadi",
+					"payment", p.ID, "order", orderID, "err", err)
+				continue
+			}
+			p.Status = StatusCanceled
+			p.ReviewReason = "buyurtma bekor qilindi - to'lanmagan invoys yopildi"
 		default:
 			continue
 		}
@@ -670,6 +699,12 @@ func (s *Service) ReleaseForOrder(ctx context.Context, orderID string) error {
 		}
 	}
 	return nil
+}
+
+// cancelsUnpaid — provayder to'lanmagan to'lovni ham yopa oladimi (`UnpaidCanceller`).
+func (s *Service) cancelsUnpaid() bool {
+	uc, ok := s.provider.(UnpaidCanceller)
+	return ok && uc.CancelsUnpaid()
 }
 
 // heldPayment — buyurtmaning bloklangan to'lovi (bo'lmasa nil, nil).

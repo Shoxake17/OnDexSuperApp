@@ -56,8 +56,9 @@ func (f *invoiceServer) start(t *testing.T) *Client {
 	}
 	mux.HandleFunc("POST /payment/invoice", record)
 	mux.HandleFunc("GET /payment/{uuid}", record)
-	mux.HandleFunc("DELETE /payment/{uuid}", record)
-	mux.HandleFunc("DELETE /payment/{uuid}/partial", record)
+	// Barcha DELETE yo'llari yozib olinadi (invoysni bekor qilish, to'lovni
+	// qaytarish): sinov aynan QAYSI yo'l chaqirilganini tekshiradi.
+	mux.HandleFunc("DELETE /payment/", record)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -189,10 +190,11 @@ func TestCancelAndRefundPaths(t *testing.T) {
 	c := f.start(t)
 	ctx := context.Background()
 
-	if err := c.CancelPayment(ctx, "u1"); err != nil {
+	if err := c.CancelInvoice(ctx, "u1"); err != nil {
 		t.Fatal(err)
 	}
-	if f.lastMethod != http.MethodDelete || f.lastPath != "/payment/u1" {
+	// To'lanmagan invoys: `/payment/invoice/{uuid}` (to'langan to'lovni qaytarish `/payment/{uuid}` EMAS).
+	if f.lastMethod != http.MethodDelete || f.lastPath != "/payment/invoice/u1" {
 		t.Errorf("bekor qilish: %s %s", f.lastMethod, f.lastPath)
 	}
 

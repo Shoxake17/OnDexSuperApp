@@ -348,16 +348,26 @@ func (c *Client) Payment(ctx context.Context, uuid string) (*PaymentInfo, error)
 	return &out, nil
 }
 
-// CancelPayment — TO'LANMAGAN invoysni bekor qiladi.
+// CancelInvoice — TO'LANMAGAN invoysni bekor qiladi: mijoz havolani keyin
+// ochsa ham to'lay olmaydi.
 //
-// ⚠️ Allaqachon to'langan to'lovda shlyuz xato qaytaradi — pulni
-// qaytarish uchun `RefundPartial` ishlatiladi.
-func (c *Client) CancelPayment(ctx context.Context, uuid string) error {
+// ┌─ ENDPOINT: `/payment/invoice/{uuid}`, `/payment/{uuid}` EMAS ──────┐
+// Hujjatga ko'ra `DELETE /payment/invoice/{uuid}` "to'lanmagan invoysni
+// annulyatsiya qiladi". `DELETE /payment/{uuid}` esa BOSHQA amal: u
+// to'langan to'lovni bekor qilish (qaytarish). Avval kod aynan shu
+// ikkinchisini chaqirardi, sandbox'dagi haqiqiy sinov esa to'lanmagan
+// invoysda `404 ERROR_NOT_FOUND` berdi: ya'ni yopilmasdi va mijoz
+// bekor qilingan buyurtma uchun keyin to'lab qo'yishi mumkin edi.
+// └────────────────────────────────────────────────────────────────────┘
+//
+// ⚠️ Allaqachon to'langan invoysda shlyuz xato qaytaradi (HTTP 400) —
+// pulni qaytarish uchun `RefundPartial` ishlatiladi.
+func (c *Client) CancelInvoice(ctx context.Context, uuid string) error {
 	id := strings.TrimSpace(uuid)
 	if id == "" {
-		return errors.New("multicard: to'lov identifikatori bo'sh")
+		return errors.New("multicard: invoys identifikatori bo'sh")
 	}
-	return c.do(ctx, http.MethodDelete, "/payment/"+url.PathEscape(id), nil, nil)
+	return c.do(ctx, http.MethodDelete, "/payment/invoice/"+url.PathEscape(id), nil, nil)
 }
 
 // RefundPartial — to'langan pulni qaytaradi (to'liq yoki qisman).

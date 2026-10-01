@@ -82,8 +82,8 @@ func newStand(t *testing.T) *stand {
 		  "deeplink":"https://payme.uz/checkout/mc-direct-1"}}`))
 	})
 	mux.HandleFunc("GET /payment/{uuid}", record)
-	mux.HandleFunc("DELETE /payment/{uuid}", record)
-	mux.HandleFunc("DELETE /payment/{uuid}/partial", record)
+	// Barcha DELETE yo'llari yozib olinadi: sinov QAYSI yo'l chaqirilganini tekshiradi.
+	mux.HandleFunc("DELETE /payment/", record)
 	s.srv = httptest.NewServer(mux)
 	t.Cleanup(s.srv.Close)
 	return s
@@ -339,7 +339,7 @@ func TestCancelAndRefund(t *testing.T) {
 	if err := p.Cancel(ctx, "rest-a", "mc-uuid-1"); err != nil {
 		t.Fatal(err)
 	}
-	if s.lastMethod != http.MethodDelete || s.lastPath != "/payment/mc-uuid-1" {
+	if s.lastMethod != http.MethodDelete || s.lastPath != "/payment/invoice/mc-uuid-1" {
 		t.Errorf("bekor qilish: %s %s", s.lastMethod, s.lastPath)
 	}
 

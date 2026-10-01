@@ -165,8 +165,14 @@ func (p *Provider) Cancel(ctx context.Context, restaurantID, providerPaymentID s
 	if err != nil {
 		return err
 	}
-	return wrap(cl.CancelPayment(ctx, providerPaymentID))
+	return wrap(cl.CancelInvoice(ctx, providerPaymentID))
 }
+
+// CancelsUnpaid — bu provayder TO'LANMAGAN (kutilayotgan) invoysni ham yopa
+// oladi (`payments.UnpaidCanceller`). Bir bosqichli to'lovda `held` holati
+// yo'q, shuning uchun bekor qilingan buyurtmaning to'lanmagan invoysi
+// aynan shu yo'l bilan yopiladi.
+func (p *Provider) CancelsUnpaid() bool { return true }
 
 // Refund — to'langan pulni qaytaradi.
 //

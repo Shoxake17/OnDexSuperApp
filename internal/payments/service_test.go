@@ -24,7 +24,14 @@ type fakeProvider struct {
 	canceled  int
 	refunded  int
 	createdID string
+
+	// unpaid — provayder to'lanmagan to'lovni ham yopa oladi (Multicard kabi).
+	unpaid    bool
+	cancelErr error
 }
+
+// CancelsUnpaid — `UnpaidCanceller`: faqat `unpaid` bayrog'i yoqilgan sinovlarda true.
+func (f *fakeProvider) CancelsUnpaid() bool { return f.unpaid }
 
 func (f *fakeProvider) Name() string { return "fake" }
 
@@ -58,7 +65,7 @@ func (f *fakeProvider) Cancel(_ context.Context, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.canceled++
-	return nil
+	return f.cancelErr
 }
 
 func (f *fakeProvider) Refund(_ context.Context, _, _, _ string, _ int64) error {
