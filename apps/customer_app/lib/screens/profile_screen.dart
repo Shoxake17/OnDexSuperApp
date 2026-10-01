@@ -374,7 +374,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           builder: (_) => const AddressScreen()),
                     );
                     // Manzil o'zgargan bo'lishi mumkin — qayta o'qiymiz.
-                    if (mounted) setState(() => _future = api.me());
+                    // Qavsli blok: => tayinlash qiymatini (Future) qaytarardi va Flutter
+                    // debug rejimida setState() ni rad etib, ekran yangilanmasdi.
+                    if (mounted) {
+                      setState(() {
+                        _future = api.me();
+                      });
+                    }
                   },
                 ),
 
