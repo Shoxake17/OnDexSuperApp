@@ -8,7 +8,7 @@
 // Zoom Google shkalasida: MapLibre 512 px plitka ishlatadi, shuning uchun
 // bu yerda 1 ga ayriladi (`toMl`/`toGoogle`).
 
-import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
+import type { ErrorEvent, GeoJSONSource, Map as MlMap } from "maplibre-gl";
 import { bounds } from "./google-view";
 import type { CircleStyle, LatLng, LineStyle, MapMarker, MapView, MapViewOptions } from "./types";
 
@@ -64,7 +64,7 @@ export async function createOndexView(
       map.off("error", onError);
       resolve();
     };
-    const onError = (e: { error?: Error }) => fail(e.error ?? new Error("uslub xatosi"));
+    const onError = (e: ErrorEvent) => fail((e.error as Error) ?? new Error("uslub xatosi"));
     map.once("load", onLoad);
     map.on("error", onError);
   });

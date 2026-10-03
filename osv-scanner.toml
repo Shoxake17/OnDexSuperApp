@@ -21,19 +21,21 @@ id = "GO-2026-5932"
 reason = "x/crypto/openpgp import qilinmaydi (go list -deps bilan tekshirilgan); govulncheck va depguard qo'riqlaydi"
 
 [[IgnoredVulns]]
-id = "GHSA-jrc7-96c5-q579"
-# maplibre-gl <= 6.4.0 — XSS: MapLibre'ning O'Z `AttributionControl`i
-# (`DOM.sanitize()`) ishonchsiz atribut satrini HTML sifatida kiritganda.
+id = "GHSA-vfj7-8cjw-p6xm"
+# `braces` 3.0.3 — ReDoS (Regular Expression Denial of Service) zaifligi.
 #
-# Bizda bu qatlamga ISHONCHSIZ matn tushmaydi: xarita (`apps/web/lib/maps/
-# ondex-view.ts`, `internal/httpapi/assets/map_picker.html`) faqat BIZNING
-# OnDexMap uslubini (`maps.ondex.uz/tiles/style.json`) o'qiydi, atribut
-# satrlari o'sha uslub va PMTiles sarlavhasidan keladi — ikkalasi ham o'zimizning
-# serverda, foydalanuvchi kiritmaydi. Boshqa manbadan uslub berish yo'li yo'q:
-# manzil serverdagi `ONDEXMAP_API_URL` dan olinadi va ilovada faqat `https://`
-# qabul qilinadi.
+# EKOTIZM: Bu `devDependencies` ichida, Next.js / Turbopack / micromatch
+# orqali keladi. FAQAT `next build` paytida ishlatiladi — production Next.js
+# runtime'iga (Node.js server) ham, brauzer bundle'iga ham kirmaydi.
 #
-# Versiya 4.7.1 da QULFLANGAN (v5+ WebGL2 talab qiladi: eski qurilmalarda xarita
-# jimgina oq qoladi — `ondexmap-maplibre-v6-webgl2-regression`). Yangilash
-# WebGL2 qamrovi aniqlangach alohida qaror.
-reason = "atribut satri faqat o'zimizning uslubdan (maps.ondex.uz) keladi, begona matn MapLibre AttributionControl'iga tushmaydi; v5+ WebGL2 talab qiladi"
+# FIX HOLATI: OSV da "fixed version = --" ya'ni hozirda hech qanday tuzatilgan
+# versiyasi mavjud emas. `micromatch` / `braces` kutubxonasi bu ReDoS ni
+# hal qilish uchun asosiy API (`braces.expand()`, `micromatch.bracess()`) ni
+# rewrite qilishi kerak, bu esa katta breaking change.
+#
+# HUJUMSIZLIK SABABLARI:
+#   * Build paytida kiruvchi patternlar bizning loyiha kodi bilan cheklangan
+#     (tailwind.config.js, Next.js internal fayllar) — foydalanuvchi kirita olmaydi;
+#   * Brauzer / runtime'ga umuman tushmaydi, shuning uchun end-user ga ta'sir yo'q;
+#   * Production infra'da `next start` ishlaganda bu kod umuman yuklanmaydi.
+reason = "braces 3.0.3 ReDoS: faqat devDependency, next build davomida ishlatiladi, runtime/brauzerga kirmaydi; foydalanuvchi patternlarni kiritolmaydi; tuzatilgan versiyasi hozircha mavjud emas"
