@@ -21,7 +21,6 @@ id = "GO-2026-5932"
 reason = "x/crypto/openpgp import qilinmaydi (go list -deps bilan tekshirilgan); govulncheck va depguard qo'riqlaydi"
 
 [[IgnoredVulns]]
-id = "GHSA-jrc7-96c5-q579"
 # maplibre-gl <= 6.4.0 — XSS: MapLibre'ning O'Z `AttributionControl`i
 # (`DOM.sanitize()`) ishonchsiz atribut satrini HTML sifatida kiritganda.
 #
