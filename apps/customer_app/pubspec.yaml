@@ -35,8 +35,8 @@ dependencies:
   record: ^7.1.1
   flutter_pcm_sound: ^3.3.3
   shared_preferences: ^2.2.0
-  geolocator: ^13.0.1
-  google_maps_flutter: ^2.10.0
+  geolocator: ^14.1.1
+  google_maps_flutter: ^2.18.2
   # OnDexMap xaritasi (`lib/map/`). Google Maps'ning O'RNIGA emas,
   # YONIDA: qaysi biri ishlashini serverdagi `GOOGLE_MAP` bayrog'i hal qiladi
   # (`lib/map/map_backend.dart` izohiga qarang).
@@ -73,7 +73,7 @@ dependencies:
   # KADRDA QR qidiradi — bu yerda esa skanerlash umuman kerak emas va
   # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
   # rasmiy `camera` plagini.
-  camera: ^0.11.0
+  camera: ^0.12.1
   posthog_flutter: ^5.39.0
   lucide_icons_flutter: ^3.1.20
   image_picker: ^1.2.3
