@@ -1,0 +1,36 @@
+# OSV-Scanner — apps/web/package-lock.json uchun istisnolar.
+#
+# MUHIM: OSV v2 config fayllarni kaskadlamaydi — bu fayl package-lock.json
+# bilan bir xil katalogda BO'LISHI SHART (yoki --config flag global override).
+#
+# Qoida (rootdagi .gitleaks.toml / osv-scanner.toml bilan bir xil): har bir
+# istisnoda NEGA bu bizga tegishli emasligi to'liq yoziladi. Izohsiz istisno
+# vaqt o'tib "o'chirib qo'yilgan tekshiruv"ga aylanadi.
+
+[[PackageOverrides]]
+name = "braces"
+version = "3.0.3"
+ecosystem = "npm"
+group = "dev"
+vulnerability.ignore = true
+# GHSA-vfj7-8cjw-p6xm — `braces` 3.0.3 ReDoS (CVSS 8.7).
+#
+# EKOTIZM: Bu `devDependencies` ichida, Next.js → Turbopack → micromatch
+# zanjiri orqali keladi. FAQAT `next build` davomida (pattern expand
+# qilish uchun) ishlatiladi — production Next.js runtime'iga (Node.js server)
+# ham, brauzer bundle'iga ham HECK QILMAYDI.
+#
+# FIX HOLATI: OSV da "fixed version = --" — hozircha umuman tuzatilgan
+# versiyasi mavjud emas. `micromatch` / `braces` asosiy API'larini
+# rewrite qilishi kerak (katta breaking change).
+#
+# HUJUMSIZLIK SABABLARI:
+#   * Build paytida kiruvchi patternlar bizning loyiha kodi bilan cheklangan
+#     (tailwind.config.js, Next.js ichki fayllari) — foydalanuvchi ReDoS ga
+#     olib keladigan pattern kiritishi MUMKIN EMAS;
+#   * Brauzer / production runtime'ga umuman tushmaydi — end-user'ga 0 ta'sir;
+#   * `next start` (production server) paytida bu kod umuman yuklanmaydi;
+#   * Pinned version = 3.0.3: agar keyinchalik tuzatilgan versiya chiqsa va
+#     `npm install` bilan yangilansa, PackageOverrides ning `version = "3.0.3"`
+#     cheklovi sababli ignore avtomatik yiqilib, tekshirish qayta yoqiladi.
+reason = "braces 3.0.3 ReDoS (GHSA-vfj7-8cjw-p6xm): faqat devDependency, next build davomida ishlatiladi, runtime/brauzerga umuman kirmaydi; foydalanuvchi patternlarni kiritolmaydi; OSV da tuzatilgan versiyasi hozircha mavjud emas; version pinning orqali keyin yangilanganda avtomatik qayta tekshiriladi"

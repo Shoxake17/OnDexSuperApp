@@ -20,22 +20,6 @@ id = "GO-2026-5932"
 #   * `.golangci.yml` dagi `depguard` bu paketni import qilishni taqiqlaydi.
 reason = "x/crypto/openpgp import qilinmaydi (go list -deps bilan tekshirilgan); govulncheck va depguard qo'riqlaydi"
 
-[[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
-# `braces` 3.0.3 — ReDoS (Regular Expression Denial of Service) zaifligi.
-#
-# EKOTIZM: Bu `devDependencies` ichida, Next.js / Turbopack / micromatch
-# orqali keladi. FAQAT `next build` paytida ishlatiladi — production Next.js
-# runtime'iga (Node.js server) ham, brauzer bundle'iga ham kirmaydi.
-#
-# FIX HOLATI: OSV da "fixed version = --" ya'ni hozirda hech qanday tuzatilgan
-# versiyasi mavjud emas. `micromatch` / `braces` kutubxonasi bu ReDoS ni
-# hal qilish uchun asosiy API (`braces.expand()`, `micromatch.bracess()`) ni
-# rewrite qilishi kerak, bu esa katta breaking change.
-#
-# HUJUMSIZLIK SABABLARI:
-#   * Build paytida kiruvchi patternlar bizning loyiha kodi bilan cheklangan
-#     (tailwind.config.js, Next.js internal fayllar) — foydalanuvchi kirita olmaydi;
-#   * Brauzer / runtime'ga umuman tushmaydi, shuning uchun end-user ga ta'sir yo'q;
-#   * Production infra'da `next start` ishlaganda bu kod umuman yuklanmaydi.
-reason = "braces 3.0.3 ReDoS: faqat devDependency, next build davomida ishlatiladi, runtime/brauzerga kirmaydi; foydalanuvchi patternlarni kiritolmaydi; tuzatilgan versiyasi hozircha mavjud emas"
+# Eslatma: apps/web/package-lock.json uchun alohida `apps/web/osv-scanner.toml`
+# bor. OSV v2 config fayllarni kaskadlamaydi — har bir lockfile bilan bir xil
+# katalogda bo'lishi kerak (yoki --config flag ixtiyoriy global).
