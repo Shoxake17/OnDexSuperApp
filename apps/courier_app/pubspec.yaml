@@ -22,8 +22,8 @@ dependencies:
   # martalik ko'chirish uchun qoldirilgan (lib/token_store.dart).
   flutter_secure_storage: ^10.3.1
   web_socket_channel: ^3.0.0
-  geolocator: ^13.0.1
-  google_maps_flutter: ^2.10.0
+  geolocator: ^14.1.1
+  google_maps_flutter: ^2.18.2
   # OnDexMap xaritasi (GOOGLE_MAP=false, serverdan): Google'ning O'RNIGA emas,
   # YONIDA — qaysi biri ishlashini server hal qiladi (lib/map/courier_map.dart).
   maplibre_gl: ^0.27.1
@@ -47,7 +47,7 @@ dependencies:
   # Versiyalar affitsiant ilovasi bilan bir xil.
   firebase_core: ^4.2.0
   firebase_messaging: ^16.0.3
-  flutter_local_notifications: ^19.4.2
+  flutter_local_notifications: ^22.3.1
 
 dev_dependencies:
   flutter_test:
