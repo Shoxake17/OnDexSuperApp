@@ -1,7 +1,7 @@
 name: chust_customer
 description: ChustApp — mijoz ilovasi
 publish_to: "none"
-version: 0.2.10+22
+version: 0.2.12+24
 
 environment:
   # 3.3.0 dan ko'tarildi: `maplibre_gl` (OnDexMap xaritasi) 3.7+ talab

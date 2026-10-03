@@ -5,5 +5,10 @@
   "_server": ".env da APP_ENV=development bo'lsin, aks holda server ishga tushmay ALLOWED_ORIGINS/JWT_SECRET talab qilib chiqib ketadi.",
 
   "ONDEX_API_URL": "http://localhost:8080",
-  "ONDEX_WEB_URL": "http://localhost:3000"
+  "ONDEX_WEB_URL": "http://localhost:3000",
+
+  "_posthog_test": "VAQTINCHALIK: PostHog'ni lokal sinash uchun (bug.md — prod.json'dagi {{ONDEX_POSTHOG_KEY}} shabloni hech qachon almashtirilmagan edi). Sinov tugagach bu uchta qatorni olib tashlash mumkin — dev build'da doim yoqilgan bo'lishi shart emas.",
+  "ONDEX_POSTHOG_KEY": "phc_A9LjzkydkfsMeMFq58M2sXuRdE3NoiYRwwUGv7X4iGBX",
+  "ONDEX_POSTHOG_HOST": "https://us.i.posthog.com",
+  "ONDEX_POSTHOG_PROJECT": "599984"
 }
