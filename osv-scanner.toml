@@ -21,9 +21,19 @@ id = "GO-2026-5932"
 reason = "x/crypto/openpgp import qilinmaydi (go list -deps bilan tekshirilgan); govulncheck va depguard qo'riqlaydi"
 
 [[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
-# braces — TailwindCSS (devDependency) tomonidan chokidar orqali ishlatiladi.
-# Loyiha production qismiga umuman aloqasi yo'q, xakerlar orqali hujum
-# uyushtirish imkonsiz, chunki serverda ishlatilmaydi. Hozirda NPM'da butun
-# dunyo bo'yicha patch qilingan versiyasi mavjud emas.
-reason = "braces is a devDependency used by TailwindCSS. No patch available yet, safe for production runtime."
+id = "GHSA-jrc7-96c5-q579"
+# maplibre-gl <= 6.4.0 — XSS: MapLibre'ning O'Z `AttributionControl`i
+# (`DOM.sanitize()`) ishonchsiz atribut satrini HTML sifatida kiritganda.
+#
+# Bizda bu qatlamga ISHONCHSIZ matn tushmaydi: xarita (`apps/web/lib/maps/
+# ondex-view.ts`, `internal/httpapi/assets/map_picker.html`) faqat BIZNING
+# OnDexMap uslubini (`maps.ondex.uz/tiles/style.json`) o'qiydi, atribut
+# satrlari o'sha uslub va PMTiles sarlavhasidan keladi — ikkalasi ham o'zimizning
+# serverda, foydalanuvchi kiritmaydi. Boshqa manbadan uslub berish yo'li yo'q:
+# manzil serverdagi `ONDEXMAP_API_URL` dan olinadi va ilovada faqat `https://`
+# qabul qilinadi.
+#
+# Versiya 4.7.1 da QULFLANGAN (v5+ WebGL2 talab qiladi: eski qurilmalarda xarita
+# jimgina oq qoladi — `ondexmap-maplibre-v6-webgl2-regression`). Yangilash
+# WebGL2 qamrovi aniqlangach alohida qaror.
+reason = "atribut satri faqat o'zimizning uslubdan (maps.ondex.uz) keladi, begona matn MapLibre AttributionControl'iga tushmaydi; v5+ WebGL2 talab qiladi"
