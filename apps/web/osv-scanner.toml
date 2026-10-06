@@ -8,6 +8,39 @@
 # vaqt o'tib "o'chirib qo'yilgan tekshiruv"ga aylanadi.
 
 [[PackageOverrides]]
+name = "maplibre-gl"
+version = "4.7.1"
+ecosystem = "npm"
+vulnerability.ignore = true
+# GHSA-jrc7-96c5-q579 — MapLibre GL JS XSS: `DOM.sanitize()` ishonchsiz
+# atribut satrini HTML sifatida kiritganda (kutubxonaning O'Z
+# `AttributionControl`i ichida).
+#
+# NEGA BIZGA TEGISHLI EMAS: xarita (`lib/maps/ondex-view.ts`) FAQAT bizning
+# OnDexMap uslubimizni o'qiydi — `maps.ondex.uz/tiles/style.json`. Atribut
+# satrlari o'sha uslub va PMTiles sarlavhasidan keladi, ikkalasi ham o'z
+# serverimizda; foydalanuvchi ularni kiritolmaydi. Boshqa manbadan uslub
+# berish yo'li yo'q: manzil serverdagi `ONDEXMAP_API_URL` dan olinadi va
+# `lib/maps/config.ts` faqat `https://` qabul qiladi.
+#
+# NEGA 4.7.1 DA QULFLANGAN (ikki sabab, ikkalasi ham o'lchangan):
+#   1. v5+ WebGL2 ni MAJBURIY qiladi. WebGL2 siz eski Android telefonda
+#      xarita jimgina OQ bo'lib qoladi — Telegram Mini App foydalanuvchilari
+#      aynan shunday qurilmalarda.
+#   2. 2026-10-06 da 6.4.1 sinaldi: vektor uslub UMUMAN yuklanmadi.
+#      Sabab — v6 ning ESM ishchi fayli (`maplibre-gl-worker.mjs`) Next 16
+#      (Turbopack) da noto'g'ri manzilga yechiladi: ishchi skript o'rniga
+#      sahifaning HTML'ini yuklaydi va darhol o'ladi, shuning uchun plitkalar
+#      hech qachon tahlil qilinmaydi va `load` hodisasi chiqmaydi.
+#      pmtiles 4.5.0 ga ko'tarish ham yordam bermadi (rasterli uslub
+#      ishlaydi, vektorli — yo'q). Natijada xarita Google'ga tushib,
+#      OnDexMap veb'da butunlay o'chib qolardi.
+#
+# `version = "4.7.1"` ATAYLAB qat'iy: kimdir yangilasa bu istisno avtomatik
+# ishlamay qoladi va tekshiruv qayta yoqiladi.
+reason = "maplibre-gl 4.7.1 (GHSA-jrc7-96c5-q579): zaif AttributionControl yo'liga faqat o'z uslubimizdan (maps.ondex.uz) kelgan matn tushadi, foydalanuvchi kiritolmaydi; v5+ WebGL2 talab qilib eski telefonlarda xaritani oq qoldiradi va 6.4.1 da vektor uslub Next/Turbopack ishchi faylidagi nosozlik tufayli umuman yuklanmadi (2026-10-06 da o'lchangan)"
+
+[[PackageOverrides]]
 name = "braces"
 version = "3.0.3"
 ecosystem = "npm"
