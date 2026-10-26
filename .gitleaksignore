@@ -15,11 +15,17 @@
 # (`phx_` PERSONAL API kaliti esa haqiqiy sir — u bu yerga TUSHMAYDI.)
 #
 # Nega regex istisnosi emas, fingerprint: qoida zaiflashtirilmaydi.
-# Faqat shu 5 ta tarixiy joy o'tkaziladi; yangi commitdagi har qanday
+# Faqat shu tarixiy joylar o'tkaziladi; yangi commitdagi har qanday
 # kalit (shu jumladan boshqa fayldagi PostHog kaliti) YANA ushlanadi.
+#
+# 2026-10-26: 1384f0b ("admin_panel/config/dev.json") da AYNAN shu
+# qiymat (phc_A9LjzkydkfsMeMFq58M2sXuRdE3NoiYRwwUGv7X4iGBX) qo'lda
+# PostHog'ni lokal sinash uchun qo'shilgan edi (yuqoridagi izohga
+# qarang) — xuddi shu sabab bilan o'tkaziladi.
 # └───────────────────────────────────────────────────────────────────────┘
 7cc60edb2b2f914516d79db7b7dfcad286789299:apps/admin_panel/config/prod.json:generic-api-key:11
 7cc60edb2b2f914516d79db7b7dfcad286789299:apps/courier_app/config/prod.json:generic-api-key:9
 7cc60edb2b2f914516d79db7b7dfcad286789299:apps/customer_app/config/prod.json:generic-api-key:8
 7cc60edb2b2f914516d79db7b7dfcad286789299:apps/restaurant_panel/config/prod.json:generic-api-key:10
 7cc60edb2b2f914516d79db7b7dfcad286789299:apps/waiter_app/config/prod.json:generic-api-key:8
+1384f0bef4f29c77b21e8dbdf3110c4e295346ae:apps/admin_panel/config/dev.json:generic-api-key:11
