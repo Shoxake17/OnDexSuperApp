@@ -173,6 +173,8 @@ class _SettingsPageState extends State<SettingsPage> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          const _MapModeCard(),
+          const SizedBox(height: 16),
           if (_loadError != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -354,6 +356,161 @@ class _SettingsPageState extends State<SettingsPage> {
           hintText: hint,
           prefixIcon: Icon(icon),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Xarita manbasi — Google yoki OnDexMap, butun tizim uchun.
+///
+/// ┌─ BU YON PANELDAGI "OnDexMap" BO'LIMI BILAN BOG'LIQ EMAS ───────────┐
+/// U yerdagi bo'lim — mahalla/ko'cha chegaralarini chizish va
+/// foydalanuvchi takliflarini moderatsiya qilish (butunlay alohida
+/// loyiha, `F:\OnDexMap`). Bu yerdagi almashtirgich esa ChustApp'ning
+/// o'zi — manzil qidirish, geokodlash, yo'l hisoblash — qaysi xarita
+/// provayderidan foydalanishini belgilaydi (`internal/mapprovider`).
+/// └──────────────────────────────────────────────────────────────────┘
+///
+/// Tanlov SERVERDA XOTIRADA darhol qo'llanadi — qayta ishga tushirish
+/// shart emas (`POST /admin/config/map-mode`).
+class _MapModeCard extends StatefulWidget {
+  const _MapModeCard();
+
+  @override
+  State<_MapModeCard> createState() => _MapModeCardState();
+}
+
+class _MapModeCardState extends State<_MapModeCard> {
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+  String _mode = 'google';
+  bool _ondexConfigured = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final j = await api.mapModeConfig();
+      if (!mounted) return;
+      setState(() {
+        _mode = (j['mode'] as String?) ?? 'google';
+        _ondexConfigured = (j['ondexmap_configured'] as bool?) ?? false;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Yuklab bo\'lmadi: $e';
+      });
+    }
+  }
+
+  Future<void> _setMode(String mode) async {
+    if (mode == _mode || _saving) return;
+    final previous = _mode;
+    setState(() {
+      _mode = mode; // darhol ko'rsatiladi, xato bo'lsa orqaga qaytariladi
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final j = await api.setMapModeConfig(mode);
+      if (!mounted) return;
+      setState(() {
+        _mode = (j['mode'] as String?) ?? mode;
+        _ondexConfigured = (j['ondexmap_configured'] as bool?) ?? _ondexConfigured;
+        _saving = false;
+      });
+      final warning = j['warning'] as String?;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(warning ?? 'Saqlandi — darhol qo\'llandi (qayta ishga tushirish shart emas)'),
+          backgroundColor: warning != null ? Colors.orange.shade800 : null,
+        ));
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mode = previous;
+        _saving = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mode = previous;
+        _saving = false;
+        _error = 'Saqlab bo\'lmadi: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.map_outlined, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Xarita manbasi', style: theme.textTheme.titleMedium)),
+                if (_saving)
+                  const SizedBox(
+                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Manzil qidirish, geokodlash va yo\'l hisoblash — qaysi provayderdan. '
+              'Tanlov DARHOL butun tizimga qo\'llanadi (server qayta ishga tushmaydi).',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            if (_loading)
+              const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+            else ...[
+              SegmentedButton<String>(
+                key: const ValueKey('map-mode-segmented'),
+                segments: const [
+                  ButtonSegment(value: 'google', icon: Icon(Icons.public), label: Text('Google Maps')),
+                  ButtonSegment(value: 'ondexmap', icon: Icon(Icons.layers_outlined), label: Text('OnDexMap')),
+                ],
+                selected: {_mode},
+                onSelectionChanged: _saving ? null : (s) => _setMode(s.first),
+              ),
+              if (_mode == 'ondexmap' && !_ondexConfigured) ...[
+                const SizedBox(height: 10),
+                _Banner(
+                  text: 'OnDexMap serverda sozlanmagan — tanlov saqlanadi, lekin amalda '
+                      'baribir Google ishlatiladi (zaxira sifatida).',
+                  color: Colors.orange.shade800,
+                ),
+              ],
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              _Banner(text: _error!, color: theme.colorScheme.error),
+            ],
+          ],
         ),
       ),
     );

@@ -75,14 +75,19 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         bool opened = false;
         try {
-          opened = await launchUrl(Uri.parse(link),
-              mode: LaunchMode.externalApplication);
+          opened = await launchUrl(
+            Uri.parse(link),
+            mode: LaunchMode.externalApplication,
+          );
         } catch (_) {
           opened = false;
         }
         if (!opened && mounted) {
-          setState(() => _error = 'Telegram avtomatik ochilmadi — '
-              '"Telegramni ochish" tugmasini bosing');
+          setState(
+            () => _error =
+                'Telegram avtomatik ochilmadi — '
+                '"Telegramni ochish" tugmasini bosing',
+          );
         }
         return;
       } on ApiException catch (e) {
@@ -142,91 +147,120 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // OnDexGO logotipi (`image/OnDexGO.png`, markazdagi qora
-              // maydon kesilgan). Telefondagi ilova belgisi ham AYNAN shu
-              // logodan generatsiya qilinadi (pubspec: flutter_launcher_icons).
-              Image.asset(
-                'assets/logo.png',
-                height: 96,
-                // Rasm topilmasa kirish ekrani YIQILMASLIGI kerak.
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.delivery_dining, size: 64),
-              ),
-              const SizedBox(height: 8),
-              Text('OnDexGO',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 32),
-              // Telefon raqami — PostHog seans yozuvida niqoblanadi.
-              PostHogMaskWidget(
-                child: TextField(
-                  controller: _phone,
-                  enabled: !_codeSent,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Telefon raqam',
-                    hintText: '+998901234567',
-                    border: OutlineInputBorder(),
-                  ),
+        // ┌─ KLAVIATURA OCHILGANDA SIG'MAY QOLARDI ──────────────────┐
+        // Ekran qat'iy `Column` edi: kod maydoni chiqib, klaviatura
+        // ko'tarilganda balandlik yetmay "BOTTOM OVERFLOWED BY 175
+        // PIXELS" chizig'i chiqardi va "Kirish" tugmasi ko'rinmasdi.
+        // Endi kontent aylanadi, bo'sh joy yetarli bo'lsa esa avvalgidek
+        // markazda turadi (`minHeight` shuning uchun).
+        // └──────────────────────────────────────────────────────────┘
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - 48).clamp(
+                  0,
+                  double.infinity,
                 ),
               ),
-              if (_codeSent) ...[
-                if (_viaTelegram) ...[
-                  const SizedBox(height: 16),
-                  _TelegramHint(deepLink: _deepLink),
-                ],
-                const SizedBox(height: 16),
-                // Tasdiqlash kodi — PostHog seans yozuvida niqoblanadi.
-                PostHogMaskWidget(
-                  child: TextField(
-                    controller: _code,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText:
-                          _viaTelegram ? 'Telegramdan kelgan kod' : 'SMS kod',
-                      border: const OutlineInputBorder(),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // OnDexGO logotipi (`image/OnDexGO.png`, markazdagi qora
+                  // maydon kesilgan). Telefondagi ilova belgisi ham AYNAN shu
+                  // logodan generatsiya qilinadi (pubspec: flutter_launcher_icons).
+                  Image.asset(
+                    'assets/logo.png',
+                    height: 96,
+                    // Rasm topilmasa kirish ekrani YIQILMASLIGI kerak.
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.delivery_dining, size: 64),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'OnDexGO',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 32),
+                  // Telefon raqami — PostHog seans yozuvida niqoblanadi.
+                  PostHogMaskWidget(
+                    child: TextField(
+                      controller: _phone,
+                      enabled: !_codeSent,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefon raqam',
+                        hintText: '+998901234567',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_error!,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
-                ),
-              FilledButton(
-                onPressed: _busy ? null : (_codeSent ? _verify : _requestCode),
-                child: Text(_busy
-                    ? 'Kutilmoqda...'
-                    : (_codeSent ? 'Kirish' : 'Telegram orqali kod olish')),
+                  if (_codeSent) ...[
+                    if (_viaTelegram) ...[
+                      const SizedBox(height: 16),
+                      _TelegramHint(deepLink: _deepLink),
+                    ],
+                    const SizedBox(height: 16),
+                    // Tasdiqlash kodi — PostHog seans yozuvida niqoblanadi.
+                    PostHogMaskWidget(
+                      child: TextField(
+                        controller: _code,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: _viaTelegram
+                              ? 'Telegramdan kelgan kod'
+                              : 'SMS kod',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  FilledButton(
+                    onPressed: _busy
+                        ? null
+                        : (_codeSent ? _verify : _requestCode),
+                    child: Text(
+                      _busy
+                          ? 'Kutilmoqda...'
+                          : (_codeSent
+                                ? 'Kirish'
+                                : 'Telegram orqali kod olish'),
+                    ),
+                  ),
+                  if (_codeSent)
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() {
+                              _codeSent = false;
+                              // Havola BIR MARTALIK: bot uni ishlatgach
+                              // server tokenni o'chiradi (`verifier.go`).
+                              // Boshqa raqam YANGI havola oladi.
+                              _deepLink = null;
+                              _viaTelegram = false;
+                              _code.clear();
+                              _error = null;
+                            }),
+                      child: const Text('Raqamni o\'zgartirish'),
+                    ),
+                ],
               ),
-              if (_codeSent)
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                            _codeSent = false;
-                            // Havola BIR MARTALIK: bot uni ishlatgach
-                            // server tokenni o'chiradi (`verifier.go`).
-                            // Boshqa raqam YANGI havola oladi.
-                            _deepLink = null;
-                            _viaTelegram = false;
-                            _code.clear();
-                            _error = null;
-                          }),
-                  child: const Text('Raqamni o\'zgartirish'),
-                ),
-            ],
+            ),
           ),
         ),
       ),
@@ -267,8 +301,9 @@ class _TelegramHint extends StatelessWidget {
           Text(
             'Diqqat: Telegramdagi raqamingiz yuqorida yozilgan raqam '
             'bilan bir xil bo\'lishi kerak.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           ),
           if (deepLink != null) ...[
             const SizedBox(height: 8),
@@ -278,8 +313,10 @@ class _TelegramHint extends StatelessWidget {
             TextButton.icon(
               icon: const Icon(Icons.send, size: 16),
               label: const Text('Telegramni ochish'),
-              onPressed: () => launchUrl(Uri.parse(deepLink!),
-                  mode: LaunchMode.externalApplication),
+              onPressed: () => launchUrl(
+                Uri.parse(deepLink!),
+                mode: LaunchMode.externalApplication,
+              ),
             ),
           ],
         ],

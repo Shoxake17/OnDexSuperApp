@@ -91,6 +91,20 @@ type Pusher interface {
 	Push(ctx context.Context, tokens []string, e Event) error
 }
 
+// DeadTokenPusher — yuborish natijasida ARTIQ MAVJUD BO'LMAGAN
+// tokenlarni ham qaytaradigan `Pusher`.
+//
+// Ixtiyoriy: `Service` buni tur tekshiruvi bilan aniqlaydi, shuning
+// uchun oddiy `Pusher` (testlardagi soxta nusxalar) o'zgarishsiz
+// ishlayveradi.
+type DeadTokenPusher interface {
+	Pusher
+	// PushDetailed — `Push` bilan bir xil, lekin ustiga o'lik
+	// tokenlar ro'yxatini qaytaradi. Eskirgan token XATO EMAS:
+	// shu sababli u `error` ga tushmaydi.
+	PushDetailed(ctx context.Context, tokens []string, e Event) ([]string, error)
+}
+
 // TokenStore — qurilma push tokenlari.
 type TokenStore interface {
 	// SaveToken — bir xil token boshqa foydalanuvchida bo'lsa, u

@@ -86,6 +86,17 @@ class CustomerApi extends ApiClient {
           as List<dynamic>? ??
       [];
 
+  /// Restoran sahifasidagi reklama bannerlari — admin panelidan
+  /// boshqariladi (Yandex Eats/Go uslubi, `internal/banners`). Faqat
+  /// FAOL bannerlar, tartib bo'yicha; ro'yxat bo'sh bo'lsa bo'lim
+  /// butunlay yashiriladi (`catalog_screen.dart`).
+  ///
+  /// `?for_me=1` — `restaurants()` bilan AYNAN bir xil shartnoma:
+  /// restoranga bog'langan banner faqat o'sha restoran yetkaza
+  /// oladigan shahardagi mijozga ko'rinadi (`service_area.go`).
+  Future<List<dynamic>> banners() async =>
+      (await send('GET', '/promo-banners?for_me=1')) as List<dynamic>? ?? [];
+
   /// Savat holatini checkout'dan OLDIN ko'rish uchun HAQIQIY narxlash —
   /// real buyurtma yaratmaydi. createOrder() bilan bir xil backend
   /// mantig'idan foydalanadi, shuning uchun bu yerda ko'rsatilgan
@@ -239,6 +250,30 @@ class CustomerApi extends ApiClient {
 
   Future<Map<String, dynamic>> getOrder(String id) async =>
       Map<String, dynamic>.from(await send('GET', '/orders/$id'));
+
+  /// Shu buyurtma uchun mijoz allaqachon qo'ygan baho. Hali baholanmagan
+  /// bo'lsa `null` (server 404 qaytaradi — bu XATO EMAS, "hali yo'q"
+  /// degani, `tracking_screen.dart` shuni kutib turadi).
+  Future<Map<String, dynamic>?> getOrderRating(String orderId) async {
+    try {
+      return Map<String, dynamic>.from(
+        await send('GET', '/orders/$orderId/rating'),
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Buyurtmadan keyin restoranga baho qo'yadi (1-5 yulduz). Buyurtma
+  /// hali yetkazilmagan yoki allaqachon baholangan bo'lsa server
+  /// 409/403 qaytaradi (`internal/httpapi/routes_ratings.go`).
+  Future<Map<String, dynamic>> submitOrderRating(
+    String orderId,
+    int stars,
+  ) async => Map<String, dynamic>.from(
+    await send('POST', '/orders/$orderId/rating', {'stars': stars}),
+  );
 
   /// Karta orqali to'lovni boshlaydi va to'lov sahifasi havolasini
   /// qaytaradi (`pay_url`).

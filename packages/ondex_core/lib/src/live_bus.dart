@@ -128,7 +128,18 @@ class LiveRefresher {
       }
     });
     // Ulanish holati o'zgarganda zaxira tezligi qayta tanlanadi.
-    _connSub = bus.connection.listen((_) => _restartTimer());
+    _connSub = bus.connection.listen((connected) {
+      // ┌─ QAYTA ULANGANDA DARHOL YANGILASH ────────────────────────┐
+      // Soket uzilgan paytda kelgan hodisalar MANGU yo'qoladi:
+      // `new_order` faqat jonli kanalga yuboriladi, bazaga
+      // yozilmaydi (`notify.Live.OrderCreated`). Avval qayta
+      // ulanishdan keyin ekran navbatdagi zaxira so'rovni —
+      // ya'ni 60 soniyagacha — kutardi. Restoran paneli aynan
+      // shu sabab yangi buyurtmani kech ko'rsatardi.
+      // └───────────────────────────────────────────────────────────┘
+      if (connected) onRefresh();
+      _restartTimer();
+    });
     _restartTimer();
   }
 

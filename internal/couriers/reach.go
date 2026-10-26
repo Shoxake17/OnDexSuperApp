@@ -82,7 +82,27 @@ func (d *Dispatcher) candidates(ctx context.Context, params DispatchParams) ([]*
 		if _, ok := seen[c.ID]; ok {
 			continue
 		}
-		if !d.reach.Online(c.ID) && d.reach.CanPush(ctx, c.ID) {
+		// ┌─ ONLAYN, LEKIN JOYLASHUVI ESKIRGAN — KO'RINMAS BO'LMASIN ────┐
+		// Avval bu yerda `!d.reach.Online(c.ID) &&` turardi: taxmin
+		// shunday ediki, "agar kuryer onlayn bo'lsa, u YUQORIDAGI
+		// (3 daqiqalik) ro'yxatda allaqachon bor". Lekin GPS signali
+		// uzilsa (joylashuv ruxsati yo'qolsa, GPS o'chirilsa, tunnel/
+		// yopiq joy) — ilova WebSocket orqali hamon ONLAYN turadi,
+		// kuryer "Liniyada" ko'radi, lekin joylashuvi 3 daqiqadan eskiradi.
+		// Natijada bunday kuryer BIRINCHI ro'yxatdan (joylashuvi eski)
+		// HAM, shu yerdan (onlayn bo'lgani uchun) HAM tushib qolardi —
+		// ikkala ro'yxatda ham yo'q, butunlay ko'rinmas. Buyurtma
+		// "bo'sh onlayn kuryer yo'q" deb CHEKSIZ aylanardi, kuryer esa
+		// ekranda "onlayn" bo'lib o'tirardi va sababni bilmasdi (jonli
+		// holat, 2026-10-21: GPS o'chirilgandan keyin 300+ tsikl,
+		// 25+ daqiqa — birorta taklif yuborilmadi).
+		//
+		// Endi ONLAYN kuryer — joylashuvi qanchalik eski bo'lishidan
+		// qat'i nazar (12 soatgacha) — nomzod bo'ladi: aynan push bilan
+		// uyg'otiladigan kuryerga qancha ishonilsa, ekranda ochiq turgan
+		// kuryerga ham kamida shuncha ishonish kerak.
+		// └────────────────────────────────────────────────────────────┘
+		if d.reach.Online(c.ID) || d.reach.CanPush(ctx, c.ID) {
 			out = append(out, c)
 		}
 	}

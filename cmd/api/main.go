@@ -23,6 +23,7 @@ import (
 	"chustapp/internal/alerts"
 	"chustapp/internal/appenv"
 	"chustapp/internal/assistant"
+	"chustapp/internal/banners"
 	"chustapp/internal/cache"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
@@ -43,6 +44,7 @@ import (
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/ratelimit"
+	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
 	"chustapp/internal/safego"
 	"chustapp/internal/scenes"
@@ -1098,6 +1100,28 @@ func main() {
 		staffRepo = storage.NewMemoryStaffRepo()
 		slog.Warn("rejim: in-memory (xodimlar) — xodimlar ro'yxati server qayta ishga tushganda yo'qoladi")
 	}
+
+	// Reklama/aksiya bannerlari (`internal/banners`, admin panelidan
+	// boshqariladi). Staff bilan bir xil naqsh: Postgres bo'lsa doimiy,
+	// bo'lmasa xotirada (server qayta ishga tushganda yo'qoladi).
+	var bannerRepo banners.Repository
+	if pgPool != nil {
+		bannerRepo = storage.NewPgBannerRepo(pgPool)
+	} else {
+		bannerRepo = storage.NewMemoryBannerRepo()
+		slog.Warn("rejim: in-memory (bannerlar) — reklama bannerlari server qayta ishga tushganda yo'qoladi")
+	}
+	// Mijoz buyurtmadan keyin qo'ygan baho (`internal/ratings`) —
+	// restoran `Rating`/`RatingCount` shundan hisoblanadi
+	// (`scene_access.go`, `withRating`), admin/restoran qo'lda
+	// kiritmaydi.
+	var ratingsRepo ratings.Repository
+	if pgPool != nil {
+		ratingsRepo = storage.NewPgRatingRepo(pgPool)
+	} else {
+		ratingsRepo = storage.NewMemoryRatingRepo()
+		slog.Warn("rejim: in-memory (reytinglar) — mijoz baholari server qayta ishga tushganda yo'qoladi")
+	}
 	// Yetkazish haqi har narxlashda xodimlar ro'yxatini o'qiydi; yozishda kesh
 	// darhol bekor qilinadi (pul: eski haq ko'rinmasligi kerak).
 	staffRepo = storage.NewCachedStaff(staffRepo, entityCacheTTL)
@@ -1427,6 +1451,8 @@ func main() {
 		BookRepo:           bookRepo,
 		PromotionsRepo:     promotionsRepo,
 		FavoritesRepo:      favoritesRepo,
+		BannerRepo:         bannerRepo,
+		RatingsRepo:        ratingsRepo,
 		RouteRepo:          routeRepo,
 		Voice:              voiceSvc,
 		Cache:              redisCache,

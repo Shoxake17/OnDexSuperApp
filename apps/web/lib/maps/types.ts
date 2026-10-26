@@ -8,7 +8,7 @@
 
 export type LatLng = { lat: number; lng: number };
 
-export type MapProvider = "google" | "ondexmap";
+export type MapProvider = `google` | `ondexmap`;
 
 /** Xaritadagi HTML belgi (restoran logosi, uy, burilaydigan mashina). */
 export interface MapMarker {

@@ -42,7 +42,7 @@ export default function FavoritesPage() {
       {failed ? (
         <div className="py-14 text-center">
           <p className="text-neutral-500">
-            Sevimlilarni yuklab bo&apos;lmadi.
+            Sevimlilarni yuklab bo'lmadi.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -63,13 +63,13 @@ export default function FavoritesPage() {
       ) : items.length === 0 ? (
         <div className="py-14 text-center">
           <p className="text-neutral-500">
-            Hozircha sevimli taom yo&apos;q
+            Hozircha sevimli taom yo'q
           </p>
           <p className="tg-muted mt-1 text-sm text-neutral-500">
-            Taom sahifasidagi ♡ belgisini bosib qo&apos;shing.
+            Taom sahifasidagi ♡ belgisini bosib qo'shing.
           </p>
           <div className="mx-auto mt-5 max-w-xs">
-            <AppButtonLink href="/">Restoranlarni ko&apos;rish</AppButtonLink>
+            <AppButtonLink href="/">Restoranlarni ko'rish</AppButtonLink>
           </div>
         </div>
       ) : (

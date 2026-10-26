@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../screens/cart_screen.dart';
 import '../screens/menu_screen.dart';
 import 'ai_tools.dart';
+import 'catalog_repository.dart';
 
 /// Ilovaning ILDIZ navigatori.
 ///
@@ -168,6 +169,29 @@ class AgentDriver extends ChangeNotifier {
   /// └────────────────────────────────────────────────────────────────┘
   void Function(String restaurantName, int totalTiyin)? onCheckoutReady;
 
+  /// Boshqaruvchi to'xtadi, LEKIN rasmiylashtirishga yetmadi (odam
+  /// o'zi bekor qilmagan — menyu ochilmadi, taom vaqtida topilmadi,
+  /// rasmiylashtirish tugmasi faollashmadi).
+  ///
+  /// ┌─ NEGA KERAK (jonli nosozlik, 2026-10-21) ──────────────────────┐
+  /// Avval bu holatda `status` FAQAT ekrandagi kichik yozuvda
+  /// ko'rinardi ("'Osh' menyuda topilmadi") — na gapirib aytilardi,
+  /// na suhbat oqimiga tushardi. Model esa `propose_order`dan keyin
+  /// "hozir savatga qo'shib, rasmiylashtirishga olib chiqaman" deb
+  /// aytgan va `NotifyCheckoutReady` xabarini abadiy kutib qolardi.
+  /// Foydalanuvchi faqat "taom topib, skroll qilib" keyin JIM qolishini
+  /// ko'rardi — sabab hech qayerda aytilmasdi, model esa qayta-qayta
+  /// `propose_order` chaqirib, xuddi shu holat TAKRORLANARDI.
+  ///
+  /// Endi sabab ovozli/matnli suhbatga XABAR sifatida qaytariladi —
+  /// Shaddiy nima bo'lganini tushuntiradi va foydalanuvchi qolgan
+  /// qadamni o'zi (odatdagi ekranlarda) davom ettira oladi.
+  /// └───────────────────────────────────────────────────────────────┘
+  /// `reasonCode` — qat'iy kod (`menu_timeout`, `product_not_found`,
+  /// `checkout_button_timeout`, `unknown`), ERKIN MATN EMAS — server
+  /// shu kod bo'yicha o'zi gap tuzadi (`NotifyCheckoutFailed`).
+  void Function(String restaurantName, String reasonCode)? onCheckoutFailed;
+
   /// Odam ekranga tegdi — boshqaruv unga qaytadi.
   ///
   /// Bu shunchaki qulaylik emas, XAVFSIZLIK qoidasi: foydalanuvchi
@@ -189,6 +213,15 @@ class AgentDriver extends ChangeNotifier {
     _tapping = tapping;
     notifyListeners();
   }
+
+  /// Oxirgi nosozlik KODI — `onCheckoutFailed` orqali serverga
+  /// ketadi. `_status` dan ATAYLAB ALOHIDA: `_status` erkin
+  /// (mahsulot nomi bilan) matn, u SERVERGA YUBORILMAYDI — faqat
+  /// qat'iy kod ketadi va gapni SERVER tuzadi (`checkout_ready` bilan
+  /// bir xil naqsh, `NotifyCheckoutReady` izohiga qarang: mijozdan
+  /// erkin matn qabul qilinsa, model ko'rsatmasini qayta yozish
+  /// (prompt injection) xavfi bo'lardi).
+  String _failureCode = 'unknown';
 
   /// Taklifni bajaradi: menyuni ochib, taomlarni qo'shib, savatdan
   /// to'lov ekraniga olib boradi.
@@ -215,14 +248,57 @@ class AgentDriver extends ChangeNotifier {
 
     _running = true;
     _cancelled = false;
+    _failureCode = 'unknown';
     final rname = (proposal['restaurant_name'] ?? '').toString();
     final total = (proposal['total_tiyin'] as num?)?.toInt() ?? 0;
+    // ┌─ MENYU OLDINDAN ISINADI ────────────────────────────────────────┐
+    // So'rov `_drive()` ichidagi birinchi pauzalar (~900 ms) bilan bir
+    // vaqtda boshlanadi — mijoz hali "Restoran ochilyapti..." deb
+    // turganda tarmoq javobi allaqachon kesh'ga tushadi. Natijada
+    // menyu ekrani ochilganda taomlar KO'PINCHA allaqachon tayyor
+    // bo'ladi, ya'ni eng tez-tez uchraydigan nosozlik sababi (sekin
+    // tarmoq → "menyuda topilmadi") kamayadi. Xato bo'lsa jim
+    // yutiladi — menyu ekrani baribir o'z holicha qayta so'raydi.
+    // └────────────────────────────────────────────────────────────────┘
+    unawaited(() async {
+      try {
+        await Repos.menu(rid).observe().first;
+      } catch (_) {
+        // Menyu ekrani baribir o'z holicha qayta so'raydi.
+      }
+    }());
     try {
-      if (await _drive(rid, rname, items)) {
+      var ok = await _drive(rid, rname, items);
+      // ┌─ XAVFSIZ QAYTA URINISH — FAQAT "MENU_TIMEOUT" DA ─────────────┐
+      // Faqat shu holatda hali BITTA ham taom savatga tegmagan, ya'ni
+      // qayta boshlash ikki marta qo'shib yuborish xavfini tug'dirmaydi.
+      // Boshqa nosozliklarda (taom topilmadi, tugma faollashmadi)
+      // savatda allaqachon narsa bo'lishi mumkin — ko'r-ko'rona qayta
+      // urinish ularni IKKI MARTA qo'shib yuborardi, shuning uchun
+      // ular hamon faqat xabar qilinadi (pastda).
+      //
+      // Sabab vaqtinchalik: tarmoq sekinligi, ilova hali to'liq
+      // qurilmagani. Bir marta, qisqa pauzadan keyin — ko'pincha
+      // yetadi, foydalanuvchini bezovta qilmaydi.
+      // └──────────────────────────────────────────────────────────────┘
+      if (!ok && !_cancelled && _failureCode == 'menu_timeout') {
+        await _pause(900);
+        if (!_cancelled) {
+          _failureCode = 'unknown';
+          ok = await _drive(rid, rname, items);
+        }
+      }
+      if (ok) {
         // Yetib bordik — endi to'lov savolini yordamchi beradi.
         // Bekor qilingan yoki yiqilgan holatda CHAQIRILMAYDI:
         // bo'lmagan ekran uchun to'lov so'rash aldash bo'lardi.
         onCheckoutReady?.call(rname, total);
+      } else if (!_cancelled) {
+        // Odam TO'XTATMAGAN, lekin yetib bo'lmadi (menyu ochilmadi,
+        // taom topilmadi, tugma faollashmadi) — sababni suhbatga
+        // qaytaramiz, aks holda model abadiy "yetib bordim" xabarini
+        // kutib qoladi.
+        onCheckoutFailed?.call(rname, _failureCode);
       }
     } finally {
       _running = false;
@@ -267,6 +343,7 @@ class AgentDriver extends ChangeNotifier {
     if (!await _waitFor(() => _stage.menuRestaurantId == rid,
         timeout: const Duration(seconds: 12))) {
       _set('Menyuni ochib bo\'lmadi');
+      _failureCode = 'menu_timeout';
       return false;
     }
     await _pause(600);
@@ -286,6 +363,7 @@ class AgentDriver extends ChangeNotifier {
       if (!await _waitFor(() => key.currentContext != null,
           timeout: const Duration(seconds: 10))) {
         _set('"$name" menyuda topilmadi');
+        _failureCode = 'product_not_found';
         return false;
       }
       if (_stop()) return false;
@@ -342,6 +420,7 @@ class AgentDriver extends ChangeNotifier {
     if (!await _waitFor(() => _stage.cartCheckout != null,
         timeout: const Duration(seconds: 15))) {
       _set('Savat tayyor — rasmiylashtirishni o\'zingiz bosing');
+      _failureCode = 'checkout_button_timeout';
       return false;
     }
     await _pause(600);

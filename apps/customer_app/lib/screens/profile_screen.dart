@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'connected_apps_screen.dart';
 import 'catalog_screen.dart' show kBrand;
+import '../data/address_scope.dart';
 import '../data/catalog_repository.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
@@ -15,6 +16,7 @@ import '../session.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'address_screen.dart';
 import 'delete_account_screen.dart';
+import 'legal_webview_screen.dart';
 import 'login_screen.dart';
 import 'web_session.dart';
 import 'pin_screen.dart';
@@ -59,8 +61,12 @@ class _InfoRow extends StatelessWidget {
         children: [
           if (avatarAsset != null)
             ClipOval(
-              child: Image.asset(avatarAsset!,
-                  width: 22, height: 22, fit: BoxFit.cover),
+              child: Image.asset(
+                avatarAsset!,
+                width: 22,
+                height: 22,
+                fit: BoxFit.cover,
+              ),
             )
           else
             Icon(icon, size: 19, color: const Color(0xFF9E9E9E)),
@@ -69,19 +75,24 @@ class _InfoRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF757575))),
-                Text(value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF757575),
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15),
+                ),
               ],
             ),
           ),
           if (onTap != null)
-            const Icon(Icons.chevron_right,
-                size: 18, color: Color(0xFF9E9E9E)),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9E9E9E)),
         ],
       ),
     );
@@ -134,22 +145,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     var wiped = false;
     final verified = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (ctx) => PinEntryScreen(
-          title: 'Joriy PIN kodni kiriting',
-          subtitle: 'Yangi PIN o\'rnatishdan oldin',
-          onSubmit: (pin) async {
-            final res = await AppPin.verify(pin);
-            if (res.sessionWiped) {
-              wiped = true;
-              if (ctx.mounted) Navigator.of(ctx).pop(false);
-              return false;
-            }
-            if (res.ok && ctx.mounted) Navigator.of(ctx).pop(true);
-            return res.ok;
-          },
-          onForgot: () => Navigator.of(ctx).pop(false),
-          forgotLabel: 'Bekor qilish',
-        ),
+        builder:
+            (ctx) => PinEntryScreen(
+              title: 'Joriy PIN kodni kiriting',
+              subtitle: 'Yangi PIN o\'rnatishdan oldin',
+              onSubmit: (pin) async {
+                final res = await AppPin.verify(pin);
+                if (res.sessionWiped) {
+                  wiped = true;
+                  if (ctx.mounted) Navigator.of(ctx).pop(false);
+                  return false;
+                }
+                if (res.ok && ctx.mounted) Navigator.of(ctx).pop(true);
+                return res.ok;
+              },
+              onForgot: () => Navigator.of(ctx).pop(false),
+              forgotLabel: 'Bekor qilish',
+            ),
       ),
     );
     if (wiped) {
@@ -159,17 +171,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (verified != true || !mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (ctx) => PinSetupScreen(
-          onDone: () => Navigator.of(ctx).pop(),
-          onCancel: () => Navigator.of(ctx).pop(),
-        ),
+        builder:
+            (ctx) => PinSetupScreen(
+              onDone: () => Navigator.of(ctx).pop(),
+              onCancel: () => Navigator.of(ctx).pop(),
+            ),
       ),
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('PIN kod yangilandi'),
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('PIN kod yangilandi'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _loadLockState() async {
@@ -191,18 +206,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     final yes = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Chiqishni tasdiqlaysizmi?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Yo\'q')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Ha, chiqish'),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Chiqishni tasdiqlaysizmi?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Yo\'q'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Ha, chiqish'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
     if (yes != true) return;
     await _doLogout();
@@ -250,6 +267,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // kirishda ilova bir zumda ochilishini ta'minlaydi
     // (`data/catalog_repository.dart` izohiga qarang).
     await Repos.clearOnLogout();
+    // Joriy manzil XOTIRADA turadi (`AddressScope` — singleton) va
+    // diskdagi kesh bilan birga tozalanmaydi. Tozalanmasa chiqqan
+    // odamning manzili sarlavhada qolib, keyingi foydalanuvchiga
+    // ko'rinardi — restoran ro'yxati ham o'sha shahar bo'yicha
+    // filtrlanardi.
+    AddressScope.instance.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -286,13 +309,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Ism vebdagi `displayName()` bilan bir xil tartibda
             // tanlanadi: `name` -> `first_name last_name` -> "Mijoz".
-            final full = [
-              (me?['first_name'] as String?) ?? '',
-              (me?['last_name'] as String?) ?? '',
-            ].where((s) => s.trim().isNotEmpty).join(' ').trim();
-            final name = ((me?['name'] as String?) ?? '').trim().isNotEmpty
-                ? (me!['name'] as String).trim()
-                : (full.isNotEmpty ? full : 'Mijoz');
+            final full =
+                [
+                  (me?['first_name'] as String?) ?? '',
+                  (me?['last_name'] as String?) ?? '',
+                ].where((s) => s.trim().isNotEmpty).join(' ').trim();
+            final name =
+                ((me?['name'] as String?) ?? '').trim().isNotEmpty
+                    ? (me!['name'] as String).trim()
+                    : (full.isNotEmpty ? full : 'Mijoz');
             final phone = (me?['phone'] as String?) ?? '';
             final email = ((me?['email'] as String?) ?? '').trim();
             final address =
@@ -320,9 +345,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Text(
                           name.characters.first.toUpperCase(),
                           style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -330,12 +356,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.bold)),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               phone.isEmpty
@@ -344,7 +373,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                  fontSize: 13.5, color: Color(0xFF757575)),
+                                fontSize: 13.5,
+                                color: Color(0xFF757575),
+                              ),
                             ),
                           ],
                         ),
@@ -358,7 +389,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // ism ostida allaqachon turibdi.
                 if (email.isNotEmpty) ...[
                   _InfoRow(
-                      icon: Icons.mail_outline, label: 'Email', value: email),
+                    icon: Icons.mail_outline,
+                    label: 'Email',
+                    value: email,
+                  ),
                   const SizedBox(height: 8),
                 ],
                 _InfoRow(
@@ -370,8 +404,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   value: address.isEmpty ? 'Tanlanmagan' : address,
                   onTap: () async {
                     await Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const AddressScreen()),
+                      MaterialPageRoute(builder: (_) => const AddressScreen()),
                     );
                     // Manzil o'zgargan bo'lishi mumkin — qayta o'qiymiz.
                     // Qavsli blok: => tayinlash qiymatini (Future) qaytarardi va Flutter
@@ -411,10 +444,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   avatarAsset: 'assets/shaddiy/face_idle.jpg',
                   label: 'Ruxsat berilgan',
                   value: 'Shaddiy Ai ruxsatlari',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                        builder: (_) => const ConnectedAppsScreen()),
-                  ),
+                  onTap:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ConnectedAppsScreen(),
+                        ),
+                      ),
                 ),
                 // Qulf sozlamasi FAQAT qurilmada himoya bo'lsa
                 // ko'rsatiladi — PIN/barmoq izi umuman qo'yilmagan
@@ -427,19 +462,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     decoration: _cardDecoration,
                     child: Row(
                       children: [
-                        const Icon(Icons.fingerprint,
-                            size: 19, color: Color(0xFF9E9E9E)),
+                        const Icon(
+                          Icons.fingerprint,
+                          size: 19,
+                          color: Color(0xFF9E9E9E),
+                        ),
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Ilova qulfi',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Color(0xFF757575))),
                               Text(
-                                  'Ochilganda barmoq izi yoki qurilma kaliti',
-                                  style: TextStyle(fontSize: 14)),
+                                'Ilova qulfi',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF757575),
+                                ),
+                              ),
+                              Text(
+                                'Ochilganda barmoq izi yoki qurilma kaliti',
+                                style: TextStyle(fontSize: 14),
+                              ),
                             ],
                           ),
                         ),
@@ -472,7 +515,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   decoration: _cardDecoration,
                   clipBehavior: Clip.antiAlias,
-                  child: const LegalSection(iconColor: Color(0xFF9E9E9E)),
+                  child: LegalSection(
+                    iconColor: const Color(0xFF9E9E9E),
+                    onOpen: (context, title, url) => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => LegalWebViewScreen(title: title, url: url),
+                      ),
+                    ),
+                  ),
                 ),
 
                 // ── Chiqish ────────────────────────────────────────
@@ -482,14 +532,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _logout,
                     icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('Chiqish',
-                        style: TextStyle(
-                            fontSize: 15.5, fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'Chiqish',
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
                       side: const BorderSide(color: Color(0xFFE5E5E5)),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
                 ),
@@ -505,11 +560,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Center(
                   child: TextButton(
                     onPressed: _deleteAccount,
-                    child: const Text('Akkauntni o\'chirish',
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF9E9E9E),
-                            fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Akkauntni o\'chirish',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF9E9E9E),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
 

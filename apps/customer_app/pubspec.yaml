@@ -1,5 +1,5 @@
 name: chust_customer
-description: ChustApp — mijoz ilovasi
+description: OnDex — mijoz ilovasi
 publish_to: "none"
 version: 0.2.12+24
 
@@ -119,6 +119,9 @@ flutter:
     # Bo'sh ekranlar uchun OnDex maskoti (sevimlilar, savat,
     # bildirishnomalar) — `widgets/empty_state.dart`.
     - assets/empty/
+    # Boshqa joylardagi OnDex maskoti suratlari (hozircha: buyurtmadan
+    # keyingi baholash bloki, `tracking_screen.dart`dagi `_RatingCard`).
+    - assets/illustrations/
     # To'lov tizimlari logotiplari — rasmiylashtirish ekranidagi
     # "To'lov usuli" bo'limi uchun (image/ papkasidan nusxa; u repoga
     # kirmaydi, shuning uchun fayllar SHU YERDA saqlanadi).

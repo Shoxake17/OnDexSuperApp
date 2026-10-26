@@ -733,12 +733,10 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
   late final TextEditingController _name;
   late final TextEditingController _address;
   late final TextEditingController _tags;
-  // Mijoz ilovasi bosh sahifasidagi kartadagi ikkita chip. Bo'sh yoki 0
-  // qoldirilsa chip UMUMAN chizilmaydi — soxta "0.0 ★" chiqmaydi.
-  late final TextEditingController _rating;
-  late final TextEditingController _ratingCount;
-  late final TextEditingController _etaMin;
-  late final TextEditingController _etaMax;
+  // Reyting/baholar soni va yetkazish vaqti ENDI BU YERDA
+  // TAHRIRLANMAYDI — ikkalasi ham haqiqiy buyurtma ma'lumotidan
+  // avtomatik hisoblanadi (`internal/ratings`, `internal/orders.
+  // ComputeETARange`).
   late double _lat;
   late double _lng;
 
@@ -763,12 +761,6 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
     _name = TextEditingController(text: r['name'] ?? '');
     _address = TextEditingController(text: r['address'] ?? '');
     _tags = TextEditingController(text: r['tags'] ?? '');
-    // 0 — "kiritilmagan" degani, shuning uchun maydon BO'SH ko'rsatiladi.
-    // "0" yozib qo'yilsa admin uni haqiqiy qiymat deb o'ylardi.
-    _rating = TextEditingController(text: _numOrEmpty(r['rating']));
-    _ratingCount = TextEditingController(text: _numOrEmpty(r['rating_count']));
-    _etaMin = TextEditingController(text: _numOrEmpty(r['eta_min_minutes']));
-    _etaMax = TextEditingController(text: _numOrEmpty(r['eta_max_minutes']));
     _lat = (r['lat'] as num?)?.toDouble() ?? 41.0030;
     _lng = (r['lng'] as num?)?.toDouble() ?? 71.2360;
     final kind = r['kind'] as String? ?? '';
@@ -787,10 +779,6 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
     _name.dispose();
     _address.dispose();
     _tags.dispose();
-    _rating.dispose();
-    _ratingCount.dispose();
-    _etaMin.dispose();
-    _etaMax.dispose();
     super.dispose();
   }
 
@@ -827,47 +815,10 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
     }
   }
 
-  /// Bo'sh matn -> 0 ("ko'rsatilmasin"), noto'g'ri matn -> null (xato).
-  static double? _parseOrNull(String s, {required bool isInt}) {
-    final t = s.trim();
-    if (t.isEmpty) return 0;
-    // Vergul bilan yozilgan o'nlik ("4,8") ham qabul qilinsin — klaviatura
-    // tilига qarab odam ikkalasini ham yozadi.
-    final v = isInt ? int.tryParse(t)?.toDouble() : double.tryParse(t.replaceAll(',', '.'));
-    if (v == null || v < 0) return null;
-    return v;
-  }
-
-  /// 0 va bo'sh qiymatni BIR XIL ko'radi: ikkalasi ham "kiritilmagan".
-  static String _numOrEmpty(dynamic v) {
-    final n = (v as num?)?.toDouble() ?? 0;
-    if (n == 0) return '';
-    // Butun son ".0" siz ko'rinsin (reyting 4 bo'lsa "4", 4.8 bo'lsa "4.8").
-    return n == n.roundToDouble() ? n.toInt().toString() : n.toString();
-  }
-
   Future<void> _submit() async {
     final name = _name.text.trim();
     if (name.isEmpty) {
       setState(() => _error = 'Restoran nomini kiriting');
-      return;
-    }
-    // Bo'sh maydon = 0 = "ko'rsatilmasin". Noto'g'ri matn kiritilsa
-    // jimgina 0 ga aylanib ketmasin — aniq xato beramiz.
-    final rating = _parseOrNull(_rating.text, isInt: false);
-    final ratingCount = _parseOrNull(_ratingCount.text, isInt: true);
-    final etaMin = _parseOrNull(_etaMin.text, isInt: true);
-    final etaMax = _parseOrNull(_etaMax.text, isInt: true);
-    if (rating == null || ratingCount == null || etaMin == null || etaMax == null) {
-      setState(() => _error = 'Reyting va vaqt maydonlariga faqat son kiriting');
-      return;
-    }
-    if (rating < 0 || rating > 5) {
-      setState(() => _error = 'Reyting 0 va 5 orasida bo\'lsin');
-      return;
-    }
-    if (etaMax < etaMin) {
-      setState(() => _error = 'Yetkazishning eng ko\'p vaqti eng kamidan kichik bo\'lmasin');
       return;
     }
     setState(() {
@@ -895,10 +846,6 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
         coverUrl: coverUrl,
         tags: _tags.text.trim(),
         kind: _kind,
-        rating: rating,
-        ratingCount: ratingCount.toInt(),
-        etaMinMinutes: etaMin.toInt(),
-        etaMaxMinutes: etaMax.toInt(),
       );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -1011,83 +958,14 @@ class _EditRestaurantDialogState extends State<_EditRestaurantDialog> {
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Mijoz kartasidagi ko\'rsatkichlar',
-                    style: Theme.of(context).textTheme.titleSmall),
-              ),
-              const SizedBox(height: 4),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Bo\'sh qoldirilsa kartada umuman ko\'rsatilmaydi. Reyting '
-                  'hozircha qo\'lda kiritiladi — haqiqiy baholash tizimi '
-                  'qurilgach avtomatik hisoblanadi.',
+                  'Mijoz kartasidagi reyting va yetkazish vaqti endi '
+                  'shu yerda YO\'Q: ikkalasi ham haqiqiy buyurtma '
+                  'ma\'lumotidan avtomatik hisoblanadi.',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _rating,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Reyting',
-                        hintText: '4.8',
-                        helperText: '0–5',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _ratingCount,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Baholar soni',
-                        hintText: '120',
-                        helperText: 'Kartada "(120+)"',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _etaMin,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Yetkazish: eng kam',
-                        hintText: '20',
-                        helperText: 'daqiqa',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _etaMax,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Yetkazish: eng ko\'p',
-                        hintText: '30',
-                        helperText: 'Kartada "20–30 daqiqa"',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),

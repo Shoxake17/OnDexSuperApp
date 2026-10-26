@@ -55,6 +55,25 @@ Future<bool> openLegalUrl(String url) async {
   }
 }
 
+/// Hujjatni ochish usuli — `LegalSection` tashqarisidan beriladi.
+///
+/// ┌─ NEGA TASHQARIDAN ──────────────────────────────────────────────────┐
+/// `ondex_core` faqat mobil ilovalarga emas, `admin_panel`ga (Windows
+/// desktop) ham bog'langan. Agar shu yerning o'zida `webview_flutter`
+/// ishlatilsa, desktop build ham o'sha paketga qaram bo'lib qolardi —
+/// u yerda esa butunlay boshqa WebView yechimi bor (`webview_windows`).
+///
+/// Shuning uchun WebView ekrani HAR BIR mobil ilovaning O'ZIDA yoziladi
+/// (`legal_webview_screen.dart`), bu yerga esa faqat CHAQIRISH usuli
+/// ko'rsatiladi. `onOpen` berilmasa — eski xatti-harakat (tizim
+/// brauzeri) saqlanadi, ya'ni hech narsa buzilmaydi.
+/// └────────────────────────────────────────────────────────────────────┘
+typedef LegalOpener = Future<void> Function(
+  BuildContext context,
+  String title,
+  String url,
+);
+
 /// Profil/sozlamalar ekranlariga qo'yiladigan tayyor bo'lim.
 ///
 /// Beshta ilovada bir xil ko'rinadi va bir xil manzilga boradi.
@@ -65,10 +84,15 @@ class LegalSection extends StatelessWidget {
     super.key,
     this.iconColor,
     this.showDivider = true,
+    this.onOpen,
   });
 
   final Color? iconColor;
   final bool showDivider;
+
+  /// Berilsa, hujjat shu orqali (odatda ILOVA ICHIDAGI WebView) ochiladi.
+  /// Berilmasa — tizim brauzerida (`openLegalUrl`).
+  final LegalOpener? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +106,7 @@ class LegalSection extends StatelessWidget {
           subtitle: 'Foydalanish shartlari',
           color: color,
           url: LegalLinks.offerUrl,
+          onOpen: onOpen,
         ),
         if (showDivider) const Divider(height: 1, indent: 56),
         _LegalTile(
@@ -90,6 +115,7 @@ class LegalSection extends StatelessWidget {
           subtitle: 'Ma\'lumotlaringiz qanday himoyalanadi',
           color: color,
           url: LegalLinks.privacyUrl,
+          onOpen: onOpen,
         ),
       ],
     );
@@ -103,6 +129,7 @@ class _LegalTile extends StatelessWidget {
     required this.subtitle,
     required this.color,
     required this.url,
+    required this.onOpen,
   });
 
   final IconData icon;
@@ -110,6 +137,7 @@ class _LegalTile extends StatelessWidget {
   final String subtitle;
   final Color color;
   final String url;
+  final LegalOpener? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -117,8 +145,18 @@ class _LegalTile extends StatelessWidget {
       leading: Icon(icon, color: color),
       title: Text(title),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.open_in_new, size: 18),
+      // Ilova ichida ochilsa — oddiy navigatsiya belgisi; tashqi
+      // brauzerga tushsa (`onOpen` berilmagan) — buni ham ko'rsatamiz.
+      trailing: Icon(
+        onOpen != null ? Icons.chevron_right : Icons.open_in_new,
+        size: onOpen != null ? 20 : 18,
+      ),
       onTap: () async {
+        final open = onOpen;
+        if (open != null) {
+          await open(context, title, url);
+          return;
+        }
         final ok = await openLegalUrl(url);
         if (ok || !context.mounted) return;
         // Ochilmadi — SABABINI aytamiz va manzilni ko'rsatamiz,

@@ -335,7 +335,7 @@ export default function DesktopCheckoutDialog({
 
             {/* ── To'lov usuli ──────────────────────────────────────── */}
             <section className="mt-3 rounded-2xl bg-white/[0.05] p-4">
-              <p className="text-[12px] text-white/40">To&apos;lov usuli</p>
+              <p className="text-[12px] text-white/40">To'lov usuli</p>
               <div className="mt-2.5 grid grid-cols-2 gap-2.5">
                 <PayOption
                   active={payMethod === "cash"}
@@ -365,7 +365,7 @@ export default function DesktopCheckoutDialog({
               <p className="text-[13px] text-white/40">Narx hisoblanmoqda…</p>
             ) : !quote ? (
               <p className="text-[13px] text-red-400">
-                Narxni hisoblab bo&apos;lmadi. Internet aloqasini tekshirib,
+                Narxni hisoblab bo'lmadi. Internet aloqasini tekshirib,
                 qaytadan oching.
               </p>
             ) : (

@@ -216,7 +216,7 @@ export default function CheckoutPage() {
   if (!restaurantId || Object.values(cartItems).every((q) => q <= 0)) {
     return (
       <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-2 px-4 text-center">
-        <p className="text-lg font-semibold">Savat bo&apos;sh</p>
+        <p className="text-lg font-semibold">Savat bo'sh</p>
         <a href="/" className="text-[#E53935] underline">
           Bosh sahifaga qaytish
         </a>
@@ -375,7 +375,7 @@ export default function CheckoutPage() {
 
       {/* ── To'lov ───────────────────────────────────────────────────── */}
       <section className="tg-surface mt-3 rounded-2xl bg-neutral-100 p-4 dark:bg-[#242424]">
-        <h2 className="text-xl font-extrabold">To&apos;lov</h2>
+        <h2 className="text-xl font-extrabold">To'lov</h2>
 
         <button
           type="button"
@@ -421,7 +421,7 @@ export default function CheckoutPage() {
           <p className="tg-muted mt-2 text-xs text-neutral-500">
             Pul darhol yechilmaydi — vaqtincha bloklanadi va restoran
             buyurtmani qabul qilgandagina yechiladi. Rad etilsa blok
-            bo&apos;shatiladi.
+            bo'shatiladi.
           </p>
         )}
       </section>
@@ -433,7 +433,7 @@ export default function CheckoutPage() {
           <p className="mt-3 text-sm text-neutral-500">Yuklanmoqda...</p>
         ) : !quote ? (
           <p className="mt-3 text-sm text-red-500">
-            Narxni hisoblab bo&apos;lmadi. Internet aloqasini tekshirib,
+            Narxni hisoblab bo'lmadi. Internet aloqasini tekshirib,
             sahifani yangilang.
           </p>
         ) : (

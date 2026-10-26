@@ -34,7 +34,8 @@ final _vibration = Int64List.fromList([0, 800, 400, 800, 400, 800]);
 final _offerChannel = AndroidNotificationChannel(
   kOfferChannelId,
   'Yangi buyurtmalar',
-  description: 'Buyurtma taklifi — ilova yopiq bo\'lsa ham, qabul qilinguncha takrorlanadi',
+  description:
+      'Buyurtma taklifi — ilova yopiq bo\'lsa ham, qabul qilinguncha takrorlanadi',
   importance: Importance.max,
   playSound: true,
   sound: const RawResourceAndroidNotificationSound(_offerSound),
@@ -42,6 +43,27 @@ final _offerChannel = AndroidNotificationChannel(
   vibrationPattern: _vibration,
   // Qo'ng'iroq ovozi darajasi: bildirishnoma ovozi odatda pastroq qo'yiladi.
   audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+);
+
+/// Oddiy bildirishnomalar kanali (buyurtma holati, to'lov, tizim
+/// xabarlari) — taklif signalidan FARQLI, u takrorlanmaydi.
+///
+/// ID serverdagi `orderChannel` bilan AYNAN bir xil bo'lishi SHART
+/// (`internal/notify/fcm_message.go`). Mos kelmasa Android xabarni
+/// o'zi yaratadigan `fcm_fallback_notification_channel` da ko'rsatadi:
+/// ahamiyat DEFAULT, ya'ni banner ham, ko'pincha ovoz ham yo'q.
+const kOrdersChannelId = 'ondex_orders_v1';
+
+final _ordersVibration = Int64List.fromList([0, 400, 200, 400]);
+
+final _ordersChannel = AndroidNotificationChannel(
+  kOrdersChannelId,
+  'Buyurtmalar',
+  description: 'Buyurtma holati va to\'lov xabarlari',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
+  vibrationPattern: _ordersVibration,
 );
 
 final _plugin = FlutterLocalNotificationsPlugin();
@@ -52,10 +74,16 @@ bool _ready = false;
 Future<void> initOfferAlerts() async {
   if (_ready) return;
   await _plugin.initialize(
-    const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
   );
-  final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  final android = _plugin
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   await android?.createNotificationChannel(_offerChannel);
+  await android?.createNotificationChannel(_ordersChannel);
   for (final id in _legacyChannelIds) {
     await android?.deleteNotificationChannel(id);
   }
@@ -77,10 +105,8 @@ int offerNotificationId(String orderId) {
 }
 
 /// Push `data` sidan signal parametrlari. Noto'g'ri yoki eskirgan bo'lsa `null`.
-({String orderId, String title, String body, Duration timeout})? offerAlertFromData(
-  Map<String, dynamic> data,
-  DateTime now,
-) {
+({String orderId, String title, String body, Duration timeout})?
+offerAlertFromData(Map<String, dynamic> data, DateTime now) {
   if (data['kind'] != 'courier_offer') return null;
   final orderId = data['order_id'];
   if (orderId is! String || orderId.isEmpty) return null;

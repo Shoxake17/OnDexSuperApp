@@ -830,6 +830,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
         _speakNavigation(LatLng(lat, lng));
       },
       send: (lat, lng) => api.updateLocation(widget.courierId, lat, lng),
+      onError: _onLocationStreamError,
     );
     // Faol buyurtma bo'lsa GPS yo'l ko'rsatish tezligida (har 2 soniya).
     if (_activeOrder != null) unawaited(_reporter!.setNavigationMode(true));
@@ -839,6 +840,30 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   void _stopLocationReporting() {
     final r = _reporter;
     if (r != null) unawaited(r.stop());
+  }
+
+  /// Joylashuv oqimi uzilganda (GPS o'chirildi, ruxsat qaytarib
+  /// olindi) chaqiriladi.
+  ///
+  /// ┌─ AVTOMATIK LINIYADAN CHIQARISH ────────────────────────────────┐
+  /// "Onlayn" bo'lib qolib, lekin joylashuvi serverga yetmaydigan
+  /// kuryer dispatch uchun KO'RINMAS (`reach.go`) — buyurtma unga hech
+  /// qachon kelmaydi, kuryer esa sababni bilmaydi. Jimgina "onlayn"
+  /// ko'rsatishdan ko'ra, darhol liniyadan chiqarib, aniq sabab va
+  /// "qayta urinish" imkonini berish to'g'riroq: kuryer GPS'ni yoqib,
+  /// bitta tugma bilan qaytadan liniyaga chiqa oladi.
+  /// └───────────────────────────────────────────────────────────────┘
+  void _onLocationStreamError(Object e) {
+    if (!mounted || !_online) return;
+    setState(() => _online = false);
+    _applyOnlineSideEffects(false);
+    unawaited(api.setAvailable(widget.courierId, false).catchError((Object _) {}));
+    _locationSnack(
+      'Joylashuv (GPS) uzildi — avtomatik liniyadan chiqarildingiz. '
+      'Yoqib, qayta onlayn bo\'ling',
+      actionLabel: 'Sozlamalar',
+      onAction: Geolocator.openLocationSettings,
+    );
   }
 
   /// Joriy koordinatani BIR MARTA oladi (ilova ochilganda), muddat bilan.

@@ -267,7 +267,7 @@ function CartBlock({
           onClick={onToggleExpand}
           className="mt-2 text-[13px] font-semibold text-white/50 hover:text-white"
         >
-          Yig&apos;ish
+          Yig'ish
         </button>
       )}
 

@@ -125,11 +125,11 @@ export default function DesktopOrder({
             <div className="mt-5 rounded-2xl border border-brand/30 bg-brand/10 p-4">
               <p className="flex items-center gap-2 text-[15px] font-bold">
                 <CreditCard size={18} />
-                To&apos;lov kutilmoqda
+                To'lov kutilmoqda
               </p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-white/60">
-                Buyurtma restoranga to&apos;lov tasdiqlangandan keyin
-                yuboriladi. To&apos;lov oynasi yopilib qolgan bo&apos;lsa,
+                Buyurtma restoranga to'lov tasdiqlangandan keyin
+                yuboriladi. To'lov oynasi yopilib qolgan bo'lsa,
                 quyidagi tugma yangi urinish ochadi.
               </p>
               {payError && (

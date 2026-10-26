@@ -70,7 +70,7 @@ export default function DesktopSearch({
               href="/"
               className="inline-flex rounded-xl bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-light"
             >
-              Restoranlarni ko&apos;rish
+              Restoranlarni ko'rish
             </Link>
           }
         />
@@ -90,7 +90,7 @@ export default function DesktopSearch({
           {failed ? (
             <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-5 py-4">
               <p className="text-[14px] text-white/60">
-                Taomlarni yuklab bo&apos;lmadi — internet aloqasini tekshiring.
+                Taomlarni yuklab bo'lmadi — internet aloqasini tekshiring.
               </p>
               <ReloadButton />
             </div>

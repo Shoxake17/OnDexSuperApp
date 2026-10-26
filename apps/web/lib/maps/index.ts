@@ -29,9 +29,9 @@ export function ondexRecentlyFailed(now = Date.now()): boolean {
 export async function createMapView(container: HTMLElement, opts: MapViewOptions): Promise<MapView> {
   const cfg = await loadMapConfig();
 
-  if (cfg.provider === "ondexmap" && cfg.ondex && !ondexRecentlyFailed()) {
+  if (cfg.provider === `ondexmap` && cfg.ondex && !ondexRecentlyFailed()) {
     try {
-      const { createOndexView } = await import("./ondex-view");
+      const { createOndexView } = await import(`./ondex-view`);
       return await createOndexView(container, opts, cfg.ondex);
     } catch (e) {
       if (e instanceof UnauthorizedError) throw e;

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../widgets/common.dart';
+import '../data/address_scope.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/payment_options.dart';
@@ -152,6 +153,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   late int? _subtotal = widget.subtotalTiyin;
   late int? _discount = widget.discountTiyin;
   late String? _promotionName = widget.promotionName;
+
   /// Chegirmaning AYNAN aksiya bergan qismi — hisob qatori nomi shunga
   /// qarab tanlanadi (`discountLineLabel`).
   late int _promotionDiscount = widget.promotionDiscountTiyin;
@@ -189,6 +191,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } else {
       _loadAddress();
     }
+    // ┌─ EKRAN OCHILGANDA NARX QAYTA SO'RALADI ───────────────────────┐
+    // `widget.deliveryFeeTiyin` — savat ekranida ESKIROQ paytda
+    // olingan hisob. Yetkazish haqi restoran sozlamasi EMAS, HOZIR
+    // ishlayotgan kuryerlarning maosh usulidan jonli hisoblanadi
+    // (`staff.DeliveryFee`): mijoz savatni ko'rib, checkout'ga o'tib,
+    // manzilni tanlab o'tirgan vaqtida xodimlar ro'yxati o'zgarishi
+    // mumkin. Busiz checkout "Bepul" ko'rsatardi-yu, `_submit()`
+    // esa HOZIRGI (ko'pincha yuqoriroq) haq bilan yaratilgan
+    // buyurtmani 409 bilan rad etardi — mijoz sababni tushunmasdan
+    // qolardi. Endi ekran ochilishi bilan HAQIQIY raqam ko'rinadi.
+    // └──────────────────────────────────────────────────────────────┘
+    _refreshQuote();
   }
 
   @override
@@ -213,9 +227,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       final list = await Repos.restaurants().peek();
       final found = list?.cast<Map<String, dynamic>>().firstWhere(
-            (r) => r['id'] == rid,
-            orElse: () => <String, dynamic>{},
-          );
+        (r) => r['id'] == rid,
+        orElse: () => <String, dynamic>{},
+      );
       if (mounted && found != null && found.isNotEmpty) {
         setState(() {
           _restaurant = found;
@@ -289,10 +303,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _loadAddress() async {
     try {
       final a = await api.getMyAddress();
+      final lat = (a['lat'] as num?)?.toDouble() ?? 0;
+      final lng = (a['lng'] as num?)?.toDouble() ?? 0;
+      // ┌─ UMUMIY MANBA HAM YANGILANADI ──────────────────────────────┐
+      // Bu ekran manzilni serverdan O'ZI o'qiydi (buyurtmaga podyezd/
+      // qavat/kvartira ham kerak, ular `AddressScope` da saqlanmaydi).
+      // Lekin natijani faqat o'ziga olib qo'ysa, manzil boshqa joyda
+      // o'zgargan bo'lganda (masalan vebda) bosh sahifa va restoran
+      // sarlavhasi eski nomda qolardi. Endi server javobi umumiy
+      // manbaga ham quyiladi — `set` o'zgarish bo'lmasa hech kimni
+      // bezovta qilmaydi.
+      // └─────────────────────────────────────────────────────────────┘
+      AddressScope.instance.set(
+        lat: lat,
+        lng: lng,
+        text: (a['text'] ?? '').toString().trim(),
+      );
       if (!mounted) return;
       setState(() {
         // lat/lng == 0 — manzil hali tanlanmagan.
-        _address = ((a['lat'] as num?)?.toDouble() ?? 0) != 0 ? a : null;
+        _address = lat != 0 ? a : null;
         _loadingAddress = false;
       });
     } catch (_) {
@@ -302,9 +332,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _pickAddress() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AddressScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AddressScreen()));
     if (!mounted) return;
     setState(() => _loadingAddress = true);
     await _loadAddress();
@@ -327,8 +357,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Mijoz aynan bitta ilovani tanlagan bo'lsa (`channel`), server
       // o'sha ilovaga to'g'ridan-to'g'ri havola qaytaradi; bo'sh
       // bo'lsa — universal to'lov sahifasi.
-      final p = await api.startPayment(orderId,
-          paymentSystem: _payMethod.channel);
+      final p = await api.startPayment(
+        orderId,
+        paymentSystem: _payMethod.channel,
+      );
       final url = (p['pay_url'] as String?) ?? '';
       if (url.isEmpty) throw Exception('havola bo\'sh');
 
@@ -345,8 +377,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // so'rab oladi (WebView'dagi kabi).
       // └────────────────────────────────────────────────────────────┘
       if (_payMethod.channel.isNotEmpty) {
-        final opened = await launchUrl(Uri.parse(url),
-            mode: LaunchMode.externalApplication);
+        final opened = await launchUrl(
+          Uri.parse(url),
+          mode: LaunchMode.externalApplication,
+        );
         // Ochilmasa WebView zaxira yo'l bo'lib qoladi — mijoz
         // to'lovsiz qolib ketmasin.
         if (opened) return true;
@@ -355,10 +389,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return false;
       await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => PaymentWebViewScreen(
-            payUrl: url,
-            returnUrl: (p['return_url'] as String?) ?? '',
-          ),
+          builder:
+              (_) => PaymentWebViewScreen(
+                payUrl: url,
+                returnUrl: (p['return_url'] as String?) ?? '',
+              ),
         ),
       );
       // Oyna yopilgani to'lov o'tganini BILDIRMAYDI — haqiqiy holatni
@@ -370,9 +405,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         _submitting = false;
         _error = errorText(
-            e,
-            'To\'lov sahifasini ochib bo\'lmadi. Buyurtma to\'lanmagan holda '
-            'kutmoqda — "Buyurtmalarim" bo\'limidan qayta urinib ko\'ring.');
+          e,
+          'To\'lov sahifasini ochib bo\'lmadi. Buyurtma to\'lanmagan holda '
+          'kutmoqda — "Buyurtmalarim" bo\'limidan qayta urinib ko\'ring.',
+        );
       });
       return false;
     }
@@ -400,7 +436,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final order = await api.createOrder(
         items: [
           for (final e in _cart.items.entries)
-            {'product_id': e.key, 'qty': e.value}
+            {'product_id': e.key, 'qty': e.value},
         ],
         idempotencyKey: _idempotencyKey,
         lat: _isDineIn ? null : (_address!['lat'] as num).toDouble(),
@@ -411,6 +447,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // (bug.md 81-band). Avval bu yerda `== card ? 'card' : 'cash'`
         // turardi va Payme/Click jimgina NAQD ga aylanardi.
         paymentMethod: _payMethod.apiValue,
+        // ┌─ EKRANDA KO'RSATILGAN SUMMA QO'RIQLANADI ──────────────────┐
+        // Bu ekranda ko'rsatilgan `_total` so'rov yuborilgunga qadar
+        // ESKIRISHI mumkin: yetkazish haqi RESTORAN SOZLAMASI emas,
+        // HOZIR ishlayotgan kuryerlarning maosh usulidan jonli
+        // hisoblanadi (`staff.DeliveryFee`). Shu oraliqda xodimlar
+        // ro'yxati o'zgarsa (masalan kuryerning kirishi yopilsa),
+        // buyurtma JIMGINA boshqa (ko'pincha 0) haq bilan yozilib
+        // qolardi — mijoz "savatda hisoblangan" bilan "Buyurtmalarim"da
+        // ko'rgan raqam farq qilganini angladi. `assistant_screen.dart`
+        // da bu himoya bor edi, shu ekranda esa YO'Q edi.
+        // └───────────────────────────────────────────────────────────┘
+        expectedTotalTiyin: _total,
       );
 
       if (!mounted) return;
@@ -441,11 +489,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // `pushReplacement`: orqaga bosilganda checkout'ga emas,
       // katalogga qaytadi — buyurtma allaqachon berilgan, unga
       // qaytishning ma'nosi yo'q.
-      Navigator.of(context).pushReplacement(
-        sheetRoute(TrackingScreen(orderId: id)),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(sheetRoute(TrackingScreen(orderId: id)));
     } catch (e) {
       if (!mounted) return;
+      // 409 — narx so'rov yuborilgunga qadar o'zgargan (yetkazish haqi
+      // jonli hisoblanadi). Buyurtma YARATILMAGAN — eski raqamni
+      // jimgina o'tkazib yubormasdan, ekranni YANGI summaga yangilab
+      // mijozga qayta ko'rsatamiz (`assistant_screen.dart` dagi bilan
+      // bir xil naqsh).
+      if (e is ApiException && e.statusCode == 409) {
+        await _refreshQuote();
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _error = 'Narx o\'zgardi — yangi summani tekshirib, qayta urining';
+        });
+        return;
+      }
       setState(() {
         _submitting = false;
         _error = errorText(e, 'Buyurtma yuborilmadi');
@@ -456,54 +518,58 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return SheetPage(
-        child: Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
-      appBar: PageAppBar(
+      child: Scaffold(
         backgroundColor: const Color(0xFFFAFAFA),
-        centerTitle: true,
-        titleSpacing: 0,
-        leadingWidth: 64,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
+        appBar: PageAppBar(
+          backgroundColor: const Color(0xFFFAFAFA),
+          centerTitle: true,
+          titleSpacing: 0,
+          leadingWidth: 64,
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Material(
+              color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              onTap: () => Navigator.of(context).pop(),
-              child: const SizedBox(
-                width: 44,
-                height: 44,
-                child: Icon(Icons.arrow_back, size: 22),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => Navigator.of(context).pop(),
+                child: const SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(Icons.arrow_back, size: 22),
+                ),
               ),
             ),
           ),
+          titleWidget: const Text(
+            'Rasmiylashtirish',
+            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+          ),
         ),
-        titleWidget: const Text('Rasmiylashtirish',
-            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+        body:
+            _loadingAddress
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    if (_isDineIn) _dineInCard() else _addressCard(),
+                    const SizedBox(height: 12),
+                    _orderDetailsCard(),
+                    const SizedBox(height: 12),
+                    _payMethodCard(),
+                    const SizedBox(height: 12),
+                    _couponCard(),
+                    const SizedBox(height: 12),
+                    _totalsCard(),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      _ErrorBox(text: _error!),
+                    ],
+                  ],
+                ),
+        bottomNavigationBar: _bottomBar(),
       ),
-      body: _loadingAddress
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                if (_isDineIn) _dineInCard() else _addressCard(),
-                const SizedBox(height: 12),
-                _orderDetailsCard(),
-                const SizedBox(height: 12),
-                _payMethodCard(),
-                const SizedBox(height: 12),
-                _couponCard(),
-                const SizedBox(height: 12),
-                _totalsCard(),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  _ErrorBox(text: _error!),
-                ],
-              ],
-            ),
-      bottomNavigationBar: _bottomBar(),
-    ));
+    );
   }
 
   // ── Manzil va yetkazish vaqti ─────────────────────────────────────
@@ -519,9 +585,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _CardRow(
             icon: Icons.place_outlined,
             title: 'Yetkazib berish manzili',
-            subtitle: a == null
-                ? 'Yetkazib berish uchun manzil kerak'
-                : (text.isEmpty ? 'Xaritada tanlangan manzil' : text),
+            subtitle:
+                a == null
+                    ? 'Yetkazib berish uchun manzil kerak'
+                    : (text.isEmpty ? 'Xaritada tanlangan manzil' : text),
             note: a == null ? null : (extras.isEmpty ? null : extras),
             onTap: _pickAddress,
           ),
@@ -529,9 +596,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _CardRow(
             icon: Icons.schedule,
             title: 'Yetkazish vaqti',
-            trailing: Text(_eta.text,
-                style: const TextStyle(
-                    fontSize: 14.5, color: Color(0xFF757575))),
+            trailing: Text(
+              _eta.text,
+              style: const TextStyle(fontSize: 14.5, color: Color(0xFF757575)),
+            ),
           ),
         ],
       ),
@@ -569,8 +637,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Necha kishisiz?',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  'Necha kishisiz?',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -603,11 +673,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   static String _label(String key, String value) => switch (key) {
-        'entrance' => '$value-podez',
-        'floor' => '$value-qavat',
-        'apartment' => '$value-xonadon',
-        _ => value,
-      };
+    'entrance' => '$value-podez',
+    'floor' => '$value-qavat',
+    'apartment' => '$value-xonadon',
+    _ => value,
+  };
 
   // ── Buyurtma tafsilotlari ─────────────────────────────────────────
 
@@ -626,9 +696,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 Icon(Icons.shopping_bag_outlined, size: 22, color: kBrand),
                 SizedBox(width: 12),
-                Text('Buyurtma tafsilotlari',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  'Buyurtma tafsilotlari',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),
@@ -666,8 +737,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _methodAvailable(_PayMethod m) =>
       paymentOptionVisible(_restaurant?['payment_options'], m.optionKey);
 
-  List<_PayMethod> get _visibleMethods =>
-      [for (final m in _PayMethod.values) if (_methodAvailable(m)) m];
+  List<_PayMethod> get _visibleMethods => [
+    for (final m in _PayMethod.values)
+      if (_methodAvailable(m)) m,
+  ];
 
   /// Tanlangan usul yashirilgan bo'lsa (restoran uni o'chirgan) birinchi
   /// ko'rinadigan usulga o'tadi — mijoz ko'rinmaydigan usul bilan
@@ -676,9 +749,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_methodAvailable(_payMethod)) return;
     final visible = _visibleMethods;
     if (visible.isEmpty) return;
-    _payMethod = visible.contains(_PayMethod.cash)
-        ? _PayMethod.cash
-        : visible.first;
+    _payMethod =
+        visible.contains(_PayMethod.cash) ? _PayMethod.cash : visible.first;
   }
 
   Widget _payMethodCard() {
@@ -692,9 +764,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 Icon(Icons.credit_card, size: 22, color: kBrand),
                 SizedBox(width: 12),
-                Text('To\'lov usuli',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  'To\'lov usuli',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),
@@ -730,9 +803,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: _CardRow(
         icon: Icons.confirmation_number_outlined,
         title: 'Kupon yoki promokod',
-        subtitle: code == null || code.isEmpty
-            ? 'Chegirma uchun kod kiriting'
-            : code,
+        subtitle:
+            code == null || code.isEmpty ? 'Chegirma uchun kod kiriting' : code,
         onTap: _enterCoupon,
       ),
     );
@@ -796,9 +868,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Jami to\'lov:',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Jami to\'lov:',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
                 Text(
                   // Jami — SERVER qiymati (yetkazish haqi bilan).
                   // Yuqoridagi mock qator (xizmat yig'imi) 0 va unga
@@ -806,9 +879,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   formatSum(_total),
                   key: const ValueKey('checkout-total'),
                   style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: kBrand),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: kBrand,
+                  ),
                 ),
               ],
             ),
@@ -821,10 +895,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // ── Pastki tugma ──────────────────────────────────────────────────
 
   Widget _bottomBar() {
-    final ready = !_submitting &&
-        !_quoting &&
-        _total > 0 &&
-        _methodAvailable(_payMethod);
+    final ready =
+        !_submitting && !_quoting && _total > 0 && _methodAvailable(_payMethod);
 
     return SafeArea(
       child: Padding(
@@ -842,51 +914,68 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: AgentCheckoutConfirmAnchor(
           onCashConfirm: ready ? _submitCash : null,
           child: SizedBox(
-          height: 56,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: kBrand,
-              disabledBackgroundColor: kBrand.withValues(alpha: 0.5),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-            ),
-            onPressed: ready ? _submit : null,
-            child: _submitting
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.lock_outline, size: 18),
-                      const SizedBox(width: 8),
-                      // ┌─ MATN TANLANGAN USULGA QARAB O'ZGARADI ────┐
-                      // Maketda har doim "... so'm to'lash". Lekin
-                      // naqd tanlanganda ilova hech qanday pul
-                      // yechmaydi — hisob kuryerga beriladi. O'shanda
-                      // "to'lash" deyish mijozni shu yerda pul
-                      // yechiladi deb o'ylatardi.
-                      //
-                      // Karta/Payme/Click uchun ham to'lov integratsiyasi
-                      // hali YO'Q, lekin ular tanlanganda mijoz to'lov
-                      // qadamini kutadi — matn maketdagidek qoladi.
-                      // └────────────────────────────────────────────┘
-                      Text(
-                        _payMethod == _PayMethod.cash
-                            ? 'Buyurtma berish · ${formatSum(_total)}'
-                            : '${formatSum(_total)} to\'lash',
-                        style: const TextStyle(
-                            fontSize: 16.5, fontWeight: FontWeight.bold),
+            height: 56,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: kBrand,
+                disabledBackgroundColor: kBrand.withValues(alpha: 0.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: ready ? _submit : null,
+              child:
+                  _submitting
+                      ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                      : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.lock_outline, size: 18),
+                          const SizedBox(width: 8),
+                          // ┌─ MATN TANLANGAN USULGA QARAB O'ZGARADI ────┐
+                          // Maketda har doim "... so'm to'lash". Lekin
+                          // naqd tanlanganda ilova hech qanday pul
+                          // yechmaydi — hisob kuryerga beriladi. O'shanda
+                          // "to'lash" deyish mijozni shu yerda pul
+                          // yechiladi deb o'ylatardi.
+                          //
+                          // Karta/Payme/Click uchun ham to'lov integratsiyasi
+                          // hali YO'Q, lekin ular tanlanganda mijoz to'lov
+                          // qadamini kutadi — matn maketdagidek qoladi.
+                          // └────────────────────────────────────────────┘
+                          // Summa katta bo'lsa (masalan 1 017 800 so'm) matn
+                          // qatorga sig'masdi va tugma "RIGHT OVERFLOWED"
+                          // chizig'ini chizardi. `Flexible` + `scaleDown`:
+                          // odatda matn o'z o'lchamida, sig'magandagina
+                          // biroz kichrayadi — summa qisqarmaydi.
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _payMethod == _PayMethod.cash
+                                    ? 'Buyurtma berish · ${formatSum(_total)}'
+                                    : '${formatSum(_total)} to\'lash',
+                                maxLines: 1,
+                                style: const TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.chevron_right, size: 22),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.chevron_right, size: 22),
-                    ],
-                  ),
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -959,7 +1048,8 @@ class _CouponSheetState extends State<_CouponSheet> {
     return Padding(
       // Klaviatura panelni bosib qolmasin.
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -981,8 +1071,10 @@ class _CouponSheetState extends State<_CouponSheet> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text('Kupon yoki promokod',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Kupon yoki promokod',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 12),
             AppTextField(
               controller: _controller,
@@ -1004,7 +1096,10 @@ class _CouponSheetState extends State<_CouponSheet> {
                     'Kupon tizimi hali ulanmagan — kod summani '
                     'o\'zgartirmaydi. Aksiyalar avtomatik qo\'llanadi.',
                     style: TextStyle(
-                        fontSize: 12, color: Color(0xFF9E9E9E), height: 1.4),
+                      fontSize: 12,
+                      color: Color(0xFF9E9E9E),
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -1017,13 +1112,15 @@ class _CouponSheetState extends State<_CouponSheet> {
                 style: FilledButton.styleFrom(
                   backgroundColor: kBrand,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
-                onPressed: () =>
-                    Navigator.of(context).pop(_controller.text.trim()),
-                child: const Text('Saqlash',
-                    style: TextStyle(
-                        fontSize: 15.5, fontWeight: FontWeight.bold)),
+                onPressed:
+                    () => Navigator.of(context).pop(_controller.text.trim()),
+                child: const Text(
+                  'Saqlash',
+                  style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -1140,13 +1237,12 @@ enum _PayMethod {
   /// dan boshqasini QABUL QILMAYDI va qilmasligi ham kerak — bular
   /// to'lov usuli emas, to'lov KANALI.
   String get apiValue => switch (this) {
-        _PayMethod.card ||
-        _PayMethod.payme ||
-        _PayMethod.click ||
-        _PayMethod.uzum =>
-          'card',
-        _PayMethod.cash => 'cash',
-      };
+    _PayMethod.card ||
+    _PayMethod.payme ||
+    _PayMethod.click ||
+    _PayMethod.uzum => 'card',
+    _PayMethod.cash => 'cash',
+  };
 
   /// Oldindan to'lanadigan usulmi (to'lov sahifasi ochiladimi).
   bool get isOnline => this != _PayMethod.cash;
@@ -1155,12 +1251,12 @@ enum _PayMethod {
   /// qo'shilsa kompilyator kalit yozishni TALAB qiladi (jimgina
   /// "ko'rinadi" bo'lib qolmasin).
   String get optionKey => switch (this) {
-        _PayMethod.card => 'card',
-        _PayMethod.cash => 'cash',
-        _PayMethod.payme => 'payme',
-        _PayMethod.click => 'click',
-        _PayMethod.uzum => 'uzum',
-      };
+    _PayMethod.card => 'card',
+    _PayMethod.cash => 'cash',
+    _PayMethod.payme => 'payme',
+    _PayMethod.click => 'click',
+    _PayMethod.uzum => 'uzum',
+  };
 
   final String title;
   final String subtitle;
@@ -1237,18 +1333,19 @@ class _PayMethodRow extends StatelessWidget {
                   width: 2,
                 ),
               ),
-              child: selected
-                  ? Center(
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: kBrand,
+              child:
+                  selected
+                      ? Center(
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: kBrand,
+                          ),
                         ),
-                      ),
-                    )
-                  : null,
+                      )
+                      : null,
             ),
             const SizedBox(width: 14),
             Container(
@@ -1260,37 +1357,50 @@ class _PayMethodRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 // Oq katakcha (Payme/Click logotiplari) fonda
                 // yo'qolib ketmasin.
-                border: method.tile == Colors.white
-                    ? Border.all(color: const Color(0xFFEEEEEE))
-                    : null,
+                border:
+                    method.tile == Colors.white
+                        ? Border.all(color: const Color(0xFFEEEEEE))
+                        : null,
               ),
               clipBehavior: Clip.antiAlias,
-              child: method.logo == null
-                  ? Icon(method.icon, size: 19, color: method.iconColor)
-                  : Padding(
-                      padding: const EdgeInsets.all(3),
-                      child: _Logo(
-                        asset: method.logo!,
-                        // Logotip KESILMASIN — `contain`.
-                        fallback: Icon(method.icon,
-                            size: 19, color: method.iconColor),
+              child:
+                  method.logo == null
+                      ? Icon(method.icon, size: 19, color: method.iconColor)
+                      : Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: _Logo(
+                          asset: method.logo!,
+                          // Logotip KESILMASIN — `contain`.
+                          fallback: Icon(
+                            method.icon,
+                            size: 19,
+                            color: method.iconColor,
+                          ),
+                        ),
                       ),
-                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(method.title,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(
+                    method.title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 1),
-                  Text(method.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12.5, color: Color(0xFF9E9E9E))),
+                  Text(
+                    method.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1396,22 +1506,34 @@ class _CardRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 15.5, fontWeight: FontWeight.bold)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 if (subtitle != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
-                    child: Text(subtitle!,
-                        style: const TextStyle(
-                            fontSize: 14.5, color: Color(0xFF424242))),
+                    child: Text(
+                      subtitle!,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        color: Color(0xFF424242),
+                      ),
+                    ),
                   ),
                 if (note != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(note!,
-                        style: const TextStyle(
-                            fontSize: 13, color: Color(0xFF9E9E9E))),
+                    child: Text(
+                      note!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -1420,8 +1542,11 @@ class _CardRow extends StatelessWidget {
           if (onTap != null)
             const Padding(
               padding: EdgeInsets.only(left: 6),
-              child: Icon(Icons.chevron_right,
-                  size: 20, color: Color(0xFF9E9E9E)),
+              child: Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Color(0xFF9E9E9E),
+              ),
             ),
         ],
       ),
@@ -1477,20 +1602,25 @@ class _OrderItemRow extends StatelessWidget {
             child: SizedBox(
               width: 76,
               height: 76,
-              child: image.isEmpty
-                  ? Container(
-                      color: const Color(0xFFF5F5F5),
-                      child: const Icon(Icons.restaurant_menu,
-                          color: Color(0xFFBDBDBD)),
-                    )
-                  : RemoteImage(
-                      url: image,
-                      placeholder: Container(
+              child:
+                  image.isEmpty
+                      ? Container(
                         color: const Color(0xFFF5F5F5),
-                        child: const Icon(Icons.restaurant_menu,
-                            color: Color(0xFFBDBDBD)),
+                        child: const Icon(
+                          Icons.restaurant_menu,
+                          color: Color(0xFFBDBDBD),
+                        ),
+                      )
+                      : RemoteImage(
+                        url: image,
+                        placeholder: Container(
+                          color: const Color(0xFFF5F5F5),
+                          child: const Icon(
+                            Icons.restaurant_menu,
+                            color: Color(0xFFBDBDBD),
+                          ),
+                        ),
                       ),
-                    ),
             ),
           ),
           const SizedBox(width: 12),
@@ -1498,21 +1628,28 @@ class _OrderItemRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15.5, fontWeight: FontWeight.w600)),
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 if (desc.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text(desc,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            height: 1.35,
-                            color: Color(0xFF9E9E9E))),
+                    child: Text(
+                      desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: Color(0xFF9E9E9E),
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -1525,18 +1662,25 @@ class _OrderItemRow extends StatelessWidget {
               // nusxa emas (`widgets/qty_stepper.dart`).
               QtyStepper(
                 qty: qty,
-                onAdd: () => cart.increment(
-                    restaurantId: restaurantId, productId: productId),
-                onRemove: () => cart.decrement(
-                    restaurantId: restaurantId, productId: productId),
+                onAdd:
+                    () => cart.increment(
+                      restaurantId: restaurantId,
+                      productId: productId,
+                    ),
+                onRemove:
+                    () => cart.decrement(
+                      restaurantId: restaurantId,
+                      productId: productId,
+                    ),
               ),
               const SizedBox(height: 10),
               Text(
                 formatSum(lineTotal),
                 style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.bold,
-                    color: kBrand),
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.bold,
+                  color: kBrand,
+                ),
               ),
               // Chegirma bo'lsa tan narx ham ko'rinadi — mijoz nechi
               // so'm yutganini ko'rsin (savat ekranidagi bilan bir xil).
@@ -1561,8 +1705,12 @@ class _TotalLine extends StatelessWidget {
   final String label;
   final String value;
   final Color? color;
-  const _TotalLine(
-      {super.key, required this.label, required this.value, this.color});
+  const _TotalLine({
+    super.key,
+    required this.label,
+    required this.value,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1572,17 +1720,21 @@ class _TotalLine extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 14.5, color: Color(0xFF757575))),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14.5, color: Color(0xFF757575)),
+            ),
           ),
           const SizedBox(width: 12),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 14.5,
-                  color: color ?? const Color(0xFF424242))),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14.5,
+              color: color ?? const Color(0xFF424242),
+            ),
+          ),
         ],
       ),
     );
@@ -1605,9 +1757,10 @@ class _DashedLine extends StatelessWidget {
 class _DashedPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFE0E0E0)
-      ..strokeWidth = 1;
+    final paint =
+        Paint()
+          ..color = const Color(0xFFE0E0E0)
+          ..strokeWidth = 1;
     const dash = 4.0;
     const gap = 4.0;
     var x = 0.0;
@@ -1638,9 +1791,10 @@ class _ErrorBox extends StatelessWidget {
           const Icon(Icons.error_outline, size: 18, color: Color(0xFFB3261E)),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text,
-                style: const TextStyle(
-                    color: Color(0xFFB3261E), fontSize: 13.5)),
+            child: Text(
+              text,
+              style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13.5),
+            ),
           ),
         ],
       ),

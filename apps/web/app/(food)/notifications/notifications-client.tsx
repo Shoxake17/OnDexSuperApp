@@ -106,7 +106,7 @@ export default function NotificationsPage() {
       {failed ? (
         <div className="py-14 text-center">
           <p className="text-neutral-500">
-            Bildirishnomalarni yuklab bo&apos;lmadi.
+            Bildirishnomalarni yuklab bo'lmadi.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -129,10 +129,10 @@ export default function NotificationsPage() {
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-neutral-100">
             <BellOff size={36} className="text-neutral-400" />
           </div>
-          <p className="mt-5 text-lg font-semibold">Bildirishnoma yo&apos;q</p>
+          <p className="mt-5 text-lg font-semibold">Bildirishnoma yo'</p>
           <p className="mt-2 max-w-xs text-sm leading-relaxed text-neutral-500">
-            Buyurtma holati o&apos;zgarganda va aksiyalar chiqqanda shu
-            yerda ko&apos;rasiz.
+            Buyurtma holati o'zgarganda va aksiyalar chiqqanda shu
+            yerda ko'rasiz.
           </p>
         </div>
       ) : (

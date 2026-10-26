@@ -73,7 +73,7 @@ export default function ProfilePage() {
 
       {failed ? (
         <div className="py-14 text-center">
-          <p className="text-neutral-500">Profilni yuklab bo&apos;lmadi.</p>
+          <p className="text-neutral-500">Profilni yuklab bo'lmadi.</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-3 text-sm font-semibold text-brand"

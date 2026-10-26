@@ -218,6 +218,7 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 					Type       string `json:"type"`
 					Restaurant string `json:"restaurant"`
 					TotalTiyin int64  `json:"total_tiyin"`
+					ReasonCode string `json:"reason_code"`
 				}
 				if json.Unmarshal(data, &ctrl) != nil {
 					continue // buzilgan boshqaruv kadri — e'tiborsiz
@@ -233,6 +234,16 @@ func (s *Server) registerAssistantLiveRoutes(mux *http.ServeMux, allowedOrigins 
 					if err := sess.NotifyCheckoutReady(
 						ctrl.Restaurant, ctrl.TotalTiyin); err != nil {
 						slog.Warn("ai live: checkout xabari yuborilmadi",
+							"user", userID, "err", err)
+					}
+				case "checkout_failed":
+					// Boshqaruvchi (`AgentDriver`) rasmiylashtirishga
+					// YETOLMADI (menyu ochilmadi, taom topilmadi, tugma
+					// faollashmadi). Busiz model "checkout_ready" ni
+					// abadiy kutib qolardi — mijoz esa faqat ekranda
+					// taom qidirilib, keyin JIM qolganini ko'rardi.
+					if err := sess.NotifyCheckoutFailed(ctrl.ReasonCode); err != nil {
+						slog.Warn("ai live: checkout xatosi yuborilmadi",
 							"user", userID, "err", err)
 					}
 				}

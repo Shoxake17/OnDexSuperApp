@@ -11,13 +11,13 @@ import HomeContent from "./home-content";
 const REVALIDATE_SECONDS = 30;
 
 export const metadata: Metadata = {
-  title: "ChustApp — Chust bo'ylab taom yetkazib berish",
+  title: "OnDex — O'zbekiston bo'ylab taom yetkazib berish",
   description:
-    "Chust shahridagi restoran va kafelardan taom buyurtma qiling — tez yetkazib berish, jonli buyurtma kuzatuvi.",
+    "O'zbekistondagi restoran va kafelardan taom buyurtma qiling — tez yetkazib berish, jonli buyurtma kuzatuvi.",
   openGraph: {
-    title: "ChustApp — Chust bo'ylab taom yetkazib berish",
+    title: "OnDex — O'zbekiston bo'ylab taom yetkazib berish",
     description:
-      "Chust shahridagi restoran va kafelardan taom buyurtma qiling.",
+      "O'zbekistondagi restoran va kafelardan taom buyurtma qiling.",
     type: "website",
   },
 };
@@ -65,7 +65,7 @@ export default async function HomePage() {
         "@type": "Restaurant",
         name: r.name,
         address: r.address || undefined,
-        url: `https://app.chustapp.uz/restaurants/${r.id}`,
+        url: `https://eats.ondex.uz/restaurants/${r.id}`,
       },
     })),
   };

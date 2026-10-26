@@ -195,7 +195,7 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
                 }}
               >
                 Buyurtma berish uchun raqamingizni tasdiqlang. Telegram uni
-                o&apos;zi yuboradi — qo&apos;lda yozish shart emas.
+                o'zi yuboradi — qo'lda yozish shart emas.
               </p>
               <button
                 onClick={shareContact}

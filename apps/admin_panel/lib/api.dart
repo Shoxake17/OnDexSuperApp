@@ -208,6 +208,46 @@ class AdminApi extends ApiClient {
   Future<void> deleteRestaurant(String id) =>
       send('DELETE', '/admin/restaurants/$id');
 
+  // ── Reklama/aksiya bannerlari (`internal/banners`) ──
+  //
+  // Mijoz ilovasining restoran sahifasidagi reklama bloki shu yerdan
+  // boshqariladi (Yandex Eats/Go uslubi). Rasm oldindan
+  // `api.uploadImage(bytes, filename, type: 'cover')` orqali
+  // yuklanadi — bu metodlar faqat tayyor URL'ni saqlaydi.
+
+  Future<List<dynamic>> banners() async =>
+      (await send('GET', '/admin/banners')) as List<dynamic>? ?? [];
+
+  Future<Map<String, dynamic>> createBanner({
+    required String imageUrl,
+    String restaurantId = '',
+    bool active = true,
+    int sortOrder = 0,
+  }) async =>
+      Map<String, dynamic>.from(await send('POST', '/admin/banners', {
+        'image_url': imageUrl,
+        'restaurant_id': restaurantId,
+        'active': active,
+        'sort_order': sortOrder,
+      }));
+
+  Future<Map<String, dynamic>> updateBanner(
+    String id, {
+    required String imageUrl,
+    String restaurantId = '',
+    bool active = true,
+    int sortOrder = 0,
+  }) async =>
+      Map<String, dynamic>.from(await send('POST', '/admin/banners/$id', {
+        'image_url': imageUrl,
+        'restaurant_id': restaurantId,
+        'active': active,
+        'sort_order': sortOrder,
+      }));
+
+  Future<void> deleteBanner(String id) =>
+      send('DELETE', '/admin/banners/$id');
+
   /// Restoran ma'lumotlarini tahrirlaydi. Har doim TO'LIQ holatni
   /// yuboradi (edit oynasi mavjud qiymatlar bilan oldindan to'ldirilgan).
   ///
@@ -219,16 +259,17 @@ class AdminApi extends ApiClient {
   /// to'xtatadi (standart qiymat qo'yilsa, kelajakdagi chaqiruvchi
   /// uni jimgina o'tkazib yuborardi).
   /// └───────────────────────────────────────────────────────────────────┘
+  // `rating`/`rating_count`/`eta_min_minutes`/`eta_max_minutes` ENDI BU
+  // YERDA YO'Q — ikkalasi ham haqiqiy buyurtma ma'lumotidan serverda
+  // avtomatik hisoblanadi (`internal/ratings`, `internal/orders.
+  // ComputeETARange`). Yuborilsa ham server ularni e'tiborsiz qoldiradi
+  // (`routes_admin.go`).
   Future<Map<String, dynamic>> editRestaurant({
     required String id,
     required String name,
     required String address,
     required double lat,
     required double lng,
-    required double rating,
-    required int ratingCount,
-    required int etaMinMinutes,
-    required int etaMaxMinutes,
     String logoUrl = '',
     String coverUrl = '',
     String tags = '',
@@ -244,10 +285,6 @@ class AdminApi extends ApiClient {
         'logo_url': logoUrl,
         'cover_url': coverUrl,
         'tags': tags,
-        'rating': rating,
-        'rating_count': ratingCount,
-        'eta_min_minutes': etaMinMinutes,
-        'eta_max_minutes': etaMaxMinutes,
       }));
 
 
@@ -261,6 +298,20 @@ class AdminApi extends ApiClient {
   /// qiymatni qaytaradi (masalan Telegram "@" siz).
   Future<Map<String, dynamic>> saveSupportContacts(Map<String, dynamic> body) async =>
       Map<String, dynamic>.from(await send('PUT', '/admin/support/contacts', body) as Map);
+
+  /// Xarita manbasi (`internal/mapprovider`) — butun tizim qaysi
+  /// provayderdan (Google yoki OnDexMap) foydalanishi. DIQQAT: bu
+  /// ChustApp'ning O'Z sozlamasi — yon paneldagi "OnDexMap" bo'limi
+  /// (mahalla/ko'cha muharriri) bilan bog'liq EMAS, u butunlay alohida
+  /// loyiha.
+  Future<Map<String, dynamic>> mapModeConfig() async =>
+      Map<String, dynamic>.from(await send('GET', '/admin/config/map-mode') as Map);
+
+  /// `mode` — "google" yoki "ondexmap". Natija XOTIRADA darhol
+  /// qo'llanadi (server qayta ishga tushirilmaydi).
+  Future<Map<String, dynamic>> setMapModeConfig(String mode) async =>
+      Map<String, dynamic>.from(
+          await send('POST', '/admin/config/map-mode', {'mode': mode}) as Map);
 
   /// Suhbatlar (oxirgi xabar bo'yicha) + `unread_total`.
   Future<Map<String, dynamic>> supportThreads() async =>

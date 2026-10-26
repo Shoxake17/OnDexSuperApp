@@ -102,7 +102,16 @@ function contentSecurityPolicy(): string {
     //
     // `'unsafe-eval'` FAQAT dev'da: Next.js HMR busiz ishlamaydi.
     // Production'da u YO'Q.
-    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://telegram.org https://maps.googleapis.com`,
+    // ┌─ CLOUDFLARE WEB ANALYTICS ─────────────────────────────────┐
+    // Cloudflare zonada analitika yoqilgan bo'lsa, javobga `beacon.min.js`
+    // ni O'ZI qo'shadi — kodda bunday skript yo'q. CSP uni bloklab turardi
+    // va ondex.uz hamda eats.ondex.uz konsolida har ochilishda ikkita qizil
+    // xato chiqardi (o'lchov ham yig'ilmasdi).
+    //
+    // Analitika kerak bo'lmasa to'g'ri yechim — Cloudflare panelida
+    // "Web Analytics" ni o'chirish; o'shanda bu qatorni ham olib tashlang.
+    // └────────────────────────────────────────────────────────────┘
+    `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://telegram.org https://maps.googleapis.com https://static.cloudflareinsights.com`,
 
     // Tailwind va Google Maps inline uslub qo'yadi.
     "style-src 'self' 'unsafe-inline'",
@@ -132,7 +141,9 @@ function contentSecurityPolicy(): string {
     //
     // OnDexMap (`GOOGLE_MAP=false`): uslub, shrift va plitkalar `*.ondex.uz`
     // dan (`maps.ondex.uz`, `tiles.ondex.uz`) — `lib/maps/ondex-view.ts`.
-    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.ondex.uz${
+    // `cloudflareinsights.com` — yuqoridagi beacon o'lchovni shu manzilga
+    // yuboradi; busiz skript yuklanadi-yu, har safar tarmoq xatosi beradi.
+    `connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.ondex.uz https://cloudflareinsights.com${
       mediaOrigin ? ` ${mediaOrigin}` : ""
     }${apiOrigin ? ` ${apiOrigin}` : ""}${
       wsOrigin ? ` ${wsOrigin}` : ""

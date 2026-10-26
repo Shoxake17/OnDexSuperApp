@@ -75,7 +75,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         if (user['role'] != 'restaurant') {
           api.token = null;
           setState(() => _error =
-              'Bu raqam restoran akkaunti emas. Akkaunt olish uchun ChustApp administratsiyasiga murojaat qiling.');
+              'Bu raqam restoran akkaunti emas. Akkaunt olish uchun OnDex administratsiyasiga murojaat qiling.');
           return;
         }
         api.rid = user['entity_id'] as String;

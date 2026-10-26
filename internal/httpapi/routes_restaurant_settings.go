@@ -47,13 +47,23 @@ var movedFields = map[string]string{
 	"delivery_free_from_tiyin": "bepul yetkazish chegarasi olib tashlangan: yetkazib berish haqi " +
 		"endi yetkazib beruvchining maosh usulidan kelib chiqadi (\"Xodimlar\" bo'limi)",
 	"multicard_store_id": "to'lov hisobi \"Moliya\" bo'limida ulanadi",
+	// Qo'lda kiritish ENDI YO'Q — mijoz buyurtmadan keyin qo'ygan
+	// haqiqiy bahodan hisoblanadi (`internal/ratings`). Admin ham,
+	// restoran ham o'zgartira olmaydi, shuning uchun bu ikkisi
+	// `restaurantLockedFields`dan shu yerga ko'chirildi.
+	"rating":       "reyting endi mijoz buyurtmadan keyin qo'ygan haqiqiy bahodan avtomatik hisoblanadi",
+	"rating_count": "baholar soni endi mijoz buyurtmadan keyin qo'ygan haqiqiy bahodan avtomatik hisoblanadi",
+	// Xuddi reyting kabi — endi HAQIQIY buyurtma tarixidan hisoblanadi
+	// (`internal/orders.ComputeETARange`, `scene_access.go` dagi
+	// `withETA`): mijoz buyurtma bergan ondan yetkazilgan ongacha.
+	"eta_min_minutes": "yetkazish vaqti endi haqiqiy buyurtma tarixidan avtomatik hisoblanadi",
+	"eta_max_minutes": "yetkazish vaqti endi haqiqiy buyurtma tarixidan avtomatik hisoblanadi",
 }
 
 // restaurantLockedFields — faqat admin o'zgartiradigan maydonlar.
 var restaurantLockedFields = map[string]bool{
 	"id": true, "name": true, "kind": true, "phone": true, "address": true,
 	"lat": true, "lng": true, "tags": true,
-	"rating": true, "rating_count": true, "eta_min_minutes": true, "eta_max_minutes": true,
 	"scene_3d_url": true, "scene_3d_sha256": true, "scene_3d_bytes": true,
 }
 

@@ -334,6 +334,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		UserRepo: w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,
 		CatalogRepo: cachedCatalog, CatalogSvc: catalog.NewService(cachedCatalog),
 		PromotionsRepo: promo, FavoritesRepo: storage.NewMemoryFavoritesRepo(),
+		BannerRepo: storage.NewMemoryBannerRepo(), RatingsRepo: storage.NewMemoryRatingRepo(),
 		Devices: storage.NewMemoryDeviceStore(),
 		Tokens:  w.Tokens, Revoked: revoked, Hub: hub, WsTickets: ws.NewTicketStore(),
 		StatsSource: w.Orders, HistorySource: w.Orders, TableOrders: w.Orders,

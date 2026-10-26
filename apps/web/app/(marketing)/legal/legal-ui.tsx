@@ -29,47 +29,25 @@ export const LEGAL_VERSION = "1.0";
 /** Kuch kirish sanasi (hujjat ushbu tahrirda amal qila boshlagan kun). */
 export const LEGAL_EFFECTIVE_DATE = "2026-09-07";
 
-/**
- * Operator rekvizitlari — IKKALA hujjat uchun YAGONA manba.
- *
- * ┌─ TO'LDIRILISHI SHART ──────────────────────────────────────────────┐
- * `TODO` bilan belgilangan maydonlar yuridik shaxs ro'yxatdan
- * o'tgach to'ldiriladi. Ular hujjatda "—" bo'lib ko'rinadi va
- * sahifada ATAYLAB ko'zga tashlanadigan ogohlantirish chiqadi:
- * rekvizitsiz oferta huquqiy kuchga ega emas va to'lov provayderi
- * ham, Play Store ham uni qabul qilmaydi.
- *
- * Jimgina bo'sh qoldirish eng yomon variant bo'lardi — hujjat
- * "tayyor" ko'rinib, aslida yaroqsiz bo'lardi.
- * └────────────────────────────────────────────────────────────────────┘
- */
+/** Operator rekvizitlari — IKKALA hujjat uchun YAGONA manba. */
 export const OPERATOR = {
   brand: "OnDex",
   /** To'liq yuridik nom. */
-  legalName: "", // TODO: masalan «ONDEX GROUP» MChJ
+  legalName: "OnDex",
   /** STIR (INN). */
-  taxId: "", // TODO
+  taxId: "070977329",
   /** Davlat ro'yxatidan o'tganlik guvohnomasi raqami va sanasi. */
-  registration: "", // TODO
+  registration: "10.08.2026",
   /** Yuridik manzil. */
-  address: "", // TODO
+  address: "Namangan viloyati, Chust tumani, Chust, Mustaqillik mahalla",
   /** Bank rekvizitlari (hisob raqami, bank, MFO). */
-  bank: "", // TODO
+  bank: "20218000907519062001",
   phone: "+998 90 278 42 07",
   email: "info@ondex.uz",
   /** Shaxsga doir ma'lumotlar bo'yicha mas'ul shaxs bilan aloqa. */
   privacyEmail: "privacy@ondex.uz",
   site: "https://ondex.uz",
 } as const;
-
-export function operatorIncomplete(): boolean {
-  return (
-    !OPERATOR.legalName ||
-    !OPERATOR.taxId ||
-    !OPERATOR.registration ||
-    !OPERATOR.address
-  );
-}
 
 /** Rekvizit qiymati yoki to'ldirilmaganini bildiruvchi belgi. */
 export function req(value: string): ReactNode {
@@ -93,14 +71,7 @@ export function LegalPage({
   return (
     <main className="bg-white text-neutral-900">
       <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-16">
-        <Link
-          href="/landing"
-          className="text-sm text-neutral-500 hover:text-neutral-900"
-        >
-          ← OnDex bosh sahifasi
-        </Link>
-
-        <h1 className="mt-6 text-2xl font-bold leading-tight sm:text-3xl">
+        <h1 className="text-2xl font-bold leading-tight sm:text-3xl">
           {title}
         </h1>
         <p className="mt-2 text-neutral-600">{subtitle}</p>
@@ -115,24 +86,6 @@ export function LegalPage({
             <dd className="font-medium">{LEGAL_EFFECTIVE_DATE}</dd>
           </div>
         </dl>
-
-        {operatorIncomplete() && (
-          <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-semibold">
-              Diqqat: hujjat hali yakuniy emas.
-            </p>
-            <p className="mt-1">
-              Operatorning yuridik rekvizitlari (to‘liq nom, STIR, ro‘yxatdan
-              o‘tish ma’lumotlari, yuridik manzil) to‘ldirilmagan. Ularsiz
-              ushbu hujjat huquqiy kuchga ega emas. Rekvizitlar
-              <code className="mx-1 rounded bg-amber-100 px-1">
-                apps/web/app/(marketing)/legal/legal-ui.tsx
-              </code>
-              faylidagi <code className="rounded bg-amber-100 px-1">OPERATOR</code>{" "}
-              obyektida belgilanadi.
-            </p>
-          </div>
-        )}
 
         <article className="legal mt-8">{children}</article>
 

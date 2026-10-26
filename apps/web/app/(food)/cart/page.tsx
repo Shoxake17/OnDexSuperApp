@@ -95,7 +95,7 @@ export default function CartPage() {
   if (!restaurantId || cartEntries.length === 0) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-lg font-semibold">Savat bo&apos;sh</p>
+        <p className="text-lg font-semibold">Savat bo'sh</p>
         <p className="text-sm text-neutral-500">
           Buyurtma berish uchun avval restoran menyusidan taom tanlang.
         </p>
@@ -288,7 +288,7 @@ export default function CartPage() {
               </p>
               <div className="mt-4 flex gap-3">
                 <AppButton variant="outline" onClick={() => setConfirmingClear(false)}>
-                  Yo&apos;q
+                  Yo'q
                 </AppButton>
                 <AppButton
                   variant="danger"

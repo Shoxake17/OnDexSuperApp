@@ -5,7 +5,7 @@
 // zaxira (masalan token uzoq umr surmagan yoki serverda bekor qilingan).
 export class UnauthorizedError extends Error {
   constructor() {
-    super("kirish talab qilinadi");
-    this.name = "UnauthorizedError";
+    super(`kirish talab qilinadi`);
+    this.name = `UnauthorizedError`;
   }
 }

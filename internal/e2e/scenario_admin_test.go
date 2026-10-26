@@ -101,6 +101,89 @@ func TestAdminFlow(t *testing.T) {
 	})
 }
 
+// ssenariy: ADMIN — xarita manbasini JONLI almashtiradi
+// (`GET/POST /admin/config/map-mode`, `mapsconfig.go`). Server qayta
+// ishga tushirilmasdan: tanlov xotirada darhol qo'llanadi.
+func TestAdminMapModeToggle(t *testing.T) {
+	w := NewWorld(t, "Admin — xarita manbasini jonli almashtirish")
+
+	w.Step(t, "boshqa rollar o'zgartira olmaydi", func(t *testing.T) {
+		for _, a := range []*Actor{w.Customer, w.Owner, nil} {
+			w.ExpectDenied(t, a, "GET", "/admin/config/map-mode", nil)
+			w.ExpectDenied(t, a, "POST", "/admin/config/map-mode", map[string]any{"mode": "ondexmap"})
+		}
+	})
+
+	w.Step(t, "noto'g'ri qiymat rad etiladi", func(t *testing.T) {
+		w.Do(t, w.Admin, "POST", "/admin/config/map-mode", map[string]any{"mode": "yandex"}).Expect(t, 400)
+	})
+
+	w.Step(t, "admin ondexmap'ga o'tkazadi — DARHOL qo'llanadi", func(t *testing.T) {
+		r := w.Do(t, w.Admin, "POST", "/admin/config/map-mode", map[string]any{"mode": "ondexmap"}).Expect(t, 200).Map(t)
+		if r["mode"] != "ondexmap" {
+			t.Fatalf("mode=ondexmap kutilgan, keldi: %v", r)
+		}
+		got := w.Do(t, w.Admin, "GET", "/admin/config/map-mode", nil).Expect(t, 200).Map(t)
+		if got["mode"] != "ondexmap" {
+			t.Fatalf("GET ham ondexmap qaytarishi kerak edi: %v", got)
+		}
+	})
+
+	w.Step(t, "admin google'ga qaytaradi", func(t *testing.T) {
+		r := w.Do(t, w.Admin, "POST", "/admin/config/map-mode", map[string]any{"mode": "google"}).Expect(t, 200).Map(t)
+		if r["mode"] != "google" {
+			t.Fatalf("mode=google kutilgan, keldi: %v", r)
+		}
+	})
+}
+
+// ssenariy: ADMIN — reklama bannerlari (`internal/banners`): yaratish,
+// tahrirlash, o'chirish, boshqa rollarga yopiqligi va mijozga ochiq
+// ro'yxatdan o'z vaqtida yo'qolishi.
+func TestAdminBanners(t *testing.T) {
+	w := NewWorld(t, "Admin — reklama bannerlari")
+	var bannerID string
+
+	w.Step(t, "boshqa rollar bannerni boshqara olmaydi", func(t *testing.T) {
+		for _, a := range []*Actor{w.Customer, w.Owner, nil} {
+			w.ExpectDenied(t, a, "GET", "/admin/banners", nil)
+			w.ExpectDenied(t, a, "POST", "/admin/banners", map[string]any{"image_url": "https://x/1.webp"})
+		}
+	})
+
+	w.Step(t, "yaratish (rasm majburiy) va tahrirlash", func(t *testing.T) {
+		w.Do(t, w.Admin, "POST", "/admin/banners", map[string]any{"image_url": ""}).Expect(t, 400)
+		r := w.Do(t, w.Admin, "POST", "/admin/banners", map[string]any{
+			"image_url": "https://x/1.webp", "restaurant_id": RestA, "active": true,
+		}).Expect(t, 201).Map(t)
+		bannerID, _ = r["id"].(string)
+		if bannerID == "" {
+			t.Fatalf("yangi banner ID'si yo'q: %v", r)
+		}
+		list := w.Do(t, w.Admin, "GET", "/admin/banners", nil).Expect(t, 200)
+		if !contains(list.Body, bannerID) {
+			t.Fatalf("yangi banner ro'yxatda yo'q: %s", list.Body)
+		}
+		w.Do(t, w.Admin, "POST", "/admin/banners/"+bannerID, map[string]any{
+			"image_url": "https://x/2.webp", "active": true, "sort_order": 3,
+		}).Expect(t, 200)
+		pub := w.Do(t, w.Customer, "GET", "/promo-banners", nil).Expect(t, 200)
+		if !contains(pub.Body, "https://x/2.webp") {
+			t.Fatalf("tahrir ochiq ro'yxatda ko'rinmadi: %s", pub.Body)
+		}
+	})
+
+	w.Step(t, "o'chirish — ochiq ro'yxatdan yo'qoladi", func(t *testing.T) {
+		w.ExpectDenied(t, w.Customer, "DELETE", "/admin/banners/"+bannerID, nil)
+		w.Do(t, w.Admin, "DELETE", "/admin/banners/"+bannerID, nil).Expect(t, 200)
+		w.Do(t, w.Admin, "DELETE", "/admin/banners/yoq-banner", nil).Expect(t, 404)
+		pub := w.Do(t, w.Customer, "GET", "/promo-banners", nil).Expect(t, 200)
+		if contains(pub.Body, bannerID) {
+			t.Fatalf("o'chirilgan banner hali ko'rinyapti: %s", pub.Body)
+		}
+	})
+}
+
 // ssenariy: OnDex PLATFORMA KURYERLARI (bayroq yoqilganda) — o'zi ro'yxatdan
 // o'tadi, admin tasdig'ini kutadi, tasdiqlangach ishga chiqadi.
 func TestPlatformCourierRegistration(t *testing.T) {

@@ -247,7 +247,7 @@ export default function DesktopMenu({
 
           {menu.length === 0 ? (
             <p className="py-20 text-center text-white/40">
-              Menyu hozircha bo&apos;sh
+              Menyu hozircha bo'sh
             </p>
           ) : (
             sections.map(([category, products]) => (
@@ -585,9 +585,9 @@ function CartPanel({
             aria-hidden="true"
             className="w-[190px] object-contain"
           />
-          <p className="mt-5 text-[17px] font-bold">Savat bo&apos;sh</p>
+          <p className="mt-5 text-[17px] font-bold">Savat bo'sh</p>
           <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
-            Menyudan biror taom qo&apos;shing — u shu yerda ko&apos;rinadi.
+            Menyudan biror taom qo'shing — u shu yerda ko'rinadi.
           </p>
         </div>
       ) : (

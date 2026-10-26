@@ -141,7 +141,7 @@ export default function DesktopProfileDialog({
     >
       <div className="flex max-h-[88vh] w-full max-w-[440px] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#1e1e1e] text-white shadow-2xl">
         <div className="flex items-center justify-between gap-4 px-6 pb-4 pt-5">
-          <h2 className="text-[22px] font-extrabold">Mening ma&apos;lumotlarim</h2>
+          <h2 className="text-[22px] font-extrabold">Mening ma'lumotlarim</h2>
           <button
             type="button"
             onClick={onClose}
@@ -155,7 +155,7 @@ export default function DesktopProfileDialog({
         <div className="ondex-scroll min-h-0 flex-1 overflow-y-auto px-6 pb-6">
           {failed ? (
             <p className="py-10 text-center text-[14px] text-white/45">
-              Ma&apos;lumotlarni yuklab bo&apos;lmadi.
+              Ma'lumotlarni yuklab bo'lmadi.
             </p>
           ) : me === null ? (
             <div className="space-y-3">
@@ -173,8 +173,8 @@ export default function DesktopProfileDialog({
                 <Field label="Telefon" value={me.phone ?? ""} readOnly />
                 <p className="flex items-center gap-1.5 px-1 text-[12px] text-white/35">
                   <ShieldCheck size={13} />
-                  Raqam Telegram orqali tasdiqlangan — o&apos;zgartirib
-                  bo&apos;lmaydi
+                  Raqam Telegram orqali tasdiqlangan — o'zgartirib
+                  bo'lmaydi
                 </p>
 
                 {me.email && (

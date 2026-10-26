@@ -21,11 +21,13 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"chustapp/internal/agentapi"
 	"chustapp/internal/alerts"
 	"chustapp/internal/assistant"
+	"chustapp/internal/banners"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
 	"chustapp/internal/delivery"
@@ -42,6 +44,7 @@ import (
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/ratelimit"
+	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
 	"chustapp/internal/scenes"
 	"chustapp/internal/staff"
@@ -72,6 +75,17 @@ type Deps struct {
 	BookRepo       catalog.BookRepository
 	PromotionsRepo promotions.Repository
 	FavoritesRepo  favorites.Repository
+	// BannerRepo — reklama/aksiya bannerlari (`internal/banners`,
+	// Yandex Eats/Go uslubi, admin panelidan boshqariladi). `nil`
+	// bo'lsa (Postgres ham, xotira zaxirasi ham yo'q — amalda
+	// bo'lmasligi kerak) `/promo-banners` va `/admin/banners`
+	// RO'YXATGA OLINMAYDI.
+	BannerRepo banners.Repository
+	// RatingsRepo — mijoz buyurtmadan keyin restoranga qo'ygan baho
+	// (`internal/ratings`). `nil` bo'lsa `/orders/{id}/rating`
+	// RO'YXATGA OLINMAYDI va `catalog.Restaurant.Rating`/`RatingCount`
+	// doim 0 qaytadi (`scene_access.go`, `withRating`).
+	RatingsRepo ratings.Repository
 	// RouteRepo — buyurtmaga biriktirilgan yetkazish yo'li (A→B,
 	// `internal/tracking`). `nil` bo'lsa kuzatuv faqat jonli qismini beradi.
 	RouteRepo tracking.Repository
@@ -322,6 +336,19 @@ type Server struct {
 	// liveRoutes — kuryer kuzatuvidagi yo'llar keshi (`order_tracking.go`):
 	// Google Directions'ga buyurtma bo'yicha ko'pi bilan 30 soniyada bir.
 	liveRoutes *liveRouteCache
+
+	// ┌─ XARITA MANBASI — ADMIN PANELDAN REAL VAQTDA ──────────────────────┐
+	// `Deps.MapMode` (`GOOGLE_MAP` muhit o'zgaruvchisi) — ISHGA TUSHISH
+	// payti standart qiymati. Admin panel endi buni server qayta
+	// ishga tushirilmasdan, JONLI o'zgartira oladi
+	// (`POST /admin/config/map-mode`) — natija XOTIRADA saqlanadi
+	// (keshga murojaatsiz, har so'rovda darhol), Redis'ga esa FAQAT
+	// qayta ishga tushganda tiklash uchun yoziladi.
+	//
+	// `nil` — hali o'zgartirilmagan, `Deps.MapMode` ishlatiladi.
+	// └──────────────────────────────────────────────────────────────────┘
+	mapModeMu       sync.RWMutex
+	mapModeOverride *mapprovider.Mode
 }
 
 func New(d Deps) *Server {
@@ -333,6 +360,9 @@ func New(d Deps) *Server {
 		supportLimiter: ratelimit.New(0.5, 10),
 		liveRoutes:     newLiveRouteCache(),
 	}
+	// Admin oldin o'zgartirgan xarita rejimini tiklaydi (server qayta
+	// ishga tushgan bo'lsa) — topilmasa `Deps.MapMode` standart qoladi.
+	s.loadMapModeOverride(context.Background())
 
 	// 3D model holati o'zgarganda ikki ish qilinadi. Ikkalasi ham
 	// SHART:
@@ -372,8 +402,10 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)
 	s.registerCatalogRoutes(mux)
+	s.registerBannerRoutes(mux)
 	s.registerFavoriteRoutes(mux)
 	s.registerOrderRoutes(mux)
+	s.registerRatingRoutes(mux)
 	s.registerTrackingRoutes(mux)
 	s.registerVoiceRoutes(mux)
 	s.registerStatsRoutes(mux)

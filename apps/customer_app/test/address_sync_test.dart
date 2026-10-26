@@ -37,8 +37,11 @@ void main() {
       final i = bosh.indexOf('Future<void> _push(');
       expect(i, greaterThan(-1));
       final tana = bosh.substring(i, i + 500);
-      expect(tana, contains('_loadAddress()'),
-          reason: 'qaytilganda sarlavhada eski manzil qoladi');
+      expect(
+        tana,
+        contains('_loadAddress()'),
+        reason: 'qaytilganda sarlavhada eski manzil qoladi',
+      );
       expect(tana, contains('_loadUnread()'));
     });
 
@@ -48,13 +51,70 @@ void main() {
       expect(restoran.substring(i, i + 500), contains('_loadAddress()'));
     });
 
-    test('bo\'sh javob eski nomni O\'CHIRADI', () {
-      // `if (t.isNotEmpty)` sharti bilan manzil o'chirilganda eski
-      // nom ekranda abadiy qolib ketardi.
+    test('yorliq UMUMIY manbadan o\'qiladi, nusxalanmaydi', () {
+      // ┌─ O'LCHANGAN XATO ──────────────────────────────────────────┐
+      // Ekranlar yorliqni `kNoAddressLabel` bilan boshlab, uni faqat
+      // `notifyListeners` kelganda yangilardi. `AddressScope._apply`
+      // esa manzil O'ZGARMAGANDA xabar bermaydi — shuning uchun
+      // keyinroq ochilgan ekran (restoran sahifasi) "Manzilni
+      // tanlang" bilan qolib ketardi, bosh sahifada esa to'g'ri
+      // manzil turardi. Foydalanuvchi buni "uch joyda uch xil" deb
+      // ko'rgan (2026-10-20).
+      //
+      // Qoida: yorliq `AddressScope.label` dan o'qilsin — ham
+      // boshlang'ich qiymat, ham o'zgarishda. Bo'sh matn holati
+      // `label` ning o'zida hal qilinadi.
+      // └────────────────────────────────────────────────────────────┘
       for (final (nom, manba) in [('bosh', bosh), ('restoran', restoran)]) {
-        expect(manba, contains('t.isEmpty ? kNoAddressLabel : t'),
-            reason: '$nom sahifasi bo\'sh manzilni qayta ishlamaydi');
+        expect(
+          manba,
+          contains('= AddressScope.instance.label'),
+          reason: '$nom sahifasi yorliqni umumiy manbadan olmaydi',
+        );
+        expect(
+          manba,
+          isNot(contains('= kNoAddressLabel;')),
+          reason:
+              '$nom sahifasida yorliq doimiy bilan boshlanyapti — '
+              'ekran manzil ma\'lum bo\'lsa ham "Manzilni tanlang" '
+              'ko\'rsatadi',
+        );
       }
+    });
+  });
+
+  group('umumiy manba', () {
+    final scope = kod('lib/data/address_scope.dart');
+    final profil = kod('lib/screens/profile_screen.dart');
+    final checkout = kod('lib/screens/checkout_screen.dart');
+
+    test('`label` bo\'sh matnni yorliqqa aylantiradi', () {
+      expect(scope, contains('String get label'));
+      expect(scope, contains('_text.isEmpty ? kNoAddressLabel : _text'));
+    });
+
+    test('chiqishda manzil TOZALANADI', () {
+      // Singleton ilova ishlagan vaqt davomida yashaydi: tozalanmasa
+      // chiqqan odamning manzili keyingi foydalanuvchiga ko'rinadi.
+      expect(scope, contains('void clear()'));
+      final i = profil.indexOf('Future<void> _doLogout()');
+      expect(i, greaterThan(-1));
+      expect(
+        profil.substring(i),
+        contains('AddressScope.instance.clear()'),
+        reason: 'chiqishda manzil xotirada qolib ketadi',
+      );
+    });
+
+    test('rasmiylashtirish serverdan o\'qiganini manbaga ham yozadi', () {
+      // Aks holda manzil boshqa joyda (masalan vebda) o'zgarganda
+      // sarlavhalar eski nomda qolardi.
+      final i = checkout.indexOf('Future<void> _loadAddress()');
+      expect(i, greaterThan(-1));
+      expect(
+        checkout.substring(i, i + 1200),
+        contains('AddressScope.instance.set('),
+      );
     });
   });
 
@@ -70,16 +130,23 @@ void main() {
       final m = manzil.indexOf('await _loadMaps()');
       expect(s, greaterThan(-1), reason: '`_loadSaved` yo\'qolgan');
       expect(m, greaterThan(-1));
-      expect(s, lessThan(m),
-          reason: 'xarita `initialCenter` ni bir marta oladi — markaz '
-              'undan oldin to\'g\'ri bo\'lishi kerak');
+      expect(
+        s,
+        lessThan(m),
+        reason:
+            'xarita `initialCenter` ni bir marta oladi — markaz '
+            'undan oldin to\'g\'ri bo\'lishi kerak',
+      );
     });
 
     test('saqlangan matn teskari geokodlashdan himoyalangan', () {
       final i = manzil.indexOf('Future<void> _loadSaved()');
       final tana = manzil.substring(i, i + 1600);
-      expect(tana, contains('_lastResolvedCenter = _center'),
-          reason: 'busiz server matni foydalanuvchi matnini bosib ketadi');
+      expect(
+        tana,
+        contains('_lastResolvedCenter = _center'),
+        reason: 'busiz server matni foydalanuvchi matnini bosib ketadi',
+      );
       expect(tana, contains('_addressCtrl.text = t'));
     });
 

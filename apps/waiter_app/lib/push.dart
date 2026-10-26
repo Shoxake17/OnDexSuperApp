@@ -48,13 +48,24 @@ const _legacyChannelId = 'ondex_waiter_ready';
 const _soundName = 'waiter_ready';
 
 /// ~5 soniyalik vibratsiya: 0.6 s titrash / 0.3 s pauza, besh marta.
-final Int64List _vibration =
-    Int64List.fromList([0, 600, 300, 600, 300, 600, 300, 600, 300, 600]);
+final Int64List _vibration = Int64List.fromList([
+  0,
+  600,
+  300,
+  600,
+  300,
+  600,
+  300,
+  600,
+  300,
+  600,
+]);
 
 final _readyChannel = AndroidNotificationChannel(
   kReadyChannelId,
   'Tayyor buyurtmalar',
-  description: 'Stol buyurtmasi tayyor bo\'lganda — 5 soniyalik signal va vibratsiya',
+  description:
+      'Stol buyurtmasi tayyor bo\'lganda — 5 soniyalik signal va vibratsiya',
   importance: Importance.max,
   playSound: true,
   sound: const RawResourceAndroidNotificationSound(_soundName),
@@ -70,6 +81,26 @@ final _quietChannel = AndroidNotificationChannel(
   playSound: false,
   enableVibration: true,
   vibrationPattern: _vibration,
+);
+
+/// Qolgan bildirishnomalar kanali (buyurtma holati, tizim xabarlari).
+///
+/// ID serverdagi `orderChannel` bilan AYNAN bir xil bo'lishi SHART
+/// (`internal/notify/fcm_message.go`). Mos kelmasa Android xabarni
+/// o'zi yaratadigan `fcm_fallback_notification_channel` da ko'rsatadi:
+/// ahamiyat DEFAULT, ya'ni banner ham, ko'pincha ovoz ham yo'q.
+const _ordersChannelId = 'ondex_orders_v1';
+
+final Int64List _ordersVibration = Int64List.fromList([0, 400, 200, 400]);
+
+final _ordersChannel = AndroidNotificationChannel(
+  _ordersChannelId,
+  'Buyurtmalar',
+  description: 'Buyurtma holati va boshqa xabarlar',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
+  vibrationPattern: _ordersVibration,
 );
 
 final _local = FlutterLocalNotificationsPlugin();
@@ -114,10 +145,13 @@ Future<void> registerPush() async {
       return;
     }
 
-    final android = _local.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _local
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await android?.createNotificationChannel(_readyChannel);
     await android?.createNotificationChannel(_quietChannel);
+    await android?.createNotificationChannel(_ordersChannel);
     await android?.deleteNotificationChannel(_legacyChannelId);
 
     await _local.initialize(
@@ -199,7 +233,9 @@ Future<void> alertReady({
   required String body,
 }) async {
   final now = DateTime.now();
-  _recentAlerts.removeWhere((_, at) => now.difference(at) > const Duration(minutes: 10));
+  _recentAlerts.removeWhere(
+    (_, at) => now.difference(at) > const Duration(minutes: 10),
+  );
   if (_recentAlerts.containsKey(key)) return;
   _recentAlerts[key] = now;
 
@@ -221,7 +257,9 @@ Future<void> alertReady({
           importance: channel.importance,
           priority: Priority.max,
           playSound: _soundEnabled,
-          sound: _soundEnabled ? const RawResourceAndroidNotificationSound(_soundName) : null,
+          sound: _soundEnabled
+              ? const RawResourceAndroidNotificationSound(_soundName)
+              : null,
           enableVibration: true,
           vibrationPattern: _vibration,
           category: AndroidNotificationCategory.reminder,

@@ -54,15 +54,22 @@ type Restaurant struct {
 	// ko'rsatkich BO'LMAGAN restoranni ham buzmaydi.
 	// └────────────────────────────────────────────────────────────────┘
 	//
-	// Reyting HOZIRCHA qo'lda kiritiladi (admin panel). Haqiqiy
-	// baholash tizimi qurilganda (ROADMAP 3-band) shu maydonlar
-	// buyurtmalardan hisoblanadi va qo'lda kiritish olib tashlanadi.
+	// Reyting — HISOBLANADIGAN (ROADMAP 3-band bajarildi): mijoz
+	// buyurtmadan keyin qo'ygan haqiqiy bahodan (`internal/ratings`),
+	// har so'rovda qayta hisoblanadi (`internal/httpapi/scene_access.go`,
+	// `withRating`). Qo'lda kiritilmaydi — bazadagi qiymat e'tiborga
+	// olinmaydi.
 	Rating      float64 `json:"rating"`
 	RatingCount int     `json:"rating_count"`
 
 	// Yetkazish vaqti oralig'i, daqiqada. Mahsulotdagi PrepTimeText'dan
 	// FARQLI: u bitta taomni tayyorlash vaqti, bu esa mijozgacha
 	// yetkazishning umumiy taxminiy oralig'i.
+	//
+	// HISOBLANADIGAN (reyting bilan bir xil naqsh): HAQIQIY buyurtma
+	// tarixidan — mijoz buyurtma bergan ondan yetkazilgan ongacha
+	// (`internal/orders.ComputeETARange`, `withETA`). Qo'lda
+	// kiritilmaydi; bazadagi qiymat e'tiborga olinmaydi.
 	ETAMinMinutes int `json:"eta_min_minutes"`
 	ETAMaxMinutes int `json:"eta_max_minutes"`
 
@@ -77,6 +84,14 @@ type Restaurant struct {
 	// biri haqiqiy? Mongo'dagi eski hujjatlarda bu maydonlar qolishi
 	// mumkin — `bson` ularni jimgina e'tiborsiz qoldiradi.
 	// └────────────────────────────────────────────────────────────────┘
+
+	// DeliveryFeeTiyin — HISOBLANADIGAN, bazaga yozilmaydi: yuqoridagi
+	// izohdagi YAGONA haqiqiy manbadan (`staff.DeliveryFee`) — bu yerga
+	// faqat natija qo'yiladi (`internal/httpapi/scene_access.go`).
+	// `nil` — hisoblab bo'lmadi (masalan xodimlar ro'yxati o'qilmadi);
+	// bunday holda "bepul" deb FARAZ QILINMAYDI — mijoz UI'da narx
+	// umuman ko'rsatilmaydi, soxta "0 so'm" chiqmaydi.
+	DeliveryFeeTiyin *int64 `json:"delivery_fee_tiyin,omitempty"`
 
 	// PaymentOptions — mijozga ko'rinadigan to'lov usullari (HISOBLANADI,
 	// bazaga yozilmaydi): `WithPaymentOptions`.

@@ -333,6 +333,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
       _pendingRestaurant = restaurant;
       _live.checkoutReady(restaurant: restaurant, totalTiyin: total);
     };
+    // Boshqaruv rasmiylashtirishga YETOLMASA — Shaddiy buni aytib,
+    // odamni qolgan qadamni o'zi bajarishga yo'naltiradi. Matnli
+    // rejimda ekrandagi yozuv (`AgentOverlay`) yetarli, shuning uchun
+    // `_live.checkoutFailed` ovozli seans yo'q bo'lsa jimgina
+    // qaytadi — xuddi `checkoutReady` kabi.
+    AgentDriver.instance.onCheckoutFailed = (restaurant, reasonCode) {
+      _live.checkoutFailed(reasonCode: reasonCode);
+    };
     _loadAddress();
     // Ruxsatlar OLDINDAN o'qiladi: taklif kelganda boshqaruvchi
     // "ruxsat noma'lum" sababli to'xtab qolmasin.
@@ -367,6 +375,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
     // Boshqaruvchi bu ekrandan uzoq yashaydi — o'lgan ekranga
     // ishora qoldirilmasin.
     AgentDriver.instance.onCheckoutReady = null;
+    AgentDriver.instance.onCheckoutFailed = null;
     _live.dispose();
     super.dispose();
   }

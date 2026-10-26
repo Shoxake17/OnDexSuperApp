@@ -6,8 +6,8 @@ import AppTableBridge from "./app-table-bridge";
 import { getSessionToken, isAppShell } from "@/lib/session";
 
 export const metadata: Metadata = {
-  title: "ChustApp",
-  description: "Chust bo'ylab taom yetkazib berish",
+  title: "OnDex",
+  description: "Butun O'zbekiston bo'ylab taom yetkazib berish",
 };
 
 // MUHIM (haqiqiy Android qurilmada topilgan bug): viewport meta tegi

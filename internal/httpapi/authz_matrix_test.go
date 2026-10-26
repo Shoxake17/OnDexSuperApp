@@ -170,6 +170,8 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 		CatalogRepo:    storage.NewMemoryCatalogRepo(nil, nil),
 		PromotionsRepo: promoRepo,
 		FavoritesRepo:  storage.NewMemoryFavoritesRepo(),
+		BannerRepo:     storage.NewMemoryBannerRepo(),
+		RatingsRepo:    storage.NewMemoryRatingRepo(),
 		Devices:        storage.NewMemoryDeviceStore(),
 		Tokens:         tokens,
 		Revoked:        revoke.New(nil, time.Hour),

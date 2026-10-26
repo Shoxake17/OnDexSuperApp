@@ -57,9 +57,47 @@ const (
 	sourceOndexMap = "ondexmap"
 )
 
+// mapModeRedisKey — admin panel o'zgartirgan rejim shu kalitda saqlanadi,
+// FAQAT server qayta ishga tushganda tiklash uchun (`loadMapModeOverride`).
+// Oddiy so'rovlar Redis'ga umuman murojaat qilmaydi — xotiradagi qiymat
+// (`mapModeOverride`) darhol ishlatiladi.
+const mapModeRedisKey = "config:map_mode_override"
+
+// effectiveMapMode — hozir AMALDA bo'lgan rejim: admin panel
+// o'zgartirgan bo'lsa O'SHA, aks holda `Deps.MapMode` (`GOOGLE_MAP`
+// muhit o'zgaruvchisi, ishga tushish payti standarti).
+func (s *Server) effectiveMapMode() mapprovider.Mode {
+	s.mapModeMu.RLock()
+	defer s.mapModeMu.RUnlock()
+	if s.mapModeOverride != nil {
+		return *s.mapModeOverride
+	}
+	return s.MapMode
+}
+
+// setMapModeOverride — admin panel rejimni o'zgartirganda chaqiriladi.
+// Xotiradagi qiymat DARHOL yangilanadi — keyingi so'rovdan boshlab
+// butun server shu rejimda ishlaydi, qayta ishga tushirish shart emas.
+func (s *Server) setMapModeOverride(mode mapprovider.Mode) {
+	s.mapModeMu.Lock()
+	s.mapModeOverride = &mode
+	s.mapModeMu.Unlock()
+}
+
+// loadMapModeOverride — server ishga tushganda Redis'dan oldingi
+// admin tanlovini tiklaydi. Topilmasa (hali hech kim o'zgartirmagan
+// yoki Redis ulanmagan) — `Deps.MapMode` standart sifatida qoladi,
+// bu XATO emas.
+func (s *Server) loadMapModeOverride(ctx context.Context) {
+	var mode mapprovider.Mode
+	if s.Cache.GetJSON(ctx, mapModeRedisKey, &mode) && mode.Valid() {
+		s.mapModeOverride = &mode
+	}
+}
+
 // useOndexMap — OnDexMap rejimi yoqilgan VA mijoz sozlangan.
 func (s *Server) useOndexMap() bool {
-	return s.MapMode == mapprovider.OndexMap && s.OndexMap != nil
+	return s.effectiveMapMode() == mapprovider.OndexMap && s.OndexMap != nil
 }
 
 // mapProvider — ilovalarga aytiladigan faol manba.
@@ -76,6 +114,56 @@ func (s *Server) ondexMapBase() string {
 		return ondexmap.DefaultBase
 	}
 	return base
+}
+
+// handleGetMapModeConfig — GET /admin/config/map-mode: admin panel
+// "OnDex Map" bo'limidagi almashtirgich (toggle) joriy holatni shu
+// yerdan oladi.
+func (s *Server) handleGetMapModeConfig(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode":                string(s.effectiveMapMode()),
+		"ondexmap_configured": s.OndexMap != nil,
+	})
+}
+
+// handleSetMapModeConfig — POST /admin/config/map-mode {"mode":"google"|
+// "ondexmap"}: almashtirgich bosilganda. Natija XOTIRADA DARHOL
+// qo'llanadi (keyingi so'rovdan — serverni qayta ishga tushirish
+// shart emas), Redis'ga esa faqat qayta ishga tushganda tiklash
+// uchun yoziladi.
+//
+// ┌─ REDIS YO'Q BO'LSA — OCHIQ XATO, SOXTA "OK" EMAS ──────────────────┐
+// Xotiradagi o'zgarish baribir qo'llanadi (joriy server jarayoni
+// uchun ishlaydi), lekin admin buni BILISHI kerak: server qayta ishga
+// tushsa tanlov yo'qoladi. Shuning uchun Redis yo'q bo'lsa jim
+// qolinmaydi — javobga ogohlantirish qo'shiladi.
+// └──────────────────────────────────────────────────────────────────┘
+func (s *Server) handleSetMapModeConfig(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	mode := mapprovider.Mode(req.Mode)
+	if !mode.Valid() {
+		httpError(w, http.StatusBadRequest,
+			errors.New(`mode "google" yoki "ondexmap" bo'lishi kerak`))
+		return
+	}
+	s.setMapModeOverride(mode)
+	resp := map[string]any{
+		"mode":                string(s.effectiveMapMode()),
+		"ondexmap_configured": s.OndexMap != nil,
+	}
+	if s.Cache == nil {
+		resp["warning"] = "Redis ulanmagan — tanlov faqat shu server jarayoni " +
+			"ishlab turgunicha amal qiladi, qayta ishga tushirilsa standart qiymatga qaytadi"
+	} else {
+		s.Cache.SetJSON(r.Context(), mapModeRedisKey, mode, 0)
+	}
+	slog.Info("xarita manbasi o'zgartirildi", "rejim", mode, "by", claimsFrom(r).Subject)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // logOndexFallback — OnDexMap YIQILGANDA (ma'lumot yo'qligida emas) Google'ga

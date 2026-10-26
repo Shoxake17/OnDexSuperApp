@@ -79,6 +79,34 @@ func TestCandidatesRespectReachability(t *testing.T) {
 	}
 }
 
+// ┌─ JONLI NOSOZLIK (2026-10-21) ──────────────────────────────────────┐
+// Kuryer ilovasi WebSocket orqali ONLAYN turibdi ("Liniyada"), lekin
+// GPS signali uzilgani uchun joylashuvi 3 daqiqadan eski (lekin 12
+// soatdan yosh). Avval bunday kuryer HECH QAYSI ro'yxatda chiqmasdi:
+// birinchisida (yangi joylashuv) joylashuvi eskiligi uchun, ikkinchisida
+// (kengaytirilgan) ONLAYN bo'lgani uchun — kod uni "birinchisida
+// allaqachon bor" deb noto'g'ri taxmin qilardi. Natijada dispatch
+// kuryerni butunlay ko'rmay, "bo'sh onlayn kuryer yo'q" deb cheksiz
+// aylanardi.
+// └───────────────────────────────────────────────────────────────────┘
+func TestCandidatesIncludeOnlineCourierWithStaleLocation(t *testing.T) {
+	repo := &agedRepo{
+		fakeRepo: newFakeRepo("gps-uzilgan"),
+		ages:     map[string]time.Duration{"gps-uzilgan": 20 * time.Minute},
+	}
+	reach := fakeReach{online: map[string]bool{"gps-uzilgan": true}}
+	ctx := context.Background()
+
+	d := NewDispatcher(repo, &fakeNotifier{}, newFakeGeoClient(nil), time.Second).WithReachability(reach)
+	got, err := d.candidates(ctx, DispatchParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := idsOf(got); len(ids) != 1 || !ids["gps-uzilgan"] {
+		t.Fatalf("onlayn kuryer joylashuvi eski bo'lsa ham nomzod bo'lishi kerak, keldi %v", ids)
+	}
+}
+
 func TestPreferOnlineKeepsScoreOrderWithinGroups(t *testing.T) {
 	c := func(id string) ScoredCandidate { return ScoredCandidate{Courier: &Courier{ID: id}} }
 	d := NewDispatcher(newFakeRepo(), &fakeNotifier{}, newFakeGeoClient(nil), time.Second).

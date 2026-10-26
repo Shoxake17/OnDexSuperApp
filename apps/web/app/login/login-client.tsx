@@ -16,31 +16,7 @@ import {
   groupPhone,
 } from "@/lib/auth-widgets";
 
-// ─────────────────────────────────────────────────────────────────────
-// Kirish sahifasi.
-//
-// OQIM (mobil ilova bilan aynan bir xil):
-//   telefon raqam -> bot raqamni `request_contact` orqali TASDIQLAYDI
-//   -> bot 6 xonali kodni Telegram chatiga yuboradi -> kod kiritiladi
-//   -> sessiya cookie'si (`/api/auth/verify`).
-//
-// KO'RINISH:
-//   * telefon/planshet (< lg) — mijoz ilovasidagi (Flutter) auth
-//     ekranlari bilan BIR XIL: iliq oq fon, orqaga tugmasi,
-//     "OnDex / Super App" sarlavhasi, hero rasm, bayroqli telefon
-//     maydoni, 6 katakli kod. Qiymatlar `apps/customer_app/lib/widgets/
-//     auth_ui.dart` dan bir-bir olingan (rang, radius, balandlik) —
-//     mijoz ikkala ilovada bir xil ekranni ko'radi;
-//   * kompyuter (lg+) — chapda brend paneli, o'ngda o'sha forma.
-//
-// Ilovadagi "Google / Apple / Telegram" qatori va "Ro'yxatdan o'tish"
-// havolasi bu yerda ATAYLAB YO'Q: web'da OAuth ulanmagan (bosilganda
-// hech narsa qilmaydigan tugma bo'lardi), ro'yxatdan o'tish esa
-// alohida qadam emas — kod tasdiqlansa akkaunt o'zi yaratiladi.
-// ─────────────────────────────────────────────────────────────────────
 
-// `BG` — bu sahifaga xos fon (o'chirish sahifasi boshqacha fonda),
-// shuning uchun umumiy modulda emas, shu yerda qoladi.
 const BG = "#FDFBFA";
 
 type Step = "phone" | "code";
@@ -219,12 +195,7 @@ export default function LoginClient({
   );
 }
 
-// ── Chapdagi brend paneli — FAQAT kompyuterda ────────────────────────
-//
-// Telefonda ko'rsatilmaydi: u yerda ekran ilovadagidek to'liq formaga
-// tegishli bo'lishi kerak (mijoz ikkala ilovada bir xil ekranni
-// ko'radi). Kompyuterda esa yolg'iz forma bo'sh oq ekranda "yarim
-// tayyor" ko'rinardi.
+
 function BrandPanel() {
   return (
     <aside className="relative hidden w-[46%] max-w-[560px] shrink-0 overflow-hidden bg-[#141414] lg:block">
@@ -238,20 +209,20 @@ function BrandPanel() {
 
         <div>
           <h2 className="max-w-[320px] text-[32px] font-bold leading-[1.15] text-white">
-            Chust bo&apos;ylab
+            Chust bo'ylab
             <br />
             taom yetkazib berish
           </h2>
           <ul className="mt-9 flex flex-col gap-5">
             <Feature Icon={Bike} title="Tez yetkazib berish">
-              Buyurtmani kuryer olgach, yo&apos;lini xaritada real vaqtda
+              Buyurtmani kuryer olgach, yo'lini xaritada real vaqtda
               kuzatasiz.
             </Feature>
             <Feature Icon={MapPin} title="Shahar restoranlari">
               Chustdagi kafe va restoranlar menyusi bitta joyda.
             </Feature>
             <Feature Icon={ShieldCheck} title="Xavfsiz kirish">
-              Parol yo&apos;q — raqamingizni Telegram tasdiqlaydi.
+              Parol yo'q — raqamingizni Telegram tasdiqlaydi.
             </Feature>
           </ul>
         </div>
@@ -307,9 +278,7 @@ function PhoneStep({
         onSubmit();
       }}
     >
-      {/* Ilovadagi `AuthTabs` o'rnida — bitta, faol usul. Ikkinchi tab
-          ("Email orqali") web'da ulanmagan, ya'ni ko'rsatilsa bosilmas
-          tugma bo'lardi. */}
+      
       <div
         className="mb-4 flex h-[50px] items-center gap-2 rounded-xl border bg-white px-3.5"
         style={{ borderColor: BORDER }}
@@ -433,7 +402,7 @@ function CodeStep({
         <span className="font-semibold" style={{ color: TEXT }}>
           {phone}
         </span>{" "}
-        tasdiqlangach o&apos;sha chatga keladi.
+        tasdiqlangach o'sha chatga keladi.
       </p>
 
       {deepLink && (
@@ -527,5 +496,3 @@ function CodeStep({
   );
 }
 
-// `AuthButton`/`ErrorNote`/`groupPhone` — `@/lib/auth-widgets` dan
-// (yuqoridagi import; "Akkauntni o'chirish" sahifasi bilan umumiy).

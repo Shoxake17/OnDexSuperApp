@@ -3,6 +3,18 @@ import 'package:flutter/foundation.dart';
 import '../api.dart';
 import 'catalog_repository.dart';
 
+/// Manzil hali tanlanmaganda ekranlarda ko'rsatiladigan yorliq.
+///
+/// Avval bu joylarda "Chust" qattiq yozilgan edi — platforma bitta
+/// shahar uchun bo'lganda bu to'g'ri edi. Toshkent qo'shilgach
+/// manzilsiz Toshkent mijoziga ham "Chust" ko'rinardi, shuning uchun
+/// shahar taxmin qilinmaydi.
+///
+/// Doimiy SHU YERDA, manzil ekranida emas: yorliqni tanlaydigan
+/// mantiq ([AddressScope.label]) ham shu faylda va ikkisi hech qachon
+/// ajralib qolmasligi kerak.
+const kNoAddressLabel = 'Manzilni tanlang';
+
 /// JORIY YETKAZISH MANZILI — butun ilova uchun BITTA nusxa.
 ///
 /// ┌─ NEGA KERAK ───────────────────────────────────────────────────────┐
@@ -34,6 +46,24 @@ class AddressScope extends ChangeNotifier {
   /// Ko'rsatiladigan manzil matni. Bo'sh — manzil tanlanmagan.
   String get text => _text;
 
+  /// Sarlavhalarda chiziladigan yorliq — manzil yo'q bo'lsa
+  /// [kNoAddressLabel].
+  ///
+  /// ┌─ NEGA GETTER, HAR EKRANDA SHART EMAS ────────────────────────────┐
+  /// Ekranlar yorliqni O'Z `State` ida nusxalab, uni faqat
+  /// `notifyListeners` kelganda yangilardi. Lekin [_apply] manzil
+  /// O'ZGARMAGANDA xabar bermaydi (va bermasligi ham kerak — aks
+  /// holda restoran ro'yxati bekorga qayta yuklanardi). Natijada
+  /// KEYINROQ ochilgan ekran "Manzilni tanlang" bilan qolib ketardi:
+  /// uning `initState` idagi `refresh()` serverdan AYNAN o'sha
+  /// manzilni olardi, o'zgarish yo'q — xabar ham yo'q.
+  ///
+  /// Shuning uchun yorliq nusxalanmaydi, HAR DOIM shu yerdan
+  /// o'qiladi: ekran qachon ochilishidan qat'i nazar to'g'ri qiymat
+  /// chiqadi.
+  /// └──────────────────────────────────────────────────────────────────┘
+  String get label => _text.isEmpty ? kNoAddressLabel : _text;
+
   /// Manzil tanlanganmi. `lat/lng == 0` — tanlanmagan (server ham shu
   /// qoidada: `checkout_screen.dart` ga qarang).
   bool get bor => _lat != 0 || _lng != 0;
@@ -50,9 +80,8 @@ class AddressScope extends ChangeNotifier {
   /// Uch kasr ≈ 110 metr: shaharlarni ajratishga yetadi va GPS
   /// tebranishidan kalit o'zgarib ketmaydi.
   /// └──────────────────────────────────────────────────────────────────┘
-  String get cacheTag => bor
-      ? '${_lat.toStringAsFixed(3)},${_lng.toStringAsFixed(3)}'
-      : 'yoq';
+  String get cacheTag =>
+      bor ? '${_lat.toStringAsFixed(3)},${_lng.toStringAsFixed(3)}' : 'yoq';
 
   /// Serverdan qayta o'qiydi.
   ///
@@ -76,6 +105,14 @@ class AddressScope extends ChangeNotifier {
   /// Manzil ekrani saqlagandan keyin — serverni kutmasdan darhol.
   void set({required double lat, required double lng, required String text}) =>
       _apply(lat: lat, lng: lng, text: text);
+
+  /// Chiqishda (logout) MAJBURIY.
+  ///
+  /// Bu singleton ilova ishlagan vaqt davomida yashaydi. Tozalanmasa
+  /// qurilmadan chiqqan odamning manzili sarlavhada qolib, keyingi
+  /// foydalanuvchiga ko'rinardi — va restoran ro'yxati ham o'sha
+  /// shahar bo'yicha filtrlanardi.
+  void clear() => _apply(lat: 0, lng: 0, text: '');
 
   void _apply({
     required double lat,

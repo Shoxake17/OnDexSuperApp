@@ -121,11 +121,41 @@ func (s *Service) deliver(userID, topic string, online bool, n *Notification) {
 	if len(tokens) == 0 {
 		return
 	}
-	if err := s.pusher.Push(ctx, tokens, Event{
+	s.sendPush(ctx, userID, tokens, Event{
 		Module: n.Module, Kind: n.Kind,
 		Title: n.Title, Body: n.Body, Data: n.Data,
-	}); err != nil {
-		slog.Warn("notify: push yuborilmadi", "user", userID, "err", err)
+	})
+}
+
+// sendPush — yuborish + ESKIRGAN TOKENLARNI TOZALASH.
+//
+// ┌─ NEGA TOZALASH SHU YERDA ─────────────────────────────────────────┐
+// `notify/fcm.go` tokenlar do'konini bilmaydi (va bilmasligi kerak:
+// u faqat FCM bilan gaplashadi). Do'kon esa shu yerda bor. Tozalashsiz
+// ilova qayta o'rnatilgan har bir qurilma bazada abadiy o'lik token
+// qoldirardi — dev telefonida bitta foydalanuvchiga 8 ta yig'ilgan edi
+// va har bir bildirishnoma 8 ta keraksiz HTTP so'rovga aylangan.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Service) sendPush(ctx context.Context, userID string, tokens []string, e Event) {
+	var dead []string
+	var err error
+	if dp, ok := s.pusher.(DeadTokenPusher); ok {
+		dead, err = dp.PushDetailed(ctx, tokens, e)
+	} else {
+		err = s.pusher.Push(ctx, tokens, e)
+	}
+	for _, t := range dead {
+		if derr := s.tokens.DeleteToken(ctx, t); derr != nil {
+			slog.Warn("notify: eskirgan push tokenini o'chirib bo'lmadi",
+				"user", userID, "err", derr)
+		}
+	}
+	if len(dead) > 0 {
+		slog.Info("notify: eskirgan push tokenlari o'chirildi",
+			"user", userID, "soni", len(dead))
+	}
+	if err != nil {
+		slog.Warn("notify: push yuborilmadi", "user", userID, "kind", e.Kind, "err", err)
 	}
 }
 
@@ -176,9 +206,7 @@ func (s *Service) Push(ctx context.Context, userID string, e Event) {
 	if len(tokens) == 0 {
 		return
 	}
-	if err := s.pusher.Push(ctx, tokens, e); err != nil {
-		slog.Warn("notify: push yuborilmadi", "user", userID, "kind", e.Kind, "err", err)
-	}
+	s.sendPush(ctx, userID, tokens, e)
 }
 
 // Store/Hub — HTTP qatlami uchun (ro'yxat endpointlari).

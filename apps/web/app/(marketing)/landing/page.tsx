@@ -27,6 +27,7 @@ import {
   EATS_URL,
   FACEBOOK_URL,
   INSTAGRAM_URL,
+  MAPS_URL,
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
   SUPPORT_PHONE_LABEL,
@@ -115,6 +116,7 @@ const FEATURES: {
     icon: MapPin,
     title: "OnDex Xarita",
     text: "Yaqin atrofdagi joylarni xaritada toping va manzilga osongina yetib boring.",
+    href: MAPS_URL,
   },
   {
     icon: Briefcase,
@@ -147,7 +149,7 @@ const SOCIALS = [
 const ABOUT = [
   {
     icon: MapPin,
-    title: "Chust uchun, Chustda",
+    title: "O'zbekiston uchun, O'zbekistonda",
     text: "Mahalliy restoranlar, kuryerlar va xizmatlar bitta ilovada — shahar bo'ylab tez yetkazib berish.",
   },
   {
@@ -179,7 +181,7 @@ const FOOTER_COLUMNS: {
       { label: "Xizmatlar" },
       { label: "Uy-joy" },
       { label: "Ish joylari" },
-      { label: "OnDex Xarita" },
+      { label: "OnDex Xarita", href: MAPS_URL},
     ],
   },
   {
@@ -311,8 +313,8 @@ function Hero() {
           </h1>
 
           <p className="mt-5 max-w-lg text-base leading-relaxed text-neutral-500">
-            Restoran, Do&apos;kon, Xizmatlar, Buyurtma, Yetkazib berish,
-            Rezervatsiya va ko&apos;plab imkoniyatlar — barchasi bir joyda!
+            Restoran, Do'kon, Xizmatlar, Buyurtma, Yetkazib berish,
+            Rezervatsiya va ko'plab imkoniyatlar — barchasi bir joyda!
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -334,7 +336,7 @@ function Hero() {
 
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <span className="text-sm text-neutral-500">
-              Biz bilan bog&apos;laning:
+              Biz bilan bog'laning:
             </span>
             <SocialRow idPrefix="hero" />
           </div>
@@ -353,7 +355,7 @@ function Hero() {
 function Features() {
   return (
     <section id="xizmatlar" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-4 sm:px-6">
-      <SectionTitle>OnDex&apos;da nimalar bor?</SectionTitle>
+      <SectionTitle>OnDex da nimalar bor?</SectionTitle>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {FEATURES.map(({ icon: Icon, title, text, href }) => {
@@ -395,7 +397,7 @@ function Features() {
 function About() {
   return (
     <section id="biz-haqimizda" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-14 sm:px-6">
-      <SectionTitle sub="OnDex — Chust shahrida ishlab chiqilgan super ilova: kundalik ehtiyojlarni bitta joyda, tez va ishonchli hal qilish uchun.">
+      <SectionTitle sub="OnDex — O'zbekiston uchun ishlab chiqilgan super ilova: kundalik ehtiyojlarni bitta joyda, tez va ishonchli hal qilish uchun.">
         Biz haqimizda
       </SectionTitle>
       <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -420,7 +422,7 @@ function Payments() {
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
       <div className="rounded-3xl bg-orange-50/70 px-6 py-8">
         <h2 className="text-center text-xl font-bold tracking-tight sm:text-2xl">
-          To&apos;lovni qabul qilamiz
+          To'lovni qabul qilamiz
         </h2>
 
         <div className="mt-7 flex flex-wrap items-center justify-center gap-x-8 gap-y-6 sm:gap-x-12">
@@ -538,10 +540,10 @@ function DownloadBanner() {
       <div className="flex flex-col items-start gap-6 rounded-3xl bg-brand px-7 py-8 text-white sm:flex-row sm:items-center sm:justify-between sm:px-10">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight sm:text-[26px]">
-            OnDex&apos;ni bugun yuklab oling!
+            OnDex ni bugun yuklab oling!
           </h2>
           <p className="mt-2 max-w-xl text-sm text-white/85">
-            Restoran, do&apos;kon, xizmatlar va yetkazib berish — barchasi
+            Restoran, do'kon, xizmatlar va yetkazib berish — barchasi
             bitta ilovada, bir necha bosishda. Android uchun.
           </p>
         </div>
@@ -595,7 +597,7 @@ function Footer() {
         ))}
 
         <div>
-          <h3 className="text-sm font-bold">Biz bilan bog&apos;laning</h3>
+          <h3 className="text-sm font-bold">Biz bilan bog'laning</h3>
           <ul className="mt-4 space-y-3 text-[13px] text-neutral-500">
             <li className="flex items-center gap-2.5">
               <Phone className="h-4 w-4 shrink-0 text-brand" />
@@ -615,7 +617,7 @@ function Footer() {
             </li>
           </ul>
 
-          <h3 className="mt-7 text-sm font-bold">Bizga qo&apos;shiling</h3>
+          <h3 className="mt-7 text-sm font-bold">Bizga qo'shiling</h3>
           <div className="mt-3">
             <SocialRow idPrefix="footer" />
           </div>

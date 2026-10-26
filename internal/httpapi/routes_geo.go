@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"chustapp/internal/tracking"
+	"chustapp/internal/users"
 )
 
 func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
@@ -17,6 +18,14 @@ func (s *Server) registerGeoRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /config/maps", s.auth(nil, s.handleMapsConfig))
 	// POST /config/maps/fallback — ilova OnDexMap xatosi tufayli Google'ga o'tganini xabar qiladi.
 	mux.HandleFunc("POST /config/maps/fallback", s.auth(nil, rateLimitedGeo(s.handleMapsFallback)))
+
+	// GET/POST /admin/config/map-mode — admin panel "OnDex Map"
+	// bo'limidagi almashtirgich: butun tizim qaysi xarita manbasidan
+	// foydalanishini JONLI (qayta ishga tushirmasdan) boshqaradi.
+	mux.HandleFunc("GET /admin/config/map-mode",
+		s.auth([]users.Role{users.RoleAdmin}, s.handleGetMapModeConfig))
+	mux.HandleFunc("POST /admin/config/map-mode",
+		s.auth([]users.Role{users.RoleAdmin}, s.handleSetMapModeConfig))
 
 	// GET /geocode/reverse?lat=..&lng=.. — koordinatani manzil matniga
 	// aylantiradi. Google Geocoding API'ni SERVERDAN chaqiramiz (brauzerdan

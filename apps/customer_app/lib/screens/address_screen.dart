@@ -14,6 +14,12 @@ import '../widgets/common.dart';
 import 'address_search_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 
+/// `kNoAddressLabel` endi `data/address_scope.dart` da — yorliqni
+/// tanlaydigan mantiq (`AddressScope.label`) bilan BIR JOYDA. Shu
+/// yerdan qayta eksport qilinadi, chunki ekranlar uni avvaldan shu
+/// fayldan import qiladi.
+export '../data/address_scope.dart' show kNoAddressLabel;
+
 /// Xaritadagi OnDex pinasi va tugmalari.
 ///
 /// ┌─ NEGA `scheme.primary` EMAS ───────────────────────────────────────┐
@@ -24,13 +30,6 @@ import 'catalog_screen.dart' show kBrand;
 /// TO'G'RI olinadi.
 /// └────────────────────────────────────────────────────────────────────┘
 const _mapPin = 'assets/services/map.png';
-
-/// Manzil saqlanmagan holatdagi sarlavha yorlig'i (bosh sahifa va katalog).
-///
-/// Avval bu joylarda "Chust" qattiq yozilgan edi — platforma bitta shahar
-/// uchun bo'lganda bu to'g'ri edi. Toshkent qo'shilgach manzilsiz Toshkent
-/// mijoziga ham "Chust" ko'rinardi, shuning uchun shahar taxmin qilinmaydi.
-const kNoAddressLabel = 'Manzilni tanlang';
 
 /// Yetkazib berish manzilini xaritadan tanlash ekrani (Yandex Go uslubi):
 /// xarita tepada, markazda qimirlamas pin turadi (foydalanuvchi xaritani
@@ -85,9 +84,10 @@ class _AddressScreenState extends State<AddressScreen> {
   @override
   void initState() {
     super.initState();
-    _center = (widget.initialLat != null && widget.initialLng != null)
-        ? LatLng(widget.initialLat!, widget.initialLng!)
-        : _chustCenter;
+    _center =
+        (widget.initialLat != null && widget.initialLng != null)
+            ? LatLng(widget.initialLat!, widget.initialLng!)
+            : _chustCenter;
     _boot();
   }
 
@@ -117,9 +117,7 @@ class _AddressScreenState extends State<AddressScreen> {
   /// └────────────────────────────────────────────────────────────────┘
   Future<void> _loadSaved() async {
     try {
-      final a = await api
-          .getMyAddress()
-          .timeout(const Duration(seconds: 6));
+      final a = await api.getMyAddress().timeout(const Duration(seconds: 6));
       final lat = (a['lat'] as num?)?.toDouble() ?? 0;
       final lng = (a['lng'] as num?)?.toDouble() ?? 0;
       // lat/lng == 0 — manzil hali tanlanmagan.
@@ -149,6 +147,10 @@ class _AddressScreenState extends State<AddressScreen> {
   }
 
   Future<void> _loadMaps() async {
+    // Admin paneldagi almashtirgich shu yerda darhol ta'sir qilsin —
+    // `useOndexMapNow`ni tekshirishdan OLDIN serverdan qayta so'raymiz.
+    await refreshMapConfigNow(api.send);
+    if (!mounted) return;
     // OnDexMap'da yuklanadigan SDK yo'q: uslub xaritaning o'zi bilan
     // keladi. Google yo'lida esa (ayniqsa web'da) skript avval
     // yuklanishi kerak, aks holda xarita bo'sh chiqadi.
@@ -188,8 +190,10 @@ class _AddressScreenState extends State<AddressScreen> {
   /// 350ms kutib, faqat OXIRGI pozitsiya uchun bitta so'rov yuboramiz.
   void _scheduleResolve(LatLng p) {
     _debounce?.cancel();
-    _debounce =
-        Timer(const Duration(milliseconds: 350), () => _resolveAddress(p));
+    _debounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _resolveAddress(p),
+    );
   }
 
   /// Teskari geokodlash — backend orqali (`/geocode/reverse`), chunki Google
@@ -201,8 +205,12 @@ class _AddressScreenState extends State<AddressScreen> {
   /// uchun; masofa tekshiruvi — deyarli bir xil nuqta uchun qayta so'ramaslik.
   Future<void> _resolveAddress(LatLng p) async {
     if (_lastResolvedCenter != null) {
-      final d = Geolocator.distanceBetween(_lastResolvedCenter!.latitude,
-          _lastResolvedCenter!.longitude, p.latitude, p.longitude);
+      final d = Geolocator.distanceBetween(
+        _lastResolvedCenter!.latitude,
+        _lastResolvedCenter!.longitude,
+        p.latitude,
+        p.longitude,
+      );
       if (d < 3) return;
     }
     _lastResolvedCenter = p;
@@ -246,7 +254,6 @@ class _AddressScreenState extends State<AddressScreen> {
       if (mounted) setState(() => _locating = false);
     }
   }
-
 
   /// Barcha DASTUR o'zi buyuradigan kamera harakatlari shu orqali o'tadi —
   /// `_programmaticMoves` hisoblagichi animatsiya davomida `onCameraMove`ning
@@ -379,14 +386,18 @@ class _AddressScreenState extends State<AddressScreen> {
                               // "OnDex Xarita" plitkasi bilan AYNAN
                               // bitta rasm. Foydalanuvchi ikki joyda
                               // bir xil belgini ko'radi.
-                              Image.asset(_mapPin,
-                                  height: 52,
-                                  // Rasm topilmasa xarita pinsiz
-                                  // qolmasin.
-                                  errorBuilder: (_, _, _) => const Icon(
+                              Image.asset(
+                                _mapPin,
+                                height: 52,
+                                // Rasm topilmasa xarita pinsiz
+                                // qolmasin.
+                                errorBuilder:
+                                    (_, _, _) => const Icon(
                                       Icons.location_on,
                                       size: 44,
-                                      color: kBrand)),
+                                      color: kBrand,
+                                    ),
+                              ),
                               Container(
                                 width: 6,
                                 height: 6,
@@ -413,9 +424,10 @@ class _AddressScreenState extends State<AddressScreen> {
                     right: 12,
                     top: 12,
                     child: RoundIconButton(
-                      tooltip: _satellite
-                          ? 'Oddiy xarita (2D)'
-                          : 'Sputnik (3D) ko\'rinish',
+                      tooltip:
+                          _satellite
+                              ? 'Oddiy xarita (2D)'
+                              : 'Sputnik (3D) ko\'rinish',
                       icon: _satellite ? Icons.map : Icons.threed_rotation,
                       onTap: () => setState(() => _satellite = !_satellite),
                     ),
@@ -434,15 +446,17 @@ class _AddressScreenState extends State<AddressScreen> {
                       children: [
                         RoundIconButton(
                           tooltip: 'Joriy joylashuvim',
-                          icon: _locating
-                              ? Icons.hourglass_top
-                              : Icons.my_location,
+                          icon:
+                              _locating
+                                  ? Icons.hourglass_top
+                                  : Icons.my_location,
                           onTap: _locating ? null : _goToMyLocation,
                         ),
                         const SizedBox(height: 14),
                         _ZoomBlock(
-                            onZoomIn: () => _zoom(1),
-                            onZoomOut: () => _zoom(-1)),
+                          onZoomIn: () => _zoom(1),
+                          onZoomOut: () => _zoom(-1),
+                        ),
                       ],
                     ),
                   ),
@@ -457,57 +471,71 @@ class _AddressScreenState extends State<AddressScreen> {
                   children: [
                     _resolvingAddress
                         ? const Row(
-                            children: [
-                              SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2)),
-                              SizedBox(width: 8),
-                              Text('Manzil aniqlanmoqda...'),
-                            ],
-                          )
-                        : PostHogMaskWidget(
-                            // Bu yerda mijozning haqiqiy uy manzili
-                            // ko'rsatiladi — PostHog seans yozuvida
-                            // niqoblanadi.
-                            child: AppTextField(
-                              controller: _addressCtrl,
-                              hint: 'Manzilni qidirish uchun bosing',
-                              icon: Icons.search,
-                              // Bu maydon TUGMA: bosilganda manzil qidiruv
-                              // ekrani ochiladi, o'zida yozilmaydi.
-                              readOnly: true,
-                              onTap: _openAddressSearch,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
+                            SizedBox(width: 8),
+                            Text('Manzil aniqlanmoqda...'),
+                          ],
+                        )
+                        : PostHogMaskWidget(
+                          // Bu yerda mijozning haqiqiy uy manzili
+                          // ko'rsatiladi — PostHog seans yozuvida
+                          // niqoblanadi.
+                          child: AppTextField(
+                            controller: _addressCtrl,
+                            hint: 'Manzilni qidirish uchun bosing',
+                            icon: Icons.search,
+                            // Bu maydon TUGMA: bosilganda manzil qidiruv
+                            // ekrani ochiladi, o'zida yozilmaydi.
+                            readOnly: true,
+                            onTap: _openAddressSearch,
                           ),
+                        ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                            child: _FieldBox(
-                                controller: _entranceCtrl, label: 'Podyezd')),
+                          child: _FieldBox(
+                            controller: _entranceCtrl,
+                            label: 'Podyezd',
+                          ),
+                        ),
                         const SizedBox(width: 16),
                         Expanded(
-                            child: _FieldBox(
-                                controller: _floorCtrl, label: 'Qavat')),
+                          child: _FieldBox(
+                            controller: _floorCtrl,
+                            label: 'Qavat',
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                            child: _FieldBox(
-                                controller: _apartmentCtrl, label: 'Kvartira')),
+                          child: _FieldBox(
+                            controller: _apartmentCtrl,
+                            label: 'Kvartira',
+                          ),
+                        ),
                         const SizedBox(width: 16),
                         Expanded(
-                            child: _FieldBox(
-                                controller: _intercomCtrl, label: 'Domofon')),
+                          child: _FieldBox(
+                            controller: _intercomCtrl,
+                            label: 'Domofon',
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     _FieldBox(
-                        controller: _commentCtrl, label: 'Kuryer uchun izoh'),
+                      controller: _commentCtrl,
+                      label: 'Kuryer uchun izoh',
+                    ),
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -515,17 +543,24 @@ class _AddressScreenState extends State<AddressScreen> {
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(52),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                         onPressed: _saving ? null : _save,
-                        child: _saving
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('Tayyor',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                        child:
+                            _saving
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Text(
+                                  'Tayyor',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
                       ),
                     ),
                   ],
@@ -557,7 +592,6 @@ class _FieldBox extends StatelessWidget {
   }
 }
 
-
 /// Zoom bloki — faqat kattalashtirish/kichiklashtirish, boshqa ikon yo'q.
 class _ZoomBlock extends StatelessWidget {
   final VoidCallback onZoomIn;
@@ -581,22 +615,20 @@ class _ZoomBlock extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
               onTap: onZoomIn,
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16, horizontal: 10),
                 child: Icon(Icons.add, size: 20),
               ),
             ),
-            Container(
-              width: 22,
-              height: 1,
-              color: Colors.grey.shade400,
-            ),
+            Container(width: 22, height: 1, color: Colors.grey.shade400),
             InkWell(
-              borderRadius:
-                  const BorderRadius.vertical(bottom: Radius.circular(22)),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(22),
+              ),
               onTap: onZoomOut,
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16, horizontal: 10),

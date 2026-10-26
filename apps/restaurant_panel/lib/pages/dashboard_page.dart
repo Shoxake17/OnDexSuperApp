@@ -31,12 +31,15 @@ const _activeStatuses = {'accepted', 'preparing', 'ready', 'picked_up'};
 /// Bosh sahifa (Dashboard) — image/bosh.png namunasiga 100% mos qilib
 /// qayta qurildi. MUHIM (loyihaning doimiy qoidasi): hech qanday raqam
 /// qo'lda o'ylab topilmagan — hammasi api.orders()/api.menu() orqali
-/// kelgan HAQIQIY ma'lumotdan hisoblanadi. Namunadagi "Restoran reytingi"
-/// kartochkasi ATAYLAB QO'SHILMADI (backend'da haqiqiy baholash tizimi
-/// yo'q — bu ROADMAP'da alohida qayd etilgan, Kuryer reytingi ham hozircha
-/// neytral 5.0) — o'rniga xuddi shu joyga "Tayyorlash vaqti" (haqiqiy,
-/// accepted→ready farqidan hisoblangan) qo'yildi, shunday qilib 5 ta
-/// mini-kartochka soni saqlanib qoldi, lekin barchasi haqiqiy.
+/// kelgan HAQIQIY ma'lumotdan hisoblanadi.
+///
+/// "Restoran reytingi" kartochkasi UZOQ VAQT ATAYLAB QO'SHILMAGAN edi
+/// (backend'da haqiqiy baholash tizimi yo'q edi — ROADMAP'da qayd
+/// etilgan). Endi `internal/ratings` qurildi (mijoz buyurtmadan keyin
+/// baholaydi) — kartochka YUQORIDAGI qatorga 5-sifatida qo'shildi.
+/// "Tayyorlash vaqti" (pastdagi mini-qatorda, accepted→ready
+/// farqidan hisoblangan) ALOHIDA, haqiqiy operatsion ko'rsatkich
+/// sifatida qoldirildi.
 class DashboardPage extends StatefulWidget {
   final DateTime referenceDate;
   final VoidCallback onGoToOrders;
@@ -59,6 +62,11 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Map<String, dynamic>> _orders = [];
   int _chartRangeDays = 7;
 
+  // Mijoz buyurtmadan keyin qo'ygan HAQIQIY baho (`internal/ratings`).
+  // 0 = hali baho yo'q — "0.0 ★" emas, kartada "—" ko'rsatiladi.
+  double _rating = 0;
+  int _ratingCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -71,10 +79,14 @@ class _DashboardPageState extends State<DashboardPage> {
       _error = null;
     });
     try {
-      final list = await api.orders();
+      final results = await Future.wait([api.orders(), api.myRestaurant()]);
+      final list = results[0] as List<dynamic>;
+      final rest = results[1] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
         _orders = list.cast<Map<String, dynamic>>();
+        _rating = (rest['rating'] as num?)?.toDouble() ?? 0;
+        _ratingCount = (rest['rating_count'] as num?)?.toInt() ?? 0;
         _loading = false;
       });
     } catch (e) {
@@ -186,6 +198,21 @@ class _DashboardPageState extends State<DashboardPage> {
                     icon: Icons.workspace_premium_rounded,
                     iconColor: OnDexColors.purple,
                     iconBg: OnDexColors.purpleBg,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _StatCard(
+                    label: 'Restoran reytingi',
+                    // Mijoz buyurtmadan keyin qo'ygan HAQIQIY bahodan
+                    // (`internal/ratings`) — qo'lda kiritilmaydi.
+                    value:
+                        _ratingCount == 0
+                            ? '—'
+                            : '${_rating.toStringAsFixed(1)} ★',
+                    icon: Icons.star_rounded,
+                    iconColor: OnDexColors.amber,
+                    iconBg: OnDexColors.amberBg,
                   ),
                 ),
               ],

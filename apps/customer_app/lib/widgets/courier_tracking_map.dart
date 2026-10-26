@@ -214,8 +214,13 @@ class _CourierTrackingMapState extends State<CourierTrackingMap> {
   }
 
   Future<void> _loadMaps() async {
+    // Admin paneldagi almashtirgich shu yerda darhol ta'sir qilsin —
+    // `useOndexMapNow`ni tekshirishdan OLDIN serverdan qayta so'raymiz
+    // (`address_screen.dart` dagi bilan bir xil sabab).
+    await refreshMapConfigNow(api.send);
+    if (!mounted) return;
     // OnDexMap'da yuklanadigan SDK yo'q — uslub xaritaning o'zi bilan
-    // keladi (`address_screen.dart` dagi bilan bir xil sabab).
+    // keladi.
     if (useOndexMapNow) {
       setState(() => _mapsReady = true);
       // Zaxira: OnDexMap yiqilsa Google'ga tushiladi (`address_screen.dart`).

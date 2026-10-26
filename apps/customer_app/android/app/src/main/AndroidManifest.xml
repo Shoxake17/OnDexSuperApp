@@ -35,6 +35,19 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyDGPUoZy8185Gi5csIdeIfiJZaPnDhqM0k"/>
+        <!-- Push bildirishnomalari uchun STANDART kanal.
+
+             Serverdan kelgan xabarda `channel_id` ko'rsatilgan
+             (`internal/notify/fcm_message.go`), lekin eski versiyadagi
+             yoki kanalsiz xabar ham jim qolmasligi kerak — shu sabab
+             bu yerda ham aynan o'sha kanal standart qilib qo'yiladi.
+
+             Kanalning O'ZI `MainActivity.kt` da yaratiladi: manifest
+             faqat ID ni ko'rsatadi, mavjud bo'lmagan kanalni
+             yaratmaydi. ID uch joyda bir xil bo'lishi SHART. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ondex_orders_v1"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

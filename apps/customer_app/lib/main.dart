@@ -212,7 +212,7 @@ class ChustApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ChustApp',
+      title: 'OnDex',
       debugShowCheckedModeBanner: false,
       // Shaddiy ilovani boshqarganda ekranlar orasida yurishi kerak —
       // yordamchi oynasi yopilgach uning `BuildContext` i o'ladi,

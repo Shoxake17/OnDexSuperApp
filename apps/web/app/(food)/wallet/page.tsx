@@ -29,9 +29,9 @@ export default function WalletPage() {
         </div>
         <p className="mt-5 text-lg font-semibold">Tayyorlanmoqda</p>
         <p className="mt-2 max-w-xs text-sm leading-relaxed text-neutral-500">
-          Balans, to&apos;ldirish va bonuslar — to&apos;lov tizimi
-          (Payme/Click) ulanganidan keyin shu yerda bo&apos;ladi. Hozircha
-          buyurtma uchun to&apos;lov kuryerga naqd yoki karta bilan
+          Balans, to'ldirish va bonuslar — to'lov tizimi
+          (Payme/Click) ulanganidan keyin shu yerda bo'ladi. Hozircha
+          buyurtma uchun to'lov kuryerga naqd yoki karta bilan
           amalga oshiriladi.
         </p>
       </div>

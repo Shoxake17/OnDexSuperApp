@@ -322,7 +322,7 @@ function UserMenu() {
             <div className="min-w-0">
               <p className="truncate text-base font-bold">{displayName(me)}</p>
               <p className="mt-0.5 text-xs text-white/50">
-                Ma&apos;lumotlarim
+                Ma'lumotlarim
               </p>
             </div>
             <ChevronRight size={18} className="shrink-0 text-white/40" />

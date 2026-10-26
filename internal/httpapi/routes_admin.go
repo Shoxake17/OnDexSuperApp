@@ -213,11 +213,18 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				// Kind — muassasa turi. Ko'rsatkich: eski admin panel uni
 				// yubormaydi va mavjud tur jimgina o'chib ketmasin.
 				Kind *string `json:"kind"`
-				// 0 = ko'rsatkich yo'q (mijoz tomonida chip chizilmaydi).
-				Rating        float64 `json:"rating"`
-				RatingCount   int     `json:"rating_count"`
-				ETAMinMinutes int     `json:"eta_min_minutes"`
-				ETAMaxMinutes int     `json:"eta_max_minutes"`
+				// ┌─ REYTING VA YETKAZISH VAQTI BU YERDA YO'Q ─────────┐
+				// Avval `rating`/`rating_count`/`eta_min_minutes`/
+				// `eta_max_minutes` shu yerdan qo'lda kiritilardi.
+				// Endi ikkalasi ham HAQIQIY buyurtma tarixidan
+				// hisoblanadi: reyting — mijoz qo'ygan bahodan
+				// (`internal/ratings`), yetkazish vaqti — haqiqiy
+				// buyurtma berilgan-yetkazilgan oralig'idan
+				// (`internal/orders.ComputeETARange`). Ikkalasi ham
+				// `scene_access.go` dagi `withRating`/`withETA` da —
+				// admin/restoran o'zgartira olmaydi, shuning uchun bu
+				// yerdan OLIB TASHLANDI.
+				// └──────────────────────────────────────────────────┘
 				// ┌─ KO'RSATKICH, ODDIY QIYMAT EMAS ──────────────────┐
 				// Bu endpointga TO'LIQ holat yuboriladi, lekin eski
 				// mijozlar (admin panelning oldingi versiyasi) 3D
@@ -241,26 +248,6 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			}
 			if req.Name == "" {
 				httpError(w, http.StatusBadRequest, errors.New("name majburiy"))
-				return
-			}
-			// ┌─ NEGA BU YERDA HAM TEKSHIRILADI ──────────────────────────┐
-			// Bazada CHECK cheklovlari bor, lekin ular buzilganda pgx
-			// xatosi 500 bo'lib chiqardi va admin sababni tushunmasdi.
-			// Bu yerda 400 + aniq matn beriladi; baza esa oxirgi
-			// himoya bo'lib qoladi (boshqa yo'l bilan yozishga qarshi).
-			// └───────────────────────────────────────────────────────────┘
-			if req.Rating < 0 || req.Rating > 5 {
-				httpError(w, http.StatusBadRequest,
-					errors.New("reyting 0 va 5 orasida bo'lishi kerak (0 = ko'rsatilmaydi)"))
-				return
-			}
-			if req.RatingCount < 0 || req.ETAMinMinutes < 0 || req.ETAMaxMinutes < 0 {
-				httpError(w, http.StatusBadRequest, errors.New("manfiy qiymat bo'lmaydi"))
-				return
-			}
-			if req.ETAMaxMinutes < req.ETAMinMinutes {
-				httpError(w, http.StatusBadRequest,
-					errors.New("yetkazishning eng ko'p vaqti eng kamidan kichik bo'lmasin"))
 				return
 			}
 			// ┌─ URL SXEMASI (bug.md 24-band) ─────────────────────────┐
@@ -309,11 +296,6 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				}
 				rest.Kind = kind
 			}
-			rest.Rating = req.Rating
-			rest.RatingCount = req.RatingCount
-			rest.ETAMinMinutes = req.ETAMinMinutes
-			rest.ETAMaxMinutes = req.ETAMaxMinutes
-
 			// ┌─ 3D MAKET UCHUN TEKSHIRUV ────────────────────────────────┐
 			// Maket fayli ichida BAJARILADIGAN kod bor (Godot
 			// skriptlari). Ilova uni yuklab olib ishga tushiradi.

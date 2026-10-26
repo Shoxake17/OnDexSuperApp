@@ -331,6 +331,18 @@ func scanOrder(row rowScanner) (*orders.Order, error) {
 	if err := unmarshalAddress(addressJSON, &o.DeliveryAddress); err != nil {
 		return nil, err
 	}
+	// ┌─ YETKAZISH HAQI — ALOHIDA USTUN EMAS, HISOBLANADI ─────────────┐
+	// Postgres'da `delivery_fee_tiyin` ustuni YO'Q — invariant
+	// (`orders.Service`): TotalTiyin = SubtotalTiyin − DiscountTiyin +
+	// DeliveryFeeTiyin. Bu yerda SCAN qilingach QAYTA HISOBLANMASA,
+	// maydon doim 0 (Go'ning standart qiymati) qolib ketardi — aynan
+	// shu sabab yuz berdi: yangi yaratilgan buyurtmada (xotiradagi
+	// obyekt to'g'ridan-to'g'ri qaytarilgani uchun) haq TO'G'RI
+	// ko'rinardi, lekin keyinroq qayta ochilganda (`GET /orders/{id}`,
+	// Postgres'dan o'qilganda) "Bepul" bo'lib qolardi — garchi mijoz
+	// haqiqatda yetkazish haqini to'lagan bo'lsa ham.
+	// └──────────────────────────────────────────────────────────────┘
+	o.DeliveryFeeTiyin = o.TotalTiyin - o.SubtotalTiyin + o.DiscountTiyin
 	return &o, nil
 }
 

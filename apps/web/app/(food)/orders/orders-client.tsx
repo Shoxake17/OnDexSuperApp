@@ -70,7 +70,7 @@ export default function OrdersPage() {
 
       {failed ? (
         <div className="py-14 text-center">
-          <p className="text-neutral-500">Buyurtmalarni yuklab bo&apos;lmadi.</p>
+          <p className="text-neutral-500">Buyurtmalarni yuklab bo'lmadi.</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-3 text-sm font-semibold text-brand"
@@ -92,9 +92,9 @@ export default function OrdersPage() {
         </div>
       ) : orders.length === 0 ? (
         <div className="py-14 text-center">
-          <p className="text-neutral-500">Hozircha buyurtma yo&apos;q</p>
+          <p className="text-neutral-500">Hozircha buyurtma yo'q</p>
           <div className="mx-auto mt-5 max-w-xs">
-            <AppButtonLink href="/">Restoranlarni ko&apos;rish</AppButtonLink>
+            <AppButtonLink href="/">Restoranlarni ko'rish</AppButtonLink>
           </div>
         </div>
       ) : (

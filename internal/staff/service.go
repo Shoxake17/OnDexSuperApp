@@ -515,6 +515,19 @@ func (s *Service) Activity(ctx context.Context, restaurantID, id string, limit i
 	return s.repo.Events(ctx, restaurantID, id, time.Time{}, limit)
 }
 
+// DeliveryFee — shu restoran uchun hozirgi yetkazish narxi
+// (`staff.DeliveryFee` qoidasi bo'yicha). `Overview` dan FARQLI —
+// faqat ro'yxatni o'qiydi, hodisa jurnalini so'ramaydi — restoranlar
+// RO'YXATIDA har bitta yozuv uchun chaqirish uchun yetarlicha yengil
+// (`internal/httpapi/scene_access.go`).
+func (s *Service) DeliveryFee(ctx context.Context, restaurantID string) (int64, error) {
+	members, err := s.repo.List(ctx, restaurantID)
+	if err != nil {
+		return 0, err
+	}
+	return DeliveryFee(members), nil
+}
+
 // Overview — "Xodimlar" sahifasi uchun hammasi bitta javobda.
 type Overview struct {
 	Members []*Member

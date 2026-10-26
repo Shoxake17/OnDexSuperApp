@@ -169,7 +169,7 @@ export default function DeleteAccountClient() {
             On<span style={{ color: BRAND }}>Dex</span>
           </p>
           <p className="mt-2.5 text-[21px] font-extrabold" style={{ color: TEXT }}>
-            Akkauntni o&apos;chirish
+            Akkauntni o'chirish
           </p>
         </div>
 
@@ -229,7 +229,7 @@ function PhoneStep({
       }}
     >
       <p className="mb-5 text-[13px] leading-relaxed" style={{ color: MUTED }}>
-        O&apos;chirmoqchi bo&apos;lgan OnDex akkauntingizga bog&apos;langan telefon
+        O'chirmoqchi bo'lgan OnDex akkauntingizga bog'langan telefon
         raqamini kiriting. Egaligingizni tasdiqlash uchun Telegram orqali kod
         yuboramiz.
       </p>
@@ -331,7 +331,7 @@ function CodeStep({
         <span className="font-semibold" style={{ color: TEXT }}>
           {phone}
         </span>{" "}
-        tasdiqlangach o&apos;sha chatga keladi.
+        tasdiqlangach o'sha chatga keladi.
       </p>
 
       {deepLink && (
@@ -445,17 +445,17 @@ function ConfirmStep({
       <div className="flex gap-2.5 rounded-xl bg-red-50 p-3.5">
         <TriangleAlert size={18} className="mt-0.5 shrink-0 text-red-600" />
         <div className="text-[13px] leading-relaxed text-red-700">
-          <p className="font-semibold">Akkaunt o&apos;chirilgach:</p>
+          <p className="font-semibold">Akkaunt o'chirilgach:</p>
           <ul className="mt-1 list-disc pl-4">
             <li>ushbu raqam bilan ilovaga KIRA OLMAYSIZ;</li>
             <li>
-              buyurtmalar tarixi, sevimlilar va manzil ma&apos;lumotlari{" "}
-              <b>saqlanadi</b> — ular o&apos;chirilmaydi;
+              buyurtmalar tarixi, sevimlilar va manzil ma'lumotlari{" "}
+              <b>saqlanadi</b> — ular o'chirilmaydi;
             </li>
             <li>
-              O&apos;SHA telefon raqami bilan qaytadan tasdiqlansangiz (SMS/
-              Telegram kod), akkaunt avtomatik tiklanadi va barcha ma&apos;lumot
-              qaytadan ko&apos;rinadi.
+              O'SHA telefon raqami bilan qaytadan tasdiqlansangiz (SMS/
+              Telegram kod), akkaunt avtomatik tiklanadi va barcha ma'lumot
+              qaytadan ko'rinadi.
             </li>
           </ul>
         </div>
@@ -478,7 +478,7 @@ function ConfirmStep({
 
       <div className="mt-4">
         <AuthButton busy={busy} disabled={!ready || busy} onClick={onConfirm} danger>
-          Ha, akkauntni o&apos;chirish
+          Ha, akkauntni o'chirish
         </AuthButton>
       </div>
     </>
@@ -490,11 +490,11 @@ function DoneStep() {
   return (
     <div className="rounded-xl border bg-white p-5 text-center" style={{ borderColor: BORDER }}>
       <p className="text-[16px] font-bold" style={{ color: TEXT }}>
-        Akkauntingiz o&apos;chirildi
+        Akkauntingiz o'chirildi
       </p>
       <p className="mt-2 text-[13.5px] leading-relaxed" style={{ color: MUTED }}>
-        Ma&apos;lumotlaringiz saqlanadi. O&apos;sha telefon raqami bilan qaytadan
-        ro&apos;yxatdan o&apos;tsangiz, akkauntingiz avvalgi holida tiklanadi.
+        Ma'lumotlaringiz saqlanadi. O'sha telefon raqami bilan qaytadan
+        ro'yxatdan o'tsangiz, akkauntingiz avvalgi holida tiklanadi.
       </p>
     </div>
   );

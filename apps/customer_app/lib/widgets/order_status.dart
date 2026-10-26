@@ -6,13 +6,15 @@ import 'package:flutter/material.dart';
 /// ega bo'ladi (bir joyda o'zgartirilsa, hammasi bir xil yangilanadi).
 ///
 /// Ranglar foydalanuvchi so'roviga ko'ra: Qabul qilindi — och yashil,
-/// Tayyorlanmoqda va Yo'lda — sabzi (to'q sariq), Yetkazildi — och ko'k.
+/// Tayyorlanmoqda va Yo'lda — sabzi (to'q sariq), Yetkazildi — TO'Q
+/// YASHIL (`tracking_screen.dart`dagi yangi "Yetkazildi!" bloki bilan
+/// bir xil belgi rangi — ro'yxat va batafsil sahifa endi izchil).
 const Color kStatusNew =
     Color(0xFF90A4AE); // kulrang-ko'k — hali qabul qilinmagan
 const Color kStatusAccepted = Color(0xFF81C784); // och yashil
 const Color kStatusCarrot =
     Color(0xFFFF9800); // sabzi rang — tayyorlanmoqda/yo'lda
-const Color kStatusDelivered = Color(0xFF4FC3F7); // och ko'k
+const Color kStatusDelivered = Color(0xFF16A34A); // to'q yashil
 const Color kStatusCancelled = Color(0xFFE57373); // och qizil
 
 const statusStyles = {
@@ -25,11 +27,11 @@ const statusStyles = {
     kStatusCarrot
   ),
   'picked_up': ('Kuryerda, yo\'lda', Icons.delivery_dining, kStatusCarrot),
-  'delivered': ('Yetkazildi', Icons.done_all, kStatusDelivered),
+  'delivered': ('Yetkazildi', Icons.check_circle_rounded, kStatusDelivered),
   // STOL buyurtmasining yakuniy holati (`internal/orders`: StatusServed).
   // Ro'yxatda yo'q edi — natijada stolda ovqatlangan mijoz ekranda
   // xom "served" so'zini ko'rardi.
-  'served': ('Stolga berildi', Icons.room_service, kStatusDelivered),
+  'served': ('Stolga berildi', Icons.check_circle_rounded, kStatusDelivered),
   'rejected': ('Rad etildi', Icons.cancel_outlined, kStatusCancelled),
   'cancelled': ('Bekor qilindi', Icons.close, kStatusCancelled),
 };

@@ -6,6 +6,7 @@ import '../widgets/header_action.dart';
 import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
+import 'coming_soon_screen.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'ondex_map_screen.dart';
@@ -38,14 +39,11 @@ import 'wallet_screen.dart';
 /// └────────────────────────────────────────────────────────────────────┘
 ///
 /// ┌─ SOXTA TUGMA YO'Q ─────────────────────────────────────────────────┐
-/// Maketda sakkizta xizmat bor, lekin bugungi kunda backend'da FAQAT
-/// restoran oqimi mavjud. Qolganlari ko'rinadi (maket buzilmasin), lekin
-/// "Tez orada" belgisi bilan va bosilganda shuni aytadi.
-///
-/// Ular uchun "ishlaydigandek" tugma qo'yish eng yomon variant bo'lardi:
-/// foydalanuvchi bosadi, hech narsa bo'lmaydi va ilova buzuq deb
-/// o'ylaydi. `_Service.soon` maydoni shu farqni bitta joyda saqlaydi —
-/// xizmat ishga tushganda `onTap` beriladi va bayroq olib tashlanadi.
+/// Maketdagi sakkizta xizmatning hech biri "ishlaydigandek" ko'rinib,
+/// bosilganda hech narsa bo'lmaydigan tugma emas: backend'da hali yo'q
+/// bo'lganlari (Do'kon, Computer Club, Uy Joy, Moshina bozori, Ish joy
+/// e'lonlari, OnDex Taxi) `ComingSoonScreen` ni ochadi — holat OCHIQ
+/// aytiladi, foydalanuvchi ilovani buzuq deb o'ylamaydi.
 /// └────────────────────────────────────────────────────────────────────┘
 class SuperHomeScreen extends StatefulWidget {
   /// Stol QR kodini skanerlash — qidiruv maydonidagi belgi.
@@ -81,18 +79,19 @@ class _Service {
   /// tayyor bo'lganda SHU NOM bilan almashtiriladi — kodga tegilmaydi.
   final String image;
 
-  /// Xizmat hali ishga tushmagan. Kartada BELGILANMAYDI (ko'rinish
-  /// hamma xizmatda bir xil), lekin bosilganda aniq aytiladi.
-  final bool soon;
-
   const _Service({
     required this.title,
     required this.icon,
     required this.color,
     required this.image,
-    this.soon = false,
   });
 }
+
+/// `ComingSoonScreen` uchun umumiy tavsif — hamma "tez orada" bo'limida
+/// bir xil (`coming_soon_screen.dart` izohiga qarang).
+const _comingSoonSubtitle =
+    'Ushbu bo\'lim hali tayyor emas — tez orada siz '
+    'uchun taqdim etamiz! \u{1F9E1}';
 
 // ┌─ KARTADA FAQAT RASM VA NOM ────────────────────────────────────────┐
 // Ilgari har kartada rangli ikonka, ikki qatorli tavsif va tugma
@@ -115,21 +114,18 @@ const _services = <_Service>[
     icon: Icons.storefront,
     color: Color(0xFF1E6BF1),
     image: 'assets/services/dokon.png',
-    soon: true,
   ),
   _Service(
     title: 'Computer Club',
     icon: Icons.sports_esports,
     color: Color(0xFF7C3AED),
     image: 'assets/services/club.png',
-    soon: true,
   ),
   _Service(
     title: 'Uy Joy',
     icon: Icons.home_work,
     color: Color(0xFF0EA5A5),
     image: 'assets/services/uyjoy.png',
-    soon: true,
   ),
 ];
 
@@ -139,7 +135,6 @@ const _tiles = <_Service>[
     icon: Icons.directions_car,
     color: Color(0xFF334155),
     image: 'assets/services/moshina.png',
-    soon: true,
   ),
   _Service(
     title: 'OnDex Xarita',
@@ -152,20 +147,24 @@ const _tiles = <_Service>[
     icon: Icons.work,
     color: Color(0xFF92400E),
     image: 'assets/services/ishjoy.png',
-    soon: true,
   ),
   _Service(
     title: 'OnDex Taxi\nxizmati',
     icon: Icons.local_taxi,
     color: Color(0xFFF59E0B),
     image: 'assets/services/taxi.png',
-    soon: true,
   ),
 ];
 
 class _SuperHomeScreenState extends State<SuperHomeScreen> {
   int _unread = 0;
-  String _city = kNoAddressLabel;
+  // ⚠️ Boshlang'ich qiymat `AddressScope` dan OLINADI, `kNoAddressLabel`
+  // dan emas. Avval bu yerda doimiy turardi va ekran ochilganda manzil
+  // allaqachon ma'lum bo'lsa ham "Manzilni tanlang" ko'rinardi:
+  // `initState` dagi `refresh()` serverdan AYNAN o'sha manzilni olardi,
+  // o'zgarish bo'lmagani uchun xabar kelmasdi va `_onAddressChanged`
+  // hech qachon ishlamasdi.
+  String _city = AddressScope.instance.label;
   List<dynamic> _restaurants = const [];
   bool _loadingRestaurants = true;
 
@@ -206,10 +205,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
   /// tushganda ko'rinardi.
   void _onAddressChanged() {
     if (!mounted) return;
-    setState(() {
-      final t = AddressScope.instance.text;
-      _city = t.isEmpty ? kNoAddressLabel : t;
-    });
+    setState(() => _city = AddressScope.instance.label);
     _loadRestaurants();
   }
 
@@ -242,20 +238,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     }
   }
 
-  void _soon(String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$name — tez orada ishga tushadi'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   void _openService(_Service s) {
-    if (s.soon) {
-      _soon(s.title.replaceAll('\n', ' '));
-      return;
-    }
     // Ishlaydigan xizmatlar soni ortgani uchun endi nom bo'yicha
     // tanlanadi. Ilgari bitta xizmat bor edi va `_push` to'g'ridan-
     // to'g'ri restoranni ochardi — yangi xizmat qo'shilganda bu
@@ -263,6 +246,53 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     switch (s.title) {
       case 'OnDex Xarita':
         _push(const OndexMapScreen());
+      case 'Do\'kon':
+        _push(const ComingSoonScreen(
+          title: 'Do\'kon',
+          heading: 'Do\'kon qismi hali mavjud emas',
+          subtitle: _comingSoonSubtitle,
+          mascotAsset: 'assets/illustrations/dokon_mascot.png',
+        ));
+      case 'Computer Club':
+        _push(const ComingSoonScreen(
+          title: 'Computer Club',
+          heading: 'Computer Club tez orada ochiladi',
+          subtitle: 'Zamonaviy o\'yin zonalari tez orada sizga '
+              'yaqin bo\'ladi! \u{1F3AE}',
+          mascotAsset: 'assets/illustrations/gameclub_mascot.png',
+        ));
+      case 'Uy Joy':
+        _push(const ComingSoonScreen(
+          title: 'Uy Joy',
+          heading: 'Uy-joy xizmati tez orada ishga tushadi',
+          subtitle: 'Kvartira va uylarni qidirish tez orada '
+              'oson bo\'ladi! \u{1F3E0}',
+          mascotAsset: 'assets/illustrations/uyjoy_mascot.png',
+        ));
+      case 'Moshina\nbozori':
+        _push(const ComingSoonScreen(
+          title: 'Moshina bozori',
+          heading: 'Moshina bozori tez orada ochiladi',
+          subtitle: 'Yangi va haydalgan avtomobillarni qidirish '
+              'tez orada oson bo\'ladi! \u{1F697}',
+          mascotAsset: 'assets/illustrations/moshinabozori_mascot.png',
+        ));
+      case 'Ish joy\ne\'lonlari':
+        _push(const ComingSoonScreen(
+          title: 'Ish joy e\'lonlari',
+          heading: 'Ish joy e\'lonlari tez orada ochiladi',
+          subtitle: 'Mos vakansiyalarni topish va CV yuborish '
+              'tez orada oson bo\'ladi! \u{1F4BC}',
+          mascotAsset: 'assets/illustrations/ishjoy_mascot.png',
+        ));
+      case 'OnDex Taxi\nxizmati':
+        _push(const ComingSoonScreen(
+          title: 'OnDex Taxi',
+          heading: 'OnDex Taxi xizmati tez orada ishga tushadi',
+          subtitle: 'Shahar bo\'ylab tezkor taksi chaqirish '
+              'tez orada mavjud bo\'ladi! \u{1F695}',
+          mascotAsset: 'assets/illustrations/taxi_mascot.png',
+        ));
       default:
         _push(const RestaurantShell());
     }
@@ -275,8 +305,11 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
       child: RefreshIndicator(
         color: kBrand,
         onRefresh: () async {
-          await Future.wait(
-              [_loadRestaurants(), _loadUnread(), _loadAddress()]);
+          await Future.wait([
+            _loadRestaurants(),
+            _loadUnread(),
+            _loadAddress(),
+          ]);
         },
         child: ListView(
           // Pastdagi 96 — suzuvchi pastki menyu uchun. Usiz oxirgi
@@ -314,8 +347,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
-                  const Icon(Icons.place_outlined,
-                      size: 19, color: _titleDark),
+                  const Icon(Icons.place_outlined, size: 19, color: _titleDark),
                   const SizedBox(width: 5),
                   Flexible(
                     child: Text(
@@ -323,13 +355,17 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w600,
-                          color: _titleDark),
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w600,
+                        color: _titleDark,
+                      ),
                     ),
                   ),
-                  const Icon(Icons.keyboard_arrow_down,
-                      size: 20, color: _titleDark),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 20,
+                    color: _titleDark,
+                  ),
                 ],
               ),
             ),
@@ -367,17 +403,23 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
             ],
           ),
           style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w800,
-              height: 1.0,
-              letterSpacing: -0.8),
+            fontSize: 34,
+            fontWeight: FontWeight.w800,
+            height: 1.0,
+            letterSpacing: -0.8,
+          ),
         ),
         SizedBox(height: 1),
         // Kirish ekranidagi (`widgets/auth_ui.dart`) shior bilan AYNAN
         // bir xil bo'lishi kerak — ikki joyda ikki xil tavsif turmasin.
-        Text('Xalq ilovasi',
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w500, color: _muted)),
+        Text(
+          'Xalq ilovasi',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: _muted,
+          ),
+        ),
       ],
     );
   }
@@ -406,10 +448,12 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
               onTap: () => _push(const RestaurantShell()),
               child: const Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Xizmat yoki mahsulot qidiring...',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13.5, color: _muted)),
+                child: Text(
+                  'Xizmat yoki mahsulot qidiring...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, color: _muted),
+                ),
               ),
             ),
           ),
@@ -418,8 +462,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
             onTap: widget.onScanQr,
             child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child:
-                  Icon(Icons.qr_code_scanner, size: 20, color: _muted),
+              child: Icon(Icons.qr_code_scanner, size: 20, color: _muted),
             ),
           ),
         ],
@@ -478,62 +521,94 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     );
   }
 
-  // ── Reklama bloki ──
+  // ── Reklama bloki (`image/OnDexGameBar.png` maketi) ──
+  //
+  // ┌─ RASM MATN ORQASIDA, YONIDA EMAS ───────────────────────────────┐
+  // Ilgari matn va rasm Row ichida YONMA-YON turardi (ikkita ustun).
+  // Yangi maket (`OnDexGame.png`) esa BUTUN blokni qoplaydigan fon —
+  // bayroq va Registon chap tomondagi bo'sh joy ustiga matn YOZILADI.
+  // Shuning uchun endi `DecorationImage` orqa fon, matn esa uning
+  // USTIDA (Stack emas, `Container.decoration` — bitta qatlam yetarli).
+  // └────────────────────────────────────────────────────────────────┘
+  // Eski bannerning balandligi — bo'yi "to'rtburchak"ka aylanmasin,
+  // matn uch bo'lak (sarlavha, tavsif, tugma) shu balandlikka
+  // `spaceBetween` bilan taqsimlanadi.
+  static const _bannerHeight = 150.0;
+
   Widget _banner() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        color: _bannerBg,
-        padding: const EdgeInsets.fromLTRB(18, 18, 0, 18),
-        child: Row(
+        height: _bannerHeight,
+        decoration: const BoxDecoration(
+          color: _bannerBg,
+          image: DecorationImage(
+            image: AssetImage('assets/services/ondex_game.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              flex: 52,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+            // "On" va "Dex" ikki xil rangda — xuddi `_wordmark()`dagi
+            // brend yozuvi kabi (shu fayldagi yagona joy emas, lekin
+            // bannerda ham brend darhol tanilsin).
+            const Text.rich(
+              TextSpan(
                 children: [
-                  const Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                            text: 'OnDex ', style: TextStyle(color: kBrand)),
-                        TextSpan(
-                            text: 'bilan\nhayotingiz oson!',
-                            style: TextStyle(color: _titleDark)),
-                      ],
-                    ),
-                    style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                        height: 1.28),
-                  ),
-                  const SizedBox(height: 7),
-                  const Text('Barcha xizmatlar bir joyda',
-                      style: TextStyle(fontSize: 13, color: _muted)),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    height: 38,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: kBrand,
-                        padding: const EdgeInsets.symmetric(horizontal: 22),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(19)),
-                      ),
-                      onPressed: () => _push(const RestaurantShell()),
-                      child: const Text('Batafsil',
-                          style: TextStyle(
-                              fontSize: 13.5, fontWeight: FontWeight.w600)),
-                    ),
+                  TextSpan(text: 'On', style: TextStyle(color: _titleDark)),
+                  TextSpan(text: 'Dex', style: TextStyle(color: kBrand)),
+                  TextSpan(
+                    text: ' Simulatsiya\nO\'yini',
+                    style: TextStyle(color: _titleDark),
                   ),
                 ],
               ),
+              style: TextStyle(
+                fontSize: 16.5,
+                fontWeight: FontWeight.bold,
+                height: 1.2,
+              ),
             ),
-            Expanded(
-              flex: 48,
-              child: Image.asset('assets/services/banner.png',
-                  fit: BoxFit.contain),
+            const Text(
+              'Shahringni qur, biznesingni boshqar\nva g\'alabaga erish!',
+              style: TextStyle(fontSize: 11.5, color: _muted, height: 1.25),
+            ),
+            SizedBox(
+              height: 32,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: kBrand,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: () => _push(const ComingSoonScreen(
+                  title: 'OnDex Simulatsiya O\'yini',
+                  heading: 'O\'yin tez orada ishga tushadi',
+                  subtitle: 'O\'z biznesingni ochish imkoniyati '
+                      'tez orada mavjud bo\'ladi! \u{1F1FA}\u{1F1FF}',
+                  mascotAsset: 'assets/services/ondex_game.png',
+                  mascotWidth: 280,
+                )),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'O\'ynash',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(width: 5),
+                    Icon(Icons.arrow_forward, size: 15),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -562,17 +637,22 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Restoranlar',
-                style: TextStyle(
-                    fontSize: 18.5,
-                    fontWeight: FontWeight.bold,
-                    color: _titleDark)),
+            const Text(
+              'Restoranlar',
+              style: TextStyle(
+                fontSize: 18.5,
+                fontWeight: FontWeight.bold,
+                color: _titleDark,
+              ),
+            ),
             InkWell(
               onTap: () => _push(const RestaurantShell()),
               child: const Row(
                 children: [
-                  Text('Barchasini ko\'rish',
-                      style: TextStyle(fontSize: 13.5, color: _muted)),
+                  Text(
+                    'Barchasini ko\'rish',
+                    style: TextStyle(fontSize: 13.5, color: _muted),
+                  ),
                   Icon(Icons.chevron_right, size: 18, color: _muted),
                 ],
               ),
@@ -582,50 +662,55 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
         const SizedBox(height: 12),
         SizedBox(
           height: 152,
-          child: _loadingRestaurants
-              ? const Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: kBrand),
-                  ),
-                )
-              : _restaurants.isEmpty
+          child:
+              _loadingRestaurants
+                  ? const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kBrand,
+                      ),
+                    ),
+                  )
+                  : _restaurants.isEmpty
                   // ⚠️ Ro'yxat SERVERDA manzil shahri bo'yicha
                   // filtrlanadi (`visibleRestaurants`). Manzil
                   // tanlangan bo'lsa bo'sh ro'yxat "umuman yo'q"
                   // degani emas — "shu shaharda yo'q" degani, va
                   // matn buni aytishi kerak.
                   ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Text(
-                          _city == kNoAddressLabel
-                              ? 'Hozircha restoran yo\'q'
-                              : 'Manzilingiz hududida hali restoran yo\'q',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 13.5, color: _muted),
-                        ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        _city == kNoAddressLabel
+                            ? 'Hozircha restoran yo\'q'
+                            : 'Manzilingiz hududida hali restoran yo\'q',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13.5, color: _muted),
                       ),
-                    )
-                  : ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _restaurants.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 12),
-                      itemBuilder: (_, i) {
-                        final r =
-                            Map<String, dynamic>.from(_restaurants[i] as Map);
-                        return _RestaurantCard(
-                          restaurant: r,
-                          onTap: () => MenuScreen.open(
-                            context,
-                            (r['id'] ?? '').toString(),
-                            fallbackName: (r['name'] ?? '').toString(),
-                          ),
-                        );
-                      },
                     ),
+                  )
+                  : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _restaurants.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (_, i) {
+                      final r = Map<String, dynamic>.from(
+                        _restaurants[i] as Map,
+                      );
+                      return _RestaurantCard(
+                        restaurant: r,
+                        onTap:
+                            () => MenuScreen.open(
+                              context,
+                              (r['id'] ?? '').toString(),
+                              fallbackName: (r['name'] ?? '').toString(),
+                            ),
+                      );
+                    },
+                  ),
         ),
       ],
     );
@@ -686,27 +771,30 @@ class _ServiceCard extends StatelessWidget {
                     fit: BoxFit.contain,
                     // Rasm topilmasa blok bo'sh qolmasin — xizmat
                     // belgisi o'rnini bosadi.
-                    errorBuilder: (_, _, _) =>
-                        Icon(service.icon, size: 40, color: service.color),
+                    errorBuilder:
+                        (_, _, _) =>
+                            Icon(service.icon, size: 40, color: service.color),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 7),
-          Text(service.title,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: _titleDark)),
+          Text(
+            service.title,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: _titleDark,
+            ),
+          ),
         ],
       ),
     );
   }
-
 }
 
 class _Tile extends StatelessWidget {
@@ -732,8 +820,9 @@ class _Tile extends StatelessWidget {
             child: Image.asset(
               service.image,
               fit: BoxFit.contain,
-              errorBuilder: (_, _, _) =>
-                  Icon(service.icon, size: 28, color: service.color),
+              errorBuilder:
+                  (_, _, _) =>
+                      Icon(service.icon, size: 28, color: service.color),
             ),
           ),
           const SizedBox(height: 7),
@@ -742,10 +831,11 @@ class _Tile extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             style: const TextStyle(
-                fontSize: 11.5,
-                height: 1.28,
-                fontWeight: FontWeight.w500,
-                color: _titleDark),
+              fontSize: 11.5,
+              height: 1.28,
+              fontWeight: FontWeight.w500,
+              color: _titleDark,
+            ),
           ),
         ],
       ),
@@ -763,7 +853,8 @@ class _RestaurantCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = (restaurant['name'] ?? '').toString();
     // "Ochiq/Yopiq" — ish vaqti bilan (server hisobi, `ondex_core`).
-    final open = RestaurantOpenStatus.fromJson(restaurant).at(DateTime.now()).open;
+    final open =
+        RestaurantOpenStatus.fromJson(restaurant).at(DateTime.now()).open;
     final cover = fullImageUrl((restaurant['cover_url'] ?? '').toString());
 
     return InkWell(
@@ -775,51 +866,75 @@ class _RestaurantCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: cover.isEmpty
-                        ? Container(color: _tileBg)
-                        : Image.network(cover,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                Container(color: _tileBg)),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        open ? 'Ochiq' : 'Yopiq',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: open
-                              ? const Color(0xFF16A34A)
-                              : const Color(0xFF9CA3AF),
+              // ┌─ KARTA CHEGARASI KO'RINIB TURSIN ──────────────────────┐
+              // Restoranlar muqova sifatida ko'pincha OQ fonli logotip
+              // qo'yadi. Chegarasiz bunday rasm oq sahifa foniga qo'shilib
+              // ketadi: karta yo'qoladi va logotip ekranda "osilib" qolgandek
+              // ko'rinadi (Book Cafe'da aynan shunday edi).
+              // └────────────────────────────────────────────────────────┘
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _tileBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child:
+                          cover.isEmpty
+                              ? Container(color: _tileBg)
+                              : Image.network(
+                                cover,
+                                fit: BoxFit.cover,
+                                errorBuilder:
+                                    (_, _, _) => Container(color: _tileBg),
+                              ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          // Oq muqovada oq yorliq ko'rinmay qolmasin.
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: Text(
+                          open ? 'Ochiq' : 'Yopiq',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color:
+                                open
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFF9CA3AF),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 7),
-            Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _titleDark)),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _titleDark,
+              ),
+            ),
           ],
         ),
       ),

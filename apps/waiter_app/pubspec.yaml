@@ -34,6 +34,10 @@ dependencies:
   # bot orqali keladi — `api.telegramStart` izohiga qarang.
   url_launcher: ^6.3.2
   posthog_flutter: ^5.39.0
+  # Huquqiy hujjatlarni (oferta, maxfiylik siyosati) ilova ichida
+  # ochish uchun — tizim brauzeriga chiqarmaslik (`legal_webview_screen.dart`).
+  webview_flutter: ^4.9.0
+  webview_flutter_android: ^4.0.0
 
 dev_dependencies:
   flutter_test:

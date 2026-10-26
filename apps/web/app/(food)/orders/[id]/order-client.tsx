@@ -95,10 +95,10 @@ export default function OrderTrackingPage({
       {awaitingPayment && !cancelled && (
         <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
           <p className="font-bold text-amber-800 dark:text-amber-300">
-            To&apos;lov kutilmoqda
+            To'lov kutilmoqda
           </p>
           <p className="mt-1 text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
-            Buyurtma restoranga <b>yuborilmagan</b>. To&apos;lovni
+            Buyurtma restoranga <b>yuborilmagan</b>. To'lovni
             yakunlaganingizdan keyin u avtomatik oshxonaga tushadi. Pul darhol
             yechilmaydi — vaqtincha bloklanadi va restoran buyurtmani qabul
             qilgandagina yechiladi.

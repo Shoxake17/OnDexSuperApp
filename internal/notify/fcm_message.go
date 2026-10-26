@@ -55,6 +55,28 @@ const (
 // Android uchun; yangilarida kanalning vibratsiyasi ishlaydi).
 var waiterReadyVibration = []string{"0s", "0.6s", "0.3s", "0.6s", "0.3s", "0.6s", "0.3s", "0.6s", "0.3s", "0.6s"}
 
+// ┌─ QOLGAN HAMMA XABAR UCHUN KANAL ──────────────────────────────────┐
+// Avval `channel_id` FAQAT affitsiantning "taom tayyor" xabarida
+// ko'rsatilardi. Qolganlari (buyurtma holati, kuryer yo'lga chiqdi,
+// to'lov) kanalsiz ketardi va Android ularni O'ZI yaratadigan
+// `fcm_fallback_notification_channel` da ko'rsatardi: IMPORTANCE
+// DEFAULT, ya'ni ekranda banner chiqmaydi va ko'p telefonda (jumladan
+// Samsung One UI) ovoz ham bermaydi. Qurilma dumpsys'i aynan shuni
+// ko'rsatdi: `channel=fcm_fallback_notification_channel importance=3
+// sound=null vibrate=null` (2026-10-20).
+//
+// Endi xabar aniq kanalga tushadi. Kanalning O'ZI ilovada yaratiladi
+// (`apps/customer_app/android/.../MainActivity.kt`) va manifestda FCM
+// uchun standart kanal sifatida ko'rsatiladi. ID uch joyda ham AYNAN
+// bir xil bo'lishi SHART — bo'lmagan kanalga kelgan xabar yana jim
+// fallback kanaliga tushadi.
+// └───────────────────────────────────────────────────────────────────┘
+const orderChannel = "ondex_orders_v1"
+
+// orderVibration — qisqa, ikki zarbli naqsh (eski Android uchun;
+// yangilarida kanalning o'z vibratsiyasi ishlaydi).
+var orderVibration = []string{"0s", "0.4s", "0.2s", "0.4s"}
+
 // fcmMessage — bitta qurilma uchun FCM v1 `message` obyekti.
 func fcmMessage(token string, e Event) map[string]any {
 	// FCM `data` FAQAT satr qabul qiladi.
@@ -101,12 +123,23 @@ func fcmMessage(token string, e Event) map[string]any {
 			// va "taom tayyor" — mijoz haqida hech narsa yo'q.
 			"visibility": "PUBLIC",
 		}
-		msg["apns"] = map[string]any{
-			"headers": map[string]string{"apns-priority": "10"},
-			"payload": map[string]any{
-				"aps": map[string]any{"sound": "default"},
-			},
+	} else {
+		android["notification"] = map[string]any{
+			"channel_id":              orderChannel,
+			"sound":                   "default",
+			"notification_priority":   "PRIORITY_MAX",
+			"default_vibrate_timings": false,
+			"vibrate_timings":         orderVibration,
+			// Qulflangan ekranda sarlavha ko'rinadi, matn yashiriladi:
+			// bildirishnomada manzil yoki summa bo'lishi mumkin.
+			"visibility": "PRIVATE",
 		}
+	}
+	msg["apns"] = map[string]any{
+		"headers": map[string]string{"apns-priority": "10"},
+		"payload": map[string]any{
+			"aps": map[string]any{"sound": "default"},
+		},
 	}
 	return msg
 }

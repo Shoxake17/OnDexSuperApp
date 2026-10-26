@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"chustapp/internal/banners"
 	"chustapp/internal/catalog"
 	"chustapp/internal/delivery"
 )
@@ -77,6 +78,49 @@ func (s *Server) visibleRestaurants(r *http.Request, list []*catalog.Restaurant)
 	for _, rest := range list {
 		if delivery.Serves(rest.Lat, rest.Lng, u.Address.Lat, u.Address.Lng) {
 			out = append(out, rest)
+		}
+	}
+	return out
+}
+
+// visibleBanners — mijozga ko'rinadigan reklama bannerlari.
+//
+// ┌─ NEGA BANNER HAM FILTRLANADI ───────────────────────────────────────┐
+// Bitta restoranga bog'langan banner ("faqat shu restorandan buyurtma
+// bering") boshqa shahardagi mijozga ko'rsatilsa, u bosganda "boshqa
+// shahar" xatosiga uchraydi — xuddi `visibleRestaurants` yo'q bo'lsa
+// restoran ro'yxatida bo'lib, buyurtma bera olmaydigan restoran paydo
+// bo'lgani kabi. Qoidaning O'ZI ham AYNAN bir xil (`delivery.Serves`).
+//
+// Restoranga BOG'LANMAGAN banner (`RestaurantID == ""`) — umumiy
+// reklama, filtrlanmaydi: tekshiradigan joylashuv yo'q.
+// └────────────────────────────────────────────────────────────────────┘
+func (s *Server) visibleBanners(r *http.Request, list []*banners.Banner) []*banners.Banner {
+	if r.URL.Query().Get("for_me") != "1" {
+		return list
+	}
+	c := claimsFrom(r)
+	if c == nil || c.Subject == "" {
+		return list
+	}
+	u, err := s.UserRepo.GetByID(r.Context(), c.Subject)
+	if err != nil || !delivery.ValidCoords(u.Address.Lat, u.Address.Lng) {
+		return list
+	}
+	out := make([]*banners.Banner, 0, len(list))
+	for _, b := range list {
+		if b.RestaurantID == "" {
+			out = append(out, b)
+			continue
+		}
+		rest, err := s.CatalogRepo.GetRestaurant(r.Context(), b.RestaurantID)
+		if err != nil {
+			// Restoran topilmadi (o'chirilgan) — banner HAM
+			// ko'rsatilmaydi: bosilganda baribir ishlamaydi.
+			continue
+		}
+		if delivery.Serves(rest.Lat, rest.Lng, u.Address.Lat, u.Address.Lng) {
+			out = append(out, b)
 		}
 	}
 	return out

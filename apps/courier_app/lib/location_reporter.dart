@@ -25,13 +25,28 @@ class LocationProblem {
 /// ham tirik qoladi (WebSocket takliflari ham shu sababli yetib keladi).
 /// └───────────────────────────────────────────────────────────────────┘
 class LocationReporter {
-  LocationReporter({required this.onPosition, required this.send});
+  LocationReporter({required this.onPosition, required this.send, this.onError});
 
   /// Xaritadagi "Siz" belgisi uchun (yuborish bilan bir xil oraliqda).
   final void Function(double lat, double lng) onPosition;
 
   /// Serverga yuborish (`POST /couriers/{id}/location`).
   final Future<void> Function(double lat, double lng) send;
+
+  /// Joylashuv OQIMI o'zi uzilganda (GPS o'chirildi, ruxsat bekor
+  /// qilindi) — `onPosition` endi UMUMAN chaqirilmaydi, lekin bu
+  /// jimgina sodir bo'ladi.
+  ///
+  /// ┌─ NEGA KERAK (jonli nosozlik, 2026-10-21) ─────────────────────┐
+  /// Avval bu xato faqat `debugPrint` bilan loglanardi. Kuryer
+  /// ekranda "Liniyada" bo'lib turardi, lekin joylashuvi serverga
+  /// yetmagani uchun dispatch uni ko'rmasdi — buyurtma CHEKSIZ "bo'sh
+  /// onlayn kuryer yo'q" deb aylanaverardi (`internal/couriers/
+  /// reach.go`), kuryer esa nega taklif kelmayotganini bilmasdi.
+  /// Endi chaqiruvchi (`courier_shell.dart`) bu haqda ekranda
+  /// ogohlantirib, kuryerni avtomatik liniyadan chiqaradi.
+  /// └──────────────────────────────────────────────────────────────┘
+  final void Function(Object error)? onError;
 
   /// Yuborish oralig'i. Server chegarasi sekundiga 2 ta
   /// (`courierLocLimiter`), dispatch eskirish chegarasi 3 daqiqa
@@ -109,7 +124,10 @@ class LocationReporter {
         : const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 20);
     _sub = Geolocator.getPositionStream(locationSettings: settings).listen(
       _onPosition,
-      onError: (Object e) => debugPrint('[joylashuv] oqim xatosi: $e'),
+      onError: (Object e) {
+        debugPrint('[joylashuv] oqim xatosi: $e');
+        onError?.call(e);
+      },
     );
   }
 

@@ -172,7 +172,7 @@ export default function ProductDetailSheet({
                 </button>
               </div>
               <AppButton onClick={() => onConfirm(qty)}>
-                Qo&apos;shish &nbsp;•&nbsp; {formatSum(unitPrice * qty)}
+                Qo'shish &nbsp;•&nbsp; {formatSum(unitPrice * qty)}
               </AppButton>
             </>
           ) : (

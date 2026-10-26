@@ -114,7 +114,7 @@ export default async function SearchPage({
           {failed ? (
             <div className="py-10 text-center">
               <p className="text-neutral-500">
-                Hozir ro&apos;yxatni yuklab bo&apos;lmadi.
+                Hozir ro'yxatni yuklab bo'lmadi.
               </p>
               <p className="mt-1 text-sm text-neutral-400">
                 Internet aloqasini tekshirib, sahifani yangilang.

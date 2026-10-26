@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -51,6 +53,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
   /// ro'yxatini ushlab qolardi.
   Repository<List<dynamic>> _restaurants = Repos.restaurants();
   final _categories = Repos.categories();
+  final _banners = Repos.banners();
 
   /// "Pastga tortib yangilash" oqimni qaytadan ishga tushiradi.
   /// Kalit o'zgarishi `StreamBuilder` ni yangi obunaga majburlaydi.
@@ -150,10 +153,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
                     slivers: [
                       // Qotirilgan sarlavha egallagan joy.
                       const SliverToBoxAdapter(
-                          child: SizedBox(height: _kHeaderHeight)),
+                        child: SizedBox(height: _kHeaderHeight),
+                      ),
                       SliverToBoxAdapter(
-                        child:
-                            _CategoryRow(repo: _categories, tick: _reloadTick),
+                        child: _PromoBannerSection(
+                          repo: _banners,
+                          tick: _reloadTick,
+                          restaurants: list,
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _CategoryRow(
+                          repo: _categories,
+                          tick: _reloadTick,
+                        ),
                       ),
 
                       // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
@@ -185,16 +198,22 @@ class _CatalogScreenState extends State<CatalogScreen> {
                             ),
                           ),
                         )
-                      else
+                      else ...[
+                        // Bo'lim sarlavhasi ("Yaqin atrofdagi
+                        // restoranlar") ATAYLAB yo'q — foydalanuvchi
+                        // talabiga ko'ra olib tashlandi: ro'yxat o'zi
+                        // bo'lim ekanligi banner/kategoriyalardan keyin
+                        // allaqachon ko'rinib turadi.
                         SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                           sliver: SliverList.separated(
                             itemCount: list.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 16),
+                            separatorBuilder:
+                                (_, _) => const SizedBox(height: 20),
                             itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
                           ),
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -239,26 +258,28 @@ class _StickyHeader extends StatelessWidget {
       height: _kHeaderHeight,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: scrolled
-            ? const BorderRadius.vertical(bottom: Radius.circular(20))
-            : BorderRadius.zero,
+        borderRadius:
+            scrolled
+                ? const BorderRadius.vertical(bottom: Radius.circular(20))
+                : BorderRadius.zero,
         // Soya skroll paytida sezilarli bo'lishi kerak — sarlavha
         // tarkibdan ajralib turadi. Ikki qatlam: keng va yumshoq
         // (chuqurlik) + tor va aniq (chekka chizig'i).
-        boxShadow: scrolled
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.13),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : const [],
+        boxShadow:
+            scrolled
+                ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.13),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+                : const [],
       ),
       child: child,
     );
@@ -287,7 +308,13 @@ class _HeaderState extends State<_Header> {
   int _unread = 0;
 
   /// Saqlangan manzil matni (`super_home_screen.dart` bilan bir xil manba).
-  String _addressLabel = kNoAddressLabel;
+  ///
+  /// ⚠️ Boshlang'ich qiymat `AddressScope` dan OLINADI. Avval bu yerda
+  /// `kNoAddressLabel` doimiysi turardi — natijada bosh sahifada manzil
+  /// to'g'ri, restoran sahifasida esa "Manzilni tanlang" ko'rinardi:
+  /// `initState` dagi `refresh()` serverdan o'zgarmagan manzilni olardi
+  /// va `AddressScope` hech kimga xabar bermasdi.
+  String _addressLabel = AddressScope.instance.label;
 
   @override
   void initState() {
@@ -308,8 +335,7 @@ class _HeaderState extends State<_Header> {
 
   void _onAddressChanged() {
     if (!mounted) return;
-    final t = AddressScope.instance.text;
-    setState(() => _addressLabel = t.isEmpty ? kNoAddressLabel : t);
+    setState(() => _addressLabel = AddressScope.instance.label);
   }
 
   /// O'qilmagan bildirishnomalar soni.
@@ -340,6 +366,12 @@ class _HeaderState extends State<_Header> {
       _loadAddress();
     }
   }
+
+  void _openSearch(BuildContext context) => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => _RestaurantSearchScreen(restaurants: widget.restaurants),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -389,15 +421,16 @@ class _HeaderState extends State<_Header> {
                             _addressLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
                         const SizedBox(width: 2),
-                        const Icon(Icons.keyboard_arrow_down,
-                            size: 18, color: Color(0xFF757575)),
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 18,
+                          color: Color(0xFF757575),
+                        ),
                       ],
                     ),
                   ),
@@ -407,7 +440,7 @@ class _HeaderState extends State<_Header> {
           ),
           // Amallar: qidiruv, hamyon, bildirishnoma.
           //
-          // ┌─ YORDAMCHI TUGMASI BU YERDA YO'Q ─────────────────────────┐
+          // ┌─ YORDAMCHI TUGMASI BU YERDA YO'Q ─────────────────────┐
           // Ilgari bu qatorda birinchi bo'lib `Icons.auto_awesome`
           // (Yordamchi) turardi. Olib tashlandi: Shaddiy'ga kirish
           // nuqtasi BITTA bo'lishi kerak — pastki menyuning
@@ -418,16 +451,11 @@ class _HeaderState extends State<_Header> {
           // qarab kulrang "!" ko'rsatardi — foydalanuvchi bir joyda
           // ishlaydigan, boshqa joyda ishlamaydigan yordamchini
           // ko'rardi.
-          // └───────────────────────────────────────────────────────────┘
+          // └───────────────────────────────────────────────────────┘
           HeaderActionButton(
             icon: Icons.search,
             label: 'Qidirish',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) =>
-                    _RestaurantSearchScreen(restaurants: widget.restaurants),
-              ),
-            ),
+            onTap: () => _openSearch(context),
           ),
           const SizedBox(width: 8),
           HeaderActionButton(
@@ -501,81 +529,87 @@ class _RestaurantSearchScreenState extends State<_RestaurantSearchScreen> {
   Widget build(BuildContext context) {
     final rawQuery = _query.trim();
     final q = rawQuery.toLowerCase();
-    final results = q.isEmpty
-        ? const <Map<String, dynamic>>[]
-        : widget.restaurants
-            .where(
-                (r) => ((r['name'] as String?) ?? '').toLowerCase().contains(q))
-            .toList();
+    final results =
+        q.isEmpty
+            ? const <Map<String, dynamic>>[]
+            : widget.restaurants
+                .where(
+                  (r) =>
+                      ((r['name'] as String?) ?? '').toLowerCase().contains(q),
+                )
+                .toList();
 
     return PageSheet(
-        child: Scaffold(
-      backgroundColor: Colors.white,
-      appBar: PageAppBar(
-        titleSpacing: 0,
-        titleWidget: AppTextField(
-          controller: _controller,
-          hint: 'Restoran yoki taom qidirish...',
-          icon: Icons.search,
-          autofocus: true,
-          textInputAction: TextInputAction.search,
-          onChanged: (v) => setState(() => _query = v),
-          // Klaviaturadagi "Qidirish" — taomlar bo'yicha (restoranlar
-          // yuqorida allaqachon jonli ko'rinadi).
-          onSubmitted: _searchProducts,
-        ),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close),
-            tooltip: 'Yopish',
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: PageAppBar(
+          titleSpacing: 0,
+          titleWidget: AppTextField(
+            controller: _controller,
+            hint: 'Restoran yoki taom qidirish...',
+            icon: Icons.search,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onChanged: (v) => setState(() => _query = v),
+            // Klaviaturadagi "Qidirish" — taomlar bo'yicha (restoranlar
+            // yuqorida allaqachon jonli ko'rinadi).
+            onSubmitted: _searchProducts,
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          if (rawQuery.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(
-                child: Text(
-                  'Restoran yoki taom nomini yozing',
-                  style: TextStyle(color: Color(0xFF757575)),
-                ),
-              ),
-            )
-          else ...[
-            // ┌─ TAOMLAR — HAR DOIM TAKLIF QILINADI ────────────────────┐
-            // Restoran nomi mos kelmasa ham, xuddi shu matn taom nomi
-            // bo'lishi mumkin ("mohito" — restoran emas, ichimlik).
-            // Foydalanuvchi klaviaturada "Qidirish" bosishi shart
-            // emas — qator har doim ko'rinadi va bosilishi mumkin.
-            // └────────────────────────────────────────────────────────┘
-            _ProductSearchPrompt(
-              query: rawQuery,
-              onTap: () => _searchProducts(rawQuery),
+          actions: [
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close),
+              tooltip: 'Yopish',
             ),
-            const SizedBox(height: 16),
-            if (results.isEmpty)
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            if (rawQuery.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: EdgeInsets.all(32),
                 child: Center(
                   child: Text(
-                    'Mos restoran topilmadi',
+                    'Restoran yoki taom nomini yozing',
                     style: TextStyle(color: Color(0xFF757575)),
                   ),
                 ),
               )
-            else
-              ...results.map((r) => Padding(
+            else ...[
+              // ┌─ TAOMLAR — HAR DOIM TAKLIF QILINADI ────────────────────┐
+              // Restoran nomi mos kelmasa ham, xuddi shu matn taom nomi
+              // bo'lishi mumkin ("mohito" — restoran emas, ichimlik).
+              // Foydalanuvchi klaviaturada "Qidirish" bosishi shart
+              // emas — qator har doim ko'rinadi va bosilishi mumkin.
+              // └────────────────────────────────────────────────────────┘
+              _ProductSearchPrompt(
+                query: rawQuery,
+                onTap: () => _searchProducts(rawQuery),
+              ),
+              const SizedBox(height: 16),
+              if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'Mos restoran topilmadi',
+                      style: TextStyle(color: Color(0xFF757575)),
+                    ),
+                  ),
+                )
+              else
+                ...results.map(
+                  (r) => Padding(
                     padding: const EdgeInsets.only(bottom: 16),
                     child: _RestaurantCard(r: r),
-                  )),
+                  ),
+                ),
+            ],
           ],
-        ],
+        ),
       ),
-    ));
+    );
   }
 }
 
@@ -605,19 +639,25 @@ class _ProductSearchPrompt extends StatelessWidget {
                 child: RichText(
                   text: TextSpan(
                     style: const TextStyle(
-                        fontSize: 14, color: Color(0xFF1A1A1A)),
+                      fontSize: 14,
+                      color: Color(0xFF1A1A1A),
+                    ),
                     children: [
                       const TextSpan(text: '"'),
                       TextSpan(
-                          text: query,
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                        text: query,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       const TextSpan(text: '" bo\'yicha taomlarni qidirish'),
                     ],
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right,
-                  size: 20, color: Color(0xFF9E9E9E)),
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Color(0xFF9E9E9E),
+              ),
             ],
           ),
         ),
@@ -655,13 +695,20 @@ class _CategoryRow extends StatelessWidget {
           // bannerí chiqqan; release build'da esa banner ko'rsatilmaydi
           // va nom jimgina kesilardi — shuning uchun bu uzoq vaqt
           // sezilmagan.
+          //
+          // Doira 62→50 ga kichraygandan keyin ham baland balandlik
+          // saqlanadi: nom hamon ikki qatorgacha chiqishi mumkin.
           // └─────────────────────────────────────────────────────────┘
-          height: 120,
+          height: 112,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             itemCount: list.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            // ┌─ 5 TASI BITTA EKRANGA SIG'ISHI UCHUN ───────────────────┐
+            // Oraliq 14→8: ekranda 5-chi turkum ham skrollsiz to'liq
+            // ko'rinsin (`_CategoryTile.width` bilan birga o'lchandi).
+            // └───────────────────────────────────────────────────────────┘
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (_, i) => _CategoryTile(name: _nameOf(list[i])),
           ),
         );
@@ -691,40 +738,56 @@ class _CategoryTile extends StatelessWidget {
     final asset = categoryIconFor(name);
 
     return SizedBox(
-      width: 76,
+      // ┌─ 5 TASI BITTA EKRANGA SIG'ADI ──────────────────────────────┐
+      // Avval 76 edi — ekranga atigi ~4 ta sig'ar, 5-chisi yarmi
+      // kesilgan holda ko'rinardi. 58 — 5 ta turkum + 4 ta 8px oraliq
+      // 360dp kenglikdagi ekranda (16+16 chekinishdan keyin ~328dp
+      // qolgan joyga) to'liq sig'adigan qilib o'lchangan.
+      // └────────────────────────────────────────────────────────────┘
+      width: 58,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         // Turkum bosilsa — o'sha turkumdagi taomlar (vebdagi
         // `/search?category=...`). Avval plitka UMUMAN bosilmasdi.
-        onTap: () => Navigator.of(context).push(
-          sheetRoute(CategoryProductsScreen(category: name)),
-        ),
+        onTap:
+            () => Navigator.of(
+              context,
+            ).push(sheetRoute(CategoryProductsScreen(category: name))),
         child: Column(
           children: [
             Container(
-              width: 62,
-              height: 62,
+              width: 50,
+              height: 50,
               // Ichki chekinish: surat ramkaga tegib turmasin (vebdagi
               // `p-1` bilan bir xil).
-              padding: const EdgeInsets.all(5),
+              padding: const EdgeInsets.all(4),
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 color: Color(0xFFF5F5F5),
               ),
               clipBehavior: Clip.antiAlias,
-              child: asset == null
-                  ? const Icon(Icons.restaurant, color: Color(0xFF9E9E9E))
-                  : Image.asset(
-                      asset,
-                      // `contain` — surat TO'LIQ ko'rinsin. Avval
-                      // `cover` edi va u kvadrat rasmni dumaloq
-                      // ramkaga sig'dirish uchun chetlarini KESIB
-                      // tashlardi (vebda esa `object-contain`).
-                      fit: BoxFit.contain,
-                      // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
-                      errorBuilder: (_, _, _) => const Icon(Icons.restaurant,
-                          color: Color(0xFF9E9E9E)),
-                    ),
+              child:
+                  asset == null
+                      ? const Icon(
+                        Icons.restaurant,
+                        size: 20,
+                        color: Color(0xFF9E9E9E),
+                      )
+                      : Image.asset(
+                        asset,
+                        // `contain` — surat TO'LIQ ko'rinsin. Avval
+                        // `cover` edi va u kvadrat rasmni dumaloq
+                        // ramkaga sig'dirish uchun chetlarini KESIB
+                        // tashlardi (vebda esa `object-contain`).
+                        fit: BoxFit.contain,
+                        // Asset ro'yxatdan tushib qolsa ilova YIQILMAYDI.
+                        errorBuilder:
+                            (_, _, _) => const Icon(
+                              Icons.restaurant,
+                              size: 20,
+                              color: Color(0xFF9E9E9E),
+                            ),
+                      ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -732,7 +795,7 @@ class _CategoryTile extends StatelessWidget {
               maxLines: 2,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, height: 1.15),
+              style: const TextStyle(fontSize: 11, height: 1.15),
             ),
           ],
         ),
@@ -742,18 +805,183 @@ class _CategoryTile extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// REKLAMA BANNERI — ADMIN PANELIDAN BOSHQARILADI
+// ═══════════════════════════════════════════════════════════════════
+
+/// Turkumlar va restoranlar ro'yxati orasidagi reklama bloki.
+///
+/// ┌─ DINAMIK — YANDEX EATS/GO USLUBI ──────────────────────────────────┐
+/// Avval bu blokning matni ham, rasmi ham kodga QATTIQ YOZILGAN edi:
+/// yangi aksiya chiqarish uchun ilovani qayta qurish kerak bo'lardi.
+/// Endi butunlay serverdan (`GET /promo-banners`) keladi — rasm
+/// `internal/banners` orqali ADMIN PANELIDAN yuklanadi, ixtiyoriy
+/// ravishda bitta restoranga bog'lanadi (bosilsa o'sha restoran
+/// menyusi ochiladi).
+///
+/// Birorta ham FAOL banner bo'lmasa, bo'lim BUTUNLAY YASHIRILADI —
+/// bo'sh joy yoki "yuklanmoqda" aylanmasi "nimadir buzildi" degan
+/// taassurot bermasin (`_restaurantsSection`dagi "Barchasi" havolasi
+/// olib tashlangani bilan bir xil falsafa).
+/// └────────────────────────────────────────────────────────────────────┘
+class _PromoBannerSection extends StatefulWidget {
+  final Repository<List<dynamic>> repo;
+  final int tick;
+
+  /// Banner `restaurant_id`sini HAQIQIY restoran yozuviga aylantirish
+  /// uchun — bosilganda `MenuScreen` AYNAN `_RestaurantCard` bilan bir
+  /// xil to'liq obyektni oladi (internetsiz ham to'g'ri chiziladi).
+  final List<Map<String, dynamic>> restaurants;
+
+  const _PromoBannerSection({
+    required this.repo,
+    required this.tick,
+    required this.restaurants,
+  });
+
+  @override
+  State<_PromoBannerSection> createState() => _PromoBannerSectionState();
+}
+
+class _PromoBannerSectionState extends State<_PromoBannerSection> {
+  final _pageController = PageController();
+  Timer? _timer;
+
+  /// Oxirgi marta oqimdan kelgan banner soni. `setState` SHART EMAS —
+  /// faqat davriy taymer uchun zaxira, ekran bu o'zgarishdan allaqachon
+  /// `StreamBuilder` orqali xabardor.
+  int _count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // ┌─ AVTOMATIK ALMASHISH — har 5 soniyada ───────────────────────┐
+    // Oxirgisidan keyin birinchisiga qaytadi (aylana). Bitta banner
+    // bo'lsa yoki ro'yxat hali kelmagan bo'lsa (`_count <= 1`) hech
+    // narsa qilmaydi — `PageController`ga ulanmagan holatda
+    // `animateToPage` chaqirish xato tashlardi.
+    // └──────────────────────────────────────────────────────────────┘
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_pageController.hasClients || _count <= 1) return;
+      final current = _pageController.page?.round() ?? 0;
+      _pageController.animateToPage(
+        (current + 1) % _count,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic>? _restaurantFor(String id) {
+    if (id.isEmpty) return null;
+    for (final r in widget.restaurants) {
+      if ((r['id'] ?? '').toString() == id) return r;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Cached<List<dynamic>>>(
+      key: ValueKey('banners-${widget.tick}'),
+      stream: widget.repo.observe(force: widget.tick > 0),
+      builder: (context, snap) {
+        final list =
+            (snap.data?.value ?? const []).cast<Map<String, dynamic>>();
+        _count = list.length;
+        if (list.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          // Server "cover" ni 2.4:1 da kesadi (`internal/images.
+          // coverAspectRatio`). Bu yerda 2.5 — biroz pastroq, restoran
+          // kartasidan farqlanishi uchun qasddan (`BoxFit.cover` ortiqcha
+          // chekkani kesib beradi). 2.5 dan kattaroq qilinsa banner
+          // matni (masalan "Book Cafe" logotipi) pastdan kesilib qoladi.
+          child: AspectRatio(
+            aspectRatio: 2.5,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: list.length,
+              itemBuilder:
+                  (_, i) => Padding(
+                    // Bir nechta banner bo'lsa, keyingisi chekkadan
+                    // bir oz ko'rinib tursin — "yana bor" ishorasi.
+                    padding: EdgeInsets.only(right: list.length > 1 ? 10 : 0),
+                    child: _PromoBannerCard(
+                      banner: list[i],
+                      restaurant: _restaurantFor(
+                        (list[i]['restaurant_id'] ?? '').toString(),
+                      ),
+                    ),
+                  ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PromoBannerCard extends StatelessWidget {
+  final Map<String, dynamic> banner;
+
+  /// `null` — banner havolasiz (faqat ko'rsatish uchun) yoki bog'langan
+  /// restoran shu manzilda/shaharda ko'rinmaydi. Ikkala holatda ham
+  /// banner bosilmaydi — "ishlaydigandek" tugma qo'yish jimgina hech
+  /// narsa qilmaydigan tugmadan yomonroq.
+  final Map<String, dynamic>? restaurant;
+
+  const _PromoBannerCard({required this.banner, this.restaurant});
+
+  @override
+  Widget build(BuildContext context) {
+    final image = (banner['image_url'] ?? '').toString();
+    final card = ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: RemoteImage(
+        url: image,
+        fit: BoxFit.cover,
+        placeholder: Container(color: const Color(0xFFFDF1E7)),
+      ),
+    );
+    final r = restaurant;
+    if (r == null) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap:
+          () =>
+              Navigator.of(context).push(sheetRoute(MenuScreen(restaurant: r))),
+      child: card,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // RESTORAN KARTASI
 // ═══════════════════════════════════════════════════════════════════
 
-/// Cover rasmi ustidagi oq matn uchun soya.
+/// Ro'yxatdagi bitta restoran — katta surat kartasi (`image/restarannts.png`).
 ///
-/// Gradient o'rniga ATAYLAB shu ishlatiladi (veb `restaurant-card.tsx`
-/// bilan bir xil qaror): soya faqat harflar atrofida bo'ladi, brend
-/// suratini bosmaydi.
-const _textShadow = [
-  Shadow(color: Color(0xBF000000), blurRadius: 4, offset: Offset(0, 1)),
-];
-
+/// Tepada to'liq kenglikdagi muqova surati, pastida nom+reyting va
+/// yetib borish vaqti/turkum qatori.
+///
+/// ┌─ MAKETDAGI AYRIM BELGILAR QASDAN YO'Q ─────────────────────────────┐
+/// Rasmda chegirma yorlig'i ("-10%"), sovg'a belgisi va yurakcha
+/// (sevimli) ham bor. Ular QO'SHILMADI — bular uchun HAQIQIY ma'lumot
+/// hali yo'q: chegirmalar faqat bitta restoran bo'yicha so'raladi
+/// (`GET /restaurants/{id}/active-promotions`), ro'yxat uchun ularni
+/// yig'adigan endpoint yo'q; restoranni "sevimli" qilish esa backendda
+/// umuman mavjud emas (faqat MAHSULOT sevimli bo'lishi mumkin,
+/// `internal/favorites`). Soxta belgi chizib qo'yish — bosilganda
+/// ishlamaydigan tugma — bu loyihada qoida bilan taqiqlangan.
+/// └──────────────────────────────────────────────────────────────────┘
 class _RestaurantCard extends StatelessWidget {
   final Map<String, dynamic> r;
   const _RestaurantCard({required this.r});
@@ -765,209 +993,238 @@ class _RestaurantCard extends StatelessWidget {
     final now = DateTime.now();
     final status = RestaurantOpenStatus.fromJson(r).at(now);
     final open = status.open;
-    final openDetail = status.detail(now);
     final cover = (r['cover_url'] as String?) ?? '';
+    final logo = ((r['logo_url'] as String?) ?? '').trim();
+    // Katta surat uchun MUQOVA birinchi o'rinda — u taom/muassasa
+    // manzarasi, logotip esa (ko'pincha kvadrat belgi) faqat ehtiyot
+    // nusxa sifatida, muqova bo'lmaganda.
+    final image = cover.isNotEmpty ? cover : logo;
     final name = (r['name'] as String?) ?? '';
-    final tags = ((r['tags'] as String?) ?? '').trim();
     final address = ((r['address'] as String?) ?? '').trim();
 
     // 0 = kiritilmagan. Soxta "0.0 ★" yoki "0 daqiqa" KO'RSATILMAYDI —
     // veb tomondagi `restaurant-card.tsx` bilan bir xil qoida.
     final rating = (r['rating'] as num?)?.toDouble() ?? 0;
-    final ratingCount = (r['rating_count'] as num?)?.toInt() ?? 0;
     final etaMin = (r['eta_min_minutes'] as num?)?.toInt() ?? 0;
     final etaMax = (r['eta_max_minutes'] as num?)?.toInt() ?? 0;
     final hasRating = rating > 0;
     final hasEta = etaMin > 0 && etaMax > 0;
 
-    final card = Container(
-      height: 200,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        // Cover yo'q bo'lsa fon TO'Q bo'lishi shart: oq matn och
-        // kulrang ustida o'qilmasdi.
-        color: const Color(0xFF3A3A3A),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (cover.isNotEmpty)
-            // Rasm kelmasa karta baribir o'qiladi — matn ostidagi
-            // to'q fon qoladi.
-            RemoteImage(url: cover)
-          else
-            const Center(
-              child: Icon(Icons.storefront_outlined,
-                  size: 64, color: Color(0x40FFFFFF)),
-            ),
+    // `null` — hisoblab bo'lmadi (`internal/httpapi/scene_access.go`,
+    // `withDeliveryFee`): bunda HECH narsa ko'rsatilmaydi, "bepul" deb
+    // FARAZ QILINMAYDI. 0 — haqiqatan ham bepul (oylik maoshli kuryer).
+    final deliveryFeeTiyin = (r['delivery_fee_tiyin'] as num?)?.toInt();
 
-          // ┌─ COVER RASMI O'ZGARTIRILMAYDI ──────────────────────────┐
-          // Avval bu yerda pastdan yuqoriga qorayadigan gradient
-          // turardi va u brend suratini bosib, kartani xira
-          // ko'rsatardi. Vebda u ATAYLAB olib tashlangan
-          // (`restaurant-card.tsx`), lekin native tomonda qolib
-          // ketgan — ikkalasi shu sababdan farq qilardi.
-          //
-          // Matn o'qilishi endi gradient bilan emas, HARF SOYASI
-          // bilan ta'minlanadi: soya faqat harflar atrofida bo'ladi,
-          // rasmning o'ziga tegmaydi.
-          // └─────────────────────────────────────────────────────────┘
-
-          Positioned(
-            right: 12,
-            top: 12,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 230),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                openDetail == null ? status.label : '${status.label} · $openDetail',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color:
-                      open ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+    final card = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          // ┌─ BANNER BILAN BIR XIL BURCHAK/CHEGARA, LEKIN BO'YI KO'PROQ ──┐
+          // Burchak radiusi (20) tepadagi reklama banneri bilan bir xil
+          // (`_PromoBannerSection`) — ikkala blok bir xil uslubda
+          // ko'rinadi. Nisbat esa ATAYLAB farqli: restoran surati 2.0
+          // (bannerdan balandroq — taom surati kichik bo'lib qolmasin),
+          // banner 2.7 (reklama matni uchun keng, past panel yetarli).
+          // Chegara oq fonli muqova/logotip (masalan Book Cafe) sahifa
+          // foniga qo'shilib ketmasligi uchun kerak.
+          // └────────────────────────────────────────────────────────────┘
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(19),
+            child: AspectRatio(
+              aspectRatio: 2.0,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  image.isEmpty
+                      ? Container(color: const Color(0xFFF3F4F6))
+                      : RemoteImage(
+                        url: image,
+                        fit: BoxFit.cover,
+                        placeholder: Container(
+                          color: const Color(0xFFF3F4F6),
+                        ),
+                      ),
+                // Yopiq bo'lsa surat qoraytiriladi — mijoz oldindan
+                // bilib, bosmaydi. Holat yorlig'ining o'zi endi doim
+                // o'ng yuqori burchakda (pastda emas).
+                if (!open) Container(color: const Color(0x66000000)),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _StatusChip(open: open, label: status.label),
                 ),
+                ],
               ),
             ),
           ),
-
-          Positioned(
-            left: 16,
-            // O'ngda "Ochiq/Yopiq" belgisi turadi — matn uning ostiga
-            // kirib ketmasligi uchun keng chekinish (vebdagi `pr-24`).
-            right: 96,
-            bottom: 14,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    shadows: _textShadow,
-                  ),
-                ),
-                if (tags.isNotEmpty)
+        ),
+        const SizedBox(height: 8),
+        // ┌─ IKKI USTUN ────────────────────────────────────────────────────┐
+        // Chap ustun (3 qator): nom, yetkazish narxi, manzil. O'ng ustun
+        // (2 qator, nomdan boshlab tepaga tekislangan): reyting TEPADA,
+        // yetkazish vaqti uning OSTIDA — yonma-yon EMAS. Turkum teglari
+        // (`tags`) qasddan YO'Q: yuqoridagi "Turkumlar" qatori shu
+        // ma'lumotni beradi.
+        // └───────────────────────────────────────────────────────────────┘
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    tags,
+                    name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        shadows: _textShadow),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF111827),
+                    ),
                   ),
-                if (address.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.place_outlined,
-                            size: 12,
-                            color: Colors.white,
-                            shadows: _textShadow),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            address,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white,
+                  if (deliveryFeeTiyin != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: _DeliveryFeeChip(tiyin: deliveryFeeTiyin),
+                    ),
+                  if (address.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.place_outlined,
+                            size: 14,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
                                 fontSize: 12,
-                                shadows: _textShadow),
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (hasRating || hasEta) ...[
+              const SizedBox(width: 10),
+              Padding(
+                // o'ngdan ozgina bo'shliq — chekkaga yopishib qolmasin;
+                // tepadan ozgina tushirilgan — nom bilan ikkalasi
+                // bitta chiziqqa to'g'ri kelib, "yopishib" qolmasin.
+                padding: const EdgeInsets.only(right: 2, top: 3),
+                child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (hasRating)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star, size: 15, color: kBrand),
+                        const SizedBox(width: 2),
+                        Text(
+                          rating.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF111827),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                if (hasEta || hasRating)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Wrap(
-                      spacing: 8,
+                  if (hasRating && hasEta) const SizedBox(height: 4),
+                  if (hasEta)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (hasEta)
-                          _Chip(
-                            icon: Icons.schedule,
-                            iconColor: const Color(0xFF444444),
-                            text: '$etaMin–$etaMax daqiqa',
+                        const Icon(
+                          Icons.directions_walk,
+                          size: 14,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$etaMin–$etaMax daq',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
                           ),
-                        if (hasRating)
-                          _Chip(
-                            icon: Icons.star,
-                            iconColor: kBrand,
-                            text: ratingCount > 0
-                                ? '${rating.toStringAsFixed(1)} ($ratingCount+)'
-                                : rating.toStringAsFixed(1),
-                          ),
+                        ),
                       ],
                     ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+                ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
     );
 
     // Yopiq restoran bosilmaydi — menyusi ochilsa mijoz savat
     // to'ldirib, checkout'da rad javob olardi.
-    if (!open) return Opacity(opacity: 0.6, child: card);
+    if (!open) return card;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       // Menyu endi NATIVE. Restoran `Map`i uzatiladi — menyu ekrani
       // sarlavhani qayta so'ramaydi va internet bo'lmasa ham to'g'ri
       // chizadi (`menu_screen.dart` izohiga qarang).
-      onTap: () => Navigator.of(context).push(
-        // Menyu pastdan suzib chiqadi (`widgets/sheet_page.dart`).
-        sheetRoute(MenuScreen(restaurant: r)),
-      ),
+      onTap:
+          () => Navigator.of(context).push(
+            // Menyu pastdan suzib chiqadi (`widgets/sheet_page.dart`).
+            sheetRoute(MenuScreen(restaurant: r)),
+          ),
       child: card,
     );
   }
 }
 
-class _Chip extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String text;
-
-  const _Chip(
-      {required this.icon, required this.iconColor, required this.text});
+/// Ochiq/yopiqlik blokcha — har doim ko'rinadi (faqat yopiqda emas).
+/// Server hisobidan (`RestaurantOpenStatus`), qo'lda tugma emas.
+class _StatusChip extends StatelessWidget {
+  final bool open;
+  final String label;
+  const _StatusChip({required this.open, required this.label});
 
   @override
   Widget build(BuildContext context) {
+    final color = open ? const Color(0xFF16A34A) : const Color(0xFF6B7280);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: open ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: iconColor),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
           const SizedBox(width: 5),
           Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF262626),
+              color: color,
             ),
           ),
         ],
@@ -976,4 +1233,41 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// Yangilash yiqilganda — mazmun ustidagi kichik ogohlantirish.
+/// Yetkazish narxi blokchasi — 0 bo'lsa "Bepul yetkazish" (yashil),
+/// aks holda aniq summa. Qiymat `null` bo'lsa bu vidjet umuman
+/// chaqirilmaydi (`_RestaurantCard` dagi `if (deliveryFeeTiyin != null)`).
+class _DeliveryFeeChip extends StatelessWidget {
+  final int tiyin;
+  const _DeliveryFeeChip({required this.tiyin});
+
+  @override
+  Widget build(BuildContext context) {
+    final free = tiyin <= 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: free ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.moped_outlined,
+            size: 13,
+            color: free ? const Color(0xFF16A34A) : const Color(0xFF6B7280),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            free ? 'Bepul yetkazish' : 'Yetkazish ${formatSum(tiyin)}',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: free ? const Color(0xFF16A34A) : const Color(0xFF6B7280),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

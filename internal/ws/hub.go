@@ -250,18 +250,54 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, keys ...string) {
 		slog.Info("ws: uzildi", "keys", clean)
 	}()
 
-	// Klientdan kelgan xabarlar hozircha ishlatilmaydi — o'qish sikli
-	// uzilishni sezish VA pong'ni qabul qilish uchun.
+	// O'qish sikli: uzilishni sezish, pong'ni qabul qilish VA
+	// klientning tiriklik so'roviga javob berish uchun.
 	conn.SetReadLimit(4 << 10)
 	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		// Klientdan kelgan har qanday freym ham ulanish tirikligini
+		// bildiradi (faqat protokol pong'i emas).
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+		if isClientPing(msg) && !c.enqueue(pongFrame) {
+			// Navbat to'lgan bo'lsa ulanishni cho'zishdan ma'no yo'q.
+			c.stop()
 			return
 		}
 	}
+}
+
+// ┌─ KLIENT TIRIKLIK SO'ROVI ─────────────────────────────────────────┐
+// Protokol darajasidagi ping/pong'ni SERVER boshlaydi va brauzer/Dart
+// klienti unga avtomatik javob beradi — lekin javob klient KODIGA
+// ko'rinmaydi. Shu sabab klient "soket ochiq, ammo serverdan hech
+// narsa kelmayapti" holatini (yarim ochiq ulanish) aniqlay olmasdi:
+// restoran paneli aynan shunday jimgina o'lik soket bilan 12 daqiqa
+// turgan va buyurtmalar jonli yetmagan (2026-10-20).
+//
+// Endi klient `{"type":"ping"}` yuboradi, server `{"type":"pong"}`
+// qaytaradi. Javob kelmasa klient o'zi qayta ulanadi.
+// └───────────────────────────────────────────────────────────────────┘
+var pongFrame = []byte(`{"type":"pong"}`)
+
+// isClientPing — xabar klientning tiriklik so'rovimi.
+//
+// Qat'iy JSON tahlili: `"ping"` satrini shunchaki izlash boshqa
+// hodisa matnida tasodifan uchrab qolishi mumkin edi.
+func isClientPing(msg []byte) bool {
+	var m struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(msg, &m); err != nil {
+		return false
+	}
+	return m.Type == "ping"
 }
 
 // Send — kalit ostidagi barcha ulanishlarga JSON event yuboradi.

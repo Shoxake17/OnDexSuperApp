@@ -159,7 +159,7 @@ function MobileHome({
       <div className="mt-5 flex flex-col gap-4">
         {restaurants.length === 0 ? (
           <p className="py-10 text-center text-neutral-500">
-            Hozircha restoran yo&apos;q
+            Hozircha restoran yo'q
           </p>
         ) : (
           restaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)
@@ -219,7 +219,7 @@ function MobileHome({
                       <span className="font-bold">
                         &quot;{query.trim()}&quot;
                       </span>{" "}
-                      bo&apos;yicha taomlarni qidirish
+                      bo'yicha taomlarni qidirish
                     </span>
                     <ChevronRight
                       size={18}

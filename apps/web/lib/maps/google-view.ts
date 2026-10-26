@@ -15,7 +15,7 @@ export function createGoogleView(container: HTMLElement, opts: MapViewOptions): 
     zoom: opts.zoom,
     disableDefaultUI: true,
     keyboardShortcuts: false,
-    gestureHandling: "greedy",
+    gestureHandling: `greedy`,
     clickableIcons: false,
   });
   const lines = new Map<string, google.maps.Polyline>();
@@ -29,7 +29,7 @@ export function createGoogleView(container: HTMLElement, opts: MapViewOptions): 
   }
 
   return {
-    provider: "google",
+    provider: `google`,
     getCenter() {
       const c = map.getCenter();
       return c ? { lat: c.lat(), lng: c.lng() } : opts.center;
@@ -49,8 +49,8 @@ export function createGoogleView(container: HTMLElement, opts: MapViewOptions): 
       }
       map.fitBounds({ south: b.minLat, west: b.minLng, north: b.maxLat, east: b.maxLng }, padding);
     },
-    onIdle: (cb) => listen("idle", cb),
-    onUserDrag: (cb) => listen("dragstart", cb),
+    onIdle: (cb) => listen(`idle`, cb),
+    onUserDrag: (cb) => listen(`dragstart`, cb),
     addCircle(center, radiusM, s: CircleStyle) {
       circles.push(
         new google.maps.Circle({

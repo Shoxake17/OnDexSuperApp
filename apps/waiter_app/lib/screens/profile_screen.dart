@@ -4,6 +4,7 @@ import 'package:ondex_core/ondex_core.dart' show LegalSection, appVersionLabel;
 import '../state/waiter_store.dart';
 import '../theme.dart';
 import 'history_screen.dart';
+import 'legal_webview_screen.dart';
 
 /// Profil va sozlamalar.
 ///
@@ -99,7 +100,18 @@ class ProfileScreen extends StatelessWidget {
         // (bug.md 70-band). Manzil `ondex_core.LegalLinks` da, ya'ni
         // beshta ilovada bir xil.
         const SizedBox(height: 12),
-        const _Section(children: [LegalSection(showDivider: true)]),
+        _Section(
+          children: [
+            LegalSection(
+              showDivider: true,
+              onOpen: (context, title, url) => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LegalWebViewScreen(title: title, url: url),
+                ),
+              ),
+            ),
+          ],
+        ),
 
         const SizedBox(height: 12),
         _Section(

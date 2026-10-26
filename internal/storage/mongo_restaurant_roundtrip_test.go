@@ -31,6 +31,10 @@ var computedFields = map[string]bool{
 	"OpenNow": true, "ClosedReason": true, "OpenChangesAt": true,
 	// Mijozga ko'rinadigan to'lov usullari (`WithPaymentOptions`).
 	"PaymentOptions": true,
+	// Yetkazish narxi — `staff.DeliveryFee` dan, `internal/httpapi/
+	// scene_access.go` da har so'rovda qaytadan hisoblanadi
+	// (`catalog.go` dagi "YETKAZIB BERISH NARXI BU YERDA EMAS" izohi).
+	"DeliveryFeeTiyin": true,
 }
 
 // fillRestaurant — har bir maydonga NOLDAN FARQLI qiymat qo'yadi.

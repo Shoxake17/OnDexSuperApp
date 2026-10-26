@@ -231,67 +231,6 @@ export default function PrivacyPage() {
           ma’lumotlar yashirilgan bo‘ladi.
         </Clause>
         <Clause n="3.3">
-          <b>Texnik hamkorlarga</b> — quyidagi ro‘yxatdagi hajmda:
-        </Clause>
-        <DataTable
-          rows={[
-            {
-              what: "Eskiz.uz (O‘zbekiston)",
-              why: "SMS tasdiqlash kodini yetkazish",
-              basis: "Telefon raqami va kod matni",
-              keep: "Provayder siyosatiga muvofiq",
-            },
-            {
-              what: "Telegram (Telegram FZ-LLC)",
-              why: "Bot orqali kirish va xabarnomalar",
-              basis: "Telegram ID, xabar matni",
-              keep: "Provayder siyosatiga muvofiq",
-            },
-            {
-              what: "Octo (to‘lov provayderi)",
-              why: "Karta orqali to‘lovni amalga oshirish",
-              basis: "Summa, buyurtma identifikatori, telefon",
-              keep: "Provayder siyosatiga muvofiq",
-            },
-            {
-              what: "Google (Maps, Geocoding, Distance Matrix)",
-              why: "Manzilni aniqlash, masofa va yetkazish vaqtini hisoblash",
-              basis: "Koordinatalar yoki manzil matni",
-              keep: "So‘rov davomida",
-            },
-            {
-              what: "Yandex Geocoder, 2GIS",
-              why: "Google aniq ko‘chani topa olmaganda manzilni aniqlashtirish",
-              basis: "Koordinatalar",
-              keep: "So‘rov davomida",
-            },
-            {
-              what: "Google Firebase Cloud Messaging",
-              why: "Push-xabarnomalarni yetkazish",
-              basis: "Qurilma tokeni, xabar matni",
-              keep: "Provayder siyosatiga muvofiq",
-            },
-            {
-              what: "Resend",
-              why: "Elektron pochta xabarlarini yuborish",
-              basis: "E-pochta manzili, xabar matni",
-              keep: "Provayder siyosatiga muvofiq",
-            },
-            {
-              what: "Cloudflare R2",
-              why: "Rasm va media fayllarni saqlash",
-              basis: "Yuklangan fayllar (taom rasmlari)",
-              keep: "Fayl o‘chirilgunga qadar",
-            },
-            {
-              what: "AI xizmatlari (Shaddiy AI, Google Gemini)",
-              why: "Matnli va ovozli yordamchi ishlashi",
-              basis: "Suhbat matni, ovozli rejimda — audio oqim",
-              keep: "Suhbat davomida",
-            },
-          ]}
-        />
-        <Clause n="3.4">
           <b>Vakolatli davlat organlariga</b> — qonun hujjatlarida
           belgilangan tartibda va asoslar bo‘lgan taqdirdagina.
         </Clause>
@@ -324,8 +263,7 @@ export default function PrivacyPage() {
         </Clause>
         <Clause n="4.6">
           Ma’lumotlar O‘zbekiston Respublikasi hududidagi serverlarda
-          saqlanadi. Yuqorida sanab o‘tilgan texnik hamkorlarga uzatish
-          xizmat ko‘rsatish uchun zarur bo‘lgan hajmda amalga oshiriladi.
+          saqlanadi.
         </Clause>
       </Section>
 

@@ -6,6 +6,7 @@
 
 /** Mijoz veb-ilovasi (restoranlar, buyurtma). */
 export const EATS_URL = "https://eats.ondex.uz";
+export const MAPS_URL = "https://maps.ondex.uz";
 
 /** Kirish — veb-ilovaning kirish sahifasi, keyin ilovaning ichiga. */
 export const EATS_LOGIN_URL = `${EATS_URL}/login`;

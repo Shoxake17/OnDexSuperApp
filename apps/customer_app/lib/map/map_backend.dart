@@ -25,7 +25,8 @@
 /// Google: bu ilgarigi production xatti-harakati.
 library;
 
-import 'package:ondex_core/ondex_core.dart' show MapConfigService;
+import 'package:ondex_core/ondex_core.dart'
+    show MapConfigSender, MapConfigService;
 
 // OnDexMap'ning o'zgarmas sozlamalari (manzil, uslub, hududlar) — kuryer
 // ilovasi bilan umumiy paketda.
@@ -36,3 +37,17 @@ export 'package:ondex_maplibre/ondex_constants.dart';
 /// Ekran ochilganda BIR MARTA o'qiladi (xarita ish paytida motor
 /// almashtirmaydi) — faqat OnDexMap xatosida Google'ga tushadi.
 bool get useOndexMapNow => MapConfigService.instance.useOndexMap;
+
+/// Xarita ekrani ochilishidan OLDIN serverdan qayta so'raydi.
+///
+/// ┌─ NEGA KERAK ────────────────────────────────────────────────────────┐
+/// `MapConfigService` faqat `HomeShell.initState`da — ya'ni sessiya
+/// boshida — BIR MARTA yangilanadi. Ilova fonga tushib qayta ochilsa
+/// (Dart jarayoni o'lmaydi), admin panelda shu orada o'zgargan rejim
+/// hech qachon mijozga yetmasdi: xarita ekrani eski (keshdagi) qiymatni
+/// o'qirdi. Shu funksiya har bir xarita ekrani o'z holatini tanlashdan
+/// oldin so'rovni qaytaradi — shunda almashtirgich haqiqatan ham
+/// "real time" ishlaydi, ilovani qayta ishga tushirish shart emas.
+/// └────────────────────────────────────────────────────────────────────┘
+Future<void> refreshMapConfigNow(MapConfigSender send) =>
+    MapConfigService.instance.refresh(send);

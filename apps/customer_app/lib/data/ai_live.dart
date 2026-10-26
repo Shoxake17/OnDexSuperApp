@@ -304,11 +304,22 @@ class AiLive extends ChangeNotifier {
         sampleRate: _inputRate,
         numChannels: 1,
         // ┌─ AKUSTIK AKS-SADO BOSTIRISH ──────────────────────────────┐
-        // `voiceCommunication` manbasi Android'ning AEC/NS
-        // zanjirini yoqadi. Busiz mikrofon dinamikdan chiqayotgan
-        // JAVOBNI eshitadi va model o'z ovoziga javob berib,
-        // cheksiz siklga tushadi.
+        // `voiceCommunication` manbasi O'ZI AEC/NS zanjirini
+        // kafolatlamaydi — bu faqat Android'ga "bu VoIP qo'ng'iroq"
+        // deb ishora qiladi, haqiqiy effektlar (`AcousticEchoCanceler`,
+        // `NoiseSuppressor`) `echoCancel`/`noiseSuppress` BAYROQLARI
+        // bilan ALOHIDA yoqiladi (`record` paketi, standart — ikkalasi
+        // ham `false`).
+        //
+        // Jonli o'lchov (2026-10-21, Galaxy S23+): shu bayroqlarsiz
+        // 20 soniyalik suhbatda 5 marta "interrupted" keldi — mikrofon
+        // karnaydan chiqqan javobni eshitib, modelni o'z ovoziga
+        // javob beryapti deb hisobladi va javob mijozga har 3-4
+        // soniyada bir "uzilib-uzilib" eshitildi (server logi,
+        // `internal/assistant/live.go` dagi `interrupted` hisoblagich).
         // └───────────────────────────────────────────────────────────┘
+        echoCancel: true,
+        noiseSuppress: true,
         androidConfig: AndroidRecordConfig(
           audioSource: AndroidAudioSource.voiceCommunication,
         ),
@@ -436,6 +447,25 @@ class AiLive extends ChangeNotifier {
       'type': 'checkout_ready',
       'restaurant': restaurant,
       'total_tiyin': totalTiyin,
+    }));
+  }
+
+  /// `AgentDriver` savatni ekranda yig'ib bo'lolmadi (odam o'zi
+  /// to'xtatmagan — menyu ochilmadi, taom topilmadi, tugma
+  /// faollashmadi). Shaddiy buni aytib, foydalanuvchini qolgan
+  /// qadamni o'zi (odatdagi ekranlarda) bajarishga yo'naltirishi
+  /// kerak — aks holda u `checkout_ready` ni abadiy kutib qolardi.
+  ///
+  /// `reasonCode` — `AgentDriver` dagi qat'iy kod (erkin matn EMAS).
+  /// Gapni SERVER tuzadi (`checkoutReady` bilan bir xil sabab:
+  /// mijozdan erkin matn qabul qilinsa, model ko'rsatmasini qayta
+  /// yozish xavfi bo'lardi).
+  void checkoutFailed({required String reasonCode}) {
+    final ch = _ch;
+    if (ch == null || _state != AiLiveState.active) return;
+    ch.sink.add(jsonEncode({
+      'type': 'checkout_failed',
+      'reason_code': reasonCode,
     }));
   }
 

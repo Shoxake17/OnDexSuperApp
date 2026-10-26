@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../live.dart';
+import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
@@ -19,6 +20,7 @@ import 'login_screen.dart';
 ///   * **Statistika** — barcha restoranlar bo'yicha umumiy ko'rsatkichlar;
 ///   * **Mijozlar**;
 ///   * **OnDex kuryerlari** — restoranga bog'lanmagan platforma kuryerlari;
+///   * **Bannerlar** — mijoz ilovasidagi reklama bloki (Yandex Eats/Go uslubi);
 ///   * **Sozlamalar** — qo'llab-quvvatlash aloqa ma'lumotlari;
 ///   * (eng pastda) **OnDexMap** — alohida loyihaning muharriri va takliflari.
 class AdminShell extends StatefulWidget {
@@ -66,6 +68,13 @@ const _navTop = <_NavSpec>[
     screen: 'Couriers',
     icon: Icons.delivery_dining_outlined,
     selectedIcon: Icons.delivery_dining,
+  ),
+  (
+    key: 'nav-banners',
+    label: 'Bannerlar',
+    screen: 'Banners',
+    icon: Icons.campaign_outlined,
+    selectedIcon: Icons.campaign,
   ),
   (
     key: 'nav-settings',
@@ -139,7 +148,8 @@ class _AdminShellState extends State<AdminShell> {
         2 => const CustomersPage(),
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
         3 => const CouriersPage(onlyPlatform: true),
-        4 => const SettingsPage(),
+        4 => const BannersPage(),
+        5 => const SettingsPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),

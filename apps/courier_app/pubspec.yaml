@@ -43,6 +43,10 @@ dependencies:
   # Restoranga "Qo'ng'iroq qilish" tugmasi uchun (tel: havolasini ochadi).
   url_launcher: ^6.3.0
   posthog_flutter: ^5.39.0
+  # Huquqiy hujjatlarni (oferta, maxfiylik siyosati) ilova ichida
+  # ochish uchun — tizim brauzeriga chiqarmaslik (`legal_webview_screen.dart`).
+  webview_flutter: ^4.9.0
+  webview_flutter_android: ^4.0.0
   # Yangi buyurtma taklifi ilova YOPIQ bo'lsa ham yetib borsin (FCM push).
   # Versiyalar affitsiant ilovasi bilan bir xil.
   firebase_core: ^4.2.0

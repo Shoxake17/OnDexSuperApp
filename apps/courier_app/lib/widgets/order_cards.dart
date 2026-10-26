@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../order_view.dart';
+import '../screens/legal_webview_screen.dart';
 import '../theme.dart';
 
 // Kuryer ekranining kartochkalari (yorug' mavzu, image/Kuryer.png).
@@ -838,7 +839,13 @@ class ProfileTab extends StatelessWidget {
             const Divider(height: 1, color: kLine),
             // Huquqiy hujjatlar — maxfiylik siyosatiga havola MAJBURIY
             // (bug.md 70-band).
-            const LegalSection(),
+            LegalSection(
+              onOpen: (context, title, url) => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LegalWebViewScreen(title: title, url: url),
+                ),
+              ),
+            ),
             const Divider(height: 1, color: kLine),
             ListTile(
               leading: const Icon(Icons.logout, color: kDanger),

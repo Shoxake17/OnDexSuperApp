@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MissingPluginException, rootBundle;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
@@ -82,9 +82,10 @@ Future<Uint8List> _chiz(
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)..scale(k);
   chizuvchi(canvas);
-  final img = await recorder
-      .endRecording()
-      .toImage((w * k).round(), (h * k).round());
+  final img = await recorder.endRecording().toImage(
+    (w * k).round(),
+    (h * k).round(),
+  );
   final data = await img.toByteData(format: ui.ImageByteFormat.png);
   return data!.buffer.asUint8List();
 }
@@ -265,9 +266,28 @@ const double _logoPinSize = 46;
 /// kattalashtirib yuborardi.
 /// └────────────────────────────────────────────────────────────────────┘
 Future<void> loadPoiIcons(ml.MapLibreMapController ctrl) async {
+  // ┌─ XARITA YO'Q BO'LSA — DARHOL TO'XTAYMIZ ──────────────────────────┐
+  // `onStyleLoadedCallback` ba'zan ALLAQACHON yo'q qilingan xarita
+  // ko'rinishi uchun ishga tushadi (foydalanuvchi ekranni tezda
+  // yopsa yoki uslub almashsa). Nativ tomonda `MethodChannel`
+  // ishlovchisi `dispose()` da o'chiriladi, shuning uchun har bir
+  // `addImage` `MissingPluginException` beradi.
+  //
+  // Avval sikl shunday bo'lsa ham oxirigacha ishlardi: 40 dan ortiq
+  // rasm bekorga chizilib, logga 40 ta bir xil xato tushardi
+  // (telefon logida kuzatilgan, 2026-10-20). Endi birinchi shunday
+  // xatoda to'xtaymiz va BITTA qator yozamiz — tirik xarita uslubi
+  // yuklanganda belgilar baribir qaytadan qo'yiladi.
+  // └───────────────────────────────────────────────────────────────────┘
+  var gone = false;
+
   Future<void> qosh(String nom, Future<Uint8List> Function() chiz) async {
+    if (gone) return;
     try {
       await ctrl.addImage(nom, await chiz());
+    } on MissingPluginException {
+      gone = true;
+      debugPrint('[ondexmap] xarita yopilgan — belgilar qo\'yilmadi');
     } catch (e) {
       // Jim qolmaydi: aks holda rasm yo'qligi (masalan asset
       // `pubspec.yaml` ga qo'shilmagani) xaritadagi bo'shliq bo'lib
@@ -284,10 +304,15 @@ Future<void> loadPoiIcons(ml.MapLibreMapController ctrl) async {
       '$poiPrefix${e.key}',
       () => fayl != null ? _pngIcon(fayl) : _badge(e.value),
     );
+    if (gone) return;
   }
 
   for (final e in _routeDots.entries) {
-    await qosh('$markerPrefix${e.key}', () => _routeDot(e.value, e.key.toUpperCase()));
+    await qosh(
+      '$markerPrefix${e.key}',
+      () => _routeDot(e.value, e.key.toUpperCase()),
+    );
+    if (gone) return;
   }
   await qosh(markerSelected, _logoPin);
 }
@@ -341,7 +366,9 @@ Future<Uint8List> _routeDot(Color fill, String label) {
 /// tuvalning pastki chetiga yaqin, shuning uchun belgi nuqtaga
 /// «sanchiladi».
 Future<Uint8List> _logoPin() async {
-  final data = await rootBundle.load('packages/ondex_maplibre/assets/poi/$_logoPinFile');
+  final data = await rootBundle.load(
+    'packages/ondex_maplibre/assets/poi/$_logoPinFile',
+  );
   final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
   final img = (await codec.getNextFrame()).image;
 
@@ -362,7 +389,9 @@ Future<Uint8List> _logoPin() async {
 /// qiladi. Tenglab cho'zilsa yotiq rasmlar (shifoxona, dorixona)
 /// tikka cho'zilgandek ko'rinardi.
 Future<Uint8List> _pngIcon(String fayl) async {
-  final data = await rootBundle.load('packages/ondex_maplibre/assets/poi/$fayl');
+  final data = await rootBundle.load(
+    'packages/ondex_maplibre/assets/poi/$fayl',
+  );
   const px = _pinSize;
 
   final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
@@ -424,7 +453,8 @@ Future<Uint8List> _badge(_Poi spec) {
     );
   }
 
-  final tp = TextPainter(text: span, textDirection: TextDirection.ltr)..layout();
+  final tp = TextPainter(text: span, textDirection: TextDirection.ltr)
+    ..layout();
 
   return _chiz(s, s, (canvas) {
     canvas.drawCircle(c, s / 2 - 0.5, Paint()..color = Colors.white);
@@ -432,4 +462,3 @@ Future<Uint8List> _badge(_Poi spec) {
     tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
   });
 }
-

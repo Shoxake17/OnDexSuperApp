@@ -162,29 +162,52 @@ func (f *FCM) accessToken(ctx context.Context) (string, error) {
 	return out.AccessToken, nil
 }
 
-// Push — har bir tokenga alohida yuboradi.
+// Push — `PushDetailed` ning qisqa shakli (`Pusher` interfeysi).
+func (f *FCM) Push(ctx context.Context, tokens []string, e Event) error {
+	_, err := f.PushDetailed(ctx, tokens, e)
+	return err
+}
+
+// PushDetailed — har bir tokenga alohida yuboradi va ARTIQ MAVJUD
+// BO'LMAGAN tokenlar ro'yxatini qaytaradi.
 //
 // FCM v1 da guruh yuborish yo'q (legacy `registration_ids` olib
 // tashlangan), shuning uchun sikl. Tokenlar soni odatda 1-3 ta
 // (foydalanuvchining qurilmalari).
-func (f *FCM) Push(ctx context.Context, tokens []string, e Event) error {
+//
+// ┌─ NEGA O'LIK TOKENLAR QAYTARILADI ─────────────────────────────────┐
+// Ilova qayta o'rnatilganda yoki ma'lumotlari tozalanganda FCM eski
+// tokenni o'ldiradi va unga yuborilgan har bir xabar `404
+// UNREGISTERED` beradi. Avval bunday token bazada ABADIY qolardi:
+// dev telefonida bitta foydalanuvchiga 8 ta o'lik token yig'ilib,
+// har bir bildirishnoma 8 ta keraksiz HTTP so'rov va 8 ta WARN
+// bergan (api.log, 2026-10-20) — ustiga ustak `Push` xato qaytargani
+// uchun log "push yuborilmadi" deyardi, holbuki tirik qurilmaga
+// xabar yetib borgan edi.
+//
+// Endi o'lik tokenlar chaqiruvchiga qaytariladi va u ularni
+// do'kondan o'chiradi (`notify.Service`). Xato esa FAQAT haqiqiy
+// nosozlikda qaytadi — eskirgan token nosozlik emas.
+// └───────────────────────────────────────────────────────────────────┘
+func (f *FCM) PushDetailed(ctx context.Context, tokens []string, e Event) ([]string, error) {
 	if f == nil || len(tokens) == 0 {
-		return nil
+		return nil, nil
 	}
 	access, err := f.accessToken(ctx)
 	if err != nil {
-		return fmt.Errorf("fcm: token olinmadi: %w", err)
+		return nil, fmt.Errorf("fcm: token olinmadi: %w", err)
 	}
 	endpoint := "https://fcm.googleapis.com/v1/projects/" +
 		url.PathEscape(f.sa.ProjectID) + "/messages:send"
 
+	var dead []string
 	var firstErr error
 	for _, t := range tokens {
 		// Xabar tuzilishi (kanal, ovoz, vibratsiya) — `fcm_message.go`.
 		raw, _ := json.Marshal(map[string]any{"message": fcmMessage(t, e)})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 		if err != nil {
-			return err
+			return dead, err
 		}
 		req.Header.Set("Authorization", "Bearer "+access)
 		req.Header.Set("Content-Type", "application/json")
@@ -198,18 +221,50 @@ func (f *FCM) Push(ctx context.Context, tokens []string, e Event) error {
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			// 404/400 — token eskirgan yoki yaroqsiz. Chaqiruvchi
-			// uni o'chirishi mumkin, lekin bu yerda faqat log —
-			// tokenlar do'koni bu paketga bog'liq emas.
-			slog.Warn("fcm: yuborilmadi", "status", resp.StatusCode,
-				"javob", strings.TrimSpace(string(body)))
-			if firstErr == nil {
-				firstErr = fmt.Errorf("fcm: HTTP %d", resp.StatusCode)
-			}
+		if resp.StatusCode < 400 {
+			continue
+		}
+		if isUnregistered(resp.StatusCode, body) {
+			// Qurilma endi yo'q — bu nosozlik EMAS, shuning uchun
+			// `firstErr` ga yozilmaydi. Log ham INFO: har kuni bir
+			// necha marta bo'lishi me'yor.
+			dead = append(dead, t)
+			slog.Info("fcm: token eskirgan — o'chirish uchun qaytarildi")
+			continue
+		}
+		// Javob tanasi butunlay yozilmaydi: u ko'p qatorli JSON va
+		// logni to'ldirib yuborardi.
+		slog.Warn("fcm: yuborilmadi", "status", resp.StatusCode,
+			"javob", shortBody(body))
+		if firstErr == nil {
+			firstErr = fmt.Errorf("fcm: HTTP %d", resp.StatusCode)
 		}
 	}
-	return firstErr
+	return dead, firstErr
+}
+
+// isUnregistered — token endi mavjud emasmi.
+//
+// FAQAT 404/`UNREGISTERED` va `INVALID_ARGUMENT` ning AYNAN token
+// haqidagi shakli hisobga olinadi. Oddiy 400 ni "token o'lik" deb
+// bo'lmaydi: xabarning o'zi noto'g'ri tuzilgan bo'lsa (bizning
+// xatomiz) hamma qurilma bazadan o'chib ketardi.
+func isUnregistered(status int, body []byte) bool {
+	if status != http.StatusNotFound {
+		return false
+	}
+	return bytes.Contains(body, []byte("UNREGISTERED")) ||
+		bytes.Contains(body, []byte("NotRegistered"))
+}
+
+// shortBody — logga sig'adigan bir qatorli ko'rinish.
+func shortBody(b []byte) string {
+	s := strings.Join(strings.Fields(string(b)), " ")
+	const max = 240
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
 
 // base64 importi PEM tahlilida kerak bo'lmasa ham, xizmat akkaunti

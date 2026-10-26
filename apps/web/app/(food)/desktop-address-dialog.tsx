@@ -294,7 +294,7 @@ export default function DesktopAddressDialog({
           <div className="relative h-[380px] w-full overflow-hidden rounded-2xl bg-white/5">
             {mapFailed ? (
               <div className="flex h-full items-center justify-center px-8 text-center text-sm text-white/45">
-                Xaritani yuklab bo&apos;lmadi. Internet aloqasini tekshiring.
+                Xaritani yuklab bo'lmadi. Internet aloqasini tekshiring.
               </div>
             ) : (
               <>

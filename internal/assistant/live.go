@@ -293,6 +293,15 @@ type LiveSession struct {
 	// siklidan yuboriladi — ya'ni ikki yozuvchi bor.
 	sendMu sync.Mutex
 
+	// interrupted — seans davomida nechta marta "interrupted" kelgani
+	// (`receive` ichida o'qiydi/yozadi, qulf kerak emas — bitta
+	// goroutine). Tashxis uchun: haqiqiy foydalanuvchi uzilishi kamdan
+	// -kam, lekin mikrofon aks-sado (eho) ni ushlab qolsa model o'z
+	// ovoziga javob berib "uzilgan" deb hisoblanadi — bu holda javob
+	// mijozga BO'LAK-BO'LAK, uzilib-uzilib eshitiladi, sabab esa
+	// avval loglarda umuman ko'rinmasdi.
+	interrupted int
+
 	closeOnce sync.Once
 }
 
@@ -335,6 +344,33 @@ func (s *Service) StartLive(ctx context.Context, cfg LiveConfig,
 			}},
 		},
 		Tools: geminiTools(disabledSet(disabledTools)),
+		// ┌─ NOTO'G'RI "UZILISH" KAMAYTIRILDI ─────────────────────────┐
+		// Gemini Live'ning gapni-boshlash sezgirligi STANDART bo'yicha
+		// YUQORI (`StartSensitivityUnspecified` ≈ HIGH — kutubxona
+		// izohida ochiq yozilgan: "HIGH for Gemini Live"). Bu degani:
+		// minimal ovoz signali (karnaydan qaytgan aks-sado, nafas,
+		// fon shovqini) ham "foydalanuvchi gapirdi" deb hisoblanadi
+		// va model javobini DARHOL to'xtatadi (`interrupted`).
+		//
+		// Jonli o'lchov (2026-10-21, Galaxy S23+, mikrofon
+		// `echoCancel`/`noiseSuppress` ALLAQACHON yoqilgan holda):
+		// 2.5 daqiqalik suhbatda 31 marta "interrupted" — ~5
+		// soniyada bir marta. Mikrofon tarafidagi tuzatish YETARLI
+		// EMAS edi, chunki muammo model tarafidagi QARORDA edi.
+		//
+		// LOW: gap boshlanishini KAMROQ aniqlaydi (uzunroq, aniqroq
+		// ovoz kerak) — tasodifiy signal uni ishga tushirmaydi.
+		// `PrefixPaddingMs` oshirilishi ham xuddi shu maqsadda:
+		// "gap boshlandi" deb hisoblashdan OLDIN necha millisekund
+		// uzluksiz ovoz kerakligini oshiradi.
+		// └───────────────────────────────────────────────────────────┘
+		RealtimeInputConfig: &genai.RealtimeInputConfig{
+			AutomaticActivityDetection: &genai.AutomaticActivityDetection{
+				StartOfSpeechSensitivity: genai.StartSensitivityLow,
+				EndOfSpeechSensitivity:   genai.EndSensitivityLow,
+				PrefixPaddingMs:          genai.Ptr(int32(220)),
+			},
+		},
 		// ┌─ "O'YLASH" MATNI SO'RALMAYDI ─────────────────────────────┐
 		// `native-audio` modellari fikrlash jarayonini ham qaytaradi
 		// va u AYNAN javob matni bilan bir kanaldan keladi. Sinovda
@@ -464,6 +500,65 @@ func (l *LiveSession) NotifyCheckoutReady(restaurant string, totalTiyin int64) e
 	})
 }
 
+// checkoutFailureText — `reasonCode` bo'yicha qat'iy, oldindan
+// yozilgan gap. Ro'yxatda yo'q yoki bo'sh kod — zaxira matnga tushadi.
+var checkoutFailureText = map[string]string{
+	"menu_timeout": "Restoran menyusini ochib bo'lmadi (ilova sekin " +
+		"javob berdi yoki tarmoq muammosi).",
+	"product_not_found": "Savatdagi taomlardan biri hozirgi menyuda topilmadi " +
+		"(ehtimol tugagan yoki o'chirilgan).",
+	"checkout_button_timeout": "Savat ochildi, lekin rasmiylashtirish " +
+		"tugmasi vaqtida faollashmadi.",
+}
+
+// NotifyCheckoutFailed — `AgentDriver` (mijoz) savatni ekranda yig'ib,
+// rasmiylashtirishga YETOLMADI (odam o'zi to'xtatmagan).
+//
+// ┌─ NEGA KERAK ──────────────────────────────────────────────────────┐
+// `propose_order`dan keyin model "hozir savatga qo'shib, rasmiylash-
+// tirishga olib chiqaman" deb aytadi va `checkout_ready` xabarini
+// kutadi. Boshqaruvchi yiqilsa (menyu ochilmadi, taom topilmadi,
+// tugma faollashmadi) bu xabar HECH QACHON kelmaydi — model abadiy
+// kutib qoladi, foydalanuvchi esa faqat ekranda taom qidirilib, keyin
+// JIM qolganini ko'radi. Jonli sinovda (2026-10-21) model shu sababli
+// qayta-qayta `propose_order` chaqirib, bir xil holat TAKRORLANDI.
+// └────────────────────────────────────────────────────────────────────┘
+//
+// ┌─ MATNNI SERVER YOZADI, MIJOZ EMAS ─────────────────────────────────┐
+// `reasonCode` — mijozdan keladigan QAT'IY KOD, erkin matn EMAS
+// (`checkoutFailureText` xaritasidan tashqarisi tushsa zaxira matnga
+// tushadi) — `NotifyCheckoutReady` dagi bilan AYNAN bir xil sabab:
+// mijoz erkin matn yuborsa, model ko'rsatmasini qayta yozishi mumkin
+// edi (prompt injection).
+// └────────────────────────────────────────────────────────────────────┘
+func (l *LiveSession) NotifyCheckoutFailed(reasonCode string) error {
+	if l.disabled[CapCheckout] {
+		return nil
+	}
+	detail, ok := checkoutFailureText[reasonCode]
+	if !ok {
+		detail = "Savatni ekranda avtomatik yig'ib bo'lmadi."
+	}
+
+	text := fmt.Sprintf(
+		"[TIZIM XABARI — foydalanuvchi aytmadi] Buyurtmani ekranda "+
+			"avtomatik tayyorlash TO'XTADI. Sabab: %s HOZIR foydalanuvchiga "+
+			"buni tushuntir va taklif kartasidagi tugma orqali yoki "+
+			"menyudan o'zi davom etishini ayt. propose_order ni qaytadan "+
+			"chaqirishdan OLDIN foydalanuvchidan nima qilishni so'ra.",
+		detail)
+
+	l.sendMu.Lock()
+	defer l.sendMu.Unlock()
+	return l.sess.SendClientContent(genai.LiveClientContentInput{
+		Turns: []*genai.Content{{
+			Role:  "user",
+			Parts: []*genai.Part{{Text: text}},
+		}},
+		TurnComplete: genai.Ptr(true),
+	})
+}
+
 // Close — seansni yopadi. Ikki marta chaqirilsa xavfsiz.
 func (l *LiveSession) Close() error {
 	var err error
@@ -487,6 +582,16 @@ func (l *LiveSession) emit(e LiveEvent) bool {
 func (l *LiveSession) receive(ctx context.Context) {
 	defer close(l.events)
 	defer l.Close()
+	// Seans qancha marta "uzilgani" — bitta joyda, yopilganda.
+	// `routes_assistant_live.go` dagi "ai live: seans yopildi" bilan
+	// birga o'qib, "javob uzilib-uzilib keldi" shikoyatini mikrofon
+	// aks-sadosimi yoki tarmoq/bufer muammosimi ajratish mumkin.
+	defer func() {
+		if l.interrupted > 0 {
+			slog.Info("assistant live: seansda uzilishlar",
+				"user", l.userID, "soni", l.interrupted)
+		}
+	}()
 
 	l.emit(LiveEvent{Type: LiveEventReady})
 
@@ -563,6 +668,21 @@ func (l *LiveSession) receive(ctx context.Context) {
 			// Foydalanuvchi model gapirayotganda gapirdi: ilova
 			// navbatdagi audioni TASHLASHI kerak, aks holda eski
 			// javob yangi savol ustidan gapiraveradi.
+			//
+			// ┌─ TASHXIS UCHUN SANALADI ────────────────────────────────┐
+			// Bitta javob ichida bir necha marta kelsa — bu ODATDA
+			// HAQIQIY uzilish emas, balki mikrofon dinamikdan chiqqan
+			// JAVOBNI eshitib, modelni o'z ovoziga javob beryapti deb
+			// hisoblaydi (aks-sado bostirish — `AndroidAudioSource.
+			// voiceCommunication` — har doim ham to'liq ushlab
+			// qolmasligi mumkin, ayniqsa karnay balandligi yoki fon
+			// shovqini yuqori bo'lsa). Natija: mijozga javob BO'LAK-
+			// BO'LAK, "uzilib-uzilib" eshitiladi. Avval bu signal
+			// hech qayerda qayd etilmasdi.
+			// └───────────────────────────────────────────────────────────┘
+			l.interrupted++
+			slog.Info("assistant live: uzildi (interrupted)",
+				"user", l.userID, "shu_seansda_soni", l.interrupted)
 			l.emit(LiveEvent{Type: LiveEventInterrupted})
 		}
 		if sc.TurnComplete {

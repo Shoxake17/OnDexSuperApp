@@ -50,6 +50,10 @@ class Repos {
   /// o'zgarmaydi.
   static const _ttlCategories = Duration(hours: 12);
 
+  /// Reklama bannerlari — admin panelidan kamdan-kam o'zgaradi, lekin
+  /// yangi aksiya chiqarilganda tez ko'rinishi uchun menyudan qisqaroq.
+  static const _ttlBanners = Duration(minutes: 5);
+
   /// Buyurtmalar — holat o'zgarishi WebSocket orqali JONLI keladi,
   /// shuning uchun so'rov siklining o'zi tez-tez bo'lishi shart emas.
   static const _ttlOrders = Duration(minutes: 2);
@@ -86,6 +90,14 @@ class Repos {
         key: 'categories',
         ttl: _ttlCategories,
         fetch: api.categories,
+      );
+
+  /// Reklama bannerlari (`catalog_screen.dart` dagi `_PromoBanner`).
+  static Repository<List<dynamic>> banners() => _list(
+        store: _public,
+        key: 'banners',
+        ttl: _ttlBanners,
+        fetch: api.banners,
       );
 
   /// Menyu HAR RESTORAN uchun alohida kalit bilan saqlanadi —
