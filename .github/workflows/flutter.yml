@@ -95,5 +95,13 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # packages/ondex_maplibre'da hali test/ papkasi yo'q — `flutter test`
+      # test papkasi topilmasa har doim exit 1 bilan yiqiladi, shuning uchun
+      # avval tekshiramiz.
       - name: Test
-        run: flutter test
+        run: |
+          if [ -d test ]; then
+            flutter test
+          else
+            echo "test/ papkasi topilmadi — bu paketda testlar yo'q, o'tkazib yuborildi."
+          fi
