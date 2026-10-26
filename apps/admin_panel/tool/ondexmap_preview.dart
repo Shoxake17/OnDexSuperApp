@@ -2,7 +2,7 @@
 // (ko'rinishni tekshirish uchun). Production build'ga KIRMAYDI (`lib/` da emas).
 //
 //     flutter run -d windows -t tool/ondexmap_preview.dart
-import 'package:chust_admin/pages/ondexmap_page.dart';
+import 'package:ondex_admin/pages/ondexmap_page.dart';
 import 'package:flutter/material.dart';
 
 void main() {

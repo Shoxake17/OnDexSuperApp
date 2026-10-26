@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:chust_admin/ondexmap/editor_view.dart';
-import 'package:chust_admin/ondexmap/moderation_api.dart';
-import 'package:chust_admin/ondexmap/ondexmap_session.dart';
+import 'package:ondex_admin/ondexmap/editor_view.dart';
+import 'package:ondex_admin/ondexmap/moderation_api.dart';
+import 'package:ondex_admin/ondexmap/ondexmap_session.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';

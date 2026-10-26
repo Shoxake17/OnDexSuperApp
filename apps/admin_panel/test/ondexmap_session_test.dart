@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:chust_admin/ondexmap/ondexmap_session_io.dart';
+import 'package:ondex_admin/ondexmap/ondexmap_session_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // Lokal sessiya: token fayldan o'qiladi, manzil FAQAT loopback bo'lsa ishoniladi.

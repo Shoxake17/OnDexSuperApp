@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:chust_admin/ondexmap/moderation_api.dart';
-import 'package:chust_admin/ondexmap/ondexmap_session.dart';
+import 'package:ondex_admin/ondexmap/moderation_api.dart';
+import 'package:ondex_admin/ondexmap/ondexmap_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

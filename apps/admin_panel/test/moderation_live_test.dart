@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:chust_admin/ondexmap/editor_geometry.dart';
-import 'package:chust_admin/ondexmap/moderation_api.dart';
-import 'package:chust_admin/ondexmap/ondexmap_session_io.dart';
+import 'package:ondex_admin/ondexmap/editor_geometry.dart';
+import 'package:ondex_admin/ondexmap/moderation_api.dart';
+import 'package:ondex_admin/ondexmap/ondexmap_session_io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';

@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:chust_admin/api.dart';
-import 'package:chust_admin/pages/support_chat_page.dart';
-import 'package:chust_admin/support_inbox.dart';
+import 'package:ondex_admin/api.dart';
+import 'package:ondex_admin/pages/support_chat_page.dart';
+import 'package:ondex_admin/support_inbox.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

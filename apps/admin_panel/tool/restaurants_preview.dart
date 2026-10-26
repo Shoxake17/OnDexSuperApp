@@ -6,7 +6,7 @@
 //     flutter build windows --debug -t tool/restaurants_preview.dart
 import 'dart:convert';
 
-import 'package:chust_admin/screens/shell.dart';
+import 'package:ondex_admin/screens/shell.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
