@@ -111,6 +111,11 @@ jobs:
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # SARIF natijasini artifact qilib yuklashni o'chiramiz — bu
+          # faqat qo'shimcha, hech narsaga kerak emas, lekin hisob
+          # darajasidagi Actions storage kvotasi to'lganda shu yuklash
+          # BUTUN jobni (demak, deploy'ni ham) yiqitib qo'yardi.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
 
   # ══════════════════════════════════════════════════════════════════
   # 1. Go sifati — build, vet, test, rasmiy zaiflik bazasi
