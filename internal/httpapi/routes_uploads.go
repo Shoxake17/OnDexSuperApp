@@ -95,6 +95,9 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 			switch imgType {
 			case "cover":
 				webpBytes, err = images.ProcessCoverImage(file)
+			case "banner":
+				// Bosh sahifa / do'kon banneri: tayyor grafika kesilmaydi.
+				webpBytes, err = images.ProcessBannerImage(file)
 			case "logo":
 				webpBytes, err = images.ProcessLogoImage(file)
 			default:
@@ -109,6 +112,8 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 			switch imgType {
 			case "cover":
 				prefix = "covers"
+			case "banner":
+				prefix = "banners"
 			case "logo":
 				prefix = "logos"
 			}

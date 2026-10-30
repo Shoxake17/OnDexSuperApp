@@ -33,14 +33,14 @@ const userColumns = `id, phone, name, role, entity_id, created_at,
 	address_lat, address_lng, address_text, address_entrance, address_floor,
 	address_apartment, address_intercom, address_comment,
 	first_name, last_name, email, password_hash, phone_verified, email_verified,
-	COALESCE(telegram_id, 0), deleted_at`
+	COALESCE(telegram_id, 0), deleted_at, store_category`
 
 func scanUser(row pgx.Row, u *users.User) error {
 	return row.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt,
 		&u.Address.Lat, &u.Address.Lng, &u.Address.Text, &u.Address.Entrance,
 		&u.Address.Floor, &u.Address.Apartment, &u.Address.Intercom, &u.Address.Comment,
 		&u.FirstName, &u.LastName, &u.Email, &u.PasswordHash, &u.PhoneVerified,
-		&u.EmailVerified, &u.TelegramID, &u.DeletedAt)
+		&u.EmailVerified, &u.TelegramID, &u.DeletedAt, &u.StoreCategory)
 }
 
 // GetByTelegramID — Telegram Mini App kirishi (migration 0031).
@@ -139,11 +139,11 @@ func (r *PgUserRepo) Create(ctx context.Context, u *users.User) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO users (id, phone, name, role, entity_id, created_at,
 		                    first_name, last_name, email, password_hash, phone_verified,
-		                    email_verified)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		                    email_verified, store_category)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		u.ID, u.Phone, u.Name, u.Role, u.EntityID, u.CreatedAt,
 		u.FirstName, u.LastName, u.Email, u.PasswordHash, u.PhoneVerified,
-		u.EmailVerified)
+		u.EmailVerified, string(u.StoreCategory))
 	return mapUserConstraint(err)
 }
 
@@ -204,6 +204,21 @@ func (r *PgUserRepo) UpdateProfile(ctx context.Context, id string, p users.Profi
 func (r *PgUserRepo) SetPasswordHash(ctx context.Context, id, hash string) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE users SET password_hash = $2 WHERE id = $1`, id, hash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return users.ErrUserNotFound
+	}
+	return nil
+}
+
+// SetStoreProfile — do'kon nomi va kategoriyasi. `role = 'store'` sharti
+// MUHIM: bu usul orqali boshqa rol (mijoz, admin) akkauntiga tegib bo'lmaydi.
+func (r *PgUserRepo) SetStoreProfile(ctx context.Context, id, name string, category users.StoreCategory) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET name = $2, store_category = $3 WHERE id = $1 AND role = 'store'`,
+		id, name, string(category))
 	if err != nil {
 		return err
 	}

@@ -28,6 +28,7 @@ import (
 	"chustapp/internal/payments/multicardpay"
 	"chustapp/internal/revoke"
 	"chustapp/internal/secretstore"
+	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/storage"
 	"chustapp/internal/support"
@@ -52,6 +53,11 @@ const (
 	ProdB = "e2e-prod-b"
 
 	encKey = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
+	// Yagona kirish (SSO) test klienti.
+	SSOClientID     = "merchant"
+	SSOClientSecret = "e2e-sso-secret-e2e-sso-secret-e2e-sso-secret-0123456789"
+	SSORedirectURI  = "https://pos.ondex.uz/auth/callback"
 )
 
 // noGoogle — Google Distance Matrix o'rniga: har doim xato qaytaradi va
@@ -110,6 +116,10 @@ type Actor struct {
 	UserID string
 	Phone  string
 	Entity string // restoran/kuryer ID
+
+	// Headers — qo'shimcha sarlavhalar (masalan POS serveri klient siri bilan,
+	// Authorization'siz). Bo'sh bo'lishi mumkin.
+	Headers map[string]string
 }
 
 // World — butun tizimning jonli nusxasi: HAQIQIY HTTP serveri, xotira
@@ -330,7 +340,17 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	w.Owner = mk("restoran-A", "e2e-owner-a", users.RoleRestaurant, RestA, "+998900000004", users.AddressDetails{})
 	w.OwnerB = mk("restoran-B", "e2e-owner-b", users.RoleRestaurant, RestB, "+998900000005", users.AddressDetails{})
 
+	ssoSvc, ssoErr := sso.New([]sso.Client{{
+		ID: SSOClientID, Name: "OnDex Merchant Panel", Secret: SSOClientSecret,
+		RedirectURIs: []string{SSORedirectURI},
+	}}, w.Users)
+	if ssoErr != nil {
+		t.Fatalf("SSO sozlamasi: %v", ssoErr)
+	}
+
 	api := httpapi.New(httpapi.Deps{
+		SSO:      ssoSvc,
+		QurtRepo: storage.NewMemoryQurtRepo(),
 		UserRepo: w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,
 		CatalogRepo: cachedCatalog, CatalogSvc: catalog.NewService(cachedCatalog),
 		PromotionsRepo: promo, FavoritesRepo: storage.NewMemoryFavoritesRepo(),
@@ -432,6 +452,9 @@ func (w *World) Do(t *testing.T, a *Actor, method, path string, body any) *Resp 
 		actor = a.Name
 		if a.Token != "" {
 			req.Header.Set("Authorization", "Bearer "+a.Token)
+		}
+		for k, v := range a.Headers {
+			req.Header.Set(k, v)
 		}
 	}
 	start := time.Now()

@@ -57,6 +57,7 @@ var roleName = map[string]users.Role{
 	"RoleRestaurant": users.RoleRestaurant,
 	"RoleCourier":    users.RoleCourier,
 	"RoleWaiter":     users.RoleWaiter,
+	"RoleStore":      users.RoleStore,
 }
 
 // concretePath — `{id}` kabi parametrlarni fikstura yaratgan HAQIQIY
@@ -146,6 +147,7 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 		users.RoleRestaurant: mk("u-rest", users.RoleRestaurant, "rest-a", "+998900000003"),
 		users.RoleCourier:    mk("u-cour", users.RoleCourier, "cour-ent-1", "+998900000004"),
 		users.RoleWaiter:     mk("u-waiter", users.RoleWaiter, "rest-a", "+998900000005"),
+		users.RoleStore:      mk("u-store", users.RoleStore, "store-a", "+998900000006"),
 	}
 	jwt := map[users.Role]string{}
 	for role, u := range made {
@@ -207,7 +209,7 @@ func allowsRole(r authRoute, role users.Role) bool {
 func TestAuthorizationMatrix(t *testing.T) {
 	roles := []users.Role{
 		users.RoleAdmin, users.RoleCustomer, users.RoleRestaurant,
-		users.RoleCourier, users.RoleWaiter,
+		users.RoleCourier, users.RoleWaiter, users.RoleStore,
 	}
 	routes := discoverProtectedRoutes(t)
 	t.Logf("himoyalangan endpointlar: %d ta", len(routes))

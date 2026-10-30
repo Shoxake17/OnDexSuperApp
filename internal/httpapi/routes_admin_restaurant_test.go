@@ -10,6 +10,7 @@ import (
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/orders"
+	"chustapp/internal/revoke"
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
 	"chustapp/internal/ws"
@@ -53,6 +54,7 @@ func adminRestaurantServer(t *testing.T, userRepo users.Repository) (http.Handle
 		OrderRepo:      storage.NewMemoryOrderRepo(),
 		CourierRepo:    storage.NewMemoryCourierRepo(),
 		Tokens:         tokens,
+		Revoked:        revoke.New(nil, time.Hour),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,
 			storage.NewMemoryPromotionsRepo()),

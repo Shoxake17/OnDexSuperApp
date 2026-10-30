@@ -170,6 +170,19 @@ func (r *MemoryUserRepo) SetPasswordHash(_ context.Context, id, hash string) err
 	return nil
 }
 
+func (r *MemoryUserRepo) SetStoreProfile(_ context.Context, id, name string, category users.StoreCategory) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.data[id]
+	if !ok || u.Role != users.RoleStore {
+		return users.ErrUserNotFound
+	}
+	u.Name = name
+	u.StoreCategory = category
+	r.data[id] = u
+	return nil
+}
+
 // ── Yordamchi amallariga ruxsat ──
 //
 // Alohida xaritada: `users.User` ga maydon qo'shilsa u JSON javoblarga

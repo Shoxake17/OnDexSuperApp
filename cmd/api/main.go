@@ -43,6 +43,7 @@ import (
 	"chustapp/internal/payments/multicardpay"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
+	"chustapp/internal/qurt"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
@@ -50,6 +51,7 @@ import (
 	"chustapp/internal/scenes"
 	"chustapp/internal/search"
 	"chustapp/internal/secretstore"
+	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/storage"
@@ -236,6 +238,8 @@ func main() {
 	var catalogRepo catalog.Repository
 	var bookRepo catalog.BookRepository
 	var promotionsRepo promotions.Repository
+	// Qurt do'konlari mahsulotlari: Mongo rejimida Mongo'da, aks holda xotirada.
+	var qurtRepo qurt.Repository = storage.NewMemoryQurtRepo()
 	var favoritesRepo favorites.Repository
 	var pgPool *pgxpool.Pool // katalog Mongo'da bo'lmasa zaxira sifatida ishlatiladi
 
@@ -404,6 +408,11 @@ func main() {
 		// Kitob ombori faqat Mongo rejimida: katalog ham shu yerda.
 		bookRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
+		qurtRepo = storage.NewMongoQurtRepo(mdb, httpapi.NewID)
+		if err := storage.EnsureQurtIndexes(ctx, mdb); err != nil {
+			slog.Error("qurt indekslari yaratilmadi", "err", err)
+			os.Exit(1)
+		}
 		slog.Info("rejim: MongoDB (katalog)")
 
 		// ---------- Tezkor qidiruv (MeiliSearch, ixtiyoriy) ----------
@@ -1046,6 +1055,41 @@ func main() {
 		slog.Warn("rejim: in-memory (OnDex Wallet) â€” server qayta ishga tushganda yo'qoladi")
 	}
 	walletSvc := wallet.NewService(walletRepo, httpapi.NewID)
+
+	// Yagona kirish (SSO): OnDex Merchant Panel foydalanuvchini OnDex orqali
+	// tekshiradi (`internal/sso`). Sir bo'lmasa funksiya O'CHIQ (`nil`, `/sso/*`
+	// 503). Sozlama NOTO'G'RI bo'lsa (zaif sir, xavfsiz bo'lmagan manzil)
+	// ham o'chiq qoladi, lekin API ishga tushishda davom etadi: ixtiyoriy
+	// funksiya butun serverni yiqitmasligi kerak.
+	var ssoSvc *sso.Service
+	if secret := os.Getenv("SSO_MERCHANT_SECRET"); secret != "" {
+		name := strings.TrimSpace(os.Getenv("SSO_MERCHANT_NAME"))
+		if name == "" {
+			name = "OnDex Merchant Panel"
+		}
+		svc, err := sso.New([]sso.Client{{
+			ID:           "merchant",
+			Name:         name,
+			Secret:       secret,
+			RedirectURIs: sso.ParseRedirectURIs(os.Getenv("SSO_MERCHANT_REDIRECT_URIS")),
+		}}, userRepo)
+		if err != nil {
+			slog.Error("yagona kirish (SSO) YOQILMADI: sozlama noto'g'ri", "err", err)
+		} else {
+			// Restoran nomi Mongo katalogida: POS paneli do'kon hisobini
+			// ochganda akkaunt ismi emas, restoran nomi chiqsin.
+			svc.WithEntityNamer(func(ctx context.Context, _ users.Role, entityID string) string {
+				if rest, err := catalogRepo.GetRestaurant(ctx, entityID); err == nil && rest != nil {
+					return rest.Name
+				}
+				return ""
+			})
+			ssoSvc = svc
+			slog.Info("rejim: yagona kirish (SSO) yoqilgan", "client", "merchant")
+		}
+	} else {
+		slog.Warn("yagona kirish (SSO) O'CHIQ (SSO_MERCHANT_SECRET yo'q) — /sso/* 503 qaytaradi")
+	}
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1476,6 +1520,8 @@ func main() {
 		OctoClient:         octoClient,
 		MC:                 mcRegistry,
 		WalletSvc:          walletSvc,
+		SSO:                ssoSvc,
+		QurtRepo:           qurtRepo,
 		Dispatcher:         dispatcher,
 		DevMode:            devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”

@@ -33,6 +33,9 @@ const (
 	coverAspectRatio = 2.4 // kenglik : balandlik
 	maxCoverWidth    = 1600
 
+	// Qurt mahsuloti kartochkasi: cover nisbati, lekin kichikroq (ro'yxatda ko'p).
+	maxQurtProductWidth = 1200
+
 	// Kitob muqovasi — restoran bannerining teskarisi: TIK turadi.
 	// 2:3 bosma kitob muqovasining odatiy nisbati; 3D maketdagi javon
 	// panelida kitoblar aynan shu nisbatda yonma-yon teriladi.
@@ -207,6 +210,28 @@ func ProcessCoverImage(r io.Reader) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ProcessQurtProductImage — qurt mahsuloti rasmini KESMASDAN (nisbati saqlanadi)
+// WebP qiladi: sotuvchi qanday rasm yuklasa, mijoz ilovasi va Merchant panel
+// shundayligicha ko'rsatadi. Faqat eni maxQurtProductWidth bilan cheklanadi.
+func ProcessQurtProductImage(r io.Reader) ([]byte, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, err
+	}
+	cropped := src
+	if cropped.Bounds().Dx() > maxQurtProductWidth {
+		cropped = scaleToWidth(cropped, maxQurtProductWidth)
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, cropped, &webp.Options{
+		Compression: webp.CompressionLossy,
+		Quality:     webpQuality,
+	}); err != nil {
+		return nil, fmt.Errorf("webp kodlashda xato: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // ProcessPageImage — kitobning bitta sahifasini qayta ishlaydi.
 //
 // Muqovadan farqi: KESILMAYDI. Sahifa — hujjat, uning cheti kesilsa
@@ -322,4 +347,42 @@ func scaleToWidth(src image.Image, width int) image.Image {
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, draw.Over, nil)
 	return dst
+}
+
+// Banner (menu / do'kon) nisbat chegaralari: kenglik : balandlik.
+const (
+	minBannerAspect = 2.0
+	maxBannerAspect = 4.0
+)
+
+// ProcessBannerImage — bosh sahifa / do'kon bannerlari uchun. Restoran muqovasidan
+// (`ProcessCoverImage`) FARQI: nisbat 2.4:1 ga MAJBURLANMAYDI, tayyor grafika
+// (masalan 3.2:1) kesilmay saqlanadi — aks holda chetdagi matn/rasm yo'qolardi.
+// Faqat haddan tashqari tor/keng rasm [minBannerAspect, maxBannerAspect] ga
+// markazdan kesiladi (ilovada bunday banner baribir to'g'ri chizilmaydi).
+func ProcessBannerImage(r io.Reader) ([]byte, error) {
+	src, err := decodeImageSafely(r)
+	if err != nil {
+		return nil, err
+	}
+	b := src.Bounds()
+	aspect := float64(b.Dx()) / float64(b.Dy())
+	out := src
+	switch {
+	case aspect < minBannerAspect:
+		out = cropToAspect(src, minBannerAspect)
+	case aspect > maxBannerAspect:
+		out = cropToAspect(src, maxBannerAspect)
+	}
+	if out.Bounds().Dx() > maxCoverWidth {
+		out = scaleToWidth(out, maxCoverWidth)
+	}
+	var buf bytes.Buffer
+	if err := webp.Encode(&buf, out, &webp.Options{
+		Compression: webp.CompressionLossy,
+		Quality:     webpQuality,
+	}); err != nil {
+		return nil, fmt.Errorf("webp kodlashda xato: %w", err)
+	}
+	return buf.Bytes(), nil
 }

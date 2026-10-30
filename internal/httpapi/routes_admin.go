@@ -70,6 +70,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				Lng       float64 `json:"lng"`
 				Phone     string  `json:"phone"`      // akkaunt telefoni (majburiy)
 				StaffName string  `json:"staff_name"` // akkaunt egasi ismi
+				Password  string  `json:"password"`   // boshlang'ich parol (ixtiyoriy)
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -86,6 +87,13 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			}
 			if _, err := s.UserRepo.GetByPhone(r.Context(), phone); err == nil {
 				httpError(w, http.StatusConflict, errors.New("bu telefon raqam allaqachon ro'yxatda"))
+				return
+			}
+			// Parol restoran yaratilishidan OLDIN xeshlanadi: zaif parol
+			// bo'lsa restoran yarim yaratilib qolmasin.
+			passHash, err := partnerPasswordHash(r.Context(), req.Password)
+			if err != nil {
+				httpError(w, http.StatusBadRequest, err)
 				return
 			}
 			// Koordinata tekshiruvi (bug.md 25-band, 1-qism): avval
@@ -110,6 +118,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			account := users.User{
 				ID: NewID(), Phone: phone, Name: req.StaffName,
 				Role: users.RoleRestaurant, EntityID: rest.ID, CreatedAt: time.Now(),
+				PasswordHash: passHash, PhoneVerified: passHash != "",
 			}
 			if err := s.UserRepo.Create(r.Context(), &account); err != nil {
 				// ┌─ KOMPENSATSIYA (bug.md 25-band, 2-qism) ───────────┐
@@ -610,9 +619,11 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				role = users.RoleCourier
 			case "waiter":
 				role = users.RoleWaiter
+			case "store":
+				role = users.RoleStore
 			default:
 				httpError(w, http.StatusBadRequest,
-					errors.New("role: restaurant, courier yoki waiter"))
+					errors.New("role: restaurant, courier, waiter yoki store"))
 				return
 			}
 			list, err := s.UserRepo.ListByRole(r.Context(), role)
@@ -625,12 +636,16 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				if u == nil || u.EntityID == "" {
 					continue
 				}
-				out = append(out, map[string]any{
+				row := map[string]any{
 					"entity_id": u.EntityID,
 					"user_id":   u.ID,
 					"name":      u.Name,
 					"phone":     u.Phone,
-				})
+				}
+				if u.Role == users.RoleStore {
+					row["category"] = string(u.StoreCategory)
+				}
+				out = append(out, row)
 			}
 			writeJSON(w, http.StatusOK, out)
 		}))

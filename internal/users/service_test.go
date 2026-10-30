@@ -137,6 +137,18 @@ func (r *fakeUserRepo) SetPasswordHash(_ context.Context, id, hash string) error
 	}
 	return ErrUserNotFound
 }
+func (r *fakeUserRepo) SetStoreProfile(_ context.Context, id, name string, category StoreCategory) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range r.data {
+		if u.ID == id && u.Role == RoleStore {
+			u.Name = name
+			u.StoreCategory = category
+			return nil
+		}
+	}
+	return ErrUserNotFound
+}
 func (r *fakeUserRepo) MarkEmailVerified(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

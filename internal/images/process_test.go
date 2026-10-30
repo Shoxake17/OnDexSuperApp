@@ -91,3 +91,68 @@ func TestProcessProductImage_RejectsDecompressionBomb(t *testing.T) {
 		t.Fatal("ProcessProductImage 20000x20000 rasmni rad etishi kerak edi")
 	}
 }
+
+// Banner: tayyor grafika nisbati SAQLANADI (cover kabi 2.4:1 ga kesilmaydi),
+// haddan tashqari tor/keng rasm esa chegaraga keltiriladi.
+func TestProcessBannerImage_KeepsAspectWithinBounds(t *testing.T) {
+	mk := func(w, h int) []byte {
+		img := image.NewRGBA(image.Rect(0, 0, w, h))
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				img.Set(x, y, color.RGBA{R: uint8(x % 256), G: 120, B: 60, A: 255})
+			}
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	for name, tc := range map[string]struct {
+		w, h     int
+		min, max float64
+	}{
+		"3.2:1 saqlanadi":      {1280, 400, 3.15, 3.25},
+		"1:1 kvadrat 2:1 ga":   {600, 600, 1.95, 2.05},
+		"8:1 juda keng 4:1 ga": {1600, 200, 3.95, 4.05},
+	} {
+		out, err := ProcessBannerImage(bytes.NewReader(mk(tc.w, tc.h)))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
+		if err != nil {
+			t.Fatalf("%s: natija dekodlanmadi: %v", name, err)
+		}
+		got := float64(cfg.Width) / float64(cfg.Height)
+		if got < tc.min || got > tc.max {
+			t.Errorf("%s: nisbat %.3f, kutilgan [%.2f, %.2f]", name, got, tc.min, tc.max)
+		}
+	}
+	if _, err := ProcessBannerImage(bytes.NewReader([]byte("rasm emas"))); err == nil {
+		t.Error("buzilgan fayl qabul qilindi")
+	}
+}
+
+// Qurt mahsuloti rasmi KESILMAYDI: asl nisbat saqlanadi.
+func TestProcessQurtProductImage_KeepsAspect(t *testing.T) {
+	for name, wh := range map[string][2]int{"kvadrat": {600, 600}, "tik": {400, 800}, "keng": {720, 300}} {
+		img := image.NewRGBA(image.Rect(0, 0, wh[0], wh[1]))
+		var src bytes.Buffer
+		if err := png.Encode(&src, img); err != nil {
+			t.Fatal(err)
+		}
+		out, err := ProcessQurtProductImage(bytes.NewReader(src.Bytes()))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
+		if err != nil {
+			t.Fatalf("%s: natija dekodlanmadi: %v", name, err)
+		}
+		want := float64(wh[0]) / float64(wh[1])
+		if got := float64(cfg.Width) / float64(cfg.Height); got < want*0.98 || got > want*1.02 {
+			t.Errorf("%s: nisbat %.3f, kutilgan %.3f", name, got, want)
+		}
+	}
+}

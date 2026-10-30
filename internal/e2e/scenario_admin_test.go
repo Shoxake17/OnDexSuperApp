@@ -33,6 +33,31 @@ func TestAdminFlow(t *testing.T) {
 		}
 	})
 
+	w.Step(t, "do'kon yaratish, ro'yxatda ko'rish va o'chirish", func(t *testing.T) {
+		for _, a := range []*Actor{w.Customer, w.Owner, nil} {
+			w.ExpectDenied(t, a, "POST", "/admin/stores", map[string]any{"name": "x", "phone": "+998905550099"})
+			w.ExpectDenied(t, a, "DELETE", "/admin/stores/x", nil)
+			w.ExpectDenied(t, a, "POST", "/admin/stores/x", map[string]any{"category": "qurt"})
+		}
+		w.Do(t, w.Admin, "POST", "/admin/stores", map[string]any{"name": ""}).Expect(t, 400)
+		w.Do(t, w.Admin, "POST", "/admin/stores", map[string]any{"name": "x", "phone": "+998905550078"}).Expect(t, 400) // kategoriyasiz
+		r := w.Do(t, w.Admin, "POST", "/admin/stores", map[string]any{
+			"name": "Baraka do'koni", "phone": "+998905550077", "category": "qurt", "password": "Do'kon-parol-123",
+		}).Expect(t, 201).Map(t)
+		store, _ := r["store"].(map[string]any)
+		id, _ := store["id"].(string)
+		if id == "" {
+			t.Fatalf("do'kon ID'si qaytmadi: %v", r)
+		}
+		w.Do(t, w.Admin, "GET", "/admin/accounts?role=store", nil).Expect(t, 200)
+		// Kategoriyani o'zgartirish (qurt -> store) va noto'g'ri qiymat
+		w.Do(t, w.Admin, "POST", "/admin/stores/"+id, map[string]any{"category": "store", "name": "Baraka yangi"}).Expect(t, 200)
+		w.Do(t, w.Admin, "POST", "/admin/stores/"+id, map[string]any{"category": "supermarket"}).Expect(t, 400)
+		w.Do(t, w.Admin, "POST", "/admin/stores/yoq", map[string]any{"category": "qurt"}).Expect(t, 404)
+		w.Do(t, w.Admin, "DELETE", "/admin/stores/"+id, nil).Expect(t, 200)
+		w.Do(t, w.Admin, "DELETE", "/admin/stores/"+id, nil).Expect(t, 404)
+	})
+
 	w.Step(t, "restoran yaratish (akkaunt bilan) va tahrirlash", func(t *testing.T) {
 		// Noto'g'ri kirishlar rad etiladi.
 		w.Do(t, w.Admin, "POST", "/admin/restaurants", map[string]any{"name": ""}).Expect(t, 400)

@@ -13,12 +13,13 @@ type PgBannerRepo struct{ pool *pgxpool.Pool }
 
 func NewPgBannerRepo(pool *pgxpool.Pool) *PgBannerRepo { return &PgBannerRepo{pool: pool} }
 
-const bannerColumns = `id, image_url, restaurant_id, active, sort_order, created_at, updated_at`
+const bannerColumns = `id, image_url, restaurant_id, active, sort_order, created_at, updated_at,
+	placement, title, subtitle, button_text, action`
 
 func scanBanner(row pgx.Row) (*banners.Banner, error) {
 	var b banners.Banner
 	if err := row.Scan(&b.ID, &b.ImageURL, &b.RestaurantID, &b.Active, &b.SortOrder,
-		&b.CreatedAt, &b.UpdatedAt); err != nil {
+		&b.CreatedAt, &b.UpdatedAt, &b.Placement, &b.Title, &b.Subtitle, &b.ButtonText, &b.Action); err != nil {
 		return nil, err
 	}
 	return &b, nil
@@ -69,18 +70,22 @@ func (r *PgBannerRepo) Get(ctx context.Context, id string) (*banners.Banner, err
 
 func (r *PgBannerRepo) Create(ctx context.Context, b *banners.Banner) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO promo_banners (id, image_url, restaurant_id, active, sort_order, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		b.ID, b.ImageURL, b.RestaurantID, b.Active, b.SortOrder, b.CreatedAt, b.UpdatedAt)
+		`INSERT INTO promo_banners (id, image_url, restaurant_id, active, sort_order, created_at, updated_at,
+		                            placement, title, subtitle, button_text, action)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		b.ID, b.ImageURL, b.RestaurantID, b.Active, b.SortOrder, b.CreatedAt, b.UpdatedAt,
+		b.Placement, b.Title, b.Subtitle, b.ButtonText, b.Action)
 	return err
 }
 
 func (r *PgBannerRepo) Update(ctx context.Context, b *banners.Banner) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE promo_banners
-		 SET image_url = $2, restaurant_id = $3, active = $4, sort_order = $5, updated_at = $6
+		 SET image_url = $2, restaurant_id = $3, active = $4, sort_order = $5, updated_at = $6,
+		     placement = $7, title = $8, subtitle = $9, button_text = $10, action = $11
 		 WHERE id = $1`,
-		b.ID, b.ImageURL, b.RestaurantID, b.Active, b.SortOrder, b.UpdatedAt)
+		b.ID, b.ImageURL, b.RestaurantID, b.Active, b.SortOrder, b.UpdatedAt,
+		b.Placement, b.Title, b.Subtitle, b.ButtonText, b.Action)
 	if err != nil {
 		return err
 	}

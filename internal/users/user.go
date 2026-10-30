@@ -25,6 +25,14 @@ const (
 	// o'zgartirish imkonini bergan bo'lardi — shuning uchun alohida rol.
 	RoleWaiter Role = "waiter"
 	RoleAdmin  Role = "admin"
+	// RoleStore — do'kon egasi. `EntityID` — do'konning o'z ID'si (admin
+	// yaratganda beriladi), `Name` — do'kon nomi.
+	//
+	// Hozircha do'konning OnDex API'da HECH QANDAY marshruti yo'q: bu rol
+	// faqat YAGONA KIRISH uchun (kassa/POS veb paneli `internal/sso` orqali
+	// shu akkauntni taniydi) va restoran paneli ilovasiga kirish uchun.
+	// Shuning uchun u `RoleRestaurant` huquqlarini OLMAYDI.
+	RoleStore Role = "store"
 )
 
 type User struct {
@@ -80,6 +88,10 @@ type User struct {
 	// Mijozning saqlangan yetkazib berish manzili (xaritadan tanlangan).
 	// Hammasi ixtiyoriy — hali tanlanmagan bo'lsa bo'sh/0 qiymatlar.
 	Address AddressDetails `json:"address"`
+
+	// StoreCategory — FAQAT `RoleStore` uchun (qurt/store/pharmacy), boshqa
+	// rollarda bo'sh (`migrations/0061`).
+	StoreCategory StoreCategory `json:"store_category,omitempty"`
 
 	// DeletedAt — mijoz "Akkauntni o'chirish" ni bosgan payt (YUMSHOQ
 	// o'chirish, `migrations/0056`). `nil` = faol akkaunt.
@@ -337,6 +349,9 @@ type Repository interface {
 	// tozalash, eski hash'ni kuchaytirish) ularning nomini bo'sh
 	// satrga aylantirib yuborardi (bazada tekshirilgan).
 	SetPasswordHash(ctx context.Context, id, hash string) error
+	// SetStoreProfile — do'kon akkaunti nomi va kategoriyasini yangilaydi
+	// (faqat `RoleStore`; boshqa rol bo'lsa `ErrUserNotFound`).
+	SetStoreProfile(ctx context.Context, id, name string, category StoreCategory) error
 
 	// GetByTelegramID — Telegram Mini App kirishi uchun (migration 0031).
 	// Topilmasa ErrUserNotFound.

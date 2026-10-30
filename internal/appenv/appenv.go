@@ -212,6 +212,11 @@ var Registry = []Var{
 	{Name: "GEMINI_TTS_MODEL", Effect: "ovozli yo'l ko'rsatishda standart TTS modeli ishlatiladi"},
 	{Name: "GEMINI_TTS_VOICE", Effect: "ovozli yo'l ko'rsatishda standart ovoz (Kore) ishlatiladi"},
 
+	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
+	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
+	{Name: "SSO_MERCHANT_REDIRECT_URIS", Effect: "yagona kirish YOQILMAYDI (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},
+	{Name: "SSO_MERCHANT_NAME", Effect: "tasdiqlash sahifasida standart nom (OnDex Merchant Panel) ko'rsatiladi", DeployRequired: true},
+
 	// ---------- 3D model (Tripo) ----------
 	{Name: "TRIPO_API_KEY", Effect: "rasmdan 3D model yaratish o'chiq (endpointlar 503)", DeployRequired: true},
 	{Name: "TRIPO_BASE_URL", Effect: "standart Tripo manzili ishlatiladi", DeployRequired: true},

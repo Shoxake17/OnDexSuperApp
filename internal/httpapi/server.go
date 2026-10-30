@@ -43,10 +43,12 @@ import (
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
+	"chustapp/internal/qurt"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
 	"chustapp/internal/scenes"
+	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/support"
@@ -184,6 +186,17 @@ type Deps struct {
 	// `GET /wallet` 503 qaytaradi, checkout'da "wallet" to'lov usuli
 	// `orders.Service`da xuddi shunday yopiq bo'ladi.
 	WalletSvc *wallet.Service
+
+	// SSO — yagona kirish manbai (`internal/sso`): boshqa xizmatlar
+	// (OnDex Merchant Panel) foydalanuvchini OnDex orqali tekshiradi.
+	// `nil` bo'lsa `/sso/*` 503 qaytaradi va qolgan API o'zgarishsiz
+	// ishlaydi (`SSO_MERCHANT_SECRET` sozlanmagan holat).
+	SSO *sso.Service
+
+	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
+	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
+	// 503 qaytaradi, qolgan API o'zgarishsiz ishlaydi.
+	QurtRepo qurt.Repository
 
 	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
@@ -421,7 +434,10 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerPromotionRoutes(mux)
 	s.registerPaymentRoutes(mux)
 	s.registerWalletRoutes(mux)
+	s.registerSSORoutes(mux)
 	s.registerAdminRoutes(mux)
+	s.registerAdminStoreRoutes(mux)
+	s.registerQurtRoutes(mux)
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)
