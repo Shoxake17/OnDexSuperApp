@@ -94,8 +94,17 @@ class CustomerApi extends ApiClient {
   /// `?for_me=1` — `restaurants()` bilan AYNAN bir xil shartnoma:
   /// restoranga bog'langan banner faqat o'sha restoran yetkaza
   /// oladigan shahardagi mijozga ko'rinadi (`service_area.go`).
-  Future<List<dynamic>> banners() async =>
-      (await send('GET', '/promo-banners?for_me=1')) as List<dynamic>? ?? [];
+  ///
+  /// `placement`: `restaurant` (restoranlar sahifasi, standart), `menu` (bosh
+  /// sahifa), `store` (do'kon/Qurt sahifasi). Restoranga bog'langan bannerlar
+  /// shahar bo'yicha filtrlanadi (`for_me=1`); menu/do'kon bannerlari restoranga
+  /// bog'lanmaydi, shuning uchun ular UMUMIY keshlanadigan (`for_me`siz) so'rov.
+  Future<List<dynamic>> banners({String placement = 'restaurant'}) async {
+    final forMe = placement == 'restaurant' ? '&for_me=1' : '';
+    return (await send('GET', '/promo-banners?placement=$placement$forMe'))
+            as List<dynamic>? ??
+        [];
+  }
 
   /// Savat holatini checkout'dan OLDIN ko'rish uchun HAQIQIY narxlash —
   /// real buyurtma yaratmaydi. createOrder() bilan bir xil backend
@@ -121,6 +130,24 @@ class CustomerApi extends ApiClient {
               'GET', '/products/search?q=${Uri.encodeQueryComponent(query)}'))
           as List<dynamic>? ??
       [];
+
+  /// Qurt bo'limi: qurt do'konlari mahsulotlari (`GET /qurt/products`).
+  /// Ulgurji narx serverdan KELMAYDI. Ochiq endpoint (kirish shart emas).
+  Future<List<dynamic>> qurtProducts({String? category, String query = ''}) async {
+    final qs = <String, String>{
+      if (category != null && category.isNotEmpty) 'category': category,
+      if (query.isNotEmpty) 'q': query,
+    };
+    final data = await send(
+        'GET', '/qurt/products${qs.isEmpty ? '' : '?${Uri(queryParameters: qs).query}'}');
+    return (data is Map ? data['items'] : null) as List<dynamic>? ?? [];
+  }
+
+  /// Sotuvdagi qurt mahsulotlari kategoriyalari.
+  Future<List<dynamic>> qurtCategories() async {
+    final data = await send('GET', '/qurt/categories');
+    return (data is Map ? data['categories'] : null) as List<dynamic>? ?? [];
+  }
 
   /// "Istaklarim" — mijoz yurak belgisi bilan saqlagan mahsulotlar,
   /// searchProducts() bilan bir xil to'liq shaklda (mahsulot + qaysi
@@ -352,16 +379,8 @@ class CustomerApi extends ApiClient {
     return (d is Map) ? d['dev_code'] as String? : null;
   }
 
-  /// Parol bilan kirish — telefon YOKI email.
-  Future<Map<String, dynamic>> loginWithPassword(
-      String login, String password) async {
-    final d = await send('POST', '/auth/login', {
-      'login': login,
-      'password': password,
-    });
-    token = d['token'] as String;
-    return Map<String, dynamic>.from(d);
-  }
+  // Parol bilan kirish (`loginWithPassword`, telefon YOKI email) endi umumiy
+  // `ondex_core.ApiClient` da: restoran paneli ham shundan foydalanadi.
 
   /// Google hisobi bilan kirish / ro'yxatdan o'tish.
   ///

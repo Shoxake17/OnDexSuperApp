@@ -7,6 +7,8 @@ import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'coming_soon_screen.dart';
+import '../widgets/promo_banners.dart';
+import 'qurt_screen.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
 import 'ondex_map_screen.dart';
@@ -87,12 +89,6 @@ class _Service {
   });
 }
 
-/// `ComingSoonScreen` uchun umumiy tavsif — hamma "tez orada" bo'limida
-/// bir xil (`coming_soon_screen.dart` izohiga qarang).
-const _comingSoonSubtitle =
-    'Ushbu bo\'lim hali tayyor emas — tez orada siz '
-    'uchun taqdim etamiz! \u{1F9E1}';
-
 // ┌─ KARTADA FAQAT RASM VA NOM ────────────────────────────────────────┐
 // Ilgari har kartada rangli ikonka, ikki qatorli tavsif va tugma
 // (yoki "Tez orada") turardi. Telefon kengligida bularning hammasi
@@ -157,6 +153,9 @@ const _tiles = <_Service>[
 ];
 
 class _SuperHomeScreenState extends State<SuperHomeScreen> {
+  /// Pull-to-refresh: o'zgarganda menu bannerlari serverdan majburan yangilanadi.
+  int _bannerTick = 0;
+
   int _unread = 0;
   // ⚠️ Boshlang'ich qiymat `AddressScope` dan OLINADI, `kNoAddressLabel`
   // dan emas. Avval bu yerda doimiy turardi va ekran ochilganda manzil
@@ -238,6 +237,15 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
     }
   }
 
+  /// Banner bosilganda: server yuborgan ction (backend internal/banners).
+  /// Noma'lum amal e'tiborsiz qoldiriladi (yangi turdagi banner eski ilovani buzmaydi).
+  void _openBannerAction(String action) {
+    switch (action) {
+      case 'qurt':
+        _push(const QurtScreen());
+    }
+  }
+
   void _openService(_Service s) {
     // Ishlaydigan xizmatlar soni ortgani uchun endi nom bo'yicha
     // tanlanadi. Ilgari bitta xizmat bor edi va `_push` to'g'ridan-
@@ -247,12 +255,9 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
       case 'OnDex Xarita':
         _push(const OndexMapScreen());
       case 'Do\'kon':
-        _push(const ComingSoonScreen(
-          title: 'Do\'kon',
-          heading: 'Do\'kon qismi hali mavjud emas',
-          subtitle: _comingSoonSubtitle,
-          mascotAsset: 'assets/illustrations/dokon_mascot.png',
-        ));
+        // Do'kon bo'limida hozircha bitta ishlaydigan toifa bor — Qurt. Do'kon
+        // bannerlari (admin panel) shu sahifa tepasida chiqadi.
+        _push(const QurtScreen());
       case 'Computer Club':
         _push(const ComingSoonScreen(
           title: 'Computer Club',
@@ -305,6 +310,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
       child: RefreshIndicator(
         color: kBrand,
         onRefresh: () async {
+          setState(() => _bannerTick++);
           await Future.wait([
             _loadRestaurants(),
             _loadUnread(),
@@ -326,6 +332,15 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
             const SizedBox(height: 14),
             _tileRow(),
             const SizedBox(height: 18),
+            // Admin panelidagi "Menu Banner" bo'limi. Bo'sh bo'lsa butunlay yashirin.
+            PromoBanners(
+              placement: 'menu',
+              aspectRatio: 3.1,
+              tick: _bannerTick,
+              onAction: _openBannerAction,
+              spacing: 14,
+              bottomGap: 14,
+            ),
             _banner(),
             const SizedBox(height: 20),
             _restaurantsSection(),

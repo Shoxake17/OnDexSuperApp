@@ -92,12 +92,19 @@ class Repos {
         fetch: api.categories,
       );
 
-  /// Reklama bannerlari (`catalog_screen.dart` dagi `_PromoBanner`).
-  static Repository<List<dynamic>> banners() => _list(
+  /// Reklama bannerlari (`catalog_screen.dart` dagi `_PromoBanner`) — restoranlar
+  /// sahifasi. Kalit (`banners`) joylashuv paydo bo'lishidan oldingi bilan bir xil:
+  /// diskdagi eski kesh to'g'ri qoladi.
+  static Repository<List<dynamic>> banners() => bannersFor('restaurant');
+
+  /// Joylashuv bo'yicha bannerlar: `restaurant`, `menu` (bosh sahifa), `store` (do'kon).
+  /// HAR joylashuv ALOHIDA kalit bilan: aks holda bosh sahifa banneri restoranlar
+  /// sahifasiga (yoki aksincha) kesh orqali o'tib ketardi.
+  static Repository<List<dynamic>> bannersFor(String placement) => _list(
         store: _public,
-        key: 'banners',
+        key: placement == 'restaurant' ? 'banners' : 'banners.$placement',
         ttl: _ttlBanners,
-        fetch: api.banners,
+        fetch: () => api.banners(placement: placement),
       );
 
   /// Menyu HAR RESTORAN uchun alohida kalit bilan saqlanadi —
