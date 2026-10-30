@@ -184,6 +184,19 @@ class ApiClient {
     return Map<String, dynamic>.from(d);
   }
 
+  /// Telefon + parol bilan kirish. Javob: {token, user} (tokenni o'rnatadi).
+  ///
+  /// Parolni superadmin hamkor akkaunti (restoran, do'kon) yaratganda beradi,
+  /// egasi `/me/password` bilan keyin almashtirishi mumkin. Noto'g'ri raqam
+  /// ham, noto'g'ri parol ham BIR XIL xato beradi (raqam mavjudligi sezilmaydi).
+  Future<Map<String, dynamic>> loginWithPassword(
+      String login, String password) async {
+    final d = await send(
+        'POST', '/auth/login', {'login': login, 'password': password});
+    token = d['token'] as String;
+    return Map<String, dynamic>.from(d);
+  }
+
   /// Login qilgan foydalanuvchining ma'lumotlari (rol shu yerdan aniqlanadi).
   ///
   /// ┌─ TAHLIL SHU YERGA ULANGAN ─────────────────────────────────────┐

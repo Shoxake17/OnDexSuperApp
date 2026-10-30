@@ -4,9 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import 'shell.dart';
+import 'store_home_screen.dart';
 
-/// Restoran paneliga kirish. Ro'yxatdan o'tish YO'Q — akkauntni superadmin
-/// yaratadi va telefon raqamni restoranga beradi.
+/// Restoran/do'kon paneliga kirish. Ro'yxatdan o'tish YO'Q — akkauntni
+/// superadmin yaratadi va telefon raqamni (ixtiyoriy — parolni) beradi.
+/// Telefon + parol YOKI Telegram kodi bilan kiriladi.
 class RestaurantLoginScreen extends StatefulWidget {
   const RestaurantLoginScreen({super.key});
 
@@ -17,6 +19,8 @@ class RestaurantLoginScreen extends StatefulWidget {
 class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   final _phone = TextEditingController(text: '+998');
   final _code = TextEditingController();
+  final _password = TextEditingController();
+  bool _passwordMode = false;
   bool _codeSent = false;
   bool _busy = false;
   String? _error;
@@ -71,11 +75,35 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
 
   Future<void> _verify() => _run(() async {
         final d = await api.verify(_phone.text.trim(), _code.text.trim());
-        final user = Map<String, dynamic>.from(d['user'] as Map);
+        await _finishLogin(Map<String, dynamic>.from(d['user'] as Map));
+      });
+
+  /// Telefon + parol — superadmin bergan boshlang'ich parol (yoki egasi
+  /// keyin o'zi o'rnatgan). Kod/Telegram kerak emas.
+  Future<void> _loginWithPassword() => _run(() async {
+        final d = await api.loginWithPassword(
+            _phone.text.trim(), _password.text);
+        await _finishLogin(Map<String, dynamic>.from(d['user'] as Map));
+      });
+
+  /// Ikkala kirish yo'li uchun umumiy: rolni tekshiradi va mos ekranni ochadi.
+  /// Restoran → panel; do'kon → do'kon bosh ekrani; boshqalar rad etiladi.
+  Future<void> _finishLogin(Map<String, dynamic> user) async {
+        if (user['role'] == 'store') {
+          await restTokenStore.write(api.token!);
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => StoreHomeScreen(
+              name: (user['name'] as String?) ?? '',
+              phone: (user['phone'] as String?) ?? '',
+            ),
+          ));
+          return;
+        }
         if (user['role'] != 'restaurant') {
           api.token = null;
           setState(() => _error =
-              'Bu raqam restoran akkaunti emas. Akkaunt olish uchun OnDex administratsiyasiga murojaat qiling.');
+              'Bu raqam restoran yoki do\'kon akkaunti emas. Akkaunt olish uchun OnDex administratsiyasiga murojaat qiling.');
           return;
         }
         api.rid = user['entity_id'] as String;
@@ -103,7 +131,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const RestaurantShell()),
         );
-      });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,10 +178,22 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
                   controller: _phone,
                   enabled: !_codeSent,
                   decoration: const InputDecoration(
-                    labelText: 'Restoran telefon raqami',
+                    labelText: 'Telefon raqami',
                     border: OutlineInputBorder(),
                   ),
                 ),
+                if (_passwordMode && !_codeSent) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _password,
+                    obscureText: true,
+                    onSubmitted: (_) => _busy ? null : _loginWithPassword(),
+                    decoration: const InputDecoration(
+                      labelText: 'Parol',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
                 if (_codeSent) ...[
                   const SizedBox(height: 16),
                   _TelegramHint(
@@ -187,12 +227,29 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
                             color: Theme.of(context).colorScheme.error)),
                   ),
                 FilledButton(
-                  onPressed:
-                      _busy ? null : (_codeSent ? _verify : _startTelegram),
+                  onPressed: _busy
+                      ? null
+                      : (_codeSent
+                          ? _verify
+                          : (_passwordMode ? _loginWithPassword : _startTelegram)),
                   child: Text(_busy
                       ? 'Kutilmoqda...'
-                      : (_codeSent ? 'Kirish' : 'Telegram orqali kod olish')),
+                      : (_codeSent
+                          ? 'Kirish'
+                          : (_passwordMode ? 'Kirish' : 'Telegram orqali kod olish'))),
                 ),
+                if (!_codeSent)
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                              _passwordMode = !_passwordMode;
+                              _error = null;
+                            }),
+                    child: Text(_passwordMode
+                        ? 'Telegram kodi bilan kirish'
+                        : 'Parol bilan kirish'),
+                  ),
               ],
             ),
           ),

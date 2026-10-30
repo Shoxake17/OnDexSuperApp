@@ -5,6 +5,7 @@ import 'api.dart';
 import 'panel_prefs.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
+import 'screens/store_home_screen.dart';
 import 'theme.dart';
 
 void main() async {
@@ -72,6 +73,9 @@ class _Root extends StatefulWidget {
 class _RootState extends State<_Root> {
   bool _loading = true;
   bool _loggedIn = false;
+  bool _isStore = false;
+  String _storeName = '';
+  String _storePhone = '';
 
   @override
   void initState() {
@@ -108,6 +112,11 @@ class _RootState extends State<_Root> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('rest_rid', entityId);
         _loggedIn = true;
+      } else if (role == 'store') {
+        // Do'kon egasi: restoran paneli o'rniga do'kon bosh ekrani.
+        _storeName = user['name'] as String? ?? '';
+        _storePhone = user['phone'] as String? ?? '';
+        _isStore = true;
       } else {
         await restTokenStore.clear();
         api.token = null;
@@ -144,6 +153,9 @@ class _RootState extends State<_Root> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_isStore) {
+      return StoreHomeScreen(name: _storeName, phone: _storePhone);
     }
     return _loggedIn ? const RestaurantShell() : const RestaurantLoginScreen();
   }
