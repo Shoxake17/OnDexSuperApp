@@ -34,6 +34,8 @@ export default function LoginClient({
   const [digits, setDigits] = useState("");
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [passwordMode, setPasswordMode] = useState(false);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError);
 
   // Telegram Mini App ichida bu sahifa kerak emas — u yerda kirish
@@ -68,6 +70,31 @@ export default function LoginClient({
     } catch {
       setError("Tarmoq xatosi. Internet aloqasini tekshiring.");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  // Telefon + parol (hamkorlar: restoran, do'kon — parolni superadmin beradi).
+  async function loginWithPassword() {
+    if (!phoneValid || !password || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/password-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: phone, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error ?? "Telefon yoki parol noto'g'ri.");
+        setBusy(false);
+        return;
+      }
+      // To'liq sahifa yuklash: server komponentlari cookie'ni yangi so'rovda ko'radi.
+      window.location.replace(next);
+    } catch {
+      setError("Tarmoq xatosi. Internet aloqasini tekshiring.");
       setBusy(false);
     }
   }
@@ -172,10 +199,17 @@ export default function LoginClient({
               <PhoneStep
                 digits={digits}
                 onDigits={setDigits}
-                onSubmit={startTelegram}
+                onSubmit={passwordMode ? loginWithPassword : startTelegram}
                 busy={busy}
                 error={error}
                 valid={phoneValid}
+                passwordMode={passwordMode}
+                password={password}
+                onPassword={setPassword}
+                onTogglePassword={() => {
+                  setPasswordMode((m) => !m);
+                  setError(null);
+                }}
               />
             ) : (
               <CodeStep
@@ -222,7 +256,7 @@ function BrandPanel() {
               Chustdagi kafe va restoranlar menyusi bitta joyda.
             </Feature>
             <Feature Icon={ShieldCheck} title="Xavfsiz kirish">
-              Parol yo'q — raqamingizni Telegram tasdiqlaydi.
+              Raqamingizni Telegram tasdiqlaydi yoki parol bilan kirasiz.
             </Feature>
           </ul>
         </div>
@@ -263,6 +297,10 @@ function PhoneStep({
   busy,
   error,
   valid,
+  passwordMode,
+  password,
+  onPassword,
+  onTogglePassword,
 }: {
   digits: string;
   onDigits: (v: string) => void;
@@ -270,6 +308,10 @@ function PhoneStep({
   busy: boolean;
   error: string | null;
   valid: boolean;
+  passwordMode: boolean;
+  password: string;
+  onPassword: (v: string) => void;
+  onTogglePassword: () => void;
 }) {
   return (
     <form
@@ -327,15 +369,43 @@ function PhoneStep({
         />
       </div>
 
+      {passwordMode && (
+        <>
+          <label
+            htmlFor="password"
+            className="mb-1.5 mt-3 block pl-0.5 text-[12.5px] font-semibold"
+            style={{ color: TEXT }}
+          >
+            Parol
+          </label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => onPassword(e.target.value)}
+            className="h-[46px] w-full rounded-[11px] border bg-white px-3 text-[14.5px] outline-none"
+            style={{ borderColor: BORDER, color: TEXT }}
+          />
+        </>
+      )}
+
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <div className="mt-4">
-        <AuthButton busy={busy} disabled={!valid || busy}>
-          Davom etish
+        <AuthButton busy={busy} disabled={!valid || busy || (passwordMode && password.length === 0)}>
+          {passwordMode ? "Kirish" : "Davom etish"}
         </AuthButton>
       </div>
 
-      
+      <button
+        type="button"
+        onClick={onTogglePassword}
+        className="mt-3 w-full text-center text-[12.5px] font-semibold"
+        style={{ color: BRAND }}
+      >
+        {passwordMode ? "Telegram kodi bilan kirish" : "Parol bilan kirish"}
+      </button>
     </form>
   );
 }
