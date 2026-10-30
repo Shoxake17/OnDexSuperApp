@@ -259,6 +259,7 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     final address = TextEditingController();
     final phone = TextEditingController(text: '+998');
     final staff = TextEditingController();
+    final password = TextEditingController();
     double? lat;
     double? lng;
 
@@ -315,6 +316,14 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                     controller: staff,
                     decoration:
                         const InputDecoration(labelText: 'Mas\'ul shaxs ismi')),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: password,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Boshlang\'ich parol (ixtiyoriy)',
+                        helperText:
+                            'Kamida 8 belgi. Bo\'lsa — telefon + parol bilan ham kiradi')),
               ],
             ),
           ),
@@ -342,6 +351,7 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
         staffName: staff.text.trim(),
         lat: lat!,
         lng: lng!,
+        password: password.text,
       );
       final acc = res['account'] as Map;
       _snack(

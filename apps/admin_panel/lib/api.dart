@@ -5,8 +5,6 @@ import 'package:ondex_core/ondex_core.dart';
 // kirishda davom etadi. Ular endi 4 ta ilovada takrorlanmaydi.
 export 'package:ondex_core/ondex_core.dart';
 
-
-
 /// Backend manzili — BUILD vaqtida `--dart-define-from-file` orqali keladi,
 /// bu yerga qattiq yozilmaydi (`config/dev.json`, `config/dev-tunnel.json`,
 /// `config/prod.json`). Sozlama berilmasa `http://localhost:8080`.
@@ -104,7 +102,8 @@ class AdminApi extends ApiClient {
   /// va javobni o'nlab barobar shishirardi.
   Future<List<dynamic>> books(String restaurantId) async =>
       (await send('GET', '/restaurants/$restaurantId/books'))
-          as List<dynamic>? ?? [];
+          as List<dynamic>? ??
+      [];
 
   /// Boshqaruv ro'yxati - O'CHIRILGAN kitoblar ham qaytadi.
   ///
@@ -113,7 +112,8 @@ class AdminApi extends ApiClient {
   /// ro'yxatdan yo'qolib, uni qayta yoqib bo'lmay qolardi.
   Future<List<dynamic>> booksAll(String restaurantId) async =>
       (await send('GET', '/restaurants/$restaurantId/books/all'))
-          as List<dynamic>? ?? [];
+          as List<dynamic>? ??
+      [];
 
   /// Bitta kitob, matni bilan.
   Future<Map<String, dynamic>> book(String id) async =>
@@ -141,8 +141,8 @@ class AdminApi extends ApiClient {
   /// Server rasmni tik (2:3) muqova nisbatiga kesib, WebP ga o'giradi -
   /// javondagi muqovalar orasida bo'sh oq chiziqlar qolmasligi uchun.
   Future<String> uploadBookCover(List<int> bytes, String filename) async {
-    final data = await sendMultipart(
-        'POST', '/uploads/book-cover', bytes, filename);
+    final data =
+        await sendMultipart('POST', '/uploads/book-cover', bytes, filename);
     return (data is Map ? data['url'] as String? : null) ?? '';
   }
 
@@ -192,6 +192,7 @@ class AdminApi extends ApiClient {
     required String staffName,
     double lat = 41.0030,
     double lng = 71.2360,
+    String password = '',
   }) async =>
       Map<String, dynamic>.from(await send('POST', '/admin/restaurants', {
         'name': name,
@@ -200,7 +201,37 @@ class AdminApi extends ApiClient {
         'staff_name': staffName,
         'lat': lat,
         'lng': lng,
+        if (password.isNotEmpty) 'password': password,
       }));
+
+  /// Do'kon + unga kirish akkaunti (OnDex akkaunti: ilova va veb panelga
+  /// SHU akkaunt bilan kiriladi). `password` bo'sh bo'lsa faqat SMS/Telegram kod.
+  Future<Map<String, dynamic>> createStore({
+    required String name,
+    required String phone,
+    required String category,
+    String password = '',
+  }) async =>
+      Map<String, dynamic>.from(await send('POST', '/admin/stores', {
+        'name': name,
+        'phone': phone,
+        'category': category,
+        if (password.isNotEmpty) 'password': password,
+      }));
+
+  Future<void> deleteStore(String id) => send('DELETE', '/admin/stores/$id');
+
+  /// Do'kon nomi va/yoki kategoriyasini o'zgartirish. Yangi kategoriya POS
+  /// panelida egasi tokenini yangilaganda (qisqa muddatda) kuchga kiradi.
+  Future<void> updateStore(String id, {String? name, String? category}) =>
+      send('POST', '/admin/stores/$id', {
+        if (name != null) 'name': name,
+        if (category != null) 'category': category,
+      });
+
+  /// Do'kon akkauntlari: [{entity_id, user_id, name, phone}].
+  Future<List<dynamic>> storeAccounts() async =>
+      (await send('GET', '/admin/accounts?role=store')) as List<dynamic>? ?? [];
 
   Future<void> setRestaurantOpen(String id, bool open) =>
       send('POST', '/admin/restaurants/$id/open', {'open': open});
@@ -210,7 +241,7 @@ class AdminApi extends ApiClient {
 
   // ── Reklama/aksiya bannerlari (`internal/banners`) ──
   //
-  // Mijoz ilovasining restoran sahifasidagi reklama bloki shu yerdan
+  // Mijoz ilovasining reklama bloklari (bosh sahifa, restoranlar, do'kon) shu yerdan
   // boshqariladi (Yandex Eats/Go uslubi). Rasm oldindan
   // `api.uploadImage(bytes, filename, type: 'cover')` orqali
   // yuklanadi — bu metodlar faqat tayyor URL'ni saqlaydi.
@@ -218,35 +249,58 @@ class AdminApi extends ApiClient {
   Future<List<dynamic>> banners() async =>
       (await send('GET', '/admin/banners')) as List<dynamic>? ?? [];
 
+  /// Joylashuvlar (backend `internal/banners` bilan AYNAN bir xil qiymatlar).
+  static const bannerPlacements = ['menu', 'restaurant', 'store'];
+
   Future<Map<String, dynamic>> createBanner({
     required String imageUrl,
+    String placement = 'restaurant',
+    String title = '',
+    String subtitle = '',
+    String buttonText = '',
+    String action = '',
     String restaurantId = '',
     bool active = true,
     int sortOrder = 0,
   }) async =>
       Map<String, dynamic>.from(await send('POST', '/admin/banners', {
         'image_url': imageUrl,
+        'placement': placement,
+        'title': title,
+        'subtitle': subtitle,
+        'button_text': buttonText,
+        'action': action,
         'restaurant_id': restaurantId,
         'active': active,
         'sort_order': sortOrder,
       }));
 
+  /// Tahrirlash HAR DOIM to'liq holatni yuboradi (server kelmagan maydonni
+  /// "o'zgarishsiz" emas, bo'sh deb oladi).
   Future<Map<String, dynamic>> updateBanner(
     String id, {
     required String imageUrl,
+    String placement = 'restaurant',
+    String title = '',
+    String subtitle = '',
+    String buttonText = '',
+    String action = '',
     String restaurantId = '',
     bool active = true,
     int sortOrder = 0,
   }) async =>
       Map<String, dynamic>.from(await send('POST', '/admin/banners/$id', {
         'image_url': imageUrl,
+        'placement': placement,
+        'title': title,
+        'subtitle': subtitle,
+        'button_text': buttonText,
+        'action': action,
         'restaurant_id': restaurantId,
         'active': active,
         'sort_order': sortOrder,
       }));
-
-  Future<void> deleteBanner(String id) =>
-      send('DELETE', '/admin/banners/$id');
+  Future<void> deleteBanner(String id) => send('DELETE', '/admin/banners/$id');
 
   /// Restoran ma'lumotlarini tahrirlaydi. Har doim TO'LIQ holatni
   /// yuboradi (edit oynasi mavjud qiymatlar bilan oldindan to'ldirilgan).
@@ -287,7 +341,6 @@ class AdminApi extends ApiClient {
         'tags': tags,
       }));
 
-
   // ── Qo'llab-quvvatlash: aloqa ma'lumotlari va restoranlar bilan chat ──
 
   /// Barcha panellarda ko'rinadigan aloqa ma'lumotlari.
@@ -296,8 +349,10 @@ class AdminApi extends ApiClient {
 
   /// Saqlaydi. Server har maydonni QAT'IY tekshiradi va normallashtirilgan
   /// qiymatni qaytaradi (masalan Telegram "@" siz).
-  Future<Map<String, dynamic>> saveSupportContacts(Map<String, dynamic> body) async =>
-      Map<String, dynamic>.from(await send('PUT', '/admin/support/contacts', body) as Map);
+  Future<Map<String, dynamic>> saveSupportContacts(
+          Map<String, dynamic> body) async =>
+      Map<String, dynamic>.from(
+          await send('PUT', '/admin/support/contacts', body) as Map);
 
   /// Xarita manbasi (`internal/mapprovider`) — butun tizim qaysi
   /// provayderdan (Google yoki OnDexMap) foydalanishi. DIQQAT: bu
@@ -305,7 +360,8 @@ class AdminApi extends ApiClient {
   /// (mahalla/ko'cha muharriri) bilan bog'liq EMAS, u butunlay alohida
   /// loyiha.
   Future<Map<String, dynamic>> mapModeConfig() async =>
-      Map<String, dynamic>.from(await send('GET', '/admin/config/map-mode') as Map);
+      Map<String, dynamic>.from(
+          await send('GET', '/admin/config/map-mode') as Map);
 
   /// `mode` — "google" yoki "ondexmap". Natija XOTIRADA darhol
   /// qo'llanadi (server qayta ishga tushirilmaydi).
@@ -315,10 +371,12 @@ class AdminApi extends ApiClient {
 
   /// Suhbatlar (oxirgi xabar bo'yicha) + `unread_total`.
   Future<Map<String, dynamic>> supportThreads() async =>
-      Map<String, dynamic>.from(await send('GET', '/admin/support/threads') as Map);
+      Map<String, dynamic>.from(
+          await send('GET', '/admin/support/threads') as Map);
 
   Future<Map<String, dynamic>> supportSummary() async =>
-      Map<String, dynamic>.from(await send('GET', '/admin/support/summary') as Map);
+      Map<String, dynamic>.from(
+          await send('GET', '/admin/support/summary') as Map);
 
   Future<Map<String, dynamic>> supportMessages(String restaurantId,
       {int? before, int? after, int limit = 50}) async {
@@ -327,25 +385,34 @@ class AdminApi extends ApiClient {
       if (before != null && before > 0) 'before=$before',
       if (after != null && after > 0) 'after=$after',
     ].join('&');
-    return Map<String, dynamic>.from(await send(
-        'GET', '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages?$q') as Map);
+    return Map<String, dynamic>.from(await send('GET',
+            '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages?$q')
+        as Map);
   }
 
   /// [clientId] — qayta urinishda AYNI qiymat: server ikkinchi xabar yaratmaydi.
-  Future<Map<String, dynamic>> sendSupportMessage(String restaurantId, String body, String clientId) async =>
-      Map<String, dynamic>.from(await send('POST',
+  Future<Map<String, dynamic>> sendSupportMessage(
+          String restaurantId, String body, String clientId) async =>
+      Map<String, dynamic>.from(await send(
+          'POST',
           '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages',
           {'body': body, 'client_id': clientId}) as Map);
 
-  Future<Map<String, dynamic>> markSupportRead(String restaurantId, int upToSeq) async =>
-      Map<String, dynamic>.from(await send('POST',
-          '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/read', {'up_to_seq': upToSeq}) as Map);
+  Future<Map<String, dynamic>> markSupportRead(
+          String restaurantId, int upToSeq) async =>
+      Map<String, dynamic>.from(await send(
+          'POST',
+          '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/read',
+          {'up_to_seq': upToSeq}) as Map);
 
   /// Rasm + ixtiyoriy izoh (multipart). Server rasmni tekshiradi va qayta kodlaydi.
-  Future<Map<String, dynamic>> sendSupportImage(
-      String restaurantId, String body, String clientId, List<int> bytes, String filename) async {
+  Future<Map<String, dynamic>> sendSupportImage(String restaurantId,
+      String body, String clientId, List<int> bytes, String filename) async {
     final data = await sendMultipart(
-        'POST', '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages', bytes, filename,
+        'POST',
+        '/admin/support/threads/${Uri.encodeComponent(restaurantId)}/messages',
+        bytes,
+        filename,
         fields: {'client_id': clientId, if (body.isNotEmpty) 'body': body},
         errorText: 'Rasm yuborilmadi — internetni tekshiring');
     return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};

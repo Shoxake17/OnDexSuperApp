@@ -9,6 +9,7 @@ import '../pages/people_page.dart';
 import '../pages/restaurant_module.dart';
 import '../pages/settings_page.dart';
 import '../pages/stats_page.dart';
+import '../pages/stores_page.dart';
 import '../support_inbox.dart';
 import 'login_screen.dart';
 
@@ -17,6 +18,7 @@ import 'login_screen.dart';
 /// Sidebar (yuqoridan pastga):
 ///   * **Restoran** — restoranlar ro'yxati; restoran tanlansa uning ALOHIDA
 ///     moduli ochiladi (buyurtmalar, kuryerlar, affitsiantlar, kutubxona, chat);
+///   * **Do'kon** — do'konlarni ro'yxatdan o'tkazish (OnDex akkaunti);
 ///   * **Statistika** — barcha restoranlar bo'yicha umumiy ko'rsatkichlar;
 ///   * **Mijozlar**;
 ///   * **OnDex kuryerlari** — restoranga bog'lanmagan platforma kuryerlari;
@@ -47,6 +49,13 @@ const _navTop = <_NavSpec>[
     screen: 'Restaurants',
     icon: Icons.storefront_outlined,
     selectedIcon: Icons.storefront,
+  ),
+  (
+    key: 'nav-stores',
+    label: 'Do\'kon',
+    screen: 'Stores',
+    icon: Icons.store_mall_directory_outlined,
+    selectedIcon: Icons.store_mall_directory,
   ),
   (
     key: 'nav-stats',
@@ -144,12 +153,13 @@ class _AdminShellState extends State<AdminShell> {
 
   Widget _page(int i) => switch (i) {
         0 => const RestaurantsSection(),
-        1 => const StatsPage(),
-        2 => const CustomersPage(),
+        1 => const StoresPage(),
+        2 => const StatsPage(),
+        3 => const CustomersPage(),
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
-        3 => const CouriersPage(onlyPlatform: true),
-        4 => const BannersPage(),
-        5 => const SettingsPage(),
+        4 => const CouriersPage(onlyPlatform: true),
+        5 => const BannersPage(),
+        6 => const SettingsPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),
