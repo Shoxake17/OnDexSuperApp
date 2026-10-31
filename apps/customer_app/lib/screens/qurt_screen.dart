@@ -239,16 +239,18 @@ class _QurtScreenState extends State<QurtScreen> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
         child: PromoBanners(
           placement: 'store',
-          aspectRatio: 2.4,
+          // Do'kon banneri FAQAT admin paneldan ("Do'kon Banner") qo'yiladi; qo'yilmagan
+          // bo'lsa joy bo'sh qoladi (qattiq yozilgan rasm yo'q). Tayyor grafika (3.2:1)
+          // to'liq ko'rinishi uchun nisbat shunga teng.
+          aspectRatio: 3.2,
           carousel: true,
           tick: _bannerTick,
-          fallback: const _QurtHero(),
         ),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 10),
       if (_categories.isNotEmpty)
         SizedBox(
-          height: 44,
+          height: 34,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -260,7 +262,7 @@ class _QurtScreenState extends State<QurtScreen> {
           ),
         ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
         child: Row(
           children: [
             const Expanded(
@@ -269,7 +271,7 @@ class _QurtScreenState extends State<QurtScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: _ink,
                 ),
@@ -312,19 +314,29 @@ class _QurtScreenState extends State<QurtScreen> {
       final items = _sorted;
       body = Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: items.length,
-          itemBuilder:
-              (_, i) =>
-                  _QurtCard(item: items[i], onTap: () => _showDetail(items[i])),
+        // Kartochka balandligi kontentga mos (bo'sh joy qolmaydi): rasm (2.4:1) +
+        // nom + do'kon + narx. Eni ekranga qarab o'zgargani uchun LayoutBuilder.
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final cardW = (c.maxWidth - 12) / 2;
+            final extent = 8 + (cardW - 16) / _kProductImageRatio + 6 + 70 + 8;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                mainAxisExtent: extent,
+              ),
+              itemCount: items.length,
+              itemBuilder:
+                  (_, i) => _QurtCard(
+                    item: items[i],
+                    onTap: () => _showDetail(items[i]),
+                  ),
+            );
+          },
         ),
       );
     }
@@ -337,7 +349,7 @@ class _QurtScreenState extends State<QurtScreen> {
   }
 
   Widget _chip(String label, bool selected, VoidCallback onTap) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
     child: ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -346,11 +358,13 @@ class _QurtScreenState extends State<QurtScreen> {
       backgroundColor: const Color(0xFFF3F4F6),
       side: BorderSide.none,
       shape: const StadiumBorder(),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       labelStyle: TextStyle(
         color: selected ? Colors.white : _muted,
         fontWeight: FontWeight.w700,
-        fontSize: 14.5,
+        fontSize: 13,
       ),
       showCheckmark: false,
     ),
@@ -368,25 +382,25 @@ class _QurtScreenState extends State<QurtScreen> {
             PopupMenuItem(value: e.key, child: Text(e.value)),
         ],
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.tune, size: 18, color: kBrand),
-          const SizedBox(width: 6),
+          const Icon(Icons.tune, size: 16, color: kBrand),
+          const SizedBox(width: 5),
           Text(
             _sortTitles[_sort]!,
             style: const TextStyle(
               color: kBrand,
               fontWeight: FontWeight.w700,
-              fontSize: 13.5,
+              fontSize: 12,
             ),
           ),
-          const Icon(Icons.keyboard_arrow_down, size: 18, color: kBrand),
+          const Icon(Icons.keyboard_arrow_down, size: 16, color: kBrand),
         ],
       ),
     ),
@@ -437,180 +451,6 @@ Widget _image(String? url, {double? height, double radius = 14}) {
   );
 }
 
-/// Do'kon banneri qo'shilmagan bo'lsa ko'rsatiladigan standart Qurt banneri
-/// (maket: `image/qurt_menu.png`). Admin panelda "Do'kon Banner" qo'shilsa,
-/// shu o'rniga u chiqadi.
-///
-/// Chapda matn (krem fonda), o'ngda rasm: matn rasm USTIGA chiqmaydi. Rasm
-/// (`qurt_hero.png`, 3.2:1) o'ng qismidagi idish tomoniga to'g'rilab kesiladi;
-/// chap tomoni (bo'sh krem) o'rniga gradient fon beriladi.
-class _QurtHero extends StatelessWidget {
-  const _QurtHero();
-
-  static const _cream = Color(0xFFFDF1E3);
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 2.4,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFFFFF8EE), _cream],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: LayoutBuilder(
-            builder:
-                (context, c) => Stack(
-                  children: [
-                    // ── Rasm ── kesilmaydi: butun manzara (tog'lar, idish, qaymoq)
-                    // eni bo'yicha sig'diriladi va o'ng-pastga qo'yiladi — banner
-                    // yarmini egallaydi. Yuqori chetini fon bilan silliq qo'shamiz.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: ShaderMask(
-                        blendMode: BlendMode.dstIn,
-                        shaderCallback:
-                            (r) => const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0x00000000), Color(0xFF000000)],
-                              stops: [0.0, 0.3],
-                            ).createShader(r),
-                        child: Image.asset(
-                          'assets/services/qurt_hero.png',
-                          fit: BoxFit.fitWidth,
-                          alignment: Alignment.bottomRight,
-                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
-                    // ── Matn ──
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: c.maxWidth * 0.5,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 4, 10),
-                        // Matn qatlami sig'masa (tor ekran) proporsional kichrayadi.
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width: c.maxWidth * 0.5 - 18,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    5,
-                                    4,
-                                    14,
-                                    4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: kBrand,
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 12,
-                                        backgroundColor: Colors.white,
-                                        child: Icon(
-                                          Icons.rice_bowl_outlined,
-                                          size: 16,
-                                          color: kBrand,
-                                        ),
-                                      ),
-                                      SizedBox(width: 7),
-                                      Text(
-                                        'Qurt',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 19,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Tabiiy, foydali va mazali\nqurt mahsulotlari',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    height: 1.3,
-                                    color: _muted,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                const Row(
-                                  children: [
-                                    Expanded(
-                                      child: _Feature(
-                                        Icons.eco_outlined,
-                                        '100%\ntabiiy',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _Feature(
-                                        Icons.verified_user_outlined,
-                                        'Sifat\nkafolati',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: _Feature(
-                                        Icons.favorite_border,
-                                        'Sog\'lom\nhayot',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Feature extends StatelessWidget {
-  const _Feature(this.icon, this.label);
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(icon, size: 18, color: kBrand),
-      const SizedBox(height: 2),
-      Text(
-        label,
-        style: const TextStyle(fontSize: 9.5, height: 1.15, color: _muted),
-      ),
-    ],
-  );
-}
-
 class _QurtCard extends StatelessWidget {
   const _QurtCard({required this.item, required this.onTap});
   final Map<String, dynamic> item;
@@ -647,24 +487,26 @@ class _QurtCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 16,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w800,
                 color: _ink,
               ),
             ),
-            const SizedBox(height: 2),
-            Expanded(
+            const SizedBox(height: 1),
+            SizedBox(
+              height: 16,
               child: Text(
                 subtitle,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 11.5,
                   height: 1.25,
                   color: _muted,
                 ),
               ),
             ),
+            const SizedBox(height: 6),
             Text.rich(
               TextSpan(
                 children: [
@@ -673,7 +515,7 @@ class _QurtCard extends StatelessWidget {
                       ((item['price_tiyin'] as num?) ?? 0).toInt(),
                     ),
                     style: const TextStyle(
-                      fontSize: 16.5,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: kBrand,
                     ),
@@ -682,7 +524,7 @@ class _QurtCard extends StatelessWidget {
                     TextSpan(
                       text: '  / $grams',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: _muted,
                       ),

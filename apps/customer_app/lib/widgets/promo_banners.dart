@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ondex_core/ondex_core.dart' show Repository;
 
+import '../api.dart' show fullImageUrl;
 import '../data/catalog_repository.dart';
 import 'common.dart' show RemoteImage;
 
@@ -178,6 +179,49 @@ class PromoBannerCard extends StatelessWidget {
   }
 }
 
+/// Banner rasmining HAQIQIY nisbati (kenglik : balandlik). Karta shu nisbatda
+/// chiziladi, shuning uchun `BoxFit.cover` rasmning chetini KESMAYDI (matn va
+/// belgilar to'liq ko'rinadi). Yuklanmaguncha / xatoda — berilgan zaxira nisbat.
+final _aspectCache = <String, Future<double?>>{};
+
+Future<double?> _naturalAspect(dynamic rawUrl) {
+  final url = fullImageUrl((rawUrl ?? '').toString());
+  if (url.isEmpty) return Future.value(null);
+  return _aspectCache.putIfAbsent(url, () {
+    final done = Completer<double?>();
+    final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+    late ImageStreamListener l;
+    l = ImageStreamListener(
+      (info, _) {
+        final w = info.image.width, h = info.image.height;
+        if (!done.isCompleted) {
+          done.complete(h > 0 ? (w / h).clamp(1.6, 4.5).toDouble() : null);
+        }
+        stream.removeListener(l);
+      },
+      onError: (_, _) {
+        if (!done.isCompleted) done.complete(null);
+        stream.removeListener(l);
+        _aspectCache.remove(url); // keyingi safar qayta urinadi
+      },
+    );
+    stream.addListener(l);
+    return done.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => null,
+    );
+  });
+}
+
+Widget _withAspect(
+  dynamic url,
+  double fallback,
+  Widget Function(double aspect) build,
+) => FutureBuilder<double?>(
+  future: _naturalAspect(url),
+  builder: (_, s) => build(s.data ?? fallback),
+);
+
 /// Bir joylashuvdagi (`menu` / `store`) bannerlar ro'yxati — serverdan keladi.
 ///
 /// Birorta FAOL banner bo'lmasa vidjet BUTUNLAY yashiriladi (bo'sh joy yoki
@@ -198,7 +242,12 @@ class PromoBanners extends StatefulWidget {
     this.bottomGap = 0,
     this.tick = 0,
     this.repository,
+    this.extraPages = const [],
   });
+
+  /// Karusel oxiriga qo'shiladigan tayyor sahifalar (masalan, ilovaning o'z reklamasi);
+  /// faqat [carousel] rejimida. Server bannerlari bo'lmasa ham karusel chiziladi.
+  final List<Widget> extraPages;
 
   final String placement;
   final double aspectRatio;
@@ -265,19 +314,25 @@ class _PromoBannersState extends State<PromoBanners> {
                 .whereType<Map>()
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList();
-        _count = list.length;
-        if (list.isEmpty) return widget.fallback ?? const SizedBox.shrink();
+        final extras = widget.carousel ? widget.extraPages : const <Widget>[];
+        final total = list.length + extras.length;
+        _count = total;
+        if (total == 0) return widget.fallback ?? const SizedBox.shrink();
 
         if (!widget.carousel) {
           return Column(
             children: [
               for (var i = 0; i < list.length; i++) ...[
                 if (i > 0) SizedBox(height: widget.spacing),
-                AspectRatio(
-                  aspectRatio: widget.aspectRatio,
-                  child: PromoBannerCard(
-                    banner: list[i],
-                    onAction: widget.onAction,
+                _withAspect(
+                  list[i]['image_url'],
+                  widget.aspectRatio,
+                  (a) => AspectRatio(
+                    aspectRatio: a,
+                    child: PromoBannerCard(
+                      banner: list[i],
+                      onAction: widget.onAction,
+                    ),
                   ),
                 ),
               ],
@@ -288,26 +343,32 @@ class _PromoBannersState extends State<PromoBanners> {
 
         return Column(
           children: [
-            AspectRatio(
-              aspectRatio: widget.aspectRatio,
+            _withAspect(
+              list.isEmpty ? null : list.first['image_url'],
+              widget.aspectRatio,
+              (a) => AspectRatio(
+              aspectRatio: a,
               child: PageView.builder(
                 controller: _page,
-                itemCount: list.length,
+                itemCount: total,
                 onPageChanged: (i) => setState(() => _index = i),
                 itemBuilder:
-                    (_, i) => PromoBannerCard(
-                      banner: list[i],
-                      onAction: widget.onAction,
-                      radius: 22,
-                    ),
+                    (_, i) =>
+                        i < list.length
+                            ? PromoBannerCard(
+                              banner: list[i],
+                              onAction: widget.onAction,
+                              radius: 22,
+                            )
+                            : extras[i - list.length],
               ),
-            ),
-            if (list.length > 1) ...[
+            )),
+            if (total > 1) ...[
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (var i = 0; i < list.length; i++)
+                  for (var i = 0; i < total; i++)
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -324,6 +385,7 @@ class _PromoBannersState extends State<PromoBanners> {
                 ],
               ),
             ],
+            if (widget.bottomGap > 0) SizedBox(height: widget.bottomGap),
           ],
         );
       },

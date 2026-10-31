@@ -224,7 +224,7 @@ void main() {
       },
     );
 
-    testWidgets('do\'kon banneri yo\'q — standart Qurt banneri ko\'rinadi', (
+    testWidgets('do\'kon banneri yo\'q — qattiq yozilgan banner chiqmaydi', (
       tester,
     ) async {
       _tall(tester);
@@ -233,9 +233,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.text('Tabiiy, foydali va mazali\nqurt mahsulotlari'),
-          findsOneWidget,
+          findsNothing,
         );
-        expect(find.text('Qurt'), findsOneWidget);
+        expect(find.text('Qurt mahsulotlari'), findsOneWidget);
       }, () => _server());
     });
     testWidgets('saralash: narx bo\'yicha tartib o\'zgaradi', (tester) async {

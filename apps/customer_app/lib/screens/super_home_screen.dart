@@ -333,15 +333,16 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
             _tileRow(),
             const SizedBox(height: 18),
             // Admin panelidagi "Menu Banner" bo'limi. Bo'sh bo'lsa butunlay yashirin.
+            // Karusel: admin "Menu Banner"lari + ilovaning o'z o'yin reklamasi, har 5 soniyada
+            // almashadi (qo'lda surish ham mumkin). Admin banneri bo'lmasa — faqat o'yin banneri.
             PromoBanners(
               placement: 'menu',
-              aspectRatio: 3.1,
+              aspectRatio: 2.4,
+              carousel: true,
               tick: _bannerTick,
               onAction: _openBannerAction,
-              spacing: 14,
-              bottomGap: 14,
+              extraPages: [_banner()],
             ),
-            _banner(),
             const SizedBox(height: 20),
             _restaurantsSection(),
           ],
@@ -548,13 +549,11 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
   // Eski bannerning balandligi — bo'yi "to'rtburchak"ka aylanmasin,
   // matn uch bo'lak (sarlavha, tavsif, tugma) shu balandlikka
   // `spaceBetween` bilan taqsimlanadi.
-  static const _bannerHeight = 150.0;
-
   Widget _banner() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        height: _bannerHeight,
+        // Balandligi karusel bergan joyga teng; matn sig'masa proporsional kichrayadi.
         decoration: const BoxDecoration(
           color: _bannerBg,
           image: DecorationImage(
@@ -563,9 +562,12 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
           ),
         ),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
+        child: FittedBox(
+         fit: BoxFit.scaleDown,
+         alignment: Alignment.centerLeft,
+         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // "On" va "Dex" ikki xil rangda — xuddi `_wordmark()`dagi
             // brend yozuvi kabi (shu fayldagi yagona joy emas, lekin
@@ -587,10 +589,12 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
                 height: 1.2,
               ),
             ),
+            const SizedBox(height: 8),
             const Text(
               'Shahringni qur, biznesingni boshqar\nva g\'alabaga erish!',
               style: TextStyle(fontSize: 11.5, color: _muted, height: 1.25),
             ),
+            const SizedBox(height: 10),
             SizedBox(
               height: 32,
               child: FilledButton(
@@ -626,6 +630,7 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
               ),
             ),
           ],
+         ),
         ),
       ),
     );

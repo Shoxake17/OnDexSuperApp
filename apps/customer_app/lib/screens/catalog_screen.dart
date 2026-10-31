@@ -375,100 +375,104 @@ class _HeaderState extends State<_Header> {
 
   @override
   Widget build(BuildContext context) {
+    final nav = Navigator.of(context, rootNavigator: true);
+    // Bosh menyudan (SuperHome) ochilgan bo'lsagina orqaga tugmasi chiziladi.
+    final canGoBack = nav.canPop();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Yuqori qator: chapda orqaga, O'RTADA logotip, o'ngda amallar.
+          SizedBox(
+            height: 40,
+            child: Row(
               children: [
-                // Logotip matn bilan — maketdagi "OnDex" wordmark.
-                RichText(
-                  text: const TextSpan(
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      height: 1,
-                      letterSpacing: -0.8,
-                      color: Color(0xFF171717),
+                if (canGoBack)
+                  HeaderActionButton(
+                    icon: Icons.arrow_back,
+                    label: 'Bosh menyuga qaytish',
+                    onTap: () => nav.maybePop(),
+                  ),
+                // Logotip orqaga tugmasi va amallar ORASIDAGI bo'sh joyning o'rtasida
+                // (qidiruv belgisiga yopishib qolmasin). "OnDex" wordmark.
+                Expanded(
+                  child: Center(
+                    child: RichText(
+                      text: const TextSpan(
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                          letterSpacing: -0.6,
+                          color: Color(0xFF171717),
+                        ),
+                        children: [
+                          TextSpan(text: 'On'),
+                          TextSpan(
+                            text: 'Dex',
+                            style: TextStyle(color: kBrand),
+                          ),
+                        ],
+                      ),
                     ),
-                    children: [
-                      TextSpan(text: 'On'),
-                      TextSpan(text: 'Dex', style: TextStyle(color: kBrand)),
-                    ],
                   ),
                 ),
-                const SizedBox(height: 6),
-                // Saqlangan manzil; yo'q bo'lsa `kNoAddressLabel`. Avval
-                // bu yerda "Chust" qattiq yozilgan edi.
+                // Amallar: qidiruv, hamyon, bildirishnoma.
                 //
-                // Qator BOSILADI va manzil ekranini ochadi (vebda ham
-                // `<Link href="/address">`) — shu sabab yonida pastga
-                // ko'rsatkich turadi.
-                InkWell(
-                  onTap: () => _push(const AddressScreen()),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.place_outlined, size: 16),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            _addressLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        const SizedBox(width: 2),
-                        const Icon(
-                          Icons.keyboard_arrow_down,
-                          size: 18,
-                          color: Color(0xFF757575),
-                        ),
-                      ],
-                    ),
-                  ),
+                // Yordamchi tugmasi bu yerda YO'Q: Shaddiy'ga kirish nuqtasi
+                // bitta — pastki menyuning markazidagi yuz tugmasi (`ShaddiyFab`).
+                HeaderActionButton(
+                  icon: Icons.search,
+                  label: 'Qidirish',
+                  onTap: () => _openSearch(context),
+                ),
+                const SizedBox(width: 6),
+                HeaderActionButton(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Hamyon',
+                  onTap: () => _push(const WalletScreen()),
+                ),
+                const SizedBox(width: 6),
+                HeaderActionButton(
+                  icon: Icons.notifications_none,
+                  label: 'Bildirishnomalar',
+                  badge: _unread,
+                  onTap: () => _push(const NotificationsScreen()),
                 ),
               ],
             ),
           ),
-          // Amallar: qidiruv, hamyon, bildirishnoma.
-          //
-          // ┌─ YORDAMCHI TUGMASI BU YERDA YO'Q ─────────────────────┐
-          // Ilgari bu qatorda birinchi bo'lib `Icons.auto_awesome`
-          // (Yordamchi) turardi. Olib tashlandi: Shaddiy'ga kirish
-          // nuqtasi BITTA bo'lishi kerak — pastki menyuning
-          // markazidagi yuz tugmasi (`ShaddiyFab`, `home_shell`).
-          //
-          // Ikki kirish nuqtasi bir-biriga mos kelmasdi: bu tugma
-          // holatdan qat'i nazar chizilardi, FAB esa `AiStatus` ga
-          // qarab kulrang "!" ko'rsatardi — foydalanuvchi bir joyda
-          // ishlaydigan, boshqa joyda ishlamaydigan yordamchini
-          // ko'rardi.
-          // └───────────────────────────────────────────────────────┘
-          HeaderActionButton(
-            icon: Icons.search,
-            label: 'Qidirish',
-            onTap: () => _openSearch(context),
-          ),
-          const SizedBox(width: 8),
-          HeaderActionButton(
-            icon: Icons.account_balance_wallet_outlined,
-            label: 'Hamyon',
-            onTap: () => _push(const WalletScreen()),
-          ),
-          const SizedBox(width: 8),
-          HeaderActionButton(
-            icon: Icons.notifications_none,
-            label: 'Bildirishnomalar',
-            badge: _unread,
-            onTap: () => _push(const NotificationsScreen()),
+          // Saqlangan manzil — o'rtada, ixcham; bosilsa manzil ekrani ochiladi.
+          InkWell(
+            onTap: () => _push(const AddressScreen()),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.place_outlined, size: 14),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text(
+                      _addressLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: Color(0xFF757575),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
