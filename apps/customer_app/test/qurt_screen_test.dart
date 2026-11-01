@@ -208,9 +208,8 @@ void main() {
           expect(find.text('Qurt mahsulotlari'), findsOneWidget);
           expect(find.textContaining('wholesale'), findsNothing);
 
-          // Savat va "+" tugmasi YO'Q (buyurtma backendi hali yo'q)
-          expect(find.byIcon(Icons.add), findsNothing);
-          expect(find.byIcon(Icons.shopping_cart_outlined), findsNothing);
+          // Savatga qo'shish tugmasi bor va ishlaydi (qurt buyurtmasi qurilgan).
+          expect(find.byKey(const ValueKey('qurt-add-q1')), findsOneWidget);
 
           await tester.tap(find.text('Sho\'r qurt'));
           await tester.pumpAndSettle();

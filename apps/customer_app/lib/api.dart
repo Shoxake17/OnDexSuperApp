@@ -143,11 +143,72 @@ class CustomerApi extends ApiClient {
     return (data is Map ? data['items'] : null) as List<dynamic>? ?? [];
   }
 
+  /// Savatni yangilash: shu mahsulotlarning HOZIRGI narxi va qoldig'i. Sotuvdan
+  /// chiqqanlari javobda bo'lmaydi (mijoz ularni savatdan olib tashlaydi).
+  Future<List<Map<String, dynamic>>> qurtProductsByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final out = <Map<String, dynamic>>[];
+    for (var i = 0; i < ids.length; i += 50) {
+      final chunk = ids.skip(i).take(50).join(',');
+      final data = await send('GET', '/qurt/products?ids=${Uri.encodeQueryComponent(chunk)}');
+      out.addAll(((data is Map ? data['items'] : null) as List<dynamic>? ?? [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)));
+    }
+    return out;
+  }
+
   /// Sotuvdagi qurt mahsulotlari kategoriyalari.
   Future<List<dynamic>> qurtCategories() async {
     final data = await send('GET', '/qurt/categories');
     return (data is Map ? data['categories'] : null) as List<dynamic>? ?? [];
   }
+
+  // ── Qurt buyurtmalari (reys logistikasi, naqd to'lov) ───────────────────
+
+  /// Eng yaqin reys: `delivery_date` (YYYY-MM-DD), `order_by` (RFC3339), `weekdays`.
+  Future<Map<String, dynamic>> qurtDeliveryInfo() async =>
+      Map<String, dynamic>.from(await send('GET', '/qurt/delivery-info') as Map);
+
+  /// Savatdan buyurtma. NARX/DO'KON/MANZIL YUBORILMAYDI — server mahsulot
+  /// ID'sidan narxni, saqlangan manzildan manzilni oladi. [expectedTotalTiyin] —
+  /// ekranda ko'rsatilgan jami: farq qilsa `409 total_changed` (yangi summa
+  /// `ApiException.data['total_tiyin']` da). 409 `out_of_stock` — qoldiq yetmadi.
+  /// Mijoz bir nechta do'kondan olgan bo'lsa, server do'konlar bo'yicha
+  /// bo'lib qaytaradi; [idempotencyKey] qayta urinishda dublikat yaratmaydi.
+  Future<List<Map<String, dynamic>>> createQurtOrder({
+    required List<Map<String, dynamic>> items,
+    required String idempotencyKey,
+    required int expectedTotalTiyin,
+    String comment = '',
+  }) async {
+    final data = await send('POST', '/qurt/orders', {
+      'items': items,
+      'idempotency_key': idempotencyKey,
+      'expected_total_tiyin': expectedTotalTiyin,
+      'payment_method': 'cash',
+      if (comment.trim().isNotEmpty) 'comment': comment.trim(),
+    });
+    return _orderList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> qurtOrders() async =>
+      _orderList(await send('GET', '/qurt/orders'));
+
+  Future<Map<String, dynamic>> qurtOrder(String id) async => Map<String, dynamic>.from(
+      await send('GET', '/qurt/orders/${Uri.encodeComponent(id)}') as Map);
+
+  /// Faqat do'kon hali ko'rmagan (`new`) buyurtma bekor qilinadi.
+  Future<Map<String, dynamic>> cancelQurtOrder(String id, {String reason = ''}) async =>
+      Map<String, dynamic>.from(await send(
+          'POST', '/qurt/orders/${Uri.encodeComponent(id)}/cancel',
+          reason.trim().isEmpty ? null : {'reason': reason.trim()}) as Map);
+
+  static List<Map<String, dynamic>> _orderList(dynamic data) =>
+      ((data is Map ? data['orders'] : null) as List<dynamic>? ?? [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
 
   /// "Istaklarim" — mijoz yurak belgisi bilan saqlagan mahsulotlar,
   /// searchProducts() bilan bir xil to'liq shaklda (mahsulot + qaysi

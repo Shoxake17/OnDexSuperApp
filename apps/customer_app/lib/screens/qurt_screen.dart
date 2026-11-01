@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../data/qurt_cart.dart';
 import '../widgets/promo_banners.dart';
 import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
+import 'qurt_cart_screen.dart';
+import 'qurt_orders_screen.dart';
 
 /// Qurt sahifasi (maket: `image/qurt_menu.png`).
 ///
@@ -53,17 +56,47 @@ class _QurtScreenState extends State<QurtScreen> {
   int _bannerTick = 0;
   Timer? _debounce;
 
+  final _cart = QurtCart.instance;
+
   @override
   void initState() {
     super.initState();
+    _cart.addListener(_onCart);
+    _cart.ensureRestored();
     _load();
   }
 
   @override
   void dispose() {
+    _cart.removeListener(_onCart);
     _debounce?.cancel();
     super.dispose();
   }
+
+  void _onCart() {
+    if (mounted) setState(() {});
+  }
+
+  /// Savatga 1 dona qo'shadi; qoldiq/chegara to'lgan bo'lsa tushuntiradi.
+  void _add(Map<String, dynamic> product) {
+    if (_cart.add(product)) return;
+    final left = (product['stock_left'] as num?)?.toInt();
+    final msg =
+        (left != null && left < 1)
+            ? 'Bu mahsulot tugagan'
+            : 'Bundan ko\'p qolmagan';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _openCart() async {
+    await Navigator.of(context).push(sheetRoute(const QurtCartScreen()));
+    if (mounted) _load(); // qoldiq o'zgargan bo'lishi mumkin
+  }
+
+  Future<void> _openOrders() =>
+      Navigator.of(context).push(sheetRoute(const QurtOrdersScreen()));
 
   Future<void> _load() async {
     setState(() {
@@ -149,10 +182,21 @@ class _QurtScreenState extends State<QurtScreen> {
               _topBar(),
               if (_showSearch) _searchField(),
               Expanded(
-                child: RefreshIndicator(
-                  color: kBrand,
-                  onRefresh: _refresh,
-                  child: _content(),
+                child: Stack(
+                  children: [
+                    RefreshIndicator(
+                      color: kBrand,
+                      onRefresh: _refresh,
+                      child: _content(),
+                    ),
+                    if (!_cart.isEmpty)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 12 + MediaQuery.of(context).padding.bottom,
+                        child: _cartBar(),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -161,6 +205,69 @@ class _QurtScreenState extends State<QurtScreen> {
       ),
     );
   }
+
+  /// Pastki "Savatcha" paneli (maket: `image/qurt_menu.png`) — ishlaydi: savatga o'tadi.
+  Widget _cartBar() => Material(
+    color: kBrand,
+    borderRadius: BorderRadius.circular(18),
+    elevation: 4,
+    child: InkWell(
+      key: const ValueKey('qurt-cart-bar'),
+      borderRadius: BorderRadius.circular(18),
+      onTap: _openCart,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.shopping_basket_outlined, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Savatcha',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  Text(
+                    '${_cart.totalQty} ta mahsulot · ${formatSum(_cart.totalTiyin)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Buyurtma',
+                    style: TextStyle(
+                      color: kBrand,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward, size: 15, color: kBrand),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   // ── Yuqori panel: orqaga, OnDex, qidiruv ──
   Widget _topBar() {
@@ -208,6 +315,71 @@ class _QurtScreenState extends State<QurtScreen> {
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          _circleButton(
+            const ValueKey('qurt-orders-open'),
+            Icons.receipt_long_outlined,
+            _openOrders,
+            tooltip: 'Buyurtmalarim',
+          ),
+          const SizedBox(width: 8),
+          _circleButton(
+            const ValueKey('qurt-cart-open'),
+            Icons.shopping_basket_outlined,
+            _openCart,
+            tooltip: 'Savat',
+            badge: _cart.totalQty,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _circleButton(
+    Key key,
+    IconData icon,
+    VoidCallback onTap, {
+    required String tooltip,
+    int badge = 0,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Material(
+            color: Colors.white,
+            shape: const CircleBorder(side: BorderSide(color: _line)),
+            child: InkWell(
+              key: key,
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(11),
+                child: Icon(icon, size: 22, color: _ink),
+              ),
+            ),
+          ),
+          if (badge > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: kBrand,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -313,13 +485,14 @@ class _QurtScreenState extends State<QurtScreen> {
     } else {
       final items = _sorted;
       body = Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+        // Pastki "Savatcha" paneli ustiga chiqmasligi uchun joy qoldiriladi.
+        padding: EdgeInsets.fromLTRB(16, 0, 16, _cart.isEmpty ? 28 : 96),
         // Kartochka balandligi kontentga mos (bo'sh joy qolmaydi): rasm (2.4:1) +
         // nom + do'kon + narx. Eni ekranga qarab o'zgargani uchun LayoutBuilder.
         child: LayoutBuilder(
           builder: (context, c) {
             final cardW = (c.maxWidth - 12) / 2;
-            final extent = 8 + (cardW - 16) / _kProductImageRatio + 6 + 70 + 8;
+            final extent = 8 + (cardW - 16) / _kProductImageRatio + 6 + 82 + 8;
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -333,7 +506,14 @@ class _QurtScreenState extends State<QurtScreen> {
               itemBuilder:
                   (_, i) => _QurtCard(
                     item: items[i],
+                    qty: _cart.qtyOf((items[i]['id'] ?? '').toString()),
                     onTap: () => _showDetail(items[i]),
+                    onAdd: () => _add(items[i]),
+                    onMinus:
+                        () => _cart.setQty(
+                          (items[i]['id'] ?? '').toString(),
+                          _cart.qtyOf((items[i]['id'] ?? '').toString()) - 1,
+                        ),
                   ),
             );
           },
@@ -414,7 +594,7 @@ class _QurtScreenState extends State<QurtScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (_) => _QurtDetail(item: p),
+      builder: (_) => _QurtDetail(item: p, onAdd: () => _add(p)),
     );
   }
 }
@@ -452,9 +632,18 @@ Widget _image(String? url, {double? height, double radius = 14}) {
 }
 
 class _QurtCard extends StatelessWidget {
-  const _QurtCard({required this.item, required this.onTap});
+  const _QurtCard({
+    required this.item,
+    required this.onTap,
+    required this.qty,
+    required this.onAdd,
+    required this.onMinus,
+  });
   final Map<String, dynamic> item;
   final VoidCallback onTap;
+  final int qty;
+  final VoidCallback onAdd;
+  final VoidCallback onMinus;
 
   @override
   Widget build(BuildContext context) {
@@ -507,43 +696,188 @@ class _QurtCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: formatSum(
-                      ((item['price_tiyin'] as num?) ?? 0).toInt(),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: kBrand,
+            Row(
+              children: [
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: formatSum(
+                              ((item['price_tiyin'] as num?) ?? 0).toInt(),
+                            ),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: kBrand,
+                            ),
+                          ),
+                          if (grams.isNotEmpty)
+                            TextSpan(
+                              text: '  / $grams',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: _muted,
+                              ),
+                            ),
+                        ],
+                      ),
+                      maxLines: 1,
                     ),
                   ),
-                  if (grams.isNotEmpty)
-                    TextSpan(
-                      text: '  / $grams',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: _muted,
-                      ),
-                    ),
-                ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 6),
+                _control(),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+
+  /// "+" (savatda yo'q) yoki  − N +  (savatda bor). Qoldiq tugagan bo'lsa — yozuv.
+  Widget _control() {
+    final id = (item['id'] ?? '').toString();
+    final left = (item['stock_left'] as num?)?.toInt();
+    if (left != null && left < 1) {
+      return const Text(
+        'Tugagan',
+        style: TextStyle(
+          color: _muted,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+    Widget btn(Key k, IconData icon, VoidCallback? tap) => InkResponse(
+      key: k,
+      onTap: tap,
+      radius: 18,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: tap == null ? const Color(0xFFF3F4F6) : kBrand,
+        ),
+        child: Icon(
+          icon,
+          size: 17,
+          color: tap == null ? Colors.black26 : Colors.white,
+        ),
+      ),
+    );
+    if (qty < 1) return btn(ValueKey('qurt-add-$id'), Icons.add, onAdd);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        btn(ValueKey('qurt-minus-$id'), Icons.remove, onMinus),
+        SizedBox(
+          width: 22,
+          child: Text(
+            '$qty',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+        ),
+        btn(ValueKey('qurt-plus-$id'), Icons.add, onAdd),
+      ],
+    );
+  }
 }
 
 class _QurtDetail extends StatelessWidget {
-  const _QurtDetail({required this.item});
+  const _QurtDetail({required this.item, required this.onAdd});
   final Map<String, dynamic> item;
+  final VoidCallback onAdd;
+
+  /// Pastki panel: narx + savatga qo'shish / miqdor tanlagich (savat o'zgarsa yangilanadi).
+  Widget _addBar(BuildContext context) {
+    final cart = QurtCart.instance;
+    final id = (item['id'] ?? '').toString();
+    final left = (item['stock_left'] as num?)?.toInt();
+    final soldOut = left != null && left < 1;
+    return AnimatedBuilder(
+      animation: cart,
+      builder: (_, _) {
+        final qty = cart.qtyOf(id);
+        final atMax = qty >= cart.limitOf(id) || (left != null && qty >= left);
+        return Container(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            10,
+            20,
+            12 + MediaQuery.of(context).padding.bottom,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: _line)),
+          ),
+          child:
+              soldOut
+                  ? const Center(
+                    child: Text(
+                      'Bu mahsulot tugagan',
+                      style: TextStyle(color: _muted),
+                    ),
+                  )
+                  : qty < 1
+                  ? SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const ValueKey('qurt-detail-add'),
+                      onPressed: onAdd,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kBrand,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        'Savatga qo\'shish · ${formatSum(((item['price_tiyin'] as num?) ?? 0).toInt())}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  )
+                  : Row(
+                    children: [
+                      IconButton.filled(
+                        key: const ValueKey('qurt-detail-minus'),
+                        style: IconButton.styleFrom(backgroundColor: kBrand),
+                        onPressed: () => cart.setQty(id, qty - 1),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '$qty dona · ${formatSum(qty * ((item['price_tiyin'] as num?) ?? 0).toInt())}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      IconButton.filled(
+                        key: const ValueKey('qurt-detail-plus'),
+                        style: IconButton.styleFrom(backgroundColor: kBrand),
+                        onPressed: atMax ? null : onAdd,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -556,58 +890,71 @@ class _QurtDetail extends StatelessWidget {
       maxChildSize: 0.95,
       minChildSize: 0.5,
       builder:
-          (_, controller) => ListView(
-            controller: controller,
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          (_, controller) => Column(
             children: [
-              AspectRatio(
-                aspectRatio: _kProductImageRatio,
-                child: _image(item['image_url'] as String?),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                (item['name'] ?? '').toString(),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: ListView(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  children: [
+                    AspectRatio(
+                      aspectRatio: _kProductImageRatio,
+                      child: _image(item['image_url'] as String?),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      (item['name'] ?? '').toString(),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        if (grams.isNotEmpty) grams,
+                        (item['category'] ?? '').toString(),
+                        (item['store_name'] ?? '').toString(),
+                      ].where((s) => s.isNotEmpty).join(' · '),
+                      style: const TextStyle(color: _muted),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      formatSum(((item['price_tiyin'] as num?) ?? 0).toInt()),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: kBrand,
+                      ),
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Tavsif',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(description, style: const TextStyle(height: 1.4)),
+                    ],
+                    if (composition.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Tarkibi',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(composition, style: const TextStyle(height: 1.4)),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                [
-                  if (grams.isNotEmpty) grams,
-                  (item['category'] ?? '').toString(),
-                  (item['store_name'] ?? '').toString(),
-                ].where((s) => s.isNotEmpty).join(' · '),
-                style: const TextStyle(color: _muted),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                formatSum(((item['price_tiyin'] as num?) ?? 0).toInt()),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: kBrand,
-                ),
-              ),
-              if (description.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                const Text(
-                  'Tavsif',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                Text(description, style: const TextStyle(height: 1.4)),
-              ],
-              if (composition.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                const Text(
-                  'Tarkibi',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                Text(composition, style: const TextStyle(height: 1.4)),
-              ],
+              _addBar(context),
             ],
           ),
     );

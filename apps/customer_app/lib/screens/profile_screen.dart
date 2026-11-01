@@ -7,6 +7,7 @@ import 'connected_apps_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import '../data/address_scope.dart';
 import '../data/catalog_repository.dart';
+import '../data/qurt_cart.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
 import '../services/firebase_phone.dart';
@@ -273,6 +274,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // ko'rinardi — restoran ro'yxati ham o'sha shahar bo'yicha
     // filtrlanardi.
     AddressScope.instance.clear();
+    // Qurt savati ham shaxsiy: chiqqan odamning savati keyingisiga ko'rinmasin.
+    await QurtCart.instance.reset();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

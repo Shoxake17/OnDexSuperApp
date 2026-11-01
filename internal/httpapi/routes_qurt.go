@@ -107,6 +107,39 @@ func (s *Server) registerQurtRoutes(mux *http.ServeMux) {
 			return
 		}
 		q := r.URL.Query()
+
+		// ?ids=a,b,c — savatni YANGILASH uchun: shu mahsulotlarning hozirgi holati
+		// (narx, qoldiq). Sotuvda yo'q yoki qurt bo'lmagan do'kon mahsuloti javobda
+		// yo'q — mijoz ularni savatdan olib tashlaydi. Qoldiq tez o'zgargani uchun keshlanmaydi.
+		if raw := strings.TrimSpace(q.Get("ids")); raw != "" {
+			ids := strings.Split(raw, ",")
+			if len(ids) > 50 {
+				httpError(w, http.StatusBadRequest, errors.New("ko'pi bilan 50 ta mahsulot"))
+				return
+			}
+			for _, id := range ids {
+				if !qurt.ValidExternalID(id) {
+					httpError(w, http.StatusBadRequest, errors.New("mahsulot ID'si noto'g'ri"))
+					return
+				}
+			}
+			found, err := s.QurtRepo.GetMany(r.Context(), ids)
+			if err != nil {
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			items := []*qurt.Product{}
+			for _, p := range found {
+				if name, ok := stores[p.StoreID]; ok && p.Available {
+					p.StoreName = name
+					items = append(items, p)
+				}
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+			return
+		}
+
 		limit, _ := strconv.Atoi(q.Get("limit"))
 		if limit <= 0 || limit > 100 {
 			limit = 50

@@ -85,6 +85,27 @@ func TestQurtOrderFlow(t *testing.T) {
 		return l
 	}
 
+	w.Step(t, "savatni yangilash: ?ids= hozirgi narx va qoldiqni beradi", func(t *testing.T) {
+		var m struct {
+			Items []product `json:"items"`
+		}
+		w.Do(t, nil, "GET", "/qurt/products?ids="+pa.ID+","+pb.ID+",yoq-id", nil).Expect(t, 200).JSON(t, &m)
+		if len(m.Items) != 2 {
+			t.Fatalf("2 ta topilishi kerak (yo'q ID tushib qoladi): %+v", m.Items)
+		}
+		w.Do(t, nil, "GET", "/qurt/products?ids="+strings.Repeat("a,", 60)+"a", nil).Expect(t, 400)
+		w.Do(t, nil, "GET", "/qurt/products?ids=bad%20id", nil).Expect(t, 400)
+		// Sotuvdan chiqqan mahsulot javobda yo'q.
+		w.Do(t, posB, "PUT", "/merchant/qurt/products/b1", map[string]any{
+			"name": "Qurt b1", "category": "Sho'r", "price_tiyin": 1500000, "weight_grams": 200,
+			"available": false, "stock": 0}).Expect(t, 200)
+		w.Do(t, nil, "GET", "/qurt/products?ids="+pb.ID, nil).Expect(t, 200).JSON(t, &m)
+		if len(m.Items) != 0 {
+			t.Fatalf("sotuvda yo'q mahsulot qaytdi: %+v", m.Items)
+		}
+		put(posB, "b1", 1500000, 3) // qaytaramiz
+	})
+
 	w.Step(t, "reys ma'lumoti ochiq", func(t *testing.T) {
 		m := w.Do(t, nil, "GET", "/qurt/delivery-info", nil).Expect(t, 200).Map(t)
 		if d, _ := m["delivery_date"].(string); len(d) != 10 || m["payment_method"] != "cash" {
@@ -104,6 +125,11 @@ func TestQurtOrderFlow(t *testing.T) {
 		r := create(map[string]any{"items": []map[string]any{{"product_id": "yoq", "qty": 1}}}).Expect(t, 409)
 		if !strings.Contains(string(r.Body), "out_of_stock") {
 			t.Fatalf("out_of_stock kodi yo'q: %s", r.Body)
+		}
+		// Ekrandagi jami serverdagi hisobdan farq qilsa — yaratilmaydi, yangi summa qaytadi.
+		r = create(map[string]any{"items": lines(1, 0), "expected_total_tiyin": 1}).Expect(t, 409)
+		if !strings.Contains(string(r.Body), "total_changed") || !strings.Contains(string(r.Body), "1200000") {
+			t.Fatalf("total_changed va yangi summa kutilgan: %s", r.Body)
 		}
 		if p := products(); p["Qurt a1"].StockLeft != 10 {
 			t.Fatalf("rad etilgan so'rov qoldiqni band qildi: %+v", p)
@@ -129,7 +155,8 @@ func TestQurtOrderFlow(t *testing.T) {
 		var m struct {
 			Orders []order `json:"orders"`
 		}
-		create(map[string]any{"items": lines(2, 3), "idempotency_key": "k-1", "comment": "Eshik oldiga qo'ying"}).
+		create(map[string]any{"items": lines(2, 3), "idempotency_key": "k-1", "comment": "Eshik oldiga qo'ying",
+			"expected_total_tiyin": 6900000}).
 			Expect(t, 201).JSON(t, &m)
 		orders = m.Orders
 		if len(orders) != 2 || orders[0].GroupID != orders[1].GroupID || orders[0].GroupID == "" {

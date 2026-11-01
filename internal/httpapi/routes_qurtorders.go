@@ -27,7 +27,13 @@ var (
 func qurtOrderError(w http.ResponseWriter, err error) {
 	var stock *qurtorders.StockError
 	var tr *qurtorders.TransitionError
+	var changed *qurtorders.TotalChangedError
 	switch {
+	case errors.As(err, &changed):
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": "narx o'zgardi — yangi summani tasdiqlang", "code": "total_changed",
+			"total_tiyin": changed.ActualTiyin,
+		})
 	case errors.Is(err, qurtorders.ErrNotFound):
 		httpError(w, http.StatusNotFound, errors.New("buyurtma topilmadi"))
 	case errors.As(err, &stock):
@@ -165,6 +171,8 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 			Comment        string `json:"comment"`
 			IdempotencyKey string `json:"idempotency_key"`
 			PaymentMethod  string `json:"payment_method"`
+			// ExpectedTotalTiyin — ekranda ko'rsatilgan jami; farq qilsa 409 total_changed.
+			ExpectedTotalTiyin int64 `json:"expected_total_tiyin"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -203,7 +211,7 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 				Intercom: addr.Intercom, Comment: addr.Comment, Lat: addr.Lat, Lng: addr.Lng,
 			},
 			Comment: req.Comment, Lines: lines, IdempotencyKey: strings.TrimSpace(req.IdempotencyKey),
-			ActiveStores: stores,
+			ActiveStores: stores, ExpectedTotalTiyin: req.ExpectedTotalTiyin,
 		})
 		if err != nil {
 			qurtOrderError(w, err)

@@ -84,7 +84,16 @@ type CreateInput struct {
 	IdempotencyKey string
 	// ActiveStores — hozir buyurtma qabul qila oladigan qurt do'konlari (ID -> nomi).
 	ActiveStores map[string]string
+	// ExpectedTotalTiyin — mijozga ekranda ko'rsatilgan JAMI (barcha do'konlar). > 0 va
+	// serverdagi hisobdan farq qilsa buyurtma YARATILMAYDI (TotalChangedError): narx
+	// ekranda ko'rsatilgandan keyin o'zgargan bo'lishi mumkin.
+	ExpectedTotalTiyin int64
 }
+
+// TotalChangedError — ekrandagi jami serverdagi hisobdan farq qiladi.
+type TotalChangedError struct{ ActualTiyin int64 }
+
+func (e *TotalChangedError) Error() string { return "narx o'zgardi — yangi summani tasdiqlang" }
 
 // StockError — qaysi mahsulotda qoldiq yetmadi.
 type StockError struct{ Name string }
@@ -173,6 +182,18 @@ func (s *Service) Create(ctx context.Context, in CreateInput) ([]*Order, error) 
 			ImageURL: p.ImageURL, WeightGrams: p.WeightGrams,
 		})
 		reserve = append(reserve, qurt.Reservation{ProductID: p.ID, Qty: qty[id]})
+	}
+
+	if in.ExpectedTotalTiyin > 0 {
+		var grand int64
+		for _, items := range byStore {
+			for _, it := range items {
+				grand += it.PriceTiyin * int64(it.Qty)
+			}
+		}
+		if grand != in.ExpectedTotalTiyin {
+			return nil, &TotalChangedError{ActualTiyin: grand}
+		}
 	}
 
 	if err := s.Products.Reserve(ctx, reserve); err != nil {
