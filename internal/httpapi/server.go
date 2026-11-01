@@ -44,6 +44,7 @@ import (
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/qurt"
+	"chustapp/internal/qurtorders"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
@@ -197,6 +198,8 @@ type Deps struct {
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
 	// 503 qaytaradi, qolgan API o'zgarishsiz ishlaydi.
 	QurtRepo qurt.Repository
+	// QurtOrderSvc — qurt buyurtmalari va reys logistikasi (internal/qurtorders).
+	QurtOrderSvc *qurtorders.Service
 
 	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
@@ -438,6 +441,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAdminRoutes(mux)
 	s.registerAdminStoreRoutes(mux)
 	s.registerQurtRoutes(mux)
+	s.registerQurtOrderRoutes(mux)
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)

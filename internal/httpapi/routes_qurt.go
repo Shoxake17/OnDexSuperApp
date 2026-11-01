@@ -182,6 +182,8 @@ func (s *Server) registerQurtRoutes(mux *http.ServeMux) {
 			WeightGrams    int    `json:"weight_grams"`
 			ImageURL       string `json:"image_url"`
 			Available      bool   `json:"available"`
+			// Stock — POS qoldig'i (dona). Eski POS yubormaydi: u holda mavjud qoldiq saqlanadi.
+			Stock *int `json:"stock"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -191,6 +193,9 @@ func (s *Server) registerQurtRoutes(mux *http.ServeMux) {
 			Name: req.Name, Description: req.Description, Composition: req.Composition,
 			Category: req.Category, PriceTiyin: req.PriceTiyin, WholesaleTiyin: req.WholesaleTiyin,
 			WeightGrams: req.WeightGrams, ImageURL: req.ImageURL, Available: req.Available,
+		}
+		if req.Stock != nil {
+			p.Stock, p.StockSet = *req.Stock, true
 		}
 		if err := p.Normalize(); err != nil {
 			httpError(w, http.StatusBadRequest, err)

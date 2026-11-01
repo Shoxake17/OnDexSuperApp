@@ -54,6 +54,26 @@ type Product struct {
 	// Available — sotuvda bor (POS qoldig'i > 0).
 	Available bool      `json:"available"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Stock — POS qoldig'ining nusxasi (dona). Manba — POS; OnDex uni o'zi
+	// o'zgartirmaydi, faqat `Reserved` ni boshqaradi.
+	Stock int `json:"-"`
+	// StockSet — POS `stock` yubordimi. Yubormagan (eski POS) bo'lsa mavjud
+	// qoldiq O'ZGARMAYDI (bazaga yozilmaydi).
+	StockSet bool `json:"-"`
+	// Reserved — hali do'kon tasdiqlamagan (`new`) buyurtmalar band qilgan dona.
+	Reserved int `json:"-"`
+	// StockLeft — mijoz buyurtma bera oladigan dona (Stock - Reserved, 0 dan kam emas).
+	// Faqat o'qishda hisoblanadi (`Product.Left`).
+	StockLeft int `json:"stock_left"`
+}
+
+// Left — buyurtmaga qolgan dona.
+func (p *Product) Left() int {
+	if n := p.Stock - p.Reserved; n > 0 {
+		return n
+	}
+	return 0
 }
 
 // Filter — ro'yxat sharti. `StoreIDs` BO'SH bo'lsa natija ham bo'sh (qurt
@@ -79,7 +99,27 @@ type Repository interface {
 	List(ctx context.Context, f Filter) ([]*Product, error)
 	// Categories — shu do'konlarda sotuvdagi mahsulotlar kategoriyalari.
 	Categories(ctx context.Context, storeIDs []string) ([]string, error)
+	// GetMany — ID bo'yicha mahsulotlar (topilmaganlari natijada yo'q).
+	GetMany(ctx context.Context, ids []string) ([]*Product, error)
+	// Reserve — barcha pozitsiyalarni BIR YO'LA band qiladi (atomik, hammasi yoki
+	// hech biri). Qoldiq yetmasa `ErrInsufficientStock`.
+	Reserve(ctx context.Context, items []Reservation) error
+	// Release — bandni qaytaradi (tasdiqlangan/rad etilgan/bekor qilingan buyurtma).
+	// Band 0 dan pastga tushmaydi.
+	Release(ctx context.Context, items []Reservation) error
 }
+
+// Reservation — bitta mahsulotdan band qilinadigan miqdor.
+type Reservation struct {
+	ProductID string
+	Qty       int
+}
+
+// ErrInsufficientStock — so'ralgan miqdor qoldiqdan ko'p.
+var ErrInsufficientStock = errors.New("qurt: qoldiq yetarli emas")
+
+// MaxStock — POS yuborishi mumkin bo'lgan eng katta qoldiq.
+const MaxStock = 1_000_000
 
 var externalIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
@@ -118,6 +158,8 @@ func (p *Product) Normalize() error {
 		return invalid("ulgurji narx noto'g'ri")
 	case p.WeightGrams <= 0 || p.WeightGrams > MaxWeightGrams:
 		return invalid("gramm 1 dan 100000 gacha bo'lishi kerak")
+	case p.Stock < 0 || p.Stock > MaxStock:
+		return invalid("qoldiq noto'g'ri")
 	}
 	return nil
 }

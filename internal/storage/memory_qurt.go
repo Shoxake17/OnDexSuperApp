@@ -47,6 +47,10 @@ func (r *MemoryQurtRepo) Upsert(_ context.Context, p *qurt.Product) (*qurt.Produ
 	for id, old := range r.items {
 		if old.StoreID == p.StoreID && old.ExternalID == p.ExternalID {
 			cp.ID = id
+			cp.Reserved = old.Reserved // band OnDex'niki — POS yangilashi uni o'chirmasin
+			if !p.StockSet {
+				cp.Stock = old.Stock
+			}
 			r.items[id] = &cp
 			out := cp
 			return &out, nil
@@ -100,6 +104,7 @@ func (r *MemoryQurtRepo) List(_ context.Context, f qurt.Filter) ([]*qurt.Product
 			continue
 		}
 		cp := *p
+		cp.StockLeft = cp.Left()
 		out = append(out, &cp)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -137,4 +142,51 @@ func (r *MemoryQurtRepo) Categories(_ context.Context, storeIDs []string) ([]str
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func (r *MemoryQurtRepo) GetMany(_ context.Context, ids []string) ([]*qurt.Product, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*qurt.Product
+	for _, id := range ids {
+		if p, ok := r.items[id]; ok {
+			cp := *p
+			cp.StockLeft = cp.Left()
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (r *MemoryQurtRepo) Reserve(_ context.Context, items []qurt.Reservation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	need := map[string]int{}
+	for _, it := range items {
+		need[it.ProductID] += it.Qty
+	}
+	for id, qty := range need { // avval hammasini tekshiramiz — yarim band qolmasin
+		p, ok := r.items[id]
+		if !ok || qty <= 0 || p.Left() < qty {
+			return qurt.ErrInsufficientStock
+		}
+	}
+	for id, qty := range need {
+		r.items[id].Reserved += qty
+	}
+	return nil
+}
+
+func (r *MemoryQurtRepo) Release(_ context.Context, items []qurt.Reservation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, it := range items {
+		if p, ok := r.items[it.ProductID]; ok {
+			p.Reserved -= it.Qty
+			if p.Reserved < 0 {
+				p.Reserved = 0
+			}
+		}
+	}
+	return nil
 }

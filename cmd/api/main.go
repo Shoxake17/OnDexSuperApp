@@ -44,6 +44,7 @@ import (
 	"chustapp/internal/payments/octo"
 	"chustapp/internal/promotions"
 	"chustapp/internal/qurt"
+	"chustapp/internal/qurtorders"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
@@ -240,6 +241,7 @@ func main() {
 	var promotionsRepo promotions.Repository
 	// Qurt do'konlari mahsulotlari: Mongo rejimida Mongo'da, aks holda xotirada.
 	var qurtRepo qurt.Repository = storage.NewMemoryQurtRepo()
+	var qurtOrderRepo qurtorders.Repository = storage.NewMemoryQurtOrderRepo()
 	var favoritesRepo favorites.Repository
 	var pgPool *pgxpool.Pool // katalog Mongo'da bo'lmasa zaxira sifatida ishlatiladi
 
@@ -409,6 +411,11 @@ func main() {
 		bookRepo = storage.NewMongoCatalogRepo(mdb)
 		promotionsRepo = storage.NewMongoPromotionsRepo(mdb)
 		qurtRepo = storage.NewMongoQurtRepo(mdb, httpapi.NewID)
+		qurtOrderRepo = storage.NewMongoQurtOrderRepo(mdb)
+		if err := storage.EnsureQurtOrderIndexes(ctx, mdb); err != nil {
+			slog.Error("qurt buyurtma indekslari yaratilmadi", "err", err)
+			os.Exit(1)
+		}
 		if err := storage.EnsureQurtIndexes(ctx, mdb); err != nil {
 			slog.Error("qurt indekslari yaratilmadi", "err", err)
 			os.Exit(1)
@@ -1522,8 +1529,12 @@ func main() {
 		WalletSvc:          walletSvc,
 		SSO:                ssoSvc,
 		QurtRepo:           qurtRepo,
-		Dispatcher:         dispatcher,
-		DevMode:            devMode,
+		QurtOrderSvc: &qurtorders.Service{
+			Repo: qurtOrderRepo, Products: qurtRepo, NewID: httpapi.NewID,
+			Schedule: qurtDeliverySchedule,
+		},
+		Dispatcher: dispatcher,
+		DevMode:    devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
 		// u haqiqatan pochtaga boradi (`Deps.EmailConfigured` izohi).
 		EmailConfigured: emailConfigured,
@@ -1627,4 +1638,34 @@ func main() {
 	}
 	<-shutdownDone
 	slog.Info("server to'xtadi")
+}
+
+// qurtDeliverySchedule — qurt reys jadvali. Sozlama o'zgaruvchilari (ixtiyoriy):
+//
+//	QURT_DELIVERY_DAYS      — reys kunlari, vergul bilan (0=yakshanba ... 6=shanba), standart "2,5"
+//	QURT_ORDER_CUTOFF_HOUR  — reysdan bir kun oldin shu soatgacha (Toshkent), standart 18
+//
+// Noto'g'ri qiymat e'tiborsiz qoladi (standart ishlatiladi) — buyurtma qabul qilish to'xtamasin.
+func qurtDeliverySchedule() qurtorders.Schedule {
+	s := qurtorders.DefaultSchedule()
+	if v := strings.TrimSpace(os.Getenv("QURT_DELIVERY_DAYS")); v != "" {
+		var days []time.Weekday
+		for _, p := range strings.Split(v, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil || n < 0 || n > 6 {
+				days = nil
+				break
+			}
+			days = append(days, time.Weekday(n))
+		}
+		if len(days) > 0 {
+			s.Weekdays = days
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("QURT_ORDER_CUTOFF_HOUR")); v != "" {
+		if h, err := strconv.Atoi(v); err == nil && h >= 0 && h <= 23 {
+			s.CutoffHour = h
+		}
+	}
+	return s
 }

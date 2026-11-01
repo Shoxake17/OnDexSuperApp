@@ -26,6 +26,7 @@ import (
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicardpay"
+	"chustapp/internal/qurtorders"
 	"chustapp/internal/revoke"
 	"chustapp/internal/secretstore"
 	"chustapp/internal/sso"
@@ -348,10 +349,12 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatalf("SSO sozlamasi: %v", ssoErr)
 	}
 
+	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
-		SSO:      ssoSvc,
-		QurtRepo: storage.NewMemoryQurtRepo(),
-		UserRepo: w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,
+		SSO:          ssoSvc,
+		QurtRepo:     qurtProducts,
+		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
+		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,
 		CatalogRepo: cachedCatalog, CatalogSvc: catalog.NewService(cachedCatalog),
 		PromotionsRepo: promo, FavoritesRepo: storage.NewMemoryFavoritesRepo(),
 		BannerRepo: storage.NewMemoryBannerRepo(), RatingsRepo: storage.NewMemoryRatingRepo(),
