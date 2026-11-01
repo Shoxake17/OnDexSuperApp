@@ -394,11 +394,13 @@ class _HeaderState extends State<_Header> {
                     label: 'Bosh menyuga qaytish',
                     onTap: () => nav.maybePop(),
                   ),
-                // Logotip orqaga tugmasi va amallar ORASIDAGI bo'sh joyning o'rtasida
-                // (qidiruv belgisiga yopishib qolmasin). "OnDex" wordmark.
+                // Logotip orqaga tugmasidan keyin, chapga yopishtirib ("OnDex" wordmark).
                 Expanded(
-                  child: Center(
-                    child: RichText(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: EdgeInsets.only(left: canGoBack ? 10 : 0),
+                      child: RichText(
                       text: const TextSpan(
                         style: TextStyle(
                           fontSize: 26,
@@ -415,6 +417,7 @@ class _HeaderState extends State<_Header> {
                           ),
                         ],
                       ),
+                    ),
                     ),
                   ),
                 ),

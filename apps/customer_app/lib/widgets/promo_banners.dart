@@ -25,7 +25,11 @@ class PromoBannerCard extends StatelessWidget {
     required this.banner,
     this.onAction,
     this.radius = 20,
+    this.fit = BoxFit.cover,
   });
+
+  /// Rasm kartaga qanday joylanadi: `cover` (kesadi), `fill` (kesmaydi, kartaga cho'zadi).
+  final BoxFit fit;
 
   final Map<String, dynamic> banner;
 
@@ -72,7 +76,7 @@ class PromoBannerCard extends StatelessWidget {
         children: [
           RemoteImage(
             url: image,
-            fit: BoxFit.cover,
+            fit: fit,
             placeholder: Container(color: const Color(0xFFFDF1E7)),
           ),
           if (hasText)
@@ -243,7 +247,14 @@ class PromoBanners extends StatefulWidget {
     this.tick = 0,
     this.repository,
     this.extraPages = const [],
+    this.naturalAspect = true,
+    this.imageFit = BoxFit.cover,
   });
+
+  /// `true` — karusel balandligi birinchi banner rasmining haqiqiy nisbatidan olinadi;
+  /// `false` — doim [aspectRatio] (rasm [imageFit] bo'yicha joylanadi).
+  final bool naturalAspect;
+  final BoxFit imageFit;
 
   /// Karusel oxiriga qo'shiladigan tayyor sahifalar (masalan, ilovaning o'z reklamasi);
   /// faqat [carousel] rejimida. Server bannerlari bo'lmasa ham karusel chiziladi.
@@ -344,7 +355,9 @@ class _PromoBannersState extends State<PromoBanners> {
         return Column(
           children: [
             _withAspect(
-              list.isEmpty ? null : list.first['image_url'],
+              widget.naturalAspect && list.isNotEmpty
+                  ? list.first['image_url']
+                  : null,
               widget.aspectRatio,
               (a) => AspectRatio(
               aspectRatio: a,
@@ -359,6 +372,7 @@ class _PromoBannersState extends State<PromoBanners> {
                               banner: list[i],
                               onAction: widget.onAction,
                               radius: 22,
+                              fit: widget.imageFit,
                             )
                             : extras[i - list.length],
               ),

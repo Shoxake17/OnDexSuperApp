@@ -337,7 +337,11 @@ class _SuperHomeScreenState extends State<SuperHomeScreen> {
             // almashadi (qo'lda surish ham mumkin). Admin banneri bo'lmasa — faqat o'yin banneri.
             PromoBanners(
               placement: 'menu',
+              // Balandligi o'yin banneri bilan bir xil (~150 pt): rasm eni o'zgarmaydi,
+              // bo'yi cho'ziladi (kesilmaydi).
               aspectRatio: 2.4,
+              naturalAspect: false,
+              imageFit: BoxFit.fill,
               carousel: true,
               tick: _bannerTick,
               onAction: _openBannerAction,
