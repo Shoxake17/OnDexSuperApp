@@ -48,6 +48,14 @@ class ProductCard extends StatelessWidget {
   /// restoran nomi). Menyuda ishlatilmaydi.
   final Widget? footer;
 
+  /// Rasm kengligi : balandligi. Standart 1 (kvadrat — taomlar); Qurt kabi cho'zinchoq
+  /// rasmli mahsulotlar uchun kattaroq (2.4). To'r balandligi ham shunga moslanadi:
+  /// [productGridDelegate] imageAspectRatio si BIR XIL berilishi shart.
+  final double imageAspectRatio;
+
+  /// Rasm qutiga qanday sig'adi: cover (kesadi, taomlar) yoki contain (kesmaydi).
+  final BoxFit imageFit;
+
   const ProductCard({
     super.key,
     required this.product,
@@ -60,6 +68,8 @@ class ProductCard extends StatelessWidget {
     this.onRemove,
     this.onTap,
     this.footer,
+    this.imageAspectRatio = 1,
+    this.imageFit = BoxFit.cover,
   });
 
   @override
@@ -78,7 +88,7 @@ class ProductCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
-            aspectRatio: 1,
+            aspectRatio: imageAspectRatio,
             child: Stack(
               children: [
                 Positioned.fill(
@@ -90,6 +100,7 @@ class ProductCard extends StatelessWidget {
                         onTap: onTap,
                         child: RemoteImage(
                           url: image,
+                          fit: imageFit,
                           placeholder: Center(
                             child: Icon(Icons.restaurant_menu,
                                 size: 30, color: style.placeholderIcon),
@@ -300,13 +311,14 @@ SliverGridDelegate productGridDelegate(
   int columns = 2,
   double spacing = 14,
   double extraHeight = 0,
+  double imageAspectRatio = 1,
 }) {
   final cell = (availableWidth - spacing * (columns - 1)) / columns;
   return SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: columns,
     crossAxisSpacing: spacing,
     mainAxisSpacing: 20,
-    mainAxisExtent: cell + _kCardTextHeight + extraHeight,
+    mainAxisExtent: cell / imageAspectRatio + _kCardTextHeight + extraHeight,
   );
 }
 
@@ -316,6 +328,6 @@ SliverGridDelegate productGridDelegate(
 /// [extraHeight] — kartochkada qo'shimcha qator bo'lsa
 /// ("Istaklarim" dagi restoran nomi): [kCardFooterHeight].
 SliverGridDelegate productGridOf(BuildContext context,
-        {double extraHeight = 0}) =>
+        {double extraHeight = 0, double imageAspectRatio = 1}) =>
     productGridDelegate(MediaQuery.sizeOf(context).width - 32,
-        extraHeight: extraHeight);
+        extraHeight: extraHeight, imageAspectRatio: imageAspectRatio);

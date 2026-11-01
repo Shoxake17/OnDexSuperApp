@@ -7,11 +7,10 @@ import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/favorites_store.dart';
 import '../data/quote_service.dart';
-import '../widgets/empty_state.dart';
+import '../widgets/order_blocks.dart';
 import '../widgets/page_sheet.dart';
 import '../widgets/agent_overlay.dart' show AgentCheckoutAnchor;
 import '../widgets/product_grid.dart';
-import '../widgets/qty_stepper.dart';
 import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'checkout_screen.dart';
@@ -185,7 +184,7 @@ class _CartScreenState extends State<CartScreen> {
           leading: _leading,
           leadingWidth: _leadingWidth,
         ),
-        body: const _EmptyCart(),
+        body: const EmptyCartView(),
       ));
     }
 
@@ -448,106 +447,25 @@ class _CartRow extends StatelessWidget {
             cartSubtotalTiyin: cartSubtotalTiyin);
     final lineTotal = serverLineTotalTiyin ??
         (estimate != null ? estimate.discountedPriceTiyin * qty : lineSubtotal);
-    final discounted = lineTotal < lineSubtotal;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              width: 64,
-              height: 64,
-              child: image.isEmpty
-                  ? Container(
-                      color: const Color(0xFFF5F5F5),
-                      child: const Icon(Icons.restaurant_menu,
-                          size: 24, color: Color(0xFFBDBDBD)),
-                    )
-                  : RemoteImage(
-                      url: image,
-                      placeholder: Container(
-                        color: const Color(0xFFF5F5F5),
-                        child: const Icon(Icons.restaurant_menu,
-                            size: 24, color: Color(0xFFBDBDBD)),
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    text: name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                    children: [
-                      if (weight > 0)
-                        TextSpan(
-                          text:
-                              '  ${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'
-                                  .trimRight(),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.normal,
-                              color: Color(0xFF9E9E9E)),
-                        ),
-                    ],
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                // QATOR SUMMASI (miqdor × narx) — birlik narxi emas.
-                // Vebda ham shunday: mijoz uchun "bu taom uchun
-                // qancha to'layman" degan savol muhimroq.
-                if (discounted)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        formatSum(lineTotal),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFFE53935)),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          formatSum(lineSubtotal),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF757575),
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Text(formatSum(lineTotal),
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          QtyStepper(
-            qty: qty,
-            onAdd: () => cart.increment(
-                restaurantId: restaurantId, productId: productId),
-            onRemove: () => cart.decrement(
-                restaurantId: restaurantId, productId: productId),
-          ),
-        ],
-      ),
+    return CartLineTile(
+      name: name,
+      weightLabel:
+          weight > 0
+              ? '${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'
+                  .trimRight()
+              : '',
+      imageUrl: image,
+      qty: qty,
+      lineTotalTiyin: lineTotal,
+      strikeTotalTiyin: lineSubtotal,
+      onAdd: () =>
+          cart.increment(restaurantId: restaurantId, productId: productId),
+      onRemove: () =>
+          cart.decrement(restaurantId: restaurantId, productId: productId),
     );
   }
 }
-
 /// Stol rejimi belgisi — mijoz restoranda o'tirgani aniq ko'rinsin.
 class _TableBanner extends StatelessWidget {
   final String? label;
@@ -643,93 +561,16 @@ class _Bottom extends StatelessWidget {
             )
         : null;
 
-    return SafeArea(
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE5E5E5))),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline,
-                        size: 16, color: Color(0xFFB3261E)),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(error!,
-                          style: const TextStyle(
-                              fontSize: 12.5, color: Color(0xFFB3261E))),
-                    ),
-                    TextButton(
-                      onPressed: onRetry,
-                      child: const Text('Qayta'),
-                    ),
-                  ],
-                ),
-              ),
-            AgentCheckoutAnchor(
-              onTap: onCheckout,
-              child: SizedBox(
-              height: 52,
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: kBrand,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: onCheckout,
-                child: quoting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Buyurtma rasmiylashtirish',
-                              style: TextStyle(
-                                  fontSize: 15.5, fontWeight: FontWeight.bold)),
-                          Text(
-                            ready ? formatSum(goodsTiyin!) : 'Summa yo\'q',
-                            key: const ValueKey('cart-bottom-total'),
-                            style: const TextStyle(
-                                fontSize: 15.5, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-              ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyCart extends StatelessWidget {
-  const _EmptyCart();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: SingleChildScrollView(
-        child: EmptyState(
-          image: 'assets/empty/cart.png',
-          title: 'Savatchangiz ovqat kutib zerikib qoldi 😔',
-          subtitle: 'Unga yordam bering — menyudan o\'zingizga eng '
-              'yoqqanini tanlang!',
-        ),
-      ),
+    return CartBottomBar(
+      trailing: ready ? formatSum(goodsTiyin!) : 'Summa yo\'q',
+      totalKey: const ValueKey('cart-bottom-total'),
+      loading: quoting,
+      error: error,
+      onRetry: onRetry,
+      onPressed: onCheckout,
+      // Shaddiy yordamchisi AYNAN shu tugmani topishi uchun.
+      wrapButton: (button) =>
+          AgentCheckoutAnchor(onTap: onCheckout, child: button),
     );
   }
 }

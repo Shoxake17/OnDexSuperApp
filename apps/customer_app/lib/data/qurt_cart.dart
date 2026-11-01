@@ -225,6 +225,15 @@ class QurtCart extends ChangeNotifier {
     return notes;
   }
 
+  /// Savatni serverdagi HOZIRGI narx/qoldiq bilan yangilaydi (GET /qurt/products?ids=).
+  /// Qaytadi: mijozga aytiladigan o'zgarishlar (bo'sh — savat serverga mos).
+  /// Tarmoq xatosida istisno tashlaydi — chaqiruvchi hal qiladi.
+  Future<List<String>> refresh() async {
+    if (isEmpty) return [];
+    final fresh = await api.qurtProductsByIds(_lines.keys.toList());
+    return syncWith(fresh);
+  }
+
   /// Serverga yuboriladigan pozitsiyalar: FAQAT mahsulot ID va miqdor.
   List<Map<String, dynamic>> toOrderItems() => [
     for (final l in _lines.values) {'product_id': l.productId, 'qty': l.qty},

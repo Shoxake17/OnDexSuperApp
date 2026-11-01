@@ -4,17 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
-import '../widgets/common.dart';
+import '../widgets/order_blocks.dart';
 import '../data/address_scope.dart';
 import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/payment_options.dart';
 import '../widgets/agent_overlay.dart' show AgentCheckoutConfirmAnchor;
 import '../widgets/app_text_field.dart';
-import '../widgets/page_sheet.dart';
 import '../data/quote_service.dart';
 import '../widgets/product_grid.dart' show discountLineLabel;
-import '../widgets/qty_stepper.dart';
 import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
 import 'catalog_screen.dart' show kBrand;
@@ -520,32 +518,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return SheetPage(
       child: Scaffold(
         backgroundColor: const Color(0xFFFAFAFA),
-        appBar: PageAppBar(
-          backgroundColor: const Color(0xFFFAFAFA),
-          centerTitle: true,
-          titleSpacing: 0,
-          leadingWidth: 64,
-          leading: Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => Navigator.of(context).pop(),
-                child: const SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(Icons.arrow_back, size: 22),
-                ),
-              ),
-            ),
-          ),
-          titleWidget: const Text(
-            'Rasmiylashtirish',
-            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-          ),
-        ),
+        appBar: const OrderPageAppBar(),
         body:
             _loadingAddress
                 ? const Center(child: CircularProgressIndicator())
@@ -563,7 +536,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     _totalsCard(),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
-                      _ErrorBox(text: _error!),
+                      OrderErrorBox(text: _error!),
                     ],
                   ],
                 ),
@@ -579,10 +552,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final text = ((a?['text'] as String?) ?? '').trim();
     final extras = a == null ? '' : _addressExtras(a);
 
-    return _Card(
+    return OrderCard(
       child: Column(
         children: [
-          _CardRow(
+          OrderCardRow(
             icon: Icons.place_outlined,
             title: 'Yetkazib berish manzili',
             subtitle:
@@ -593,7 +566,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             onTap: _pickAddress,
           ),
           const Divider(height: 1, indent: 44),
-          _CardRow(
+          OrderCardRow(
             icon: Icons.schedule,
             title: 'Yetkazish vaqti',
             trailing: Text(
@@ -623,10 +596,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _dineInCard() {
     final label = _cart.tableLabel;
-    return _Card(
+    return OrderCard(
       child: Column(
         children: [
-          _CardRow(
+          OrderCardRow(
             icon: Icons.qr_code_2,
             title: tableText(label ?? ''),
             subtitle: 'Buyurtma to\'g\'ridan-to\'g\'ri oshxonaga tushadi',
@@ -686,23 +659,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final byId = {for (final p in _menu) (p['id'] as String? ?? ''): p};
     final entries = _cart.items.entries.toList();
 
-    return _Card(
+    return OrderCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Row(
-              children: [
-                Icon(Icons.shopping_bag_outlined, size: 22, color: kBrand),
-                SizedBox(width: 12),
-                Text(
-                  'Buyurtma tafsilotlari',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
+          const OrderDetailsHeader(),
           for (var i = 0; i < entries.length; i++) ...[
             if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
             _OrderItemRow(
@@ -754,7 +715,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _payMethodCard() {
-    return _Card(
+    return OrderCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -799,8 +760,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _couponCard() {
     final code = _coupon;
-    return _Card(
-      child: _CardRow(
+    return OrderCard(
+      child: OrderCardRow(
         icon: Icons.confirmation_number_outlined,
         title: 'Kupon yoki promokod',
         subtitle:
@@ -828,15 +789,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final sub = _subtotal;
     final disc = _discount ?? 0;
 
-    return _Card(
+    return OrderCard(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             if (sub != null)
-              _TotalLine(label: 'Savatdagi tovarlar', value: formatSum(sub)),
+              OrderTotalLine(label: 'Savatdagi tovarlar', value: formatSum(sub)),
             if (disc > 0)
-              _TotalLine(
+              OrderTotalLine(
                 label: discountLineLabel(
                   discountTiyin: disc,
                   promotionDiscountTiyin: _promotionDiscount,
@@ -850,41 +811,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             // qo'shilgan. Stol buyurtmasida kuryer yo'q — qator umuman
             // chizilmaydi.
             if (!_isDineIn)
-              _TotalLine(
+              OrderTotalLine(
                 key: const ValueKey('checkout-delivery-line'),
                 label: 'Yetkazish',
                 value: _deliveryFee <= 0 ? 'Bepul' : formatSum(_deliveryFee),
                 color: _deliveryFee <= 0 ? const Color(0xFF16A34A) : null,
               ),
             if (_mockServiceFeeTiyin > 0)
-              _TotalLine(
+              OrderTotalLine(
                 label: 'Xizmat yig\'imi',
                 value: formatSum(_mockServiceFeeTiyin),
               ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: _DashedLine(),
+              child: OrderDashedLine(),
             ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Jami to\'lov:',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  // Jami — SERVER qiymati (yetkazish haqi bilan).
-                  // Yuqoridagi mock qator (xizmat yig'imi) 0 va unga
-                  // QO'SHILMAYDI: u serverda ham yo'q.
-                  formatSum(_total),
-                  key: const ValueKey('checkout-total'),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: kBrand,
-                  ),
-                ),
-              ],
+            // Jami — SERVER qiymati (yetkazish haqi bilan). Yuqoridagi mock qator
+            // (xizmat yig'imi) 0 va unga QO'SHILMAYDI: u serverda ham yo'q.
+            OrderGrandTotal(
+              valueTiyin: _total,
+              valueKey: const ValueKey('checkout-total'),
             ),
           ],
         ),
@@ -898,89 +844,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final ready =
         !_submitting && !_quoting && _total > 0 && _methodAvailable(_payMethod);
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        // ┌─ SHADDIY OG'ZAKI TASDIQNI SHU YERGA OLIB KELADI ─────────┐
-        // Foydalanuvchi "ha" desa, ilova AYNAN shu tugmani bosadi va
-        // AYNAN shu `_submit` chaqiriladi — naqd to'lov bilan.
-        // Yangi buyurtma yo'li yozilmagan: server tekshiruvlari,
-        // narx qayta hisoblanishi, idempotentlik kaliti — hammasi
-        // o'z joyida qoladi.
-        //
-        // Tugma tayyor bo'lmasa (`ready == false`) ro'yxatga
-        // `null` beriladi va Shaddiy hech narsa bosa olmaydi.
-        // └──────────────────────────────────────────────────────────┘
-        child: AgentCheckoutConfirmAnchor(
-          onCashConfirm: ready ? _submitCash : null,
-          child: SizedBox(
-            height: 56,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: kBrand,
-                disabledBackgroundColor: kBrand.withValues(alpha: 0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              onPressed: ready ? _submit : null,
-              child:
-                  _submitting
-                      ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                      : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.lock_outline, size: 18),
-                          const SizedBox(width: 8),
-                          // ┌─ MATN TANLANGAN USULGA QARAB O'ZGARADI ────┐
-                          // Maketda har doim "... so'm to'lash". Lekin
-                          // naqd tanlanganda ilova hech qanday pul
-                          // yechmaydi — hisob kuryerga beriladi. O'shanda
-                          // "to'lash" deyish mijozni shu yerda pul
-                          // yechiladi deb o'ylatardi.
-                          //
-                          // Karta/Payme/Click uchun ham to'lov integratsiyasi
-                          // hali YO'Q, lekin ular tanlanganda mijoz to'lov
-                          // qadamini kutadi — matn maketdagidek qoladi.
-                          // └────────────────────────────────────────────┘
-                          // Summa katta bo'lsa (masalan 1 017 800 so'm) matn
-                          // qatorga sig'masdi va tugma "RIGHT OVERFLOWED"
-                          // chizig'ini chizardi. `Flexible` + `scaleDown`:
-                          // odatda matn o'z o'lchamida, sig'magandagina
-                          // biroz kichrayadi — summa qisqarmaydi.
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                _payMethod == _PayMethod.cash
-                                    ? 'Buyurtma berish · ${formatSum(_total)}'
-                                    : '${formatSum(_total)} to\'lash',
-                                maxLines: 1,
-                                style: const TextStyle(
-                                  fontSize: 16.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right, size: 22),
-                        ],
-                      ),
-            ),
+    // Tugma ko'rinishi umumiy blokda (widgets/order_blocks.dart). Shaddiy og'zaki
+    // tasdig'i AYNAN shu tugmani bosadi va AYNAN shu _submit chaqiriladi — naqd
+    // to'lov bilan: server tekshiruvlari, narx qayta hisoblanishi va idempotentlik
+    // kaliti o'z joyida qoladi. Tugma tayyor bo'lmasa null beriladi.
+    //
+    // Matn tanlangan usulga qarab o'zgaradi: naqdda ilova pul yechmaydi (hisob
+    // kuryerga beriladi), shuning uchun "to'lash" emas, "Buyurtma berish".
+    return OrderSubmitBar(
+      label:
+          _payMethod == _PayMethod.cash
+              ? 'Buyurtma berish · ${formatSum(_total)}'
+              : '${formatSum(_total)} to\'lash',
+      ready: ready,
+      submitting: _submitting,
+      onPressed: _submit,
+      wrapButton:
+          (button) => AgentCheckoutConfirmAnchor(
+            onCashConfirm: ready ? _submitCash : null,
+            child: button,
           ),
-        ),
-      ),
     );
   }
-
   /// Shaddiy og'zaki tasdiqdan keyin chaqiradigan yo'l.
   ///
   /// ┌─ NAQD — YAGONA AVTOMATIK YO'L ─────────────────────────────────┐
@@ -1452,123 +1337,17 @@ class _Logo extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// QAYTA ISHLATILADIGAN BO'LAKLAR
-// ═══════════════════════════════════════════════════════════════════
-
-/// Oq karta — maketdagi barcha bloklar shu ko'rinishda.
-class _Card extends StatelessWidget {
-  final Widget child;
-  const _Card({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEEEEEE)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: child,
-    );
-  }
-}
-
-/// Ikon + sarlavha + izoh qatori.
-class _CardRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final String? note;
-  final Widget? trailing;
-  final VoidCallback? onTap;
-
-  const _CardRow({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.note,
-    this.trailing,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final row = Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 22, color: kBrand),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (subtitle != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Text(
-                      subtitle!,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        color: Color(0xFF424242),
-                      ),
-                    ),
-                  ),
-                if (note != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      note!,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF9E9E9E),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-          if (onTap != null)
-            const Padding(
-              padding: EdgeInsets.only(left: 6),
-              child: Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: Color(0xFF9E9E9E),
-              ),
-            ),
-        ],
-      ),
-    );
-
-    if (onTap == null) return row;
-    return InkWell(onTap: onTap, child: row);
-  }
-}
-
-/// Buyurtmadagi bitta taom — rasm, nom, tavsif, miqdor va narx.
+/// Buyurtmadagi bitta taom: ko'rinishi umumiy blokda (widgets/order_blocks.dart),
+/// bu yerda faqat restoran ma'lumoti (menyu keshi, server qator summasi) hisoblanadi.
 class _OrderItemRow extends StatelessWidget {
   final Map<String, dynamic>? product;
   final String productId;
   final int qty;
   final String restaurantId;
 
-  /// Serverning shu qator uchun yakuniy summasi (tiyin). `null` —
-  /// javob yo'q; shunda mahsulotning O'Z chegirma narxiga tushamiz
-  /// (aksiyalar bu yerda taxmin qilinmaydi: server ularni butun savatga
-  /// qo'llaydi, ya'ni bitta qatorga "to'g'ri" ulush faqat serverdan
-  /// kelishi mumkin).
+  /// Serverning shu qator uchun yakuniy summasi (tiyin). null — javob yo'q;
+  /// shunda mahsulotning O'Z chegirma narxiga tushamiz (aksiyalar bu yerda
+  /// taxmin qilinmaydi: server ularni butun savatga qo'llaydi).
   final int? serverLineTotalTiyin;
 
   const _OrderItemRow({
@@ -1583,221 +1362,18 @@ class _OrderItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cart = CartStore.instance;
     final p = product;
-    final name = (p?['name'] as String?) ?? 'Yuklanmoqda…';
-    final desc = ((p?['description'] as String?) ?? '').trim();
-    final image = (p?['image_url'] as String?) ?? '';
     final price = (p?['price_tiyin'] as num?)?.toInt() ?? 0;
     final discount = (p?['discount_price_tiyin'] as num?)?.toInt() ?? 0;
     final unit = (discount > 0 && discount < price) ? discount : price;
-    final lineSubtotal = price * qty;
-    final lineTotal = serverLineTotalTiyin ?? unit * qty;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              width: 76,
-              height: 76,
-              child:
-                  image.isEmpty
-                      ? Container(
-                        color: const Color(0xFFF5F5F5),
-                        child: const Icon(
-                          Icons.restaurant_menu,
-                          color: Color(0xFFBDBDBD),
-                        ),
-                      )
-                      : RemoteImage(
-                        url: image,
-                        placeholder: Container(
-                          color: const Color(0xFFF5F5F5),
-                          child: const Icon(
-                            Icons.restaurant_menu,
-                            color: Color(0xFFBDBDBD),
-                          ),
-                        ),
-                      ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (desc.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      desc,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.35,
-                        color: Color(0xFF9E9E9E),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Savat ekranidagi bilan AYNAN bir xil vidjet — alohida
-              // nusxa emas (`widgets/qty_stepper.dart`).
-              QtyStepper(
-                qty: qty,
-                onAdd:
-                    () => cart.increment(
-                      restaurantId: restaurantId,
-                      productId: productId,
-                    ),
-                onRemove:
-                    () => cart.decrement(
-                      restaurantId: restaurantId,
-                      productId: productId,
-                    ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                formatSum(lineTotal),
-                style: const TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.bold,
-                  color: kBrand,
-                ),
-              ),
-              // Chegirma bo'lsa tan narx ham ko'rinadi — mijoz nechi
-              // so'm yutganini ko'rsin (savat ekranidagi bilan bir xil).
-              if (lineTotal < lineSubtotal)
-                Text(
-                  formatSum(lineSubtotal),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF9E9E9E),
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TotalLine extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-  const _TotalLine({
-    super.key,
-    required this.label,
-    required this.value,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14.5, color: Color(0xFF757575)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14.5,
-              color: color ?? const Color(0xFF424242),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Maketdagi punktir chiziq.
-class _DashedLine extends StatelessWidget {
-  const _DashedLine();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 1,
-      child: CustomPaint(painter: _DashedPainter(), child: Container()),
-    );
-  }
-}
-
-class _DashedPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = const Color(0xFFE0E0E0)
-          ..strokeWidth = 1;
-    const dash = 4.0;
-    const gap = 4.0;
-    var x = 0.0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset(x + dash, 0), paint);
-      x += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ErrorBox extends StatelessWidget {
-  final String text;
-  const _ErrorBox({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFBEAE9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, size: 18, color: Color(0xFFB3261E)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13.5),
-            ),
-          ),
-        ],
-      ),
+    return OrderItemTile(
+      name: (p?['name'] as String?) ?? 'Yuklanmoqda…',
+      description: (p?['description'] as String?) ?? '',
+      imageUrl: (p?['image_url'] as String?) ?? '',
+      qty: qty,
+      lineTotalTiyin: serverLineTotalTiyin ?? unit * qty,
+      strikeTotalTiyin: price * qty,
+      onAdd: () => cart.increment(restaurantId: restaurantId, productId: productId),
+      onRemove: () => cart.decrement(restaurantId: restaurantId, productId: productId),
     );
   }
 }

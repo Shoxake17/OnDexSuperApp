@@ -16,6 +16,7 @@ import '../data/quote_service.dart';
 import '../services/book_cafe_game.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
+import '../widgets/order_blocks.dart' show CartPill;
 import '../widgets/model_3d_view.dart';
 import '../widgets/page_sheet.dart';
 import '../widgets/product_grid.dart';
@@ -1044,7 +1045,7 @@ class _MenuScreenState extends State<MenuScreen> {
         ],
       ),
       floatingActionButton: myCart
-          ? _CartPill(
+          ? CartPill(
               totalTiyin: _quoteTiyin ?? _visualTotal,
               count: _cart.totalQty,
               onTap: () => Navigator.of(context).push(
@@ -1163,69 +1164,6 @@ class _Section {
   final String title;
   final List<Map<String, dynamic>> items;
   const _Section(this.title, this.items);
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// SUZUVCHI SAVAT TUGMASI
-// ═══════════════════════════════════════════════════════════════════
-
-class _CartPill extends StatelessWidget {
-  final int totalTiyin;
-  final int count;
-  final VoidCallback onTap;
-
-  const _CartPill({
-    required this.totalTiyin,
-    required this.count,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FloatingActionButton.extended(
-      onPressed: onTap,
-      backgroundColor: kBrand,
-      foregroundColor: Colors.white,
-      elevation: 4,
-      extendedPadding: const EdgeInsets.symmetric(horizontal: 22),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            formatSum(totalTiyin),
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 12),
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(Icons.shopping_basket_outlined, size: 22),
-              Positioned(
-                right: -7,
-                top: -7,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  constraints: const BoxConstraints(minWidth: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$count',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

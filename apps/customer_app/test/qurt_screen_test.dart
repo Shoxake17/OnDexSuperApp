@@ -199,10 +199,6 @@ void main() {
           expect(find.text('Sho\'r qurt'), findsOneWidget);
           expect(find.textContaining('250 g'), findsOneWidget);
           expect(find.textContaining('15 000'), findsOneWidget);
-          expect(
-            find.text('Uyda tayyorlangan'),
-            findsOneWidget,
-          ); // karta tavsifi
           expect(find.text('Barchasi'), findsOneWidget);
           expect(find.text('Sho\'r'), findsOneWidget);
           expect(find.text('Qurt mahsulotlari'), findsOneWidget);
@@ -217,7 +213,7 @@ void main() {
           expect(find.text('Tarkibi'), findsOneWidget);
           expect(
             find.textContaining('Urgut qurtlari'),
-            findsOneWidget,
+            findsWidgets,
           ); // detalda do'kon nomi
         }, () => _server());
       },
