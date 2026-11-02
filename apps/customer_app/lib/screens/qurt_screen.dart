@@ -8,7 +8,7 @@ import '../widgets/header_action.dart';
 import '../widgets/product_grid.dart';
 import '../widgets/promo_banners.dart';
 import '../widgets/qty_stepper.dart';
-import '../widgets/order_blocks.dart' show CartPill;
+import '../widgets/order_blocks.dart' show CartSummaryBar;
 import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 import 'qurt_cart_screen.dart';
@@ -179,13 +179,14 @@ class _QurtScreenState extends State<QurtScreen> {
     return SheetPage(
       child: Scaffold(
         backgroundColor: Colors.white,
-        // Restoran menyusidagi suzuvchi "summa + savat" tugmasi (umumiy blok).
-        floatingActionButton:
+        // Pastdagi "Savatcha — N ta mahsulot  [Buyurtmani davom ettirish]" paneli
+        // (maket: image/qurtplus.png; umumiy blok).
+        bottomNavigationBar:
             _cart.isEmpty
                 ? null
-                : CartPill(
-                  totalTiyin: _cart.totalTiyin,
+                : CartSummaryBar(
                   count: _cart.totalQty,
+                  totalTiyin: _cart.totalTiyin,
                   onTap: _openCart,
                 ),
         body: SafeArea(
@@ -257,6 +258,7 @@ class _QurtScreenState extends State<QurtScreen> {
             icon: Icons.shopping_basket_outlined,
             label: 'Savat',
             badge: _cart.totalQty,
+            filled: true,
             onTap: _openCart,
           ),
         ],
@@ -364,16 +366,16 @@ class _QurtScreenState extends State<QurtScreen> {
     } else {
       final items = _sorted;
       body = Padding(
-        // Pastki "Savatcha" paneli ustiga chiqmasligi uchun joy qoldiriladi.
-        padding: EdgeInsets.fromLTRB(16, 0, 16, _cart.isEmpty ? 28 : 96),
-        // Restoran menyusidagi BIR XIL kartochka va to'r (`ProductCard`, `productGridOf`):
-        // faqat rasm cho'zinchoq (2.4:1) va kesilmaydi.
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        // Restoran menyusidagi BIR XIL kartochka va to'r (ProductCard, productGridOf),
+        // lekin Qurt maketi (image/qurtplus.png) ko'rinishida: ramkali karta, cho'zinchoq
+        // rasm (2.4:1, kesilmaydi), nom, tavsif, narx va o'ngda "+" / "− n +".
         child: GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: productGridOf(
             context,
-            extraHeight: kCardFooterHeight,
+            layout: ProductCardLayout.wide,
             imageAspectRatio: _kProductImageRatio,
           ),
           itemCount: items.length,
@@ -383,18 +385,14 @@ class _QurtScreenState extends State<QurtScreen> {
             return ProductCard(
               product: _asCardProduct(p),
               qty: _cart.qtyOf(id),
+              layout: ProductCardLayout.wide,
               imageAspectRatio: _kProductImageRatio,
               imageFit: BoxFit.contain,
+              subtitle: _cardSubtitle(p),
               addKey: ValueKey('qurt-add-$id'),
               onAdd: () => _add(p),
               onRemove: () => _cart.setQty(id, _cart.qtyOf(id) - 1),
               onTap: () => _showDetail(p),
-              footer: Text(
-                (p['store_name'] ?? '').toString(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: _muted),
-              ),
             );
           },
         ),
@@ -508,6 +506,12 @@ Widget _image(String? url, {double? height, double radius = 14}) {
               ),
     ),
   );
+}
+
+/// Karta tavsifi: mahsulot tavsifi; yo'q bo'lsa do'kon nomi.
+String _cardSubtitle(Map<String, dynamic> p) {
+  final d = (p['description'] ?? '').toString().trim();
+  return d.isNotEmpty ? d : (p['store_name'] ?? '').toString();
 }
 
 /// Qurt mahsulotini umumiy `ProductCard` kutadigan shaklga keltiradi: og'irlik

@@ -179,6 +179,15 @@ class QurtCart extends ChangeNotifier {
     _changed();
   }
 
+  /// Sinov uchun: faqat xotirani tozalaydi (diskka/platforma kanaliga TEGMAYDI —
+  /// widget testlarida u hech qachon qaytmasligi mumkin).
+  @visibleForTesting
+  void clearMemoryForTest() {
+    _lines.clear();
+    _checkoutKey = null;
+    notifyListeners();
+  }
+
   /// Chiqishda: xotira ham, disk ham, kalit ham.
   Future<void> reset() async {
     _lines.clear();

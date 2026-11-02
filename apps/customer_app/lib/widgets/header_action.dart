@@ -24,12 +24,17 @@ class HeaderActionButton extends StatelessWidget {
   /// O'qilmaganlar soni. 0 — belgi chizilmaydi.
   final int badge;
 
+  /// To'ldirilgan (brend rangidagi) tugma — asosiy amal uchun, masalan Qurt savati
+  /// (maket: image/qurtplus.png). Oddiy holatda oq doira.
+  final bool filled;
+
   const HeaderActionButton({
     super.key,
     required this.icon,
     required this.label,
     required this.onTap,
     this.badge = 0,
+    this.filled = false,
   });
 
   /// Belgida ko'rsatiladigan eng katta son — undan yuqorisi "9+".
@@ -47,14 +52,19 @@ class HeaderActionButton extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 40,
+              width: filled ? 52 : 40,
               height: 40,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE5E5E5)),
-                color: Colors.white,
+                shape: filled ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: filled ? BorderRadius.circular(20) : null,
+                border: filled ? null : Border.all(color: const Color(0xFFE5E5E5)),
+                color: filled ? const Color(0xFFF4511E) : Colors.white,
               ),
-              child: Icon(icon, size: 20, color: const Color(0xFF666666)),
+              child: Icon(
+                icon,
+                size: 20,
+                color: filled ? Colors.white : const Color(0xFF666666),
+              ),
             ),
             if (badge > 0)
               Positioned(

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:chust_customer/api.dart';
+import 'package:chust_customer/data/qurt_cart.dart';
 import 'package:chust_customer/screens/qurt_screen.dart';
 import 'package:chust_customer/widgets/promo_banners.dart';
 
@@ -215,6 +216,32 @@ void main() {
             find.textContaining('Urgut qurtlari'),
             findsWidgets,
           ); // detalda do'kon nomi
+        }, () => _server());
+      },
+    );
+
+    testWidgets(
+      '"+" bosilsa pastda savat paneli chiqadi; "−" bilan savat bo\'shaydi',
+      (tester) async {
+        _tall(tester);
+        QurtCart.instance.clearMemoryForTest();
+        addTearDown(QurtCart.instance.clearMemoryForTest);
+        await http.runWithClient(() async {
+          await tester.pumpWidget(const MaterialApp(home: QurtScreen()));
+          await tester.pumpAndSettle();
+          expect(find.text('Savatcha'), findsNothing);
+
+          await tester.tap(find.byKey(const ValueKey('qurt-add-q1')));
+          await tester.pumpAndSettle();
+          expect(find.text('Savatcha'), findsOneWidget);
+          expect(find.text('Buyurtmani davom ettirish'), findsOneWidget);
+          expect(find.textContaining('1 ta mahsulot'), findsOneWidget);
+
+          // "− 1 +" boshqaruvi (maket: image/qurtplus.png)
+          expect(find.byIcon(Icons.remove), findsOneWidget);
+          await tester.tap(find.byIcon(Icons.remove));
+          await tester.pumpAndSettle();
+          expect(find.text('Savatcha'), findsNothing);
         }, () => _server());
       },
     );

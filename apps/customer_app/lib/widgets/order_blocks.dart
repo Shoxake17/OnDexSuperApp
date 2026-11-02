@@ -799,6 +799,109 @@ class CartPill extends StatelessWidget {
   }
 }
 
+/// Sahifa pastidagi "Savatcha — N ta mahsulot  [Buyurtmani davom ettirish →]" paneli
+/// (maket: image/qurtplus.png). Savat bo'sh bo'lsa chaqiruvchi uni chizmaydi.
+class CartSummaryBar extends StatelessWidget {
+  const CartSummaryBar({
+    super.key,
+    required this.count,
+    required this.totalTiyin,
+    required this.onTap,
+    this.title = 'Savatcha',
+    this.action = 'Buyurtmani davom ettirish',
+  });
+
+  final int count;
+  final int totalTiyin;
+  final VoidCallback onTap;
+  final String title;
+  final String action;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+        child: Material(
+          color: kBrand,
+          borderRadius: BorderRadius.circular(20),
+          elevation: 3,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.shopping_basket_outlined, color: Colors.white, size: 26),
+                      Positioned(
+                        right: -8,
+                        top: -8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          constraints: const BoxConstraints(minWidth: 18),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '$count',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: kBrand, fontSize: 10.5, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                        ),
+                        Text(
+                          '$count ta mahsulot · ${formatSum(totalTiyin)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          action,
+                          style: const TextStyle(color: kBrand, fontWeight: FontWeight.w700, fontSize: 12.5),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward, size: 16, color: kBrand),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 // ═══════════════════════════════════════════════════════════════════
 // SAHIFA QOBIQLARI
 // ═══════════════════════════════════════════════════════════════════

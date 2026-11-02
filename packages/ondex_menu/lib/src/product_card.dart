@@ -15,6 +15,12 @@ import 'package:ondex_core/ondex_core.dart' show formatSum, formatWeightUnit;
 import 'menu_widgets.dart';
 import 'product_pricing.dart';
 
+/// Kartochka ko'rinishi.
+///  * [tile] — taomlar: kvadrat rasm, boshqaruv rasm USTIDA, rasm ostida narx va nom;
+///  * [wide] — cho'zinchoq rasmli mahsulotlar (Qurt): ramkali karta, rasm, nom, tavsif,
+///    pastda narx (+ og'irlik) va o'ng tomonda \+\ yoki \− n +\ (maket: image/qurtplus.png).
+enum ProductCardLayout { tile, wide }
+
 /// Kvadrat rasm, chap yuqorida ilovaga xos uya ([topLeft] — mijoz
 /// ilovasida "Istaklarim" yuragi), o'ng yuqorida aksiya lentasi, pastda
 /// "+" yoki "− n +" boshqaruvi; rasm ostida narx, nom, og'irlik.
@@ -56,6 +62,12 @@ class ProductCard extends StatelessWidget {
   /// Rasm qutiga qanday sig'adi: cover (kesadi, taomlar) yoki contain (kesmaydi).
   final BoxFit imageFit;
 
+  /// Kartochka ko'rinishi ([ProductCardLayout]). Standart — taom kartochkasi.
+  final ProductCardLayout layout;
+
+  /// Faqat [ProductCardLayout.wide]: nom ostidagi qisqa matn (ikki qatorgacha).
+  final String? subtitle;
+
   const ProductCard({
     super.key,
     required this.product,
@@ -70,10 +82,13 @@ class ProductCard extends StatelessWidget {
     this.footer,
     this.imageAspectRatio = 1,
     this.imageFit = BoxFit.cover,
+    this.layout = ProductCardLayout.tile,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (layout == ProductCardLayout.wide) return _buildWide(context);
     final style = MenuPalette.of(context);
     final name = (product['name'] as String?) ?? '';
     final image = (product['image_url'] as String?) ?? '';
@@ -252,7 +267,186 @@ class ProductCard extends StatelessWidget {
       ),
     );
   }
-}
+
+  /// Cho'zinchoq kartochka (maket: image/qurtplus.png): ramka ichida rasm, nom, tavsif,
+  /// pastda narx va o'ngda "+" (savatda bo'lsa "− n +").
+  Widget _buildWide(BuildContext context) {
+    final style = MenuPalette.of(context);
+    final name = (product['name'] as String?) ?? '';
+    final image = (product['image_url'] as String?) ?? '';
+    final price = (product['price_tiyin'] as num?)?.toInt() ?? 0;
+    final available = product['available'] != false;
+    final weight = (product['weight'] as num?)?.toDouble() ?? 0;
+    final unit = formatWeightUnit((product['weight_unit'] as String?) ?? '');
+    final sub = (subtitle ?? '').trim();
+
+    Widget circle(IconData icon, VoidCallback? onTap, {Key? key}) => InkResponse(
+      key: key,
+      onTap: onTap,
+      radius: 22,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: onTap == null ? style.controlDisabled : style.brand,
+        ),
+        child: Icon(icon, size: 20, color: Colors.white),
+      ),
+    );
+
+    Widget control() {
+      if (!available || qty == null) return const SizedBox.shrink();
+      if (qty == 0) return circle(Icons.add, onAdd, key: addKey);
+      return Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: style.chipBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkResponse(
+              onTap: onRemove,
+              radius: 20,
+              child: SizedBox(
+                width: 34,
+                height: 36,
+                child: Icon(Icons.remove, size: 20, color: style.brand),
+              ),
+            ),
+            SizedBox(
+              width: 22,
+              child: Text(
+                '$qty',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+            ),
+            InkResponse(
+              key: addKey,
+              onTap: onAdd,
+              radius: 20,
+              child: SizedBox(
+                width: 34,
+                height: 36,
+                child: Icon(Icons.add, size: 20, color: style.brand),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Opacity(
+      opacity: available ? 1 : 0.45,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFEDEDED)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: imageAspectRatio,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Material(
+                        color: style.imageBackground,
+                        child: InkWell(
+                          onTap: onTap,
+                          child: RemoteImage(
+                            url: image,
+                            fit: imageFit,
+                            placeholder: Center(
+                              child: Icon(Icons.restaurant_menu, size: 28, color: style.placeholderIcon),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (topLeft != null) Positioned(left: 6, top: 6, child: topLeft!),
+                  if (promoted && available)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: _Badge(text: discount?.label ?? 'Aksiya', background: style.brand, foreground: Colors.white),
+                    ),
+                  if (!available)
+                    const Positioned(
+                      left: 6,
+                      bottom: 6,
+                      child: _Badge(text: 'Tugadi', background: Color(0xD9000000), foreground: Colors.white),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: onTap,
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: style.text),
+              ),
+            ),
+            const SizedBox(height: 2),
+            SizedBox(
+              height: _kWideSubtitleHeight,
+              child: Text(
+                sub,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, height: 1.3, color: style.mutedText),
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 36,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: formatSum(price),
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: style.brand),
+                            ),
+                            if (weight > 0)
+                              TextSpan(
+                                text: '  / ${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'.trimRight(),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: style.mutedText),
+                              ),
+                          ],
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  control(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }}
 
 class _Badge extends StatelessWidget {
   final String text;
@@ -297,6 +491,13 @@ const _kCardTextHeight = 88.0;
 /// (restoran nomi qatori: 16px logo + 4px chekinish).
 const kCardFooterHeight = 24.0;
 
+/// [ProductCardLayout.wide]: nom ostidagi ikki qatorli tavsif balandligi.
+const _kWideSubtitleHeight = 32.0;
+
+/// [ProductCardLayout.wide]: rasmdan tashqari qolgan balandlik: ramka bo'shlig'i 16 +
+/// rasm ostidagi 8 + nom ~20 + 2 + tavsif 32 + 6 + narx/boshqaruv qatori 36 + zaxira 4.
+const _kWideCardChromeHeight = 16 + 8 + 20 + 2 + _kWideSubtitleHeight + 6 + 36 + 4.0;
+
 /// Kartochkalar to'ri — vebdagi `grid-cols-2` bilan bir xil.
 ///
 /// `mainAxisExtent` bilan balandlik ANIQ hisoblanadi: kartochka
@@ -312,8 +513,18 @@ SliverGridDelegate productGridDelegate(
   double spacing = 14,
   double extraHeight = 0,
   double imageAspectRatio = 1,
+  ProductCardLayout layout = ProductCardLayout.tile,
 }) {
   final cell = (availableWidth - spacing * (columns - 1)) / columns;
+  if (layout == ProductCardLayout.wide) {
+    // Ramkali kartochka: rasm kartaning ichki kengligiga (cell - 16) moslanadi.
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: columns,
+      crossAxisSpacing: spacing,
+      mainAxisSpacing: spacing,
+      mainAxisExtent: (cell - 16) / imageAspectRatio + _kWideCardChromeHeight,
+    );
+  }
   return SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: columns,
     crossAxisSpacing: spacing,
@@ -328,6 +539,11 @@ SliverGridDelegate productGridDelegate(
 /// [extraHeight] — kartochkada qo'shimcha qator bo'lsa
 /// ("Istaklarim" dagi restoran nomi): [kCardFooterHeight].
 SliverGridDelegate productGridOf(BuildContext context,
-        {double extraHeight = 0, double imageAspectRatio = 1}) =>
+        {double extraHeight = 0,
+        double imageAspectRatio = 1,
+        ProductCardLayout layout = ProductCardLayout.tile}) =>
     productGridDelegate(MediaQuery.sizeOf(context).width - 32,
-        extraHeight: extraHeight, imageAspectRatio: imageAspectRatio);
+        spacing: layout == ProductCardLayout.wide ? 12 : 14,
+        extraHeight: extraHeight,
+        imageAspectRatio: imageAspectRatio,
+        layout: layout);
