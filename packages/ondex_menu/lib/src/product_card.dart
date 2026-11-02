@@ -297,16 +297,23 @@ class ProductCard extends StatelessWidget {
 
     Widget control() {
       if (!available || qty == null) return const SizedBox.shrink();
-      if (qty == 0) return circle(Icons.add, onAdd, key: addKey);
+      if (qty == 0) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: circle(Icons.add, onAdd, key: addKey),
+        );
+      }
+      // Restoran menyusidagidek: "− n +" butun qatorni egallaydi (chapda −, o'rtada son, o'ngda +).
       return Container(
         height: 36,
+        width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: style.chipBorder),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             InkResponse(
               onTap: onRemove,
@@ -317,13 +324,10 @@ class ProductCard extends StatelessWidget {
                 child: Icon(Icons.remove, size: 20, color: style.brand),
               ),
             ),
-            SizedBox(
-              width: 22,
-              child: Text(
-                '$qty',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-              ),
+            Text(
+              '$qty',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
             ),
             InkResponse(
               key: addKey,
@@ -411,42 +415,39 @@ class ProductCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
+            // 1-qator: narx va og'irlik — butun kenglikda, boshqaruv bilan siqishmaydi.
             SizedBox(
-              height: 36,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: formatSum(price),
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: style.brand),
-                            ),
-                            if (weight > 0)
-                              TextSpan(
-                                text: '  / ${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'.trimRight(),
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: style.mutedText),
-                              ),
-                          ],
-                        ),
-                        maxLines: 1,
+              height: _kWidePriceHeight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: formatSum(price),
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: style.brand),
                       ),
-                    ),
+                      if (weight > 0)
+                        TextSpan(
+                          text: '  / ${weight % 1 == 0 ? weight.toInt() : weight.toStringAsFixed(1)} $unit'.trimRight(),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: style.mutedText),
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  control(),
-                ],
+                  maxLines: 1,
+                ),
               ),
             ),
+            const SizedBox(height: 6),
+            // 2-qator: "+" (o'ngda) yoki butun qatorli "− n +" (restoran menyusidagidek).
+            SizedBox(height: 36, child: control()),
           ],
         ),
       ),
     );
-  }}
+  }
+}
 
 class _Badge extends StatelessWidget {
   final String text;
@@ -495,8 +496,10 @@ const kCardFooterHeight = 24.0;
 const _kWideSubtitleHeight = 32.0;
 
 /// [ProductCardLayout.wide]: rasmdan tashqari qolgan balandlik: ramka bo'shlig'i 16 +
-/// rasm ostidagi 8 + nom ~20 + 2 + tavsif 32 + 6 + narx/boshqaruv qatori 36 + zaxira 4.
-const _kWideCardChromeHeight = 16 + 8 + 20 + 2 + _kWideSubtitleHeight + 6 + 36 + 4.0;
+/// rasm ostidagi 8 + nom ~20 + 2 + tavsif 32 + 6 + narx qatori 20 + 6 + boshqaruv qatori 36 + zaxira 4.
+const _kWidePriceHeight = 20.0;
+const _kWideCardChromeHeight =
+    16 + 8 + 20 + 2 + _kWideSubtitleHeight + 6 + _kWidePriceHeight + 6 + 36 + 4.0;
 
 /// Kartochkalar to'ri — vebdagi `grid-cols-2` bilan bir xil.
 ///

@@ -805,14 +805,12 @@ class CartSummaryBar extends StatelessWidget {
   const CartSummaryBar({
     super.key,
     required this.count,
-    required this.totalTiyin,
     required this.onTap,
     this.title = 'Savatcha',
     this.action = 'Buyurtmani davom ettirish',
   });
 
   final int count;
-  final int totalTiyin;
   final VoidCallback onTap;
   final String title;
   final String action;
@@ -867,7 +865,7 @@ class CartSummaryBar extends StatelessWidget {
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
                         ),
                         Text(
-                          '$count ta mahsulot · ${formatSum(totalTiyin)}',
+                          '$count ta mahsulot',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: Colors.white70, fontSize: 12),

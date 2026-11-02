@@ -186,7 +186,6 @@ class _QurtScreenState extends State<QurtScreen> {
                 ? null
                 : CartSummaryBar(
                   count: _cart.totalQty,
-                  totalTiyin: _cart.totalTiyin,
                   onTap: _openCart,
                 ),
         body: SafeArea(
