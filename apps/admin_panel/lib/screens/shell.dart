@@ -6,7 +6,7 @@ import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
-import '../pages/qurt_logistics_page.dart';
+import '../pages/qurt_stats_page.dart';
 import '../pages/restaurant_module.dart';
 import '../pages/settings_page.dart';
 import '../pages/stats_page.dart';
@@ -59,9 +59,9 @@ const _navTop = <_NavSpec>[
     selectedIcon: Icons.store_mall_directory,
   ),
   (
-    key: 'nav-qurt-logistics',
-    label: 'Qurt logistikasi',
-    screen: 'QurtLogistics',
+    key: 'nav-qurt-stats',
+    label: 'Qurt statistikasi',
+    screen: 'QurtStats',
     icon: Icons.local_shipping_outlined,
     selectedIcon: Icons.local_shipping,
   ),
@@ -162,7 +162,7 @@ class _AdminShellState extends State<AdminShell> {
   Widget _page(int i) => switch (i) {
         0 => const RestaurantsSection(),
         1 => const StoresPage(),
-        2 => const QurtLogisticsPage(),
+        2 => const QurtStatsPage(),
         3 => const StatsPage(),
         4 => const CustomersPage(),
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.

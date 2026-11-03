@@ -349,11 +349,11 @@ type AssignResult struct {
 	Skipped  int `json:"skipped"`
 }
 
-// Assign — buyurtmalarni Qurt kuryeriga biriktiradi. `ids` bo'sh bo'lsa `date` reysidagi
+// Assign — do'kon (`storeID`) buyurtmalarini o'z Qurt kuryeriga biriktiradi; boshqa do'kon buyurtmasiga tegilmaydi. `ids` bo'sh bo'lsa `date` reysidagi
 // hali biriktirilmagan, biriktirish mumkin bo'lgan hamma buyurtma olinadi. Allaqachon boshqa
 // kuryerga biriktirilgan yoki yakunlangan buyurtmaga tegilmaydi (o'tkazib yuboriladi).
 // Pul allaqachon kuryerda (held) bo'lsa kuryer o'zgartirilmaydi.
-func (s *Service) Assign(ctx context.Context, courierID, date string, ids []string) (AssignResult, error) {
+func (s *Service) Assign(ctx context.Context, storeID, courierID, date string, ids []string) (AssignResult, error) {
 	if courierID == "" {
 		return AssignResult{}, invalid("kuryer ko'rsatilmagan")
 	}
@@ -377,7 +377,7 @@ func (s *Service) Assign(ctx context.Context, courierID, date string, ids []stri
 			return AssignResult{}, invalid("reys sanasi yoki buyurtmalar ko'rsatilmagan")
 		}
 		var err error
-		list, err = s.Repo.List(ctx, Filter{DeliveryDate: date, Limit: 1000})
+		list, err = s.Repo.List(ctx, Filter{DeliveryDate: date, StoreID: storeID, Limit: 1000})
 		if err != nil {
 			return AssignResult{}, err
 		}
@@ -385,7 +385,7 @@ func (s *Service) Assign(ctx context.Context, courierID, date string, ids []stri
 	var res AssignResult
 	now := s.now().UTC()
 	for _, o := range list {
-		if !assignable(o.Status) || (o.CourierID != "" && o.CourierID != courierID) {
+		if (storeID != "" && o.StoreID != storeID) || !assignable(o.Status) || (o.CourierID != "" && o.CourierID != courierID) {
 			if len(ids) > 0 {
 				res.Skipped++
 			}
@@ -407,10 +407,15 @@ func (s *Service) Assign(ctx context.Context, courierID, date string, ids []stri
 }
 
 // Unassign — buyurtmani kuryerdan olib tashlaydi (faqat hali yo'lga chiqmagan: confirmed/packed/collected).
-func (s *Service) Unassign(ctx context.Context, id string) error {
+func (s *Service) Unassign(ctx context.Context, id string, check func(*Order) error) error {
 	o, err := s.Repo.Get(ctx, id)
 	if err != nil {
 		return err
+	}
+	if check != nil {
+		if err := check(o); err != nil {
+			return err
+		}
 	}
 	if o.CourierID == "" {
 		return nil
@@ -432,7 +437,7 @@ type SettleResult struct {
 	HeldTiyin  int64 `json:"held_tiyin"`
 }
 
-// Settle — kuryer topshirgan naqd pulni qabul qiladi: `held` -> `settled`. `ids` bo'sh bo'lsa
+// Settle — kuryer do'konga topshirgan naqd pulni qabul qiladi: `held` -> `settled`. `ids` bo'sh bo'lsa
 // kuryerdagi hamma pul. Faqat shu kuryerning yetkazilgan buyurtmalari; boshqasiga tegilmaydi.
 func (s *Service) Settle(ctx context.Context, courierID, adminID string, ids []string) (SettleResult, error) {
 	if courierID == "" {

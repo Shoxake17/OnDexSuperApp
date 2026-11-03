@@ -65,6 +65,10 @@ type storeOrderView struct {
 	History       []storeOrderHistoryEntry `json:"history"`
 	CreatedAt     time.Time                `json:"created_at"`
 	PaymentMethod string                   `json:"payment_method"`
+	// Logistika (do'kon o'z kuryerini boshqaradi): kim yetkazadi va naqd pul qayerda.
+	CourierID  string `json:"courier_id,omitempty"`
+	CashStatus string `json:"cash_status,omitempty"`
+	CashTiyin  int64  `json:"cash_tiyin,omitempty"`
 }
 
 // storeOrderItem — do'konga ko'rinadigan pozitsiya. Barcode — do'konning O'Z mahsulot kaliti
@@ -107,6 +111,7 @@ func toStoreView(o *qurtorders.Order) storeOrderView {
 		ID: o.ID, Number: o.Number, Status: o.Status, DeliveryDate: o.DeliveryDate,
 		Items: storeItems(o.Items), TotalTiyin: o.SubtotalTiyin, CustomerName: firstWord(o.CustomerName),
 		RejectReason: o.RejectReason, CreatedAt: o.CreatedAt, PaymentMethod: o.PaymentMethod,
+		CourierID: o.CourierID, CashStatus: string(o.CashStatus), CashTiyin: o.CashTiyin,
 		History: []storeOrderHistoryEntry{},
 	}
 	for _, h := range o.History {

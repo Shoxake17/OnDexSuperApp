@@ -221,61 +221,15 @@ class AdminApi extends ApiClient {
 
   Future<void> deleteStore(String id) => send('DELETE', '/admin/stores/$id');
 
-  // ── Qurt logistikasi (`internal/qurtorders`) ──
+  // ── Qurt statistikasi (`internal/qurtorders`) — FAQAT o'qish ──
+  //
+  // Logistikani (kuryerlar, biriktirish, naqd pul) do'konning o'zi boshqaradi — OnDexPos
+  // panelidagi "Logistika" bo'limida. Admin faqat umumiy raqamlarni ko'radi.
 
-  /// Qurt buyurtmalari (admin to'liq ko'radi: manzil, telefon). [statuses] vergul bilan.
-  Future<List<dynamic>> qurtOrders(
-      {String statuses = '', int limit = 500}) async {
-    final q = <String>[
-      if (statuses.isNotEmpty) 'status=${Uri.encodeQueryComponent(statuses)}',
-      'limit=$limit',
-    ].join('&');
-    final r = await send('GET', '/admin/qurt/orders?$q');
-    return (r is Map ? r['orders'] as List<dynamic>? : null) ?? [];
-  }
-
-  /// Qurt kuryerlari: [{id, name, phone, summary{held_tiyin, held_orders, active_orders}}].
-  Future<List<dynamic>> qurtCouriers() async {
-    final r = await send('GET', '/admin/qurt/couriers');
-    return (r is Map ? r['couriers'] as List<dynamic>? : null) ?? [];
-  }
-
-  Future<void> addQurtCourier({required String phone, required String name}) =>
-      send('POST', '/admin/qurt/couriers', {'phone': phone, 'name': name});
-
-  Future<void> removeQurtCourier(String id) =>
-      send('DELETE', '/admin/qurt/couriers/$id');
-
-  /// Reysni (sana) yoki tanlangan buyurtmalarni kuryerga biriktiradi: {assigned, skipped}.
-  Future<Map<String, dynamic>> qurtAssign(String courierId,
-          {String? date, List<String>? orderIds}) async =>
-      Map<String, dynamic>.from(await send('POST', '/admin/qurt/assign', {
-        'courier_id': courierId,
-        if (date != null) 'date': date,
-        if (orderIds != null) 'order_ids': orderIds,
-      }) as Map);
-
-  Future<void> qurtUnassign(String orderId) =>
-      send('POST', '/admin/qurt/orders/$orderId/unassign');
-
-  /// Kuryerdagi naqd pulni qabul qiladi: {orders, total_tiyin, ...}.
-  Future<Map<String, dynamic>> qurtSettle(String courierId) async =>
-      Map<String, dynamic>.from(
-          await send('POST', '/admin/qurt/couriers/$courierId/settle', {})
-              as Map);
-
-  /// Reysdagi hamma buyurtmani bir qadam o'tkazadi: {done, skipped}.
-  Future<Map<String, dynamic>> qurtBatchTransition(
-          String date, String from, String to) async =>
-      Map<String, dynamic>.from(await send(
-          'POST',
-          '/admin/qurt/batches/$date/transition',
-          {'from': from, 'to': to}) as Map);
-
-  Future<void> qurtOrderTransition(String id, String to,
-          {String reason = ''}) =>
-      send('POST', '/admin/qurt/orders/$id/transition',
-          {'to': to, if (reason.isNotEmpty) 'reason': reason});
+  /// Qurt ko'rsatkichlari: {orders_total, by_status, sold_tiyin, cash_held_tiyin,
+  /// cash_settled_tiyin, couriers, stores: [...]}.
+  Future<Map<String, dynamic>> qurtStats() async =>
+      Map<String, dynamic>.from(await send('GET', '/admin/qurt/stats') as Map);
 
   /// Do'kon nomi va/yoki kategoriyasini o'zgartirish. Yangi kategoriya POS
   /// panelida egasi tokenini yangilaganda (qisqa muddatda) kuchga kiradi.

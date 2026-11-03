@@ -75,7 +75,7 @@ func (s *Server) qurtCourier(w http.ResponseWriter, r *http.Request) (*couriers.
 		return nil, false
 	}
 	c, err := s.CourierRepo.GetByID(r.Context(), claimsFrom(r).EntityID)
-	if err != nil || c.RestaurantID != qurtorders.QurtPool || !c.Approved {
+	if err != nil || !qurtorders.IsQurtPool(c.RestaurantID) || !c.Approved {
 		httpError(w, http.StatusForbidden, errors.New("bu bo'lim faqat Qurt kuryerlari uchun"))
 		return nil, false
 	}
@@ -164,48 +164,49 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, toCourierView(o))
 	}))
 
-	// ── Admin: Qurt kuryerlari, biriktirish, naqd pul ──────────────────
-	admin := []users.Role{users.RoleAdmin}
+	// ── Do'kon (POS serveri): o'z kuryerlari, biriktirish, naqd pul ────
+	//
+	// Logistikani SOTUVCHI o'zi hal qiladi: kuryer qo'shadi, o'z buyurtmalarini biriktiradi,
+	// kuryer topshirgan pulni qabul qiladi. Har bir amal faqat O'Z do'koni doirasida: boshqa
+	// do'kon kuryeri yoki buyurtmasi "topilmadi".
 
-	// GET /admin/qurt/couriers — Qurt kuryerlari: telefon, faol buyurtmalar, kuryerdagi pul.
-	mux.HandleFunc("GET /admin/qurt/couriers", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) || s.CourierRepo == nil {
+	ownCourier := func(w http.ResponseWriter, r *http.Request, storeID, id string) (*couriers.Courier, bool) {
+		c, err := s.CourierRepo.GetByID(r.Context(), id)
+		if err != nil || c.RestaurantID != qurtorders.PoolFor(storeID) {
+			httpError(w, http.StatusNotFound, errors.New("kuryer topilmadi"))
+			return nil, false
+		}
+		return c, true
+	}
+
+	// GET /merchant/qurt/couriers — do'konning kuryerlari: telefon, faol buyurtmalar, kuryerdagi pul.
+	mux.HandleFunc("GET /merchant/qurt/couriers", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) || s.CourierRepo == nil {
 			return
 		}
-		all, err := s.CourierRepo.ListAll(r.Context())
+		list, err := s.storeCouriers(r.Context(), id.EntityID)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, errors.New("server xatosi"))
 			return
 		}
-		phones := map[string]string{}
-		if accs, err := s.UserRepo.ListByRole(r.Context(), users.RoleCourier); err == nil {
-			for _, u := range accs {
-				if u != nil {
-					phones[u.EntityID] = u.Phone
-				}
-			}
-		}
-		out := []map[string]any{}
-		for _, c := range all {
-			if c == nil || c.RestaurantID != qurtorders.QurtPool || !c.Approved {
-				continue
-			}
+		out := make([]map[string]any, 0, len(list))
+		for _, c := range list {
 			sum, err := s.QurtOrderSvc.CourierSummary(r.Context(), c.ID)
 			if err != nil {
 				qurtOrderError(w, err)
 				return
 			}
-			out = append(out, map[string]any{
-				"id": c.ID, "name": c.Name, "phone": phones[c.ID], "summary": sum,
-			})
+			out = append(out, map[string]any{"id": c.ID, "name": c.Name, "phone": c.phone, "summary": sum})
 		}
-		sort.Slice(out, func(i, j int) bool { return out[i]["name"].(string) < out[j]["name"].(string) })
+		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]any{"couriers": out})
-	}))
+	})
 
-	// POST /admin/qurt/couriers {phone, name} — Qurt kuryeri qo'shish (OnDex kuryerlaridan ALOHIDA).
-	mux.HandleFunc("POST /admin/qurt/couriers", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) || s.CourierRepo == nil {
+	// POST /merchant/qurt/couriers {phone, name} — o'z kuryerini qo'shish.
+	mux.HandleFunc("POST /merchant/qurt/couriers", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) || s.CourierRepo == nil {
 			return
 		}
 		var req struct {
@@ -225,31 +226,33 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusBadRequest, errors.New("telefon raqami noto'g'ri"))
 			return
 		}
-		c, err := s.addQurtCourier(r.Context(), phone, name)
+		if list, err := s.storeCouriers(r.Context(), id.EntityID); err == nil && len(list) >= maxQurtCouriersPerStore {
+			httpError(w, http.StatusConflict, errors.New("kuryerlar soni chegaraga yetdi"))
+			return
+		}
+		c, err := s.addQurtCourier(r.Context(), id.EntityID, phone, name)
 		switch {
 		case errors.Is(err, errQurtCourierConflict):
-			httpError(w, http.StatusConflict, errors.New("bu raqamda boshqa rolli akkaunt bor — boshqa raqam kiriting"))
+			httpError(w, http.StatusConflict, errors.New("bu raqamda boshqa akkaunt bor — boshqa raqam kiriting"))
 		case err != nil:
-			slog.Error("qurt kuryeri qo'shilmadi", "err", err)
+			slog.Error("qurt kuryeri qo'shilmadi", "store", id.EntityID, "err", err)
 			httpError(w, http.StatusInternalServerError, errors.New("server xatosi"))
 		default:
 			writeJSON(w, http.StatusCreated, map[string]any{"id": c.ID, "name": c.Name, "phone": phone})
 		}
-	}))
+	})
 
-	// DELETE /admin/qurt/couriers/{id} — kuryerni olib tashlash: faol buyurtma yoki topshirilmagan
-	// pul bo'lmasa.
-	mux.HandleFunc("DELETE /admin/qurt/couriers/{id}", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) || s.CourierRepo == nil {
+	// DELETE /merchant/qurt/couriers/{id} — faol buyurtma yoki topshirilmagan pul bo'lmasa.
+	mux.HandleFunc("DELETE /merchant/qurt/couriers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		sid, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) || s.CourierRepo == nil {
 			return
 		}
-		id := r.PathValue("id")
-		c, err := s.CourierRepo.GetByID(r.Context(), id)
-		if err != nil || c.RestaurantID != qurtorders.QurtPool {
-			httpError(w, http.StatusNotFound, errors.New("kuryer topilmadi"))
+		c, ok := ownCourier(w, r, sid.EntityID, r.PathValue("id"))
+		if !ok {
 			return
 		}
-		sum, err := s.QurtOrderSvc.CourierSummary(r.Context(), id)
+		sum, err := s.QurtOrderSvc.CourierSummary(r.Context(), c.ID)
 		if err != nil {
 			qurtOrderError(w, err)
 			return
@@ -258,13 +261,13 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusConflict, errors.New("kuryerda faol buyurtma yoki topshirilmagan pul bor"))
 			return
 		}
-		if err := s.CourierRepo.SetApproved(r.Context(), id, false); err != nil {
+		if err := s.CourierRepo.SetApproved(r.Context(), c.ID, false); err != nil {
 			httpError(w, http.StatusInternalServerError, errors.New("server xatosi"))
 			return
 		}
 		if accs, err := s.UserRepo.ListByRole(r.Context(), users.RoleCourier); err == nil {
 			for _, u := range accs {
-				if u != nil && u.EntityID == id {
+				if u != nil && u.EntityID == c.ID {
 					if err := s.UserRepo.UpdateRole(r.Context(), u.ID, users.RoleCustomer, ""); err == nil && s.Revoked != nil {
 						s.Revoked.Revoke(r.Context(), u.ID) // eski token roli ishlamasin
 					}
@@ -272,12 +275,13 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
-	// POST /admin/qurt/assign {courier_id, date, order_ids} — reys (yoki tanlangan buyurtmalar)
-	// kuryerga biriktiriladi.
-	mux.HandleFunc("POST /admin/qurt/assign", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) || s.CourierRepo == nil {
+	// POST /merchant/qurt/assign {courier_id, date, order_ids} — o'z buyurtmalarini (yoki butun reysni)
+	// o'z kuryeriga biriktiradi.
+	mux.HandleFunc("POST /merchant/qurt/assign", func(w http.ResponseWriter, r *http.Request) {
+		sid, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) || s.CourierRepo == nil {
 			return
 		}
 		var req struct {
@@ -289,8 +293,8 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 			return
 		}
 		c, err := s.CourierRepo.GetByID(r.Context(), req.CourierID)
-		if err != nil || c.RestaurantID != qurtorders.QurtPool || !c.Approved {
-			httpError(w, http.StatusBadRequest, errors.New("Qurt kuryeri topilmadi"))
+		if err != nil || c.RestaurantID != qurtorders.PoolFor(sid.EntityID) || !c.Approved {
+			httpError(w, http.StatusBadRequest, errors.New("kuryer topilmadi"))
 			return
 		}
 		if req.Date != "" {
@@ -299,44 +303,163 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		res, err := s.QurtOrderSvc.Assign(r.Context(), c.ID, req.Date, req.OrderIDs)
+		res, err := s.QurtOrderSvc.Assign(r.Context(), sid.EntityID, c.ID, req.Date, req.OrderIDs)
 		if err != nil {
 			qurtOrderError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, res)
-	}))
+	})
 
-	// POST /admin/qurt/orders/{id}/unassign — buyurtmani kuryerdan olish (yo'lga chiqmagan bo'lsa).
-	mux.HandleFunc("POST /admin/qurt/orders/{id}/unassign", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) {
+	// POST /merchant/qurt/orders/{id}/unassign — buyurtmani kuryerdan olish (yo'lga chiqmagan bo'lsa).
+	mux.HandleFunc("POST /merchant/qurt/orders/{id}/unassign", func(w http.ResponseWriter, r *http.Request) {
+		sid, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) {
 			return
 		}
-		if err := s.QurtOrderSvc.Unassign(r.Context(), r.PathValue("id")); err != nil {
+		err := s.QurtOrderSvc.Unassign(r.Context(), r.PathValue("id"), func(o *qurtorders.Order) error {
+			if o.StoreID != sid.EntityID {
+				return qurtorders.ErrNotFound
+			}
+			return nil
+		})
+		if err != nil {
 			qurtOrderError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
-	// POST /admin/qurt/couriers/{id}/settle {order_ids} — kuryer topshirgan naqd pulni qabul qilish.
-	mux.HandleFunc("POST /admin/qurt/couriers/{id}/settle", s.auth(admin, func(w http.ResponseWriter, r *http.Request) {
-		if !s.qurtOrdersReady(w) {
+	// POST /merchant/qurt/couriers/{id}/settle {order_ids} — kuryer topshirgan naqd pulni qabul qilish.
+	mux.HandleFunc("POST /merchant/qurt/couriers/{id}/settle", func(w http.ResponseWriter, r *http.Request) {
+		sid, ok := s.merchantQurtStore(w, r)
+		if !ok || !s.qurtOrdersReady(w) || s.CourierRepo == nil {
+			return
+		}
+		c, ok := ownCourier(w, r, sid.EntityID, r.PathValue("id"))
+		if !ok {
 			return
 		}
 		var req struct {
 			OrderIDs []string `json:"order_ids"`
 		}
 		_ = decodeOptionalJSON(r, &req)
-		res, err := s.QurtOrderSvc.Settle(r.Context(), r.PathValue("id"), claimsFrom(r).Subject, req.OrderIDs)
+		res, err := s.QurtOrderSvc.Settle(r.Context(), c.ID, sid.UserID, req.OrderIDs)
 		if err != nil {
 			qurtOrderError(w, err)
 			return
 		}
-		slog.Info("qurt: kuryer puli qabul qilindi", "courier", r.PathValue("id"), "admin", claimsFrom(r).Subject,
+		slog.Info("qurt: kuryer puli qabul qilindi", "store", sid.EntityID, "courier", c.ID,
 			"orders", res.Orders, "tiyin", res.TotalTiyin)
 		writeJSON(w, http.StatusOK, res)
+	})
+
+	// ── Admin: FAQAT statistika (o'qish) ───────────────────────────────
+
+	// GET /admin/qurt/stats — Qurt bo'yicha umumiy ko'rsatkichlar va do'konlar kesimi.
+	mux.HandleFunc("GET /admin/qurt/stats", s.auth([]users.Role{users.RoleAdmin}, func(w http.ResponseWriter, r *http.Request) {
+		if !s.qurtOrdersReady(w) {
+			return
+		}
+		list, err := s.QurtOrderSvc.Repo.List(r.Context(), qurtorders.Filter{Limit: 20000})
+		if err != nil {
+			qurtOrderError(w, err)
+			return
+		}
+		type storeStat struct {
+			StoreID    string `json:"store_id"`
+			StoreName  string `json:"store_name"`
+			Orders     int    `json:"orders"`
+			Delivered  int    `json:"delivered"`
+			SoldTiyin  int64  `json:"sold_tiyin"`
+			HeldTiyin  int64  `json:"cash_held_tiyin"`
+			Couriers   int    `json:"couriers"`
+			ActiveOnes int    `json:"active"`
+		}
+		byStatus := map[string]int{}
+		stores := map[string]*storeStat{}
+		var soldTiyin, heldTiyin, settledTiyin int64
+		for _, o := range list {
+			byStatus[string(o.Status)]++
+			st := stores[o.StoreID]
+			if st == nil {
+				st = &storeStat{StoreID: o.StoreID, StoreName: o.StoreName}
+				stores[o.StoreID] = st
+			}
+			st.Orders++
+			switch {
+			case o.Status == qurtorders.StatusDelivered:
+				st.Delivered++
+				st.SoldTiyin += o.TotalTiyin
+				soldTiyin += o.TotalTiyin
+			case !qurtorders.IsTerminal(o.Status):
+				st.ActiveOnes++
+			}
+			switch o.CashStatus {
+			case qurtorders.CashHeld:
+				st.HeldTiyin += o.CashTiyin
+				heldTiyin += o.CashTiyin
+			case qurtorders.CashSettled:
+				settledTiyin += o.CashTiyin
+			}
+		}
+		couriersTotal := 0
+		if s.CourierRepo != nil {
+			if all, err := s.CourierRepo.ListAll(r.Context()); err == nil {
+				for _, c := range all {
+					if c != nil && c.Approved && qurtorders.IsQurtPool(c.RestaurantID) {
+						couriersTotal++
+						if st := stores[strings.TrimPrefix(c.RestaurantID, qurtorders.QurtPoolPrefix)]; st != nil {
+							st.Couriers++
+						}
+					}
+				}
+			}
+		}
+		rows := make([]*storeStat, 0, len(stores))
+		for _, st := range stores {
+			rows = append(rows, st)
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i].SoldTiyin > rows[j].SoldTiyin })
+		writeJSON(w, http.StatusOK, map[string]any{
+			"orders_total": len(list), "by_status": byStatus, "sold_tiyin": soldTiyin,
+			"cash_held_tiyin": heldTiyin, "cash_settled_tiyin": settledTiyin,
+			"couriers": couriersTotal, "stores": rows,
+		})
 	}))
+}
+
+// maxQurtCouriersPerStore — bitta do'kon qo'sha oladigan kuryerlar chegarasi (suiiste'moldan himoya).
+const maxQurtCouriersPerStore = 30
+
+type qurtCourierRow struct {
+	*couriers.Courier
+	phone string
+}
+
+// storeCouriers — do'konning tasdiqlangan kuryerlari (telefon bilan), nom bo'yicha tartiblangan.
+func (s *Server) storeCouriers(ctx context.Context, storeID string) ([]qurtCourierRow, error) {
+	all, err := s.CourierRepo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	phones := map[string]string{}
+	if accs, err := s.UserRepo.ListByRole(ctx, users.RoleCourier); err == nil {
+		for _, u := range accs {
+			if u != nil {
+				phones[u.EntityID] = u.Phone
+			}
+		}
+	}
+	pool := qurtorders.PoolFor(storeID)
+	var out []qurtCourierRow
+	for _, c := range all {
+		if c != nil && c.Approved && c.RestaurantID == pool {
+			out = append(out, qurtCourierRow{Courier: c, phone: phones[c.ID]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
 
 var errQurtCourierConflict = errors.New("telefon raqamida boshqa rolli akkaunt bor")
@@ -344,14 +467,14 @@ var errQurtCourierConflict = errors.New("telefon raqamida boshqa rolli akkaunt b
 // addQurtCourier — Qurt kuryeri akkauntini yaratadi yoki qayta yoqadi. Begona akkauntga
 // (boshqa rol/restoran xodimi) TEGILMAYDI: faqat yangi raqam, mijoz akkaunti yoki shu
 // kuryerning o'zi ulanadi. Tasdiq (`approved`) eng oxirida yoqiladi (fail closed).
-func (s *Server) addQurtCourier(ctx context.Context, phone, name string) (*couriers.Courier, error) {
+func (s *Server) addQurtCourier(ctx context.Context, storeID, phone, name string) (*couriers.Courier, error) {
 	prepare := func(userID string) (*couriers.Courier, error) {
 		id := qurtCourierID(userID)
 		c, err := s.CourierRepo.GetByID(ctx, id)
 		switch {
 		case err == nil:
-			if c.RestaurantID != qurtorders.QurtPool {
-				return nil, errQurtCourierConflict
+			if c.RestaurantID != qurtorders.PoolFor(storeID) {
+				return nil, errQurtCourierConflict // boshqa do'kon kuryeri
 			}
 			if c.Name != name {
 				if err := s.CourierRepo.SetName(ctx, id, name); err != nil {
@@ -364,7 +487,7 @@ func (s *Server) addQurtCourier(ctx context.Context, phone, name string) (*couri
 			return nil, err
 		}
 		nc := &couriers.Courier{
-			ID: id, Name: name, RestaurantID: qurtorders.QurtPool,
+			ID: id, Name: name, RestaurantID: qurtorders.PoolFor(storeID),
 			VehicleType: couriers.VehicleMoped, Rating: 5.0,
 		}
 		return nc, s.CourierRepo.Create(ctx, nc)

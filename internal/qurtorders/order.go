@@ -40,13 +40,22 @@ const (
 	CashSettled CashStatus = "settled" // admin kuryerdan qabul qildi
 )
 
-// QurtPool — Qurt kuryerlarining havuz belgisi (`couriers.Courier.RestaurantID`).
+// QurtPoolPrefix — Qurt kuryerlarining havuz belgisi (`couriers.Courier.RestaurantID` = "qurt:<do'kon ID>").
 //
-// Dispatch havuzi shu maydon bo'yicha QAT'IY ajratiladi: platforma qidiruvi faqat
-// bo'sh ("") havuzni, restoran faqat o'z ID'sini oladi. Haqiqiy restoran ID'si
-// tasodifiy bo'lgani uchun bu belgi hech biriga mos kelmaydi — Qurt kuryerlari
-// restoran/platforma buyurtmasini UMUMAN olmaydi va dispatch kodiga tegilmaydi.
-const QurtPool = "qurt"
+// Dispatch havuzi shu maydon bo'yicha QAT'IY ajratiladi: platforma qidiruvi faqat bo'sh ("")
+// havuzni, restoran faqat o'z ID'sini oladi. Haqiqiy restoran ID'sida ":" bo'lmagani uchun bu
+// belgi hech biriga mos kelmaydi — Qurt kuryerlari restoran/platforma buyurtmasini UMUMAN
+// olmaydi va dispatch kodiga tegilmadi. Har kuryer BITTA do'konga tegishli: do'kon o'z
+// kuryerlarini o'zi boshqaradi.
+const QurtPoolPrefix = "qurt:"
+
+// PoolFor — do'konning kuryer havuzi belgisi.
+func PoolFor(storeID string) string { return QurtPoolPrefix + storeID }
+
+// IsQurtPool — kuryer yozuvi Qurt do'koniga tegishlimi.
+func IsQurtPool(pool string) bool {
+	return strings.HasPrefix(pool, QurtPoolPrefix) && len(pool) > len(QurtPoolPrefix)
+}
 
 // Actor — holatni kim o'zgartirmoqda.
 type Actor string

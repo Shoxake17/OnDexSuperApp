@@ -20,7 +20,7 @@ import (
 // chaqiruvlari klient serveri bo'yicha — u bitta IP, shuning uchun yuqoriroq.
 var (
 	qurtListLimiter     = ratelimit.New(5, 30)
-	qurtMerchantLimiter = ratelimit.New(20, 60)
+	qurtMerchantLimiter = ratelimit.New(100, 400)
 )
 
 // qurtStores — hozir Qurt kategoriyasidagi FAOL do'konlar: ID -> nomi.

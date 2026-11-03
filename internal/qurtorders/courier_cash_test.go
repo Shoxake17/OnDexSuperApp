@@ -39,7 +39,7 @@ func TestAssignByDateOnlyAssignableAndUnassigned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := f.svc.Assign(ctx, "k1", packed.DeliveryDate, nil)
+	res, err := f.svc.Assign(ctx, "S1", "k1", packed.DeliveryDate, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,18 +55,18 @@ func TestAssignByDateOnlyAssignableAndUnassigned(t *testing.T) {
 	}
 
 	// Boshqa kuryerga qayta biriktirilmaydi.
-	res, _ = f.svc.Assign(ctx, "k2", packed.DeliveryDate, nil)
+	res, _ = f.svc.Assign(ctx, "S1", "k2", packed.DeliveryDate, nil)
 	if res.Assigned != 0 {
 		t.Fatalf("biriktirilgan buyurtma qayta olinmasligi kerak: %+v", res)
 	}
-	res, _ = f.svc.Assign(ctx, "k2", "", []string{packed.ID})
+	res, _ = f.svc.Assign(ctx, "S1", "k2", "", []string{packed.ID})
 	if res.Assigned != 0 || res.Skipped != 1 {
 		t.Fatalf("aniq ro'yxatda ham o'tkazib yuboriladi: %+v", res)
 	}
-	if _, err := f.svc.Assign(ctx, "", packed.DeliveryDate, nil); err == nil {
+	if _, err := f.svc.Assign(ctx, "S1", "", packed.DeliveryDate, nil); err == nil {
 		t.Fatal("kuryersiz biriktirish rad etilishi kerak")
 	}
-	if _, err := f.svc.Assign(ctx, "k1", "", nil); err == nil {
+	if _, err := f.svc.Assign(ctx, "S1", "k1", "", nil); err == nil {
 		t.Fatal("sana ham, ro'yxat ham yo'q — rad etilishi kerak")
 	}
 }
@@ -75,7 +75,7 @@ func TestDeliveryRecordsCashHeldThenSettleOnce(t *testing.T) {
 	f := newFixture(t, 20, 20)
 	ctx := context.Background()
 	o := f.packedOrder(t) // 2 dona * 10 000 so'm = 20 000 so'm
-	if _, err := f.svc.Assign(ctx, "k1", "", []string{o.ID}); err != nil {
+	if _, err := f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID}); err != nil {
 		t.Fatal(err)
 	}
 	for _, to := range []qurtorders.Status{qurtorders.StatusCollected, qurtorders.StatusOutForDelivery, qurtorders.StatusDelivered} {
@@ -120,7 +120,7 @@ func TestSettleSelectedOrdersOnly(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		o := f.packedOrder(t)
 		ids = append(ids, o.ID)
-		if _, err := f.svc.Assign(ctx, "k1", "", []string{o.ID}); err != nil {
+		if _, err := f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID}); err != nil {
 			t.Fatal(err)
 		}
 		for _, to := range []qurtorders.Status{qurtorders.StatusCollected, qurtorders.StatusOutForDelivery, qurtorders.StatusDelivered} {
@@ -156,7 +156,7 @@ func TestFailedNeedsReasonAndRetryKeepsCourier(t *testing.T) {
 	f := newFixture(t, 20, 20)
 	ctx := context.Background()
 	o := f.packedOrder(t)
-	_, _ = f.svc.Assign(ctx, "k1", "", []string{o.ID})
+	_, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID})
 	for _, to := range []qurtorders.Status{qurtorders.StatusCollected, qurtorders.StatusOutForDelivery} {
 		if err := f.courierStep(t, o.ID, to, "k1", ""); err != nil {
 			t.Fatal(err)
@@ -180,17 +180,34 @@ func TestUnassignOnlyBeforeDeparture(t *testing.T) {
 	f := newFixture(t, 20, 20)
 	ctx := context.Background()
 	o := f.packedOrder(t)
-	_, _ = f.svc.Assign(ctx, "k1", "", []string{o.ID})
-	if err := f.svc.Unassign(ctx, o.ID); err != nil {
+	_, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID})
+	if err := f.svc.Unassign(ctx, o.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := f.svc.Repo.Get(ctx, o.ID); got.CourierID != "" {
 		t.Fatal("kuryer olinmadi")
 	}
-	_, _ = f.svc.Assign(ctx, "k1", "", []string{o.ID})
+	_, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID})
 	_ = f.courierStep(t, o.ID, qurtorders.StatusCollected, "k1", "")
 	_ = f.courierStep(t, o.ID, qurtorders.StatusOutForDelivery, "k1", "")
-	if err := f.svc.Unassign(ctx, o.ID); err == nil {
+	if err := f.svc.Unassign(ctx, o.ID, nil); err == nil {
 		t.Fatal("yo'ldagi buyurtmani kuryerdan olib bo'lmaydi")
+	}
+}
+
+func TestAssignIgnoresOtherStoresOrders(t *testing.T) {
+	f := newFixture(t, 20, 20)
+	ctx := context.Background()
+	o := f.packedOrder(t) // S1
+	if r, _ := f.svc.Assign(ctx, "S2", "k1", o.DeliveryDate, nil); r.Assigned != 0 {
+		t.Fatalf("begona do'kon buyurtmasi biriktirildi: %+v", r)
+	}
+	if r, _ := f.svc.Assign(ctx, "S2", "k1", "", []string{o.ID}); r.Assigned != 0 || r.Skipped != 1 {
+		t.Fatalf("aniq ro'yxatda ham begona do'kon o'tkazib yuboriladi: %+v", r)
+	}
+	check := func(*qurtorders.Order) error { return qurtorders.ErrNotFound }
+	_, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID})
+	if err := f.svc.Unassign(ctx, o.ID, check); err == nil {
+		t.Fatal("egalik tekshiruvi o'tmasa kuryerdan olib bo'lmaydi")
 	}
 }
