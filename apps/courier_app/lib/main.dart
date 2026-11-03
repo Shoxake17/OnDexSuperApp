@@ -7,7 +7,7 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'api.dart';
 import 'push.dart';
-import 'screens/courier_shell.dart';
+import 'qurt/home_router.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'theme.dart';
@@ -225,7 +225,7 @@ class _RootState extends State<_Root> {
       final role = user['role'] as String? ?? '';
       final entityId = user['entity_id'] as String? ?? '';
       _child = (role == 'courier' && entityId.isNotEmpty)
-          ? CourierShell(courierId: entityId)
+          ? await courierHome(entityId)
           : const RegisterScreen();
     } on ApiException catch (e) {
       if (e.isUnauthorized) {

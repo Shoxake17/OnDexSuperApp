@@ -6,6 +6,7 @@ import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
+import '../pages/qurt_logistics_page.dart';
 import '../pages/restaurant_module.dart';
 import '../pages/settings_page.dart';
 import '../pages/stats_page.dart';
@@ -56,6 +57,13 @@ const _navTop = <_NavSpec>[
     screen: 'Stores',
     icon: Icons.store_mall_directory_outlined,
     selectedIcon: Icons.store_mall_directory,
+  ),
+  (
+    key: 'nav-qurt-logistics',
+    label: 'Qurt logistikasi',
+    screen: 'QurtLogistics',
+    icon: Icons.local_shipping_outlined,
+    selectedIcon: Icons.local_shipping,
   ),
   (
     key: 'nav-stats',
@@ -154,12 +162,13 @@ class _AdminShellState extends State<AdminShell> {
   Widget _page(int i) => switch (i) {
         0 => const RestaurantsSection(),
         1 => const StoresPage(),
-        2 => const StatsPage(),
-        3 => const CustomersPage(),
+        2 => const QurtLogisticsPage(),
+        3 => const StatsPage(),
+        4 => const CustomersPage(),
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
-        4 => const CouriersPage(onlyPlatform: true),
-        5 => const BannersPage(),
-        6 => const SettingsPage(),
+        5 => const CouriersPage(onlyPlatform: true),
+        6 => const BannersPage(),
+        7 => const SettingsPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),
@@ -279,7 +288,8 @@ class _SideBar extends StatelessWidget {
                 spec: _navBottom[j],
                 selected: selected == _navTop.length + j,
                 onTap: () => onSelect(_navTop.length + j),
-              ),            const SizedBox(height: 12),
+              ),
+            const SizedBox(height: 12),
             // ┌─ HUQUQIY HAVOLALAR OLIB TASHLANDI ──────────┐
             // Oferta va maxfiylik siyosati MIJOZGA kerak —
             // u xizmatdan foydalanish shartlarini qabul
@@ -330,7 +340,8 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final iconWidget = Icon(selected ? spec.selectedIcon : spec.icon,
-        color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant);
+        color:
+            selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant);
     return Semantics(
       button: true,
       selected: selected,
@@ -365,7 +376,8 @@ class _NavItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                      color:
+                          selected ? scheme.onSurface : scheme.onSurfaceVariant,
                     ),
               ),
             ],

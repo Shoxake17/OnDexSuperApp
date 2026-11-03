@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../session.dart';
-import 'courier_shell.dart';
+import '../qurt/home_router.dart';
 import 'register_screen.dart';
 
 /// Kuryer kirishi — telefon raqami + tasdiqlash kodi.
@@ -126,14 +126,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await api.me();
       final role = user['role'] as String? ?? '';
       final entityId = user['entity_id'] as String? ?? '';
+      final home = (role == 'courier' && entityId.isNotEmpty)
+          ? await courierHome(entityId)
+          : const RegisterScreen();
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => (role == 'courier' && entityId.isNotEmpty)
-              ? CourierShell(courierId: entityId)
-              : const RegisterScreen(),
-        ),
-      );
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => home));
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {

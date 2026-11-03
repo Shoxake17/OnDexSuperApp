@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../session.dart';
-import 'courier_shell.dart';
+import '../qurt/home_router.dart';
 import 'login_screen.dart';
 
 /// Kuryer roli bo'lmagan akkaunt bilan kirilganda ko'rsatiladi.
@@ -37,9 +37,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final entityId = user['entity_id'] as String? ?? '';
       if (!mounted) return;
       if (role == 'courier' && entityId.isNotEmpty) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => CourierShell(courierId: entityId)),
-        );
+        final home = await courierHome(entityId);
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => home));
         return;
       }
       setState(() => _message = 'Hali ruxsat berilmagan. Restoraningiz kirishni ochgach qayta tekshiring.');
