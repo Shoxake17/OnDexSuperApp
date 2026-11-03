@@ -32,6 +32,22 @@ const (
 	StatusCancelled      Status = "cancelled"        // bekor qilindi (terminal)
 )
 
+// CashStatus — naqd pul qayerda: kuryerda yoki OnDex'ga topshirilgan.
+type CashStatus string
+
+const (
+	CashHeld    CashStatus = "held"    // kuryerda (yetkazilgan, hali topshirmagan)
+	CashSettled CashStatus = "settled" // admin kuryerdan qabul qildi
+)
+
+// QurtPool — Qurt kuryerlarining havuz belgisi (`couriers.Courier.RestaurantID`).
+//
+// Dispatch havuzi shu maydon bo'yicha QAT'IY ajratiladi: platforma qidiruvi faqat
+// bo'sh ("") havuzni, restoran faqat o'z ID'sini oladi. Haqiqiy restoran ID'si
+// tasodifiy bo'lgani uchun bu belgi hech biriga mos kelmaydi — Qurt kuryerlari
+// restoran/platforma buyurtmasini UMUMAN olmaydi va dispatch kodiga tegilmaydi.
+const QurtPool = "qurt"
+
 // Actor — holatni kim o'zgartirmoqda.
 type Actor string
 
@@ -184,6 +200,17 @@ type Order struct {
 
 	RejectReason string         `json:"reject_reason,omitempty"`
 	History      []StatusChange `json:"history"`
+
+	// CourierID — reysga biriktirilgan Qurt kuryeri (`couriers.Courier.ID`); bo'sh = biriktirilmagan.
+	CourierID         string     `json:"courier_id,omitempty"`
+	CourierAssignedAt *time.Time `json:"courier_assigned_at,omitempty"`
+
+	// Naqd pul hisobi: yetkazilganda (kuryer biriktirilgan bo'lsa) mijozdan olingan summa
+	// kuryerda "held" holatida yoziladi; admin kuryerdan pulni qabul qilganda "settled".
+	CashTiyin     int64      `json:"cash_tiyin,omitempty"`
+	CashStatus    CashStatus `json:"cash_status,omitempty"`
+	CashSettledAt *time.Time `json:"cash_settled_at,omitempty"`
+	CashSettledBy string     `json:"cash_settled_by,omitempty"`
 
 	// Reserved — qoldiq hali band (faqat `new` holatida true).
 	Reserved bool `json:"-"`

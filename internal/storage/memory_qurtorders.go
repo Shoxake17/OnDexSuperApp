@@ -66,6 +66,12 @@ func (r *MemoryQurtOrderRepo) List(_ context.Context, f qurtorders.Filter) ([]*q
 		if f.DeliveryDate != "" && o.DeliveryDate != f.DeliveryDate {
 			continue
 		}
+		if f.CourierID != "" && o.CourierID != f.CourierID {
+			continue
+		}
+		if f.CashStatus != "" && o.CashStatus != f.CashStatus {
+			continue
+		}
 		if len(want) > 0 && !want[o.Status] {
 			continue
 		}

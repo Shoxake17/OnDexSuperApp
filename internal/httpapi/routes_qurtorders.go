@@ -257,6 +257,9 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 		if list == nil {
 			list = []*qurtorders.Order{}
 		}
+		for i, o := range list {
+			list[i] = forCustomer(o)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"orders": list})
 	}))
 
@@ -283,7 +286,7 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 			qurtOrderError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, o)
+		writeJSON(w, http.StatusOK, forCustomer(o))
 	}))
 
 	// POST /qurt/orders/{id}/cancel — mijoz faqat do'kon ko'rmagan (`new`) buyurtmani bekor qiladi.
@@ -301,7 +304,7 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 			qurtOrderError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, o)
+		writeJSON(w, http.StatusOK, forCustomer(o))
 	}))
 
 	// ── POS serveri (do'kon) ───────────────────────────────────────────
@@ -396,7 +399,8 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 		}
 		list, err := s.QurtOrderSvc.Repo.List(r.Context(), qurtorders.Filter{
 			Statuses: statuses, DeliveryDate: strings.TrimSpace(q.Get("date")),
-			StoreID: strings.TrimSpace(q.Get("store_id")), Limit: parseLimit(q.Get("limit"), 200, 500),
+			StoreID: strings.TrimSpace(q.Get("store_id")), CourierID: strings.TrimSpace(q.Get("courier_id")),
+			CashStatus: qurtorders.CashStatus(strings.TrimSpace(q.Get("cash"))), Limit: parseLimit(q.Get("limit"), 200, 500),
 		})
 		if err != nil {
 			qurtOrderError(w, err)
@@ -506,6 +510,14 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]int{"done": done, "skipped": skipped})
 	}))
+}
+
+// forCustomer — mijozga kuryer va naqd pul hisobi maydonlari ko'rsatilmaydi (ichki ma'lumot).
+func forCustomer(o *qurtorders.Order) *qurtorders.Order {
+	cp := *o
+	cp.CourierID, cp.CourierAssignedAt = "", nil
+	cp.CashTiyin, cp.CashStatus, cp.CashSettledAt, cp.CashSettledBy = 0, "", nil, ""
+	return &cp
 }
 
 // decodeOptionalJSON — tana bo'sh bo'lishi mumkin (masalan, sababsiz bekor qilish).

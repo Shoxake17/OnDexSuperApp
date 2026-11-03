@@ -442,6 +442,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAdminStoreRoutes(mux)
 	s.registerQurtRoutes(mux)
 	s.registerQurtOrderRoutes(mux)
+	s.registerQurtCourierRoutes(mux)
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)

@@ -18,6 +18,8 @@ type Filter struct {
 	StoreID      string
 	CustomerID   string
 	DeliveryDate string
+	CourierID    string
+	CashStatus   CashStatus
 	Limit        int
 	Offset       int
 }
@@ -307,6 +309,11 @@ func (s *Service) Transition(ctx context.Context, id string, to Status, by Actor
 	// keyin qoldiqni POS o'zi kamaytiradi (ikki marta sanalmasin).
 	o.Reserved = false
 	now := s.now().UTC()
+	if to == StatusDelivered && o.CourierID != "" {
+		// Mijozdan naqd olindi: pul kuryerda, admin qabul qilmaguncha "held".
+		o.CashTiyin = o.TotalTiyin
+		o.CashStatus = CashHeld
+	}
 	o.History = append(o.History, StatusChange{From: from, To: to, By: by, ByID: byID, Reason: reason, At: now})
 	o.UpdatedAt = now
 	o.Version++
@@ -325,6 +332,168 @@ func (s *Service) Transition(ctx context.Context, id string, to Status, by Actor
 	}
 	s.emit(ctx, string(to), o)
 	return o, nil
+}
+
+// assignable — kuryerga biriktirish mumkin bo'lgan holatlar (do'kon qabul qilgan, yakunlanmagan).
+func assignable(s Status) bool {
+	switch s {
+	case StatusConfirmed, StatusPacked, StatusCollected, StatusOutForDelivery, StatusFailed:
+		return true
+	}
+	return false
+}
+
+// AssignResult — biriktirish natijasi.
+type AssignResult struct {
+	Assigned int `json:"assigned"`
+	Skipped  int `json:"skipped"`
+}
+
+// Assign — buyurtmalarni Qurt kuryeriga biriktiradi. `ids` bo'sh bo'lsa `date` reysidagi
+// hali biriktirilmagan, biriktirish mumkin bo'lgan hamma buyurtma olinadi. Allaqachon boshqa
+// kuryerga biriktirilgan yoki yakunlangan buyurtmaga tegilmaydi (o'tkazib yuboriladi).
+// Pul allaqachon kuryerda (held) bo'lsa kuryer o'zgartirilmaydi.
+func (s *Service) Assign(ctx context.Context, courierID, date string, ids []string) (AssignResult, error) {
+	if courierID == "" {
+		return AssignResult{}, invalid("kuryer ko'rsatilmagan")
+	}
+	var list []*Order
+	if len(ids) > 0 {
+		if len(ids) > 500 {
+			return AssignResult{}, invalid("bir martada ko'pi bilan 500 ta buyurtma")
+		}
+		for _, id := range ids {
+			o, err := s.Repo.Get(ctx, id)
+			if err != nil {
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+				return AssignResult{}, err
+			}
+			list = append(list, o)
+		}
+	} else {
+		if date == "" {
+			return AssignResult{}, invalid("reys sanasi yoki buyurtmalar ko'rsatilmagan")
+		}
+		var err error
+		list, err = s.Repo.List(ctx, Filter{DeliveryDate: date, Limit: 1000})
+		if err != nil {
+			return AssignResult{}, err
+		}
+	}
+	var res AssignResult
+	now := s.now().UTC()
+	for _, o := range list {
+		if !assignable(o.Status) || (o.CourierID != "" && o.CourierID != courierID) {
+			if len(ids) > 0 {
+				res.Skipped++
+			}
+			continue
+		}
+		if o.CourierID == courierID {
+			continue
+		}
+		o.CourierID, o.CourierAssignedAt = courierID, &now
+		o.UpdatedAt = now
+		o.Version++
+		if err := s.Repo.Update(ctx, o); err != nil {
+			res.Skipped++
+			continue
+		}
+		res.Assigned++
+	}
+	return res, nil
+}
+
+// Unassign — buyurtmani kuryerdan olib tashlaydi (faqat hali yo'lga chiqmagan: confirmed/packed/collected).
+func (s *Service) Unassign(ctx context.Context, id string) error {
+	o, err := s.Repo.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if o.CourierID == "" {
+		return nil
+	}
+	if o.Status != StatusConfirmed && o.Status != StatusPacked && o.Status != StatusCollected {
+		return invalid("yo'lga chiqqan buyurtmani kuryerdan olib bo'lmaydi")
+	}
+	o.CourierID, o.CourierAssignedAt = "", nil
+	o.UpdatedAt = s.now().UTC()
+	o.Version++
+	return s.Repo.Update(ctx, o)
+}
+
+// SettleResult — kuryerdan qabul qilingan pul.
+type SettleResult struct {
+	Orders     int   `json:"orders"`
+	TotalTiyin int64 `json:"total_tiyin"`
+	StillHeld  int   `json:"still_held"`
+	HeldTiyin  int64 `json:"held_tiyin"`
+}
+
+// Settle — kuryer topshirgan naqd pulni qabul qiladi: `held` -> `settled`. `ids` bo'sh bo'lsa
+// kuryerdagi hamma pul. Faqat shu kuryerning yetkazilgan buyurtmalari; boshqasiga tegilmaydi.
+func (s *Service) Settle(ctx context.Context, courierID, adminID string, ids []string) (SettleResult, error) {
+	if courierID == "" {
+		return SettleResult{}, invalid("kuryer ko'rsatilmagan")
+	}
+	held, err := s.Repo.List(ctx, Filter{CourierID: courierID, CashStatus: CashHeld, Limit: 2000})
+	if err != nil {
+		return SettleResult{}, err
+	}
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var res SettleResult
+	now := s.now().UTC()
+	for _, o := range held {
+		if len(want) > 0 && !want[o.ID] {
+			res.StillHeld++
+			res.HeldTiyin += o.CashTiyin
+			continue
+		}
+		o.CashStatus, o.CashSettledAt, o.CashSettledBy = CashSettled, &now, adminID
+		o.UpdatedAt = now
+		o.Version++
+		if err := s.Repo.Update(ctx, o); err != nil {
+			res.StillHeld++
+			res.HeldTiyin += o.CashTiyin
+			continue
+		}
+		res.Orders++
+		res.TotalTiyin += o.CashTiyin
+	}
+	return res, nil
+}
+
+// CashSummary — kuryerdagi pul va faol (yakunlanmagan) buyurtmalar soni.
+type CashSummary struct {
+	HeldTiyin   int64 `json:"held_tiyin"`
+	HeldOrders  int   `json:"held_orders"`
+	ActiveCount int   `json:"active_orders"`
+}
+
+// CourierSummary — bitta kuryer bo'yicha hisob.
+func (s *Service) CourierSummary(ctx context.Context, courierID string) (CashSummary, error) {
+	var sum CashSummary
+	held, err := s.Repo.List(ctx, Filter{CourierID: courierID, CashStatus: CashHeld, Limit: 2000})
+	if err != nil {
+		return sum, err
+	}
+	for _, o := range held {
+		sum.HeldTiyin += o.CashTiyin
+		sum.HeldOrders++
+	}
+	act, err := s.Repo.List(ctx, Filter{CourierID: courierID, Statuses: []Status{
+		StatusConfirmed, StatusPacked, StatusCollected, StatusOutForDelivery, StatusFailed,
+	}, Limit: 2000})
+	if err != nil {
+		return sum, err
+	}
+	sum.ActiveCount = len(act)
+	return sum, nil
 }
 
 // TransitionDate — reysdagi barcha `from` holatidagi buyurtmalarni `to` ga o'tkazadi

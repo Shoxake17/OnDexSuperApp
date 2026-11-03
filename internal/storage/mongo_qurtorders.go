@@ -57,6 +57,13 @@ type mongoQurtOrder struct {
 	CreatedAt        time.Time              `bson:"created_at"`
 	UpdatedAt        time.Time              `bson:"updated_at"`
 	Version          int                    `bson:"version"`
+
+	CourierID         string     `bson:"courier_id,omitempty"`
+	CourierAssignedAt *time.Time `bson:"courier_assigned_at,omitempty"`
+	CashTiyin         int64      `bson:"cash_tiyin,omitempty"`
+	CashStatus        string     `bson:"cash_status,omitempty"`
+	CashSettledAt     *time.Time `bson:"cash_settled_at,omitempty"`
+	CashSettledBy     string     `bson:"cash_settled_by,omitempty"`
 }
 
 func toMongoQurtOrder(o *qurtorders.Order) mongoQurtOrder {
@@ -68,6 +75,8 @@ func toMongoQurtOrder(o *qurtorders.Order) mongoQurtOrder {
 		CustomerName: o.CustomerName, CustomerPhone: o.CustomerPhone, Address: o.Address,
 		Comment: o.Comment, RejectReason: o.RejectReason, Reserved: o.Reserved,
 		IdempotencyKey: o.IdempotencyKey, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, Version: o.Version,
+		CourierID: o.CourierID, CourierAssignedAt: o.CourierAssignedAt, CashTiyin: o.CashTiyin,
+		CashStatus: string(o.CashStatus), CashSettledAt: o.CashSettledAt, CashSettledBy: o.CashSettledBy,
 	}
 	for _, it := range o.Items {
 		d.Items = append(d.Items, mongoQurtOrderItem(it))
@@ -89,6 +98,8 @@ func (d mongoQurtOrder) toDomain() *qurtorders.Order {
 		CustomerName: d.CustomerName, CustomerPhone: d.CustomerPhone, Address: d.Address,
 		Comment: d.Comment, RejectReason: d.RejectReason, Reserved: d.Reserved,
 		IdempotencyKey: d.IdempotencyKey, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt, Version: d.Version,
+		CourierID: d.CourierID, CourierAssignedAt: d.CourierAssignedAt, CashTiyin: d.CashTiyin,
+		CashStatus: qurtorders.CashStatus(d.CashStatus), CashSettledAt: d.CashSettledAt, CashSettledBy: d.CashSettledBy,
 	}
 	for _, it := range d.Items {
 		o.Items = append(o.Items, qurtorders.Item(it))
@@ -116,6 +127,7 @@ func EnsureQurtOrderIndexes(ctx context.Context, db *mongo.Database) error {
 		{Keys: bson.D{{Key: "customer_id", Value: 1}, {Key: "created_at", Value: -1}}},
 		{Keys: bson.D{{Key: "delivery_date", Value: 1}, {Key: "status", Value: 1}}},
 		{Keys: bson.D{{Key: "customer_id", Value: 1}, {Key: "idempotency_key", Value: 1}}},
+		{Keys: bson.D{{Key: "courier_id", Value: 1}, {Key: "cash_status", Value: 1}, {Key: "status", Value: 1}}},
 	})
 	return err
 }
@@ -159,6 +171,12 @@ func (r *MongoQurtOrderRepo) List(ctx context.Context, f qurtorders.Filter) ([]*
 	}
 	if f.DeliveryDate != "" {
 		q["delivery_date"] = f.DeliveryDate
+	}
+	if f.CourierID != "" {
+		q["courier_id"] = f.CourierID
+	}
+	if f.CashStatus != "" {
+		q["cash_status"] = string(f.CashStatus)
 	}
 	if len(f.Statuses) > 0 {
 		st := make([]string, len(f.Statuses))
