@@ -126,6 +126,9 @@ type Item struct {
 	PriceTiyin  int64  `json:"price_tiyin"`
 	ImageURL    string `json:"image_url,omitempty"`
 	WeightGrams int    `json:"weight_grams,omitempty"`
+	// ExternalID — POS dagi mahsulot kaliti (shtrix-kod). MIJOZGA CHIQMAYDI (json:"-");
+	// faqat do'konga (POS ombor qoldig'ini kamaytirish uchun) beriladi.
+	ExternalID string `json:"-"`
 }
 
 // Address — yetkazish manzili (buyurtma paytidagi NUSXA).

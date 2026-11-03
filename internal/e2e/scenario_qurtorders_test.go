@@ -208,7 +208,13 @@ func TestQurtOrderFlow(t *testing.T) {
 		if len(m.Orders) != 2 {
 			t.Fatalf("2 ta buyurtma kutilgan: %d", len(m.Orders))
 		}
-		w.Do(t, w.Customer, "GET", "/qurt/orders/"+oa.ID, nil).Expect(t, 200)
+		own := w.Do(t, w.Customer, "GET", "/qurt/orders/"+oa.ID, nil).Expect(t, 200)
+		// POS kaliti (shtrix-kod) mijozga CHIQMAYDI.
+		for _, secret := range []string{"barcode", "external"} {
+			if strings.Contains(string(own.Body), secret) {
+				t.Fatalf("mijozga %q sizdi: %s", secret, own.Body)
+			}
+		}
 		w.Do(t, w.Customer, "GET", "/qurt/orders/yoq", nil).Expect(t, 404)
 		w.Do(t, nil, "GET", "/qurt/orders", nil).Expect(t, 401)
 		w.ExpectDenied(t, w.Owner, "GET", "/qurt/orders/"+oa.ID, nil)
@@ -224,6 +230,10 @@ func TestQurtOrderFlow(t *testing.T) {
 		r.JSON(t, &m)
 		if len(m.Orders) != 1 || m.Orders[0]["id"] != oa.ID {
 			t.Fatalf("A faqat o'z buyurtmasini ko'rishi kerak: %s", r.Body)
+		}
+		// Do'kon O'Z mahsulot kalitini oladi (POS ombor qoldig'ini kamaytirish uchun).
+		if !strings.Contains(string(r.Body), `"barcode":"a1"`) {
+			t.Fatalf("do'kon barcode ko'rishi kerak: %s", r.Body)
 		}
 		for _, secret := range []string{"+99890", "Navoiy", "Eshik oldiga", "customer_phone", "address", "by_id"} {
 			if strings.Contains(string(r.Body), secret) {

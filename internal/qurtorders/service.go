@@ -179,7 +179,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) ([]*Order, error) 
 		}
 		byStore[p.StoreID] = append(byStore[p.StoreID], Item{
 			ProductID: p.ID, Name: p.Name, Qty: qty[id], PriceTiyin: p.PriceTiyin,
-			ImageURL: p.ImageURL, WeightGrams: p.WeightGrams,
+			ImageURL: p.ImageURL, WeightGrams: p.WeightGrams, ExternalID: p.ExternalID,
 		})
 		reserve = append(reserve, qurt.Reservation{ProductID: p.ID, Qty: qty[id]})
 	}

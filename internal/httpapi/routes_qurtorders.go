@@ -58,13 +58,24 @@ type storeOrderView struct {
 	Number        string                   `json:"number"`
 	Status        qurtorders.Status        `json:"status"`
 	DeliveryDate  string                   `json:"delivery_date"`
-	Items         []qurtorders.Item        `json:"items"`
+	Items         []storeOrderItem         `json:"items"`
 	TotalTiyin    int64                    `json:"total_tiyin"`
 	CustomerName  string                   `json:"customer_name"`
 	RejectReason  string                   `json:"reject_reason,omitempty"`
 	History       []storeOrderHistoryEntry `json:"history"`
 	CreatedAt     time.Time                `json:"created_at"`
 	PaymentMethod string                   `json:"payment_method"`
+}
+
+// storeOrderItem — do'konga ko'rinadigan pozitsiya. Barcode — do'konning O'Z mahsulot kaliti
+// (POS ombor qoldig'ini kamaytirish uchun); OnDex ichki ID'si berilmaydi.
+type storeOrderItem struct {
+	Barcode     string `json:"barcode"`
+	Name        string `json:"name"`
+	Qty         int    `json:"qty"`
+	PriceTiyin  int64  `json:"price_tiyin"`
+	ImageURL    string `json:"image_url,omitempty"`
+	WeightGrams int    `json:"weight_grams,omitempty"`
 }
 
 type storeOrderHistoryEntry struct {
@@ -80,10 +91,21 @@ func firstWord(s string) string {
 	return f[0]
 }
 
+func storeItems(items []qurtorders.Item) []storeOrderItem {
+	out := make([]storeOrderItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, storeOrderItem{
+			Barcode: it.ExternalID, Name: it.Name, Qty: it.Qty, PriceTiyin: it.PriceTiyin,
+			ImageURL: it.ImageURL, WeightGrams: it.WeightGrams,
+		})
+	}
+	return out
+}
+
 func toStoreView(o *qurtorders.Order) storeOrderView {
 	v := storeOrderView{
 		ID: o.ID, Number: o.Number, Status: o.Status, DeliveryDate: o.DeliveryDate,
-		Items: o.Items, TotalTiyin: o.SubtotalTiyin, CustomerName: firstWord(o.CustomerName),
+		Items: storeItems(o.Items), TotalTiyin: o.SubtotalTiyin, CustomerName: firstWord(o.CustomerName),
 		RejectReason: o.RejectReason, CreatedAt: o.CreatedAt, PaymentMethod: o.PaymentMethod,
 		History: []storeOrderHistoryEntry{},
 	}

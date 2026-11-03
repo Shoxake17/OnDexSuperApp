@@ -215,6 +215,8 @@ var Registry = []Var{
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
 	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
 	{Name: "SSO_MERCHANT_REDIRECT_URIS", Effect: "yagona kirish YOQILMAYDI (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},
+	{Name: "QURT_POS_WEBHOOK_URL", Effect: "qurt buyurtmasi do'kon panelida jonli signalsiz qoladi (panel davriy so'raydi)"},
+	{Name: "QURT_POS_WEBHOOK_SECRET", Effect: "qurt buyurtmasi do'kon panelida jonli signalsiz qoladi (panel davriy so'raydi)"},
 	{Name: "QURT_DELIVERY_DAYS", Effect: "qurt reys kunlari standart (seshanba va juma) bo'ladi"},
 	{Name: "QURT_ORDER_CUTOFF_HOUR", Effect: "qurt buyurtma qabul qilish muddati standart (reysdan bir kun oldin 18:00) bo'ladi"},
 	{Name: "SSO_MERCHANT_NAME", Effect: "tasdiqlash sahifasida standart nom (OnDex Merchant Panel) ko'rsatiladi", DeployRequired: true},

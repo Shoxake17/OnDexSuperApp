@@ -19,6 +19,7 @@ type mongoQurtOrderItem struct {
 	PriceTiyin  int64  `bson:"price_tiyin"`
 	ImageURL    string `bson:"image_url"`
 	WeightGrams int    `bson:"weight_grams"`
+	ExternalID  string `bson:"external_id"`
 }
 
 type mongoQurtOrderChange struct {

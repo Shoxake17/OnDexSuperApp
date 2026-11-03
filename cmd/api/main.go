@@ -1532,6 +1532,7 @@ func main() {
 		QurtOrderSvc: &qurtorders.Service{
 			Repo: qurtOrderRepo, Products: qurtRepo, NewID: httpapi.NewID,
 			Schedule: qurtDeliverySchedule,
+			OnEvent:  qurtPOSNotify(),
 		},
 		Dispatcher: dispatcher,
 		DevMode:    devMode,
@@ -1668,4 +1669,26 @@ func qurtDeliverySchedule() qurtorders.Schedule {
 		}
 	}
 	return s
+}
+
+// qurtPOSNotify — yangi/bekor qilingan qurt buyurtmasini do'kon POS serveriga (ShoxPos)
+// imzolab yuboradi (jonli signal). Sozlama o'zgaruvchilari (ikkalasi ham kerak, aks holda o'chiq):
+//
+//	QURT_POS_WEBHOOK_URL    — to'liq manzil (https; faqat localhost uchun http)
+//	QURT_POS_WEBHOOK_SECRET — imzo siri (>= 32 belgi; ShoxPos'dagi QURT_WEBHOOK_SECRET bilan BIR XIL)
+//
+// Noto'g'ri sozlama serverni to'xtatmaydi: signal o'chadi, panel davriy so'rab o'zi ko'radi.
+func qurtPOSNotify() func(context.Context, string, *qurtorders.Order) {
+	u := strings.TrimSpace(os.Getenv("QURT_POS_WEBHOOK_URL"))
+	s := os.Getenv("QURT_POS_WEBHOOK_SECRET")
+	if u == "" && s == "" {
+		return nil
+	}
+	n, err := qurtorders.NewPOSNotifier(u, s)
+	if err != nil {
+		slog.Error("qurt POS signali o'chirildi", "err", err)
+		return nil
+	}
+	slog.Info("qurt: do'kon POS serveriga jonli signal yoqilgan")
+	return n.Notify
 }
