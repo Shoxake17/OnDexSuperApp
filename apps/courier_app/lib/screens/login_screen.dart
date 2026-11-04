@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../session.dart';
-import '../qurt/home_router.dart';
+import '../trip/home_router.dart';
 import 'register_screen.dart';
 
 /// Kuryer kirishi — telefon raqami + tasdiqlash kodi.

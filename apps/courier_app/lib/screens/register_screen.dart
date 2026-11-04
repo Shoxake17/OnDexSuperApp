@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../session.dart';
-import '../qurt/home_router.dart';
+import '../trip/home_router.dart';
 import 'login_screen.dart';
 
 /// Kuryer roli bo'lmagan akkaunt bilan kirilganda ko'rsatiladi.

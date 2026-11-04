@@ -7,7 +7,7 @@ import '../session.dart';
 import '../theme.dart';
 import '../widgets/slide_to_confirm.dart';
 
-/// Qurt kuryerining asosiy ekrani: reysga biriktirilgan buyurtmalar.
+/// Reys kuryerining asosiy ekrani: do'kon unga biriktirgan buyurtmalar.
 ///
 /// Oqim: 1) do'konga borib qadoqlangan buyurtmalarni oladi ("Oldim"); 2) mijozlarga yetkazadi
 /// ("Yo'lga chiqdim" -> surib "Yetkazdim — naqd oldim"); yetkaza olmasa sabab bilan
@@ -18,12 +18,12 @@ import '../widgets/slide_to_confirm.dart';
 /// qilganda yopadi — yuqoridagi "Sizda naqd pul" ko'rsatkichi shu.
 ///
 /// Bu ekran restoran/platforma buyurtmalarini KO'RSATMAYDI va ularning taklif/WebSocket oqimiga
-/// ulanmaydi: Qurt kuryeri alohida havzada.
-class QurtShell extends StatefulWidget {
-  const QurtShell({super.key});
+/// ulanmaydi: reys kuryeri alohida havzada.
+class TripShell extends StatefulWidget {
+  const TripShell({super.key});
 
   @override
-  State<QurtShell> createState() => _QurtShellState();
+  State<TripShell> createState() => _TripShellState();
 }
 
 const _statusTitle = <String, String>{
@@ -34,7 +34,7 @@ const _statusTitle = <String, String>{
   'failed': 'Yetkazilmadi',
 };
 
-class _QurtShellState extends State<QurtShell> with WidgetsBindingObserver {
+class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
   List<Map<String, dynamic>> _orders = [];
   Map<String, dynamic> _summary = const {};
   String _name = '';
@@ -227,7 +227,7 @@ class _QurtShellState extends State<QurtShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_name.isEmpty ? 'Qurt reysi' : 'Qurt reysi · $_name'),
+        title: Text(_name.isEmpty ? 'Reys' : 'Reys · $_name'),
         actions: [
           IconButton(
             tooltip: 'Yangilash',

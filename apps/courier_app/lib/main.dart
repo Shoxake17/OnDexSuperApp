@@ -7,7 +7,7 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'api.dart';
 import 'push.dart';
-import 'qurt/home_router.dart';
+import 'trip/home_router.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'theme.dart';
