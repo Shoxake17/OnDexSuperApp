@@ -261,8 +261,15 @@ func TestQurtCourierFlow(t *testing.T) {
 	})
 
 	w.Step(t, "yo'lga chiqmagan buyurtmani kuryerdan olish; kuryerni olib tashlash", func(t *testing.T) {
+		// Do'kon buyurtmani qadoqlagach u O'Z kuryeriga AVTOMATIK biriktiriladi (qo'lda biriktirish shart emas).
 		orderB := newOrder("kc-2")
-		w.Do(t, pos, "POST", "/merchant/qurt/assign", map[string]any{"courier_id": courierID, "order_ids": []string{orderB}}).Expect(t, 200)
+		if r := w.Do(t, courier, "GET", "/courier/qurt/orders", nil).Expect(t, 200); !strings.Contains(string(r.Body), orderB) {
+			t.Fatalf("qadoqlangan buyurtma kuryerga avtomatik biriktirilmadi: %s", r.Body)
+		}
+		// Boshqa do'kon kuryeri bu buyurtmani ko'rmaydi.
+		if r := w.Do(t, w.LoginAs(t, "Boshqa do'kon kuryeri", "+998905553103"), "GET", "/courier/qurt/orders", nil).Expect(t, 200); strings.Contains(string(r.Body), orderB) {
+			t.Fatalf("begona do'kon kuryeriga biriktirilib ketdi: %s", r.Body)
+		}
 		w.Do(t, pos, "DELETE", "/merchant/qurt/couriers/"+courierID, nil).Expect(t, 409) // faol buyurtma bor
 		w.Do(t, pos, "POST", "/merchant/qurt/orders/"+orderB+"/unassign", nil).Expect(t, 204)
 		if r := w.Do(t, courier, "GET", "/courier/qurt/orders", nil).Expect(t, 200); strings.Contains(string(r.Body), orderB) {

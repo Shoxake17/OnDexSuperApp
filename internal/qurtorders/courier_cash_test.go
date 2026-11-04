@@ -211,3 +211,44 @@ func TestAssignIgnoresOtherStoresOrders(t *testing.T) {
 		t.Fatal("egalik tekshiruvi o'tmasa kuryerdan olib bo'lmaydi")
 	}
 }
+
+func TestPackedOrderIsAutoAssignedToLeastBusyCourier(t *testing.T) {
+	f := newFixture(t, 50, 50)
+	ctx := context.Background()
+	load := map[string]int{"k1": 0, "k2": 0}
+	f.svc.PickCourier = func(ctx context.Context, storeID string) string {
+		if storeID != "S1" {
+			return ""
+		}
+		best := ""
+		for _, id := range []string{"k1", "k2"} {
+			if best == "" || load[id] < load[best] {
+				best = id
+			}
+		}
+		load[best]++
+		return best
+	}
+	var got []string
+	for i := 0; i < 4; i++ {
+		o := f.packedOrder(t)
+		cur, _ := f.svc.Repo.Get(ctx, o.ID)
+		if cur.CourierID == "" || cur.CourierAssignedAt == nil {
+			t.Fatalf("qadoqlangan buyurtma avtomatik biriktirilishi kerak: %+v", cur)
+		}
+		got = append(got, cur.CourierID)
+	}
+	if got[0] == got[1] || got[0] != got[2] || got[1] != got[3] {
+		t.Fatalf("buyurtmalar kuryerlar orasida teng taqsimlanishi kerak: %v", got)
+	}
+	// Boshqa do'kon buyurtmasiga (kuryer yo'q) tegilmaydi; confirmed bosqichda hali biriktirilmaydi.
+	out, _ := f.svc.Create(ctx, f.input(qurtorders.Line{ProductID: f.b.ID, Qty: 1}))
+	for _, to := range []qurtorders.Status{qurtorders.StatusConfirmed, qurtorders.StatusPacked} {
+		if _, err := f.svc.Transition(ctx, out[0].ID, to, qurtorders.ActorStore, "S2", "", nil); err != nil {
+			t.Fatal(err)
+		}
+		if cur, _ := f.svc.Repo.Get(ctx, out[0].ID); cur.CourierID != "" {
+			t.Fatalf("kuryeri yo'q do'kon buyurtmasi biriktirilmasligi kerak (%s): %+v", to, cur)
+		}
+	}
+}

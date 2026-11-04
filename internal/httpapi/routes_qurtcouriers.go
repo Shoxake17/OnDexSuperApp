@@ -85,6 +85,28 @@ func (s *Server) qurtCourier(w http.ResponseWriter, r *http.Request) (*couriers.
 func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 	courier := []users.Role{users.RoleCourier}
 
+	// Avto-biriktirish: do'kon buyurtmani qadoqlaganda u o'z kuryeriga tushadi. Bir nechta kuryer
+	// bo'lsa — faol buyurtmasi eng kami (teng bo'lsa ism bo'yicha). Kuryer yo'q bo'lsa — qo'lda.
+	if s.QurtOrderSvc != nil && s.CourierRepo != nil && s.QurtOrderSvc.PickCourier == nil {
+		s.QurtOrderSvc.PickCourier = func(ctx context.Context, storeID string) string {
+			list, err := s.storeCouriers(ctx, storeID)
+			if err != nil || len(list) == 0 {
+				return ""
+			}
+			best, bestLoad := "", -1
+			for _, c := range list {
+				sum, err := s.QurtOrderSvc.CourierSummary(ctx, c.ID)
+				if err != nil {
+					continue
+				}
+				if bestLoad < 0 || sum.ActiveCount < bestLoad {
+					best, bestLoad = c.ID, sum.ActiveCount
+				}
+			}
+			return best
+		}
+	}
+
 	// GET /courier/qurt/me — Qurt kuryerimi? + kuryerdagi pul. Ilova shu orqali Qurt bo'limini ochadi
 	// (403 = oddiy kuryer).
 	mux.HandleFunc("GET /courier/qurt/me", s.auth(courier, func(w http.ResponseWriter, r *http.Request) {
