@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../push.dart';
 import '../screens/login_screen.dart';
 import '../session.dart';
 import '../theme.dart';
@@ -14,8 +17,11 @@ import '../widgets/slide_to_confirm.dart';
 /// "Yetkazib bo'lmadi" (keyin qayta urinish mumkin).
 ///
 /// Mijozning ismi, telefoni va manzili FAQAT do'kondan olingandan keyin ko'rinadi (server beradi).
-/// Naqd pul yetkazilganda tizimda kuryerda yoziladi; hisobni admin kuryerdan pulni qabul
+/// Naqd pul yetkazilganda tizimda kuryerda yoziladi; hisobni do'kon kuryerdan pulni qabul
 /// qilganda yopadi — yuqoridagi "Sizda naqd pul" ko'rsatkichi shu.
+///
+/// Buyurtmalar kuryerga AVTOMATIK tushmaydi: do'kon (merchant panel, "Logistika") ularni
+/// qo'lda biriktiradi; shundan keyin kuryerga push boradi va ro'yxat yangilanadi.
 ///
 /// Bu ekran restoran/platforma buyurtmalarini KO'RSATMAYDI va ularning taklif/WebSocket oqimiga
 /// ulanmaydi: reys kuryeri alohida havzada.
@@ -41,21 +47,33 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  Timer? _poll;
+  // Oldingi ro'yxat: do'kon yangi buyurtma biriktirganini aniqlash uchun.
+  Set<String>? _knownIds;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    // Do'kon buyurtmani QO'LDA biriktirganda serverdan push keladi va ro'yxat darrov yangilanadi.
+    // Push kechiksa yoki o'chiq bo'lsa ham, ochiq ekran har 30 soniyada o'zi yangilanadi.
+    unawaited(
+      registerCourierPush(onOfferHint: () => unawaited(_load(silent: true))),
+    );
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!_busy) _load(silent: true);
+    });
   }
 
   @override
   void dispose() {
+    _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // Ilovaga qaytganda ro'yxat yangilanadi (admin yangi buyurtma biriktirgan bo'lishi mumkin).
+  // Ilovaga qaytganda ro'yxat yangilanadi (do'kon yangi buyurtma biriktirgan bo'lishi mumkin).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_busy) _load(silent: true);
@@ -79,6 +97,19 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
       final res = await api.send('GET', '/courier/qurt/orders');
       final list = (res is Map ? res['orders'] as List? : null) ?? [];
       if (!mounted) return;
+      final ids = {
+        for (final o in list)
+          if (o is Map) '${o['id']}',
+      };
+      final fresh = _knownIds == null ? 0 : ids.difference(_knownIds!).length;
+      _knownIds = ids;
+      if (fresh > 0) {
+        _snack(
+          fresh == 1
+              ? 'Sizga yangi buyurtma biriktirildi'
+              : '$fresh ta yangi buyurtma biriktirildi',
+        );
+      }
       setState(() {
         _name = '${me['name'] ?? ''}';
         _summary = Map<String, dynamic>.from(
@@ -210,6 +241,8 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
       );
       return;
     }
+    // Push tokeni chiqishdan OLDIN o'chiriladi: chiqqan kuryerga buyurtma xabari ketmasin.
+    await unregisterCourierPush();
     try {
       await api.logout();
     } catch (_) {

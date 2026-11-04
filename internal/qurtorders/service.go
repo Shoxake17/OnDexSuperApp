@@ -47,9 +47,9 @@ type Service struct {
 	// OnEvent — holat o'zgarganda (yaratish ham): "created", "confirmed", ... Xatosi
 	// buyurtmaga ta'sir qilmaydi. POS xabari va push shu yerga ulanadi.
 	OnEvent func(ctx context.Context, event string, o *Order)
-	// PickCourier — do'kon buyurtmani QADOQLAGANDA unga avtomatik kuryer tanlaydi (bo'sh qaytarsa —
-	// biriktirilmaydi, do'kon qo'lda biriktiradi). nil bo'lsa avto-biriktirish o'chiq.
-	PickCourier func(ctx context.Context, storeID string) string
+	// OnAssigned — do'kon buyurtmalarni kuryerga QO'LDA biriktirgandan keyin chaqiriladi (kuryerga xabar).
+	// Biriktirish hech qachon avtomatik emas; xatosi biriktirishga ta'sir qilmaydi.
+	OnAssigned func(ctx context.Context, courierID string, count int)
 }
 
 func (s *Service) now() time.Time {
@@ -312,14 +312,8 @@ func (s *Service) Transition(ctx context.Context, id string, to Status, by Actor
 	// keyin qoldiqni POS o'zi kamaytiradi (ikki marta sanalmasin).
 	o.Reserved = false
 	now := s.now().UTC()
-	if to == StatusPacked && o.CourierID == "" && s.PickCourier != nil {
-		// Qadoqlangan buyurtma kuryersiz qolmasin: do'konning kuryeri avtomatik biriktiriladi.
-		if cid := s.PickCourier(ctx, o.StoreID); cid != "" {
-			o.CourierID, o.CourierAssignedAt = cid, &now
-		}
-	}
 	if to == StatusDelivered && o.CourierID != "" {
-		// Mijozdan naqd olindi: pul kuryerda, admin qabul qilmaguncha "held".
+		// Mijozdan naqd olindi: pul kuryerda, do'kon qabul qilmaguncha "held".
 		o.CashTiyin = o.TotalTiyin
 		o.CashStatus = CashHeld
 	}
@@ -411,6 +405,9 @@ func (s *Service) Assign(ctx context.Context, storeID, courierID, date string, i
 			continue
 		}
 		res.Assigned++
+	}
+	if res.Assigned > 0 && s.OnAssigned != nil {
+		s.OnAssigned(ctx, courierID, res.Assigned)
 	}
 	return res, nil
 }

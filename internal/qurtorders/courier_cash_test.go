@@ -2,6 +2,7 @@ package qurtorders_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"chustapp/internal/qurtorders"
@@ -212,43 +213,32 @@ func TestAssignIgnoresOtherStoresOrders(t *testing.T) {
 	}
 }
 
-func TestPackedOrderIsAutoAssignedToLeastBusyCourier(t *testing.T) {
+func TestAssignmentIsNeverAutomaticAndNotifiesCourierOnlyWhenManual(t *testing.T) {
 	f := newFixture(t, 50, 50)
 	ctx := context.Background()
-	load := map[string]int{"k1": 0, "k2": 0}
-	f.svc.PickCourier = func(ctx context.Context, storeID string) string {
-		if storeID != "S1" {
-			return ""
-		}
-		best := ""
-		for _, id := range []string{"k1", "k2"} {
-			if best == "" || load[id] < load[best] {
-				best = id
-			}
-		}
-		load[best]++
-		return best
+	var notified []string
+	f.svc.OnAssigned = func(_ context.Context, courierID string, n int) {
+		notified = append(notified, courierID+":"+strconv.Itoa(n))
 	}
-	var got []string
-	for i := 0; i < 4; i++ {
-		o := f.packedOrder(t)
-		cur, _ := f.svc.Repo.Get(ctx, o.ID)
-		if cur.CourierID == "" || cur.CourierAssignedAt == nil {
-			t.Fatalf("qadoqlangan buyurtma avtomatik biriktirilishi kerak: %+v", cur)
-		}
-		got = append(got, cur.CourierID)
+	// Qadoqlangan buyurtma o'zi kuryerga tushmaydi (hech qanday avtomatik biriktirish yo'q).
+	o := f.packedOrder(t)
+	if cur, _ := f.svc.Repo.Get(ctx, o.ID); cur.CourierID != "" || cur.CourierAssignedAt != nil {
+		t.Fatalf("buyurtma avtomatik biriktirilmasligi kerak: %+v", cur)
 	}
-	if got[0] == got[1] || got[0] != got[2] || got[1] != got[3] {
-		t.Fatalf("buyurtmalar kuryerlar orasida teng taqsimlanishi kerak: %v", got)
+	if len(notified) != 0 {
+		t.Fatalf("biriktirishsiz kuryerga xabar ketmasligi kerak: %v", notified)
 	}
-	// Boshqa do'kon buyurtmasiga (kuryer yo'q) tegilmaydi; confirmed bosqichda hali biriktirilmaydi.
-	out, _ := f.svc.Create(ctx, f.input(qurtorders.Line{ProductID: f.b.ID, Qty: 1}))
-	for _, to := range []qurtorders.Status{qurtorders.StatusConfirmed, qurtorders.StatusPacked} {
-		if _, err := f.svc.Transition(ctx, out[0].ID, to, qurtorders.ActorStore, "S2", "", nil); err != nil {
-			t.Fatal(err)
-		}
-		if cur, _ := f.svc.Repo.Get(ctx, out[0].ID); cur.CourierID != "" {
-			t.Fatalf("kuryeri yo'q do'kon buyurtmasi biriktirilmasligi kerak (%s): %+v", to, cur)
-		}
+	// Qo'lda biriktirilgandan keyingina — xabar, aynan bir marta.
+	if _, err := f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(notified) != 1 || notified[0] != "k1:1" {
+		t.Fatalf("kuryerga bitta xabar kutilgan: %v", notified)
+	}
+	// Hech narsa biriktirilmasa (allaqachon shu kuryerniki / begona do'kon) — xabar yo'q.
+	_, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{o.ID})
+	_, _ = f.svc.Assign(ctx, "S2", "k1", "", []string{o.ID})
+	if len(notified) != 1 {
+		t.Fatalf("takroriy/begona biriktirishda xabar ketmasligi kerak: %v", notified)
 	}
 }

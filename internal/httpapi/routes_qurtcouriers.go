@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"chustapp/internal/couriers"
+	"chustapp/internal/notify"
 	"chustapp/internal/qurtorders"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/users"
@@ -85,28 +87,23 @@ func (s *Server) qurtCourier(w http.ResponseWriter, r *http.Request) (*couriers.
 func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 	courier := []users.Role{users.RoleCourier}
 
-	// Avto-biriktirish: do'kon buyurtmani qadoqlaganda u o'z kuryeriga tushadi. Bir nechta kuryer
-	// bo'lsa — faol buyurtmasi eng kami (teng bo'lsa ism bo'yicha). Kuryer yo'q bo'lsa — qo'lda.
-	if s.QurtOrderSvc != nil && s.CourierRepo != nil && s.QurtOrderSvc.PickCourier == nil {
-		s.QurtOrderSvc.PickCourier = func(ctx context.Context, storeID string) string {
-			list, err := s.storeCouriers(ctx, storeID)
-			if err != nil || len(list) == 0 {
-				return ""
+	// Biriktirish HECH QACHON avtomatik emas: do'kon buyurtmani Logistika sahifasida kuryerga QO'LDA
+	// biriktiradi. Shundan keyingina kuryerga xabar boradi (jonli kanal + push) va buyurtma
+	// OnDexGO "Reys" ekranida paydo bo'ladi.
+	if s.QurtOrderSvc != nil && s.QurtOrderSvc.OnAssigned == nil {
+		s.QurtOrderSvc.OnAssigned = func(ctx context.Context, courierID string, count int) {
+			if s.Notifier == nil || !strings.HasPrefix(courierID, "qurt-") {
+				return
 			}
-			best, bestLoad := "", -1
-			for _, c := range list {
-				sum, err := s.QurtOrderSvc.CourierSummary(ctx, c.ID)
-				if err != nil {
-					continue
-				}
-				if bestLoad < 0 || sum.ActiveCount < bestLoad {
-					best, bestLoad = c.ID, sum.ActiveCount
-				}
+			body := "Sizga yangi buyurtma biriktirildi"
+			if count > 1 {
+				body = strconv.Itoa(count) + " ta yangi buyurtma biriktirildi"
 			}
-			return best
+			s.Notifier.Notify(ctx, strings.TrimPrefix(courierID, "qurt-"), notify.Event{
+				Module: "shop", Kind: "trip_assigned", Title: "Reys", Body: body,
+			})
 		}
 	}
-
 	// GET /courier/qurt/me — Qurt kuryerimi? + kuryerdagi pul. Ilova shu orqali Qurt bo'limini ochadi
 	// (403 = oddiy kuryer).
 	mux.HandleFunc("GET /courier/qurt/me", s.auth(courier, func(w http.ResponseWriter, r *http.Request) {
