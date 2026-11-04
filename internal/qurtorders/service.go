@@ -388,7 +388,12 @@ func (s *Service) Assign(ctx context.Context, storeID, courierID, date string, i
 	var res AssignResult
 	now := s.now().UTC()
 	for _, o := range list {
-		if (storeID != "" && o.StoreID != storeID) || !assignable(o.Status) || (o.CourierID != "" && o.CourierID != courierID) {
+		// Boshqa kuryerga o'tkazish: faqat buyurtmalar ANIQ ko'rsatilganda va hali yo'lga
+		// chiqmagan bo'lsa. Reys (sana) bo'yicha ommaviy biriktirish boshqa kuryerniki bilan
+		// ishlamaydi (tortib olmaydi).
+		moving := o.CourierID != "" && o.CourierID != courierID
+		if (storeID != "" && o.StoreID != storeID) || !assignable(o.Status) ||
+			(moving && (len(ids) == 0 || o.Status == StatusOutForDelivery)) {
 			if len(ids) > 0 {
 				res.Skipped++
 			}
@@ -397,6 +402,7 @@ func (s *Service) Assign(ctx context.Context, storeID, courierID, date string, i
 		if o.CourierID == courierID {
 			continue
 		}
+		o.PrevCourierID = o.CourierID // eski kuryerga "buyurtma olindi" deb xabar berish uchun
 		o.CourierID, o.CourierAssignedAt = courierID, &now
 		o.UpdatedAt = now
 		o.Version++
@@ -405,6 +411,7 @@ func (s *Service) Assign(ctx context.Context, storeID, courierID, date string, i
 			continue
 		}
 		res.Assigned++
+		s.emit(ctx, "assigned", o)
 	}
 	if res.Assigned > 0 && s.OnAssigned != nil {
 		s.OnAssigned(ctx, courierID, res.Assigned)
@@ -429,10 +436,15 @@ func (s *Service) Unassign(ctx context.Context, id string, check func(*Order) er
 	if o.Status != StatusConfirmed && o.Status != StatusPacked && o.Status != StatusCollected {
 		return invalid("yo'lga chiqqan buyurtmani kuryerdan olib bo'lmaydi")
 	}
+	o.PrevCourierID = o.CourierID
 	o.CourierID, o.CourierAssignedAt = "", nil
 	o.UpdatedAt = s.now().UTC()
 	o.Version++
-	return s.Repo.Update(ctx, o)
+	if err := s.Repo.Update(ctx, o); err != nil {
+		return err
+	}
+	s.emit(ctx, "unassigned", o)
+	return nil
 }
 
 // SettleResult — kuryerdan qabul qilingan pul.
@@ -475,6 +487,7 @@ func (s *Service) Settle(ctx context.Context, courierID, adminID string, ids []s
 		}
 		res.Orders++
 		res.TotalTiyin += o.CashTiyin
+		s.emit(ctx, "cash_settled", o)
 	}
 	return res, nil
 }

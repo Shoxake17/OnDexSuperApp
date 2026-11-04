@@ -110,8 +110,10 @@ class LiveRefresher {
   /// HAMMASI (ehtiyot bo'ling: keraksiz qayta yuklashlar).
   final Set<String> types;
 
-  /// Soket ishlayotgandagi zaxira so'rov oralig'i.
-  final Duration connectedInterval;
+  /// Soket ishlayotgandagi zaxira so'rov oralig'i. `null` — soket ulangan paytda UMUMAN
+  /// so'ralmaydi (faqat hodisada); so'rov faqat uzilgan paytda `offlineInterval` bilan
+  /// vaqtincha ishlaydi.
+  final Duration? connectedInterval;
 
   /// Soket uzilgandagi (yoki hali ulanmagandagi) oraliq.
   final Duration offlineInterval;
@@ -145,7 +147,9 @@ class LiveRefresher {
 
   void _restartTimer() {
     _timer?.cancel();
+    _timer = null;
     final interval = bus.connected ? connectedInterval : offlineInterval;
+    if (interval == null) return; // ulangan paytda so'rov yo'q — faqat jonli hodisa
     _timer = Timer.periodic(interval, (_) => onRefresh());
   }
 

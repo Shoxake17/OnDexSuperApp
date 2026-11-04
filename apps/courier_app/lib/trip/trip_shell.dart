@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../push.dart';
 import '../screens/login_screen.dart';
 import '../session.dart';
@@ -47,7 +48,7 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
   bool _loading = true;
   bool _busy = false;
   String? _error;
-  Timer? _poll;
+  LiveRefresher? _live;
   // Oldingi ro'yxat: do'kon yangi buyurtma biriktirganini aniqlash uchun.
   Set<String>? _knownIds;
 
@@ -56,19 +57,25 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
-    // Do'kon buyurtmani QO'LDA biriktirganda serverdan push keladi va ro'yxat darrov yangilanadi.
-    // Push kechiksa yoki o'chiq bo'lsa ham, ochiq ekran har 30 soniyada o'zi yangilanadi.
+    // JONLI: do'kon buyurtmani biriktirganda/olganda va holat o'zgarganda server WebSocket orqali
+    // `qurt_order` xabarini yuboradi — ro'yxat darrov yangilanadi. So'rov (polling) YO'Q: u faqat
+    // ulanish uzilgan paytda vaqtincha (10 s) ishlaydi, qayta ulanganda esa darrov yangilanadi.
+    tripLive.start();
+    _live = LiveRefresher(
+      bus: tripLive,
+      types: const {'qurt_order'},
+      onRefresh: () => _load(silent: true),
+      connectedInterval: null,
+    )..start();
+    // Ilova yopiq/fonda bo'lsa — push (bildirishnoma); bosilganda ham ro'yxat yangilanadi.
     unawaited(
       registerCourierPush(onOfferHint: () => unawaited(_load(silent: true))),
     );
-    _poll = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!_busy) _load(silent: true);
-    });
   }
 
   @override
   void dispose() {
-    _poll?.cancel();
+    _live?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -243,6 +250,7 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
     }
     // Push tokeni chiqishdan OLDIN o'chiriladi: chiqqan kuryerga buyurtma xabari ketmasin.
     await unregisterCourierPush();
+    await tripLive.stop();
     try {
       await api.logout();
     } catch (_) {

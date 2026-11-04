@@ -200,6 +200,8 @@ type Deps struct {
 	QurtRepo qurt.Repository
 	// QurtOrderSvc — qurt buyurtmalari va reys logistikasi (internal/qurtorders).
 	QurtOrderSvc *qurtorders.Service
+	// qurtLiveOnce — qurt buyurtma voqealarini jonli kanalga ulash BIR marta (registerQurtCourierRoutes).
+	qurtLiveOnce sync.Once
 
 	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.

@@ -20,7 +20,7 @@ import (
 )
 
 // ┌─ DO'KON POS SERVERIGA JONLI SIGNAL ────────────────────────────────────┐
-// Yangi buyurtma kelganda (yoki bekor qilinganda) do'konning POS serveriga
+// Buyurtma holati o'zgarganda (yangi, qabul, qadoq, yetkazish, bekor, kuryer, pul) do'konning POS serveriga
 // (ShoxPos) IMZOLANGAN xabar yuboriladi: panelda ovoz va belgi chiqadi.
 //
 // Xavfsizlik:
@@ -31,15 +31,20 @@ import (
 //     faqat buyurtma raqami, holat va summa. Tafsilotni POS o'zi OnDex'dan so'raydi;
 //   * manzil FAQAT sozlamadan (env) olinadi, so'rovdan emas; sir hech qachon logga yozilmaydi.
 //
-// Xabar yetib bormasa buyurtmaga hech narsa bo'lmaydi: panel baribir davriy
-// so'raydi (polling), signal faqat tezlashtiradi.
+// Xabar yetib bormasa buyurtmaga hech narsa bo'lmaydi: panel jonli ulanish (WebSocket) uzilgan
+// paytdagina vaqtinchalik so'rab turadi, qayta ulanganda esa darhol yangilanadi.
 // └────────────────────────────────────────────────────────────────────────┘
 
 // MinWebhookSecretLen — umumiy sirning eng kam uzunligi.
 const MinWebhookSecretLen = 32
 
-// notifyEvents — do'konga bildiriladigan voqealar.
-var notifyEvents = map[string]bool{"created": true, string(StatusCancelled): true}
+// notifyEvents — do'konga bildiriladigan voqealar: buyurtmaning HAR BIR holat o'zgarishi, kuryer\n// biriktirilishi/olinishi va pul qabul qilinishi (panel jonli yangilanadi, so'rov kerak emas).
+var notifyEvents = map[string]bool{
+	"created": true, "assigned": true, "unassigned": true, "cash_settled": true,
+	string(StatusConfirmed): true, string(StatusRejected): true, string(StatusPacked): true,
+	string(StatusCollected): true, string(StatusOutForDelivery): true, string(StatusDelivered): true,
+	string(StatusFailed): true, string(StatusCancelled): true,
+}
 
 // WebhookPayload — yuboriladigan tana (PII yo'q).
 type WebhookPayload struct {

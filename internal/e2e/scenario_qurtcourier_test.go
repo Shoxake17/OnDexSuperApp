@@ -76,6 +76,13 @@ func TestQurtCourierFlow(t *testing.T) {
 
 	var courier *Actor
 	var courierID string
+	// Jonli kanal: ilovalar so'rov qilmaydi, o'zgarish WebSocket orqali keladi.
+	var courierFeed, customerFeed, otherFeed *Feed
+	qurtMsg := func(event, orderID string) func(map[string]any) bool {
+		return func(m map[string]any) bool {
+			return m["type"] == "qurt_order" && m["event"] == event && m["order_id"] == orderID
+		}
+	}
 	w.Step(t, "do'kon o'z kuryerini qo'shadi (begona akkauntga tegmaydi)", func(t *testing.T) {
 		body := map[string]any{"phone": "+998905553101", "name": "Qurt Kuryer"}
 		w.Do(t, nil, "POST", "/merchant/qurt/couriers", body).Expect(t, 401)
@@ -137,6 +144,8 @@ func TestQurtCourierFlow(t *testing.T) {
 	})
 
 	w.Step(t, "do'kon buyurtmasini o'z kuryeriga biriktiradi; begona do'kon tega olmaydi", func(t *testing.T) {
+		courierFeed = w.Listen(t, courier, "")
+		customerFeed = w.Listen(t, w.Customer, "")
 		assign := map[string]any{"courier_id": courierID, "order_ids": []string{orderA}}
 		w.Do(t, nil, "POST", "/merchant/qurt/assign", assign).Expect(t, 401)
 		w.Do(t, pos, "POST", "/merchant/qurt/assign", map[string]any{"courier_id": "yoq", "order_ids": []string{orderA}}).Expect(t, 400)
@@ -148,6 +157,13 @@ func TestQurtCourierFlow(t *testing.T) {
 		m := w.Do(t, pos, "POST", "/merchant/qurt/assign", assign).Expect(t, 200).Map(t)
 		if m["assigned"] != float64(1) {
 			t.Fatalf("biriktirish: %v", m)
+		}
+		// Kuryer biriktirishni JONLI oladi (polling yo'q); xabarda shaxsiy ma'lumot yo'q.
+		msg := courierFeed.Wait(t, "kuryerga biriktirish xabari", 2*time.Second, qurtMsg("assigned", orderA))
+		for k := range msg {
+			if k != "type" && k != "event" && k != "order_id" && k != "number" && k != "status" {
+				t.Fatalf("jonli xabarda ortiqcha maydon %q: %v", k, msg)
+			}
 		}
 		// Do'kon buyurtmada kuryerni ko'radi (mijoz ma'lumotini esa YO'Q).
 		r := w.Do(t, pos, "GET", "/merchant/qurt/orders/"+orderA, nil).Expect(t, 200)
@@ -186,6 +202,7 @@ func TestQurtCourierFlow(t *testing.T) {
 	w.Step(t, "boshqa do'konning kuryeri bu buyurtmaga tega olmaydi", func(t *testing.T) {
 		w.Do(t, posB, "POST", "/merchant/qurt/couriers", map[string]any{"phone": "+998905553103", "name": "Ikkinchi"}).Expect(t, 201)
 		other := w.LoginAs(t, "Boshqa do'kon kuryeri", "+998905553103")
+		otherFeed = w.Listen(t, other, "")
 		if r := w.Do(t, other, "GET", "/courier/qurt/orders", nil).Expect(t, 200); strings.Contains(string(r.Body), orderA) {
 			t.Fatalf("begona buyurtma ko'rindi: %s", r.Body)
 		}
@@ -202,6 +219,12 @@ func TestQurtCourierFlow(t *testing.T) {
 		tr("out_for_delivery", "").Expect(t, 200)
 		tr("delivered", "").Expect(t, 200)
 		tr("delivered", "").Expect(t, 409) // ikki marta emas
+
+		// Har bir holat mijozga JONLI yetadi; begona kuryerga hech narsa ketmaydi.
+		for _, ev := range []string{"collected", "out_for_delivery", "failed", "delivered"} {
+			customerFeed.Wait(t, "mijozga "+ev+" xabari", 2*time.Second, qurtMsg(ev, orderA))
+		}
+		otherFeed.Never(t, "begona kuryer", 300*time.Millisecond, func(m map[string]any) bool { return m["type"] == "qurt_order" })
 
 		me := w.Do(t, courier, "GET", "/courier/qurt/me", nil).Expect(t, 200).Map(t)
 		sum, _ := me["summary"].(map[string]any)
@@ -272,6 +295,7 @@ func TestQurtCourierFlow(t *testing.T) {
 		}
 		w.Do(t, pos, "DELETE", "/merchant/qurt/couriers/"+courierID, nil).Expect(t, 409) // faol buyurtma bor
 		w.Do(t, pos, "POST", "/merchant/qurt/orders/"+orderB+"/unassign", nil).Expect(t, 204)
+		courierFeed.Wait(t, "kuryerdan olish xabari", 2*time.Second, qurtMsg("unassigned", orderB))
 		if r := w.Do(t, courier, "GET", "/courier/qurt/orders", nil).Expect(t, 200); strings.Contains(string(r.Body), orderB) {
 			t.Fatalf("olingan buyurtma hali kuryerda: %s", r.Body)
 		}

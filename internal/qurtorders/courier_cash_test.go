@@ -60,9 +60,21 @@ func TestAssignByDateOnlyAssignableAndUnassigned(t *testing.T) {
 	if res.Assigned != 0 {
 		t.Fatalf("biriktirilgan buyurtma qayta olinmasligi kerak: %+v", res)
 	}
+	// Aniq ko'rsatilganda va hali yo'lga chiqmagan bo'lsa — boshqa kuryerga O'TKAZISH mumkin;
+	// eski kuryer xabardor qilinadi (PrevCourierID).
+	var events []string
+	f.svc.OnEvent = func(_ context.Context, e string, o *qurtorders.Order) {
+		events = append(events, e+":"+o.PrevCourierID+">"+o.CourierID)
+	}
 	res, _ = f.svc.Assign(ctx, "S1", "k2", "", []string{packed.ID})
+	if res.Assigned != 1 || len(events) != 1 || events[0] != "assigned:k1>k2" {
+		t.Fatalf("boshqa kuryerga o'tkazish: %+v %v", res, events)
+	}
+	_ = f.courierStep(t, packed.ID, qurtorders.StatusCollected, "k2", "")
+	_ = f.courierStep(t, packed.ID, qurtorders.StatusOutForDelivery, "k2", "")
+	res, _ = f.svc.Assign(ctx, "S1", "k1", "", []string{packed.ID})
 	if res.Assigned != 0 || res.Skipped != 1 {
-		t.Fatalf("aniq ro'yxatda ham o'tkazib yuboriladi: %+v", res)
+		t.Fatalf("yo'ldagi buyurtma boshqa kuryerga o'tkazilmaydi: %+v", res)
 	}
 	if _, err := f.svc.Assign(ctx, "S1", "", packed.DeliveryDate, nil); err == nil {
 		t.Fatal("kuryersiz biriktirish rad etilishi kerak")

@@ -83,7 +83,7 @@ func TestNotifySignsAndHidesPII(t *testing.T) {
 	}
 }
 
-func TestNotifyOnlyStoreRelevantEvents(t *testing.T) {
+func TestNotifySendsEveryOrderEventAndIgnoresUnknown(t *testing.T) {
 	var hits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&hits, 1)
@@ -91,20 +91,25 @@ func TestNotifyOnlyStoreRelevantEvents(t *testing.T) {
 	}))
 	defer srv.Close()
 	n, _ := NewPOSNotifier(srv.URL, testSecret)
-	for _, ev := range []string{"confirmed", "packed", "collected", "out_for_delivery", "delivered", "rejected", "failed"} {
+	// Noma'lum/bo'sh voqea yuborilmaydi.
+	for _, ev := range []string{"", "bogus", "debug"} {
 		n.Notify(nil, ev, testOrder())
 	}
 	time.Sleep(300 * time.Millisecond)
 	if atomic.LoadInt32(&hits) != 0 {
-		t.Fatalf("do'konga keraksiz voqealar yuborildi: %d", hits)
+		t.Fatalf("noma'lum voqealar yuborilmasligi kerak: %d", hits)
 	}
-	n.Notify(nil, "cancelled", testOrder())
-	time.Sleep(300 * time.Millisecond)
-	if atomic.LoadInt32(&hits) != 1 {
-		t.Fatalf("bekor qilish yuborilishi kerak edi: %d", hits)
+	// Buyurtmaning har bir o'zgarishi do'konga jonli yetkaziladi (so'rovsiz yangilanish uchun).
+	events := []string{"created", "confirmed", "packed", "collected", "out_for_delivery", "delivered",
+		"rejected", "failed", "cancelled", "assigned", "unassigned", "cash_settled"}
+	for _, ev := range events {
+		n.Notify(nil, ev, testOrder())
+	}
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(&hits); int(got) != len(events) {
+		t.Fatalf("%d ta voqea yuborilishi kerak edi, yuborildi: %d", len(events), got)
 	}
 }
-
 func TestNotifyRetriesThenSucceeds(t *testing.T) {
 	var hits int32
 	done := make(chan struct{}, 1)

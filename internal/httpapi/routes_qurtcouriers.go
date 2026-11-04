@@ -104,6 +104,20 @@ func (s *Server) registerQurtCourierRoutes(mux *http.ServeMux) {
 			})
 		}
 	}
+	// JONLI YANGILANISH: buyurtmaning har bir o'zgarishi (holat, kuryer biriktirildi/olindi, pul) mijoz va
+	// kuryerning shaxsiy WebSocket kanaliga yetkaziladi — ilovalar so'rov (polling) qilmaydi. Do'konga esa
+	// imzolangan webhook (POSNotifier) orqali boradi. Xabarda shaxsiy ma'lumot YO'Q: faqat ID, raqam, holat.
+	if s.QurtOrderSvc != nil && s.Hub != nil {
+		s.qurtLiveOnce.Do(func() {
+			prev := s.QurtOrderSvc.OnEvent
+			s.QurtOrderSvc.OnEvent = func(ctx context.Context, event string, o *qurtorders.Order) {
+				if prev != nil {
+					prev(ctx, event, o)
+				}
+				s.publishQurtOrder(event, o)
+			}
+		})
+	}
 	// GET /courier/qurt/me — Qurt kuryerimi? + kuryerdagi pul. Ilova shu orqali Qurt bo'limini ochadi
 	// (403 = oddiy kuryer).
 	mux.HandleFunc("GET /courier/qurt/me", s.auth(courier, func(w http.ResponseWriter, r *http.Request) {
@@ -553,4 +567,24 @@ func (s *Server) addQurtCourier(ctx context.Context, storeID, phone, name string
 		return nil, err
 	}
 	return c, s.CourierRepo.SetApproved(ctx, c.ID, true)
+}
+
+// publishQurtOrder — buyurtma o'zgarishini mijoz va (bor bo'lsa) kuryerga jonli yuboradi. Kuryer
+// almashtirilgan/olingan bo'lsa ESKI kuryerga ham boradi (u buyurtmani ro'yxatdan olib tashlasin).
+func (s *Server) publishQurtOrder(event string, o *qurtorders.Order) {
+	if s.Hub == nil || o == nil {
+		return
+	}
+	msg := map[string]any{
+		"type": "qurt_order", "event": event, "order_id": o.ID, "number": o.Number, "status": string(o.Status),
+	}
+	s.Hub.Send(notify.User(o.CustomerID), msg)
+	seen := map[string]bool{}
+	for _, cid := range []string{o.CourierID, o.PrevCourierID} {
+		if !strings.HasPrefix(cid, "qurt-") || seen[cid] {
+			continue
+		}
+		seen[cid] = true
+		s.Hub.Send(notify.User(strings.TrimPrefix(cid, "qurt-")), msg)
+	}
 }

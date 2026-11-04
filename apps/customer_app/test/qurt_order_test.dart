@@ -175,16 +175,21 @@ void main() {
   group('Qurt savati va rasmiylashtirish', () {
     late QurtCart cart;
     late List<http.Request> posted;
-    late Map<String, Map<String, dynamic>> serverProducts; // id -> mahsulot (ids javobi)
+    late Map<String, Map<String, dynamic>>
+    serverProducts; // id -> mahsulot (ids javobi)
     late http.Response Function(http.Request) onOrder;
     Completer<void>? gate;
-    List<Map<String, dynamic>>? result; // rasmiylashtirish sahifasi qaytargan buyurtmalar
+    List<Map<String, dynamic>>?
+    result; // rasmiylashtirish sahifasi qaytargan buyurtmalar
 
     setUp(() {
       cart = QurtCart.forTest(store: _MemStore());
       posted = [];
       serverProducts = {'a': _prod('a'), 'b': _prod('b', price: 500000)};
-      onOrder = (_) => _json({'orders': [_order()]}, 201);
+      onOrder =
+          (_) => _json({
+            'orders': [_order()],
+          }, 201);
       gate = null;
       result = null;
       AddressScope.instance.set(lat: 41.0, lng: 69.0, text: 'Chust, Navoiy 5');
@@ -237,8 +242,12 @@ void main() {
                   body: Center(
                     child: ElevatedButton(
                       onPressed: () async {
-                        result = await Navigator.of(ctx).push<List<Map<String, dynamic>>>(
-                          MaterialPageRoute(builder: (_) => QurtCheckoutScreen(cart: cart)),
+                        result = await Navigator.of(
+                          ctx,
+                        ).push<List<Map<String, dynamic>>>(
+                          MaterialPageRoute(
+                            builder: (_) => QurtCheckoutScreen(cart: cart),
+                          ),
                         );
                       },
                       child: const Text('open'),
@@ -254,27 +263,43 @@ void main() {
 
     final submit = find.byKey(const ValueKey('qurt-checkout-submit'));
 
-    testWidgets('savat: bo\'sh holat restorandagi bilan bir xil', (tester) async {
+    testWidgets('savat: bo\'sh holat restorandagi bilan bir xil', (
+      tester,
+    ) async {
       tall(tester);
       await http.runWithClient(() async {
         await tester.pumpWidget(MaterialApp(home: QurtCartScreen(cart: cart)));
         await tester.pumpAndSettle();
-        expect(find.textContaining('Savatchangiz ovqat kutib zerikib qoldi'), findsOneWidget);
+        expect(
+          find.textContaining('Savatchangiz ovqat kutib zerikib qoldi'),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('qurt-cart-checkout')), findsNothing);
       }, server);
     });
 
-    testWidgets('savat: qatorlar, jami va rasmiylashtirishga o\'tish', (tester) async {
+    testWidgets('savat: qatorlar, jami va rasmiylashtirishga o\'tish', (
+      tester,
+    ) async {
       cart.add(_prod('a'), qty: 2);
       cart.add(_prod('b', price: 500000));
       await http.runWithClient(() async {
         tall(tester);
         await tester.pumpWidget(MaterialApp(home: QurtCartScreen(cart: cart)));
         await tester.pumpAndSettle();
-        expect(find.textContaining('Qurt a', findRichText: true), findsOneWidget);
-        expect(find.textContaining('Qurt b', findRichText: true), findsOneWidget);
+        expect(
+          find.textContaining('Qurt a', findRichText: true),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Qurt b', findRichText: true),
+          findsOneWidget,
+        );
         expect(find.text('29 000 so\'m'), findsWidgets); // jami: 24 000 + 5 000
-        expect(find.byKey(const ValueKey('qurt-cart-bottom-total')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('qurt-cart-bottom-total')),
+          findsOneWidget,
+        );
         await tester.tap(find.byKey(const ValueKey('qurt-cart-checkout')));
         await tester.pumpAndSettle();
         expect(find.text('Rasmiylashtirish'), findsOneWidget);
@@ -282,23 +307,30 @@ void main() {
       }, server);
     });
 
-    testWidgets('savat -> rasmiylashtirish -> "qabul qilindi" ekrani (to\'liq oqim)', (tester) async {
-      cart.add(_prod('a'));
-      await http.runWithClient(() async {
-        tall(tester);
-        await tester.pumpWidget(MaterialApp(home: QurtCartScreen(cart: cart)));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('qurt-cart-checkout')));
-        await tester.pumpAndSettle();
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(find.text('Buyurtmangiz qabul qilindi!'), findsOneWidget);
-        expect(find.textContaining('Q-AAAA0001'), findsOneWidget);
-        expect(cart.isEmpty, isTrue);
-      }, server);
-    });
+    testWidgets(
+      'savat -> rasmiylashtirish -> "qabul qilindi" ekrani (to\'liq oqim)',
+      (tester) async {
+        cart.add(_prod('a'));
+        await http.runWithClient(() async {
+          tall(tester);
+          await tester.pumpWidget(
+            MaterialApp(home: QurtCartScreen(cart: cart)),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('qurt-cart-checkout')));
+          await tester.pumpAndSettle();
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(find.text('Buyurtmangiz qabul qilindi!'), findsOneWidget);
+          expect(find.textContaining('Q-AAAA0001'), findsOneWidget);
+          expect(cart.isEmpty, isTrue);
+        }, server);
+      },
+    );
 
-    testWidgets('buyurtma: serverga faqat ID, miqdor, kalit va jami ketadi', (tester) async {
+    testWidgets('buyurtma: serverga faqat ID, miqdor, kalit va jami ketadi', (
+      tester,
+    ) async {
       cart.add(_prod('a'), qty: 2);
       cart.add(_prod('b', price: 500000));
       await http.runWithClient(() async {
@@ -318,10 +350,24 @@ void main() {
         expect(body['expected_total_tiyin'], 2900000);
         expect(body['payment_method'], 'cash');
         expect(body['comment'], 'Eshik oldiga');
-        expect((body['idempotency_key'] as String).length, greaterThanOrEqualTo(16));
+        expect(
+          (body['idempotency_key'] as String).length,
+          greaterThanOrEqualTo(16),
+        );
         // Narx/do'kon/manzil/telefon HECH QACHON yuborilmaydi.
-        for (final forbidden in ['price', 'store', 'address', 'phone', 'lat', 'lng']) {
-          expect(jsonEncode(body).contains(forbidden), isFalse, reason: '$forbidden yuborilmasligi kerak');
+        for (final forbidden in [
+          'price',
+          'store',
+          'address',
+          'phone',
+          'lat',
+          'lng',
+        ]) {
+          expect(
+            jsonEncode(body).contains(forbidden),
+            isFalse,
+            reason: '$forbidden yuborilmasligi kerak',
+          );
         }
         expect(cart.isEmpty, isTrue);
         expect(result, isNotNull);
@@ -342,59 +388,73 @@ void main() {
       }, () => server(noAddress: true));
     });
 
-    testWidgets('narx o\'zgargan bo\'lsa (serverda) — buyurtma YUBORILMAYDI, savat yangilanadi', (tester) async {
-      cart.add(_prod('a', price: 1000000));
-      serverProducts['a'] = _prod('a', price: 1300000);
-      await http.runWithClient(() async {
-        await openCheckout(tester); // ochilganda sync: narx yangilandi
-        expect(cart.totalTiyin, 1300000);
-        // Eskirgan narxli savat bilan yuborishga urinish endi bo'lmaydi:
-        serverProducts['a'] = _prod('a', price: 1400000);
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(posted, isEmpty, reason: 'yangi narx tasdiqlanmaguncha yuborilmaydi');
-        expect(cart.totalTiyin, 1400000);
-        expect(find.textContaining('qayta tasdiqlang'), findsOneWidget);
-      }, server);
-    });
+    testWidgets(
+      'narx o\'zgargan bo\'lsa (serverda) — buyurtma YUBORILMAYDI, savat yangilanadi',
+      (tester) async {
+        cart.add(_prod('a', price: 1000000));
+        serverProducts['a'] = _prod('a', price: 1300000);
+        await http.runWithClient(() async {
+          await openCheckout(tester); // ochilganda sync: narx yangilandi
+          expect(cart.totalTiyin, 1300000);
+          // Eskirgan narxli savat bilan yuborishga urinish endi bo'lmaydi:
+          serverProducts['a'] = _prod('a', price: 1400000);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(
+            posted,
+            isEmpty,
+            reason: 'yangi narx tasdiqlanmaguncha yuborilmaydi',
+          );
+          expect(cart.totalTiyin, 1400000);
+          expect(find.textContaining('qayta tasdiqlang'), findsOneWidget);
+        }, server);
+      },
+    );
 
-    testWidgets('409 total_changed: yangi summa ko\'rsatiladi, savat saqlanadi', (tester) async {
-      cart.add(_prod('a'));
-      onOrder = (_) => _json({
-        'error': 'narx o\'zgardi',
-        'code': 'total_changed',
-        'total_tiyin': 1500000,
-      }, 409);
-      await http.runWithClient(() async {
-        await openCheckout(tester);
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(find.textContaining('Yangi jami'), findsOneWidget);
-        expect(cart.isEmpty, isFalse);
-        expect(result, isNull);
-      }, server);
-    });
+    testWidgets(
+      '409 total_changed: yangi summa ko\'rsatiladi, savat saqlanadi',
+      (tester) async {
+        cart.add(_prod('a'));
+        onOrder =
+            (_) => _json({
+              'error': 'narx o\'zgardi',
+              'code': 'total_changed',
+              'total_tiyin': 1500000,
+            }, 409);
+        await http.runWithClient(() async {
+          await openCheckout(tester);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(find.textContaining('Yangi jami'), findsOneWidget);
+          expect(cart.isEmpty, isFalse);
+          expect(result, isNull);
+        }, server);
+      },
+    );
 
-    testWidgets('409 out_of_stock: xabar ko\'rsatiladi, tugagan mahsulot savatdan ketadi', (tester) async {
-      cart.add(_prod('a'), qty: 2);
-      cart.add(_prod('b'));
-      onOrder = (_) {
-        serverProducts.remove('b'); // endi tugagan
-        return _json({
-          'error': '«Qurt b» dan so\'ralgan miqdor qolmagan',
-          'code': 'out_of_stock',
-        }, 409);
-      };
-      await http.runWithClient(() async {
-        await openCheckout(tester);
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(find.textContaining('qolmagan'), findsWidgets);
-        expect(cart.qtyOf('b'), 0);
-        expect(cart.qtyOf('a'), 2);
-        expect(result, isNull);
-      }, server);
-    });
+    testWidgets(
+      '409 out_of_stock: xabar ko\'rsatiladi, tugagan mahsulot savatdan ketadi',
+      (tester) async {
+        cart.add(_prod('a'), qty: 2);
+        cart.add(_prod('b'));
+        onOrder = (_) {
+          serverProducts.remove('b'); // endi tugagan
+          return _json({
+            'error': '«Qurt b» dan so\'ralgan miqdor qolmagan',
+            'code': 'out_of_stock',
+          }, 409);
+        };
+        await http.runWithClient(() async {
+          await openCheckout(tester);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(find.textContaining('qolmagan'), findsWidgets);
+          expect(cart.qtyOf('b'), 0);
+          expect(cart.qtyOf('a'), 2);
+          expect(result, isNull);
+        }, server);
+      },
+    );
 
     testWidgets('qo\'sh bosish: bitta so\'rov ketadi', (tester) async {
       cart.add(_prod('a'));
@@ -413,29 +473,37 @@ void main() {
       }, server);
     });
 
-    testWidgets('tarmoq xatosi: savat saqlanadi, kalit o\'sha qoladi (qayta urinishda dublikat yo\'q)', (tester) async {
-      cart.add(_prod('a'));
-      var calls = 0;
-      onOrder = (_) {
-        calls++;
-        if (calls == 1) throw http.ClientException('uzildi');
-        return _json({'orders': [_order()]}, 201);
-      };
-      await http.runWithClient(() async {
-        await openCheckout(tester);
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(cart.isEmpty, isFalse);
-        expect(find.textContaining('Serverga ulanib bo\'lmadi'), findsOneWidget);
-        await tester.tap(submit);
-        await tester.pumpAndSettle();
-        expect(posted, hasLength(2));
-        final k1 = (jsonDecode(posted[0].body) as Map)['idempotency_key'];
-        final k2 = (jsonDecode(posted[1].body) as Map)['idempotency_key'];
-        expect(k2, k1);
-        expect(result, isNotNull);
-      }, server);
-    });
+    testWidgets(
+      'tarmoq xatosi: savat saqlanadi, kalit o\'sha qoladi (qayta urinishda dublikat yo\'q)',
+      (tester) async {
+        cart.add(_prod('a'));
+        var calls = 0;
+        onOrder = (_) {
+          calls++;
+          if (calls == 1) throw http.ClientException('uzildi');
+          return _json({
+            'orders': [_order()],
+          }, 201);
+        };
+        await http.runWithClient(() async {
+          await openCheckout(tester);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(cart.isEmpty, isFalse);
+          expect(
+            find.textContaining('Serverga ulanib bo\'lmadi'),
+            findsOneWidget,
+          );
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(posted, hasLength(2));
+          final k1 = (jsonDecode(posted[0].body) as Map)['idempotency_key'];
+          final k2 = (jsonDecode(posted[1].body) as Map)['idempotency_key'];
+          expect(k2, k1);
+          expect(result, isNotNull);
+        }, server);
+      },
+    );
 
     testWidgets('miqdorni qoldiqdan oshirib bo\'lmaydi', (tester) async {
       serverProducts['a'] = _prod('a', left: 2);
@@ -452,6 +520,9 @@ void main() {
     });
   });
   group('Buyurtmalarim', () {
+    // Testda haqiqiy WebSocket ochilmasin: ulanmaydigan kanal.
+    final bus = _OfflineBus();
+
     MockClient server({
       required List<Map<String, dynamic>> orders,
       Map<String, dynamic>? detail,
@@ -473,7 +544,7 @@ void main() {
 
     testWidgets('ro\'yxat: raqam, holat, reys sanasi, jami', (tester) async {
       await http.runWithClient(() async {
-        await tester.pumpWidget(const MaterialApp(home: QurtOrdersScreen()));
+        await tester.pumpWidget(MaterialApp(home: QurtOrdersScreen(bus: bus)));
         await tester.pumpAndSettle();
         expect(find.textContaining('Q-AAAA0001'), findsOneWidget);
         expect(find.text('Do\'kon ko\'rib chiqmoqda'), findsOneWidget);
@@ -483,7 +554,7 @@ void main() {
 
     testWidgets('bo\'sh ro\'yxat', (tester) async {
       await http.runWithClient(() async {
-        await tester.pumpWidget(const MaterialApp(home: QurtOrdersScreen()));
+        await tester.pumpWidget(MaterialApp(home: QurtOrdersScreen(bus: bus)));
         await tester.pumpAndSettle();
         expect(find.text('Hali qurt buyurtmangiz yo\'q'), findsOneWidget);
       }, () => server(orders: []));
@@ -494,6 +565,7 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: QurtOrderDetailScreen(
+              bus: bus,
               orderId: 'o1',
               initial: _order(status: 'confirmed'),
             ),
@@ -512,7 +584,11 @@ void main() {
         () async {
           await tester.pumpWidget(
             MaterialApp(
-              home: QurtOrderDetailScreen(orderId: 'o1', initial: _order()),
+              home: QurtOrderDetailScreen(
+                bus: bus,
+                orderId: 'o1',
+                initial: _order(),
+              ),
             ),
           );
           await tester.pumpAndSettle();
@@ -559,4 +635,16 @@ void main() {
       }
     });
   });
+}
+
+/// Hech qachon ulanmaydigan jonli kanal (widget testlar uchun).
+class _OfflineBus extends LiveBus {
+  _OfflineBus()
+    : super(
+        ticketProvider: () async => 't',
+        urlBuilder: (t) => 'ws://localhost/',
+      );
+
+  @override
+  void start() {}
 }

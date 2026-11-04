@@ -211,6 +211,8 @@ type Order struct {
 	History      []StatusChange `json:"history"`
 
 	// CourierID — reysga biriktirilgan Qurt kuryeri (`couriers.Courier.ID`); bo'sh = biriktirilmagan.
+	// PrevCourierID — FAQAT jonli xabar uchun (saqlanmaydi): biriktirish/olishdan oldingi kuryer.
+	PrevCourierID     string     `json:"-"`
 	CourierID         string     `json:"courier_id,omitempty"`
 	CourierAssignedAt *time.Time `json:"courier_assigned_at,omitempty"`
 

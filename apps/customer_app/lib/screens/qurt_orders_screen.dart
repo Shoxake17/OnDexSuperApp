@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
 import '../widgets/sheet_page.dart';
 import 'catalog_screen.dart' show kBrand;
 
@@ -110,7 +111,10 @@ String _time(dynamic iso) {
 
 /// Mijozning qurt buyurtmalari ro'yxati.
 class QurtOrdersScreen extends StatefulWidget {
-  const QurtOrdersScreen({super.key});
+  const QurtOrdersScreen({super.key, this.bus});
+
+  /// Jonli kanal (testlarda almashtiriladi); odatda butun ilovaning customerLive kanali.
+  final LiveBus? bus;
 
   @override
   State<QurtOrdersScreen> createState() => _QurtOrdersScreenState();
@@ -120,11 +124,28 @@ class _QurtOrdersScreenState extends State<QurtOrdersScreen> {
   List<Map<String, dynamic>> _orders = [];
   bool _loading = true;
   String? _error;
+  LiveRefresher? _live;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // JONLI: buyurtma holati (qabul, qadoq, yo'lda, yetkazildi...) o'zgarganda server WebSocket orqali
+    // xabar beradi. So'rov (polling) YO'Q — u faqat ulanish uzilgan paytda vaqtincha ishlaydi.
+    final bus = widget.bus ?? customerLive;
+    bus.start();
+    _live = LiveRefresher(
+      bus: bus,
+      types: const {'qurt_order'},
+      onRefresh: _load,
+      connectedInterval: null,
+    )..start();
+  }
+
+  @override
+  void dispose() {
+    _live?.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -308,7 +329,13 @@ class _OrderCard extends StatelessWidget {
 
 /// Bitta buyurtma: holat tarixi, tarkibi, manzil, reys sanasi; kerak bo'lsa bekor qilish.
 class QurtOrderDetailScreen extends StatefulWidget {
-  const QurtOrderDetailScreen({super.key, required this.orderId, this.initial});
+  const QurtOrderDetailScreen({
+    super.key,
+    required this.orderId,
+    this.initial,
+    this.bus,
+  });
+  final LiveBus? bus;
   final String orderId;
   final Map<String, dynamic>? initial;
 
@@ -320,12 +347,28 @@ class _QurtOrderDetailScreenState extends State<QurtOrderDetailScreen> {
   Map<String, dynamic>? _order;
   String? _error;
   bool _busy = false;
+  LiveRefresher? _live;
 
   @override
   void initState() {
     super.initState();
     _order = widget.initial;
     _load();
+    // JONLI: shu buyurtma holati o'zgarsa ekran darrov yangilanadi (so'rov faqat soket uzilganda).
+    final bus = widget.bus ?? customerLive;
+    bus.start();
+    _live = LiveRefresher(
+      bus: bus,
+      types: const {'qurt_order'},
+      onRefresh: _load,
+      connectedInterval: null,
+    )..start();
+  }
+
+  @override
+  void dispose() {
+    _live?.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
