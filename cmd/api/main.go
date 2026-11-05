@@ -1489,6 +1489,11 @@ func main() {
 	ondexMapClient := ondexmap.New(os.Getenv("ONDEXMAP_API_URL"))
 	slog.Info("xarita manbasi", "rejim", string(mapMode), "ondexmap", ondexMapClient.Base())
 
+	qurtOrderSvc := &qurtorders.Service{
+		Repo: qurtOrderRepo, Products: qurtRepo, NewID: httpapi.NewID,
+		Schedule: qurtDeliverySchedule,
+		OnEvent:  qurtPOSNotify(),
+	}
 	api := httpapi.New(httpapi.Deps{
 		MapMode:            mapMode,
 		OndexMap:           ondexMapClient,
@@ -1529,11 +1534,7 @@ func main() {
 		WalletSvc:          walletSvc,
 		SSO:                ssoSvc,
 		QurtRepo:           qurtRepo,
-		QurtOrderSvc: &qurtorders.Service{
-			Repo: qurtOrderRepo, Products: qurtRepo, NewID: httpapi.NewID,
-			Schedule: qurtDeliverySchedule,
-			OnEvent:  qurtPOSNotify(),
-		},
+		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,
 		DevMode:    devMode,
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
@@ -1592,6 +1593,11 @@ func main() {
 		}
 		api.RunDispatchWatchdog(context.Background(), queue)
 	}
+
+	// Do'kon javob bermagan `new` buyurtmalar muddatidan keyin bekor qilinadi, band qoldiq qaytadi
+	// (aks holda mahsulot "qolmagandek" ko'rinib, mijoz abadiy kutardi). Hodisa odatdagidek
+	// mijozga va do'kon paneliga jonli yetkaziladi.
+	safego.Go("qurtorders.expire", func() { runQurtExpiry(context.Background(), qurtOrderSvc) })
 
 	addr := listenAddr
 	// ANIQ timeout'lar â€” `http.ListenAndServe` nol-qiymatli serverdan
@@ -1669,6 +1675,38 @@ func qurtDeliverySchedule() qurtorders.Schedule {
 		}
 	}
 	return s
+}
+
+// runQurtExpiry — do'kon qabul qilmagan (`new`) buyurtmalarni muddati o'tgach bekor qilib turadi.
+//
+//	QURT_NEW_ORDER_TTL_HOURS — necha soatdan keyin bekor qilinadi (1..168), standart 24
+//
+// Bir nechta server nusxasi parallel ishlasa ham xavfsiz: holat o'tishi versiya bo'yicha yoziladi,
+// ikkinchisi ErrConflict olib o'tkazib yuboradi (band ikki marta qaytmaydi).
+func runQurtExpiry(ctx context.Context, svc *qurtorders.Service) {
+	ttl := 24 * time.Hour
+	if v := strings.TrimSpace(os.Getenv("QURT_NEW_ORDER_TTL_HOURS")); v != "" {
+		if h, err := strconv.Atoi(v); err == nil && h >= 1 && h <= 168 {
+			ttl = time.Duration(h) * time.Hour
+		}
+	}
+	tick := time.NewTicker(5 * time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			c, cancel := context.WithTimeout(ctx, time.Minute)
+			n, err := svc.ExpireNew(c, ttl)
+			cancel()
+			if err != nil {
+				slog.Error("qurt: muddati o'tgan buyurtmalarni tekshirib bo'lmadi", "err", err)
+			} else if n > 0 {
+				slog.Info("qurt: javobsiz buyurtmalar bekor qilindi", "count", n)
+			}
+		}
+	}
 }
 
 // qurtPOSNotify — yangi/bekor qilingan qurt buyurtmasini do'kon POS serveriga (ShoxPos)

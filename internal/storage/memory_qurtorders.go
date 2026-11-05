@@ -72,6 +72,9 @@ func (r *MemoryQurtOrderRepo) List(_ context.Context, f qurtorders.Filter) ([]*q
 		if f.CashStatus != "" && o.CashStatus != f.CashStatus {
 			continue
 		}
+		if !f.CreatedBefore.IsZero() && !o.CreatedAt.Before(f.CreatedBefore) {
+			continue
+		}
 		if len(want) > 0 && !want[o.Status] {
 			continue
 		}

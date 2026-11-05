@@ -65,13 +65,14 @@ const (
 	ActorStore     Actor = "store"
 	ActorLogistics Actor = "logistics" // OnDex logistika xodimi (admin panel)
 	ActorAdmin     Actor = "admin"
+	ActorSystem    Actor = "system" // fon vazifasi: do'kon javob bermagan buyurtmani muddati o'tgach bekor qiladi
 )
 
 var transitions = map[Status]map[Status][]Actor{
 	StatusNew: {
 		StatusConfirmed: {ActorStore},
 		StatusRejected:  {ActorStore},
-		StatusCancelled: {ActorCustomer, ActorAdmin},
+		StatusCancelled: {ActorCustomer, ActorAdmin, ActorSystem},
 	},
 	StatusConfirmed: {
 		StatusPacked:    {ActorStore},

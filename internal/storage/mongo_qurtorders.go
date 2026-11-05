@@ -178,6 +178,9 @@ func (r *MongoQurtOrderRepo) List(ctx context.Context, f qurtorders.Filter) ([]*
 	if f.CashStatus != "" {
 		q["cash_status"] = string(f.CashStatus)
 	}
+	if !f.CreatedBefore.IsZero() {
+		q["created_at"] = bson.M{"$lt": f.CreatedBefore}
+	}
 	if len(f.Statuses) > 0 {
 		st := make([]string, len(f.Statuses))
 		for i, s := range f.Statuses {

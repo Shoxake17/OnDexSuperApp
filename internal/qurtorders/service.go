@@ -20,7 +20,9 @@ type Filter struct {
 	DeliveryDate string
 	CourierID    string
 	CashStatus   CashStatus
-	Limit        int
+	// CreatedBefore — nol bo'lmasa, shu vaqtdan oldin yaratilganlar (muddati o'tgan `new` ni topish uchun).
+	CreatedBefore time.Time
+	Limit         int
 	Offset       int
 }
 
@@ -518,6 +520,35 @@ func (s *Service) CourierSummary(ctx context.Context, courierID string) (CashSum
 	}
 	sum.ActiveCount = len(act)
 	return sum, nil
+}
+
+// ExpireReason — do'kon javob bermagan buyurtma bekor qilinganda mijozga ko'rsatiladigan sabab.
+const ExpireReason = "Do'kon belgilangan muddatda buyurtmani qabul qilmadi"
+
+// ExpireNew — `maxAge` dan ortiq vaqt `new` holatida qolgan buyurtmalarni bekor qiladi: do'kon
+// javob bermasa mijoz abadiy kutmaydi, band qilingan qoldiq esa qaytariladi (Transition ichida).
+// Birortasi o'zgarib ulgursa (do'kon aynan shu payt qabul qildi) o'tkazib yuboriladi.
+// Bekor qilinganlar soni qaytadi.
+func (s *Service) ExpireNew(ctx context.Context, maxAge time.Duration) (int, error) {
+	list, err := s.Repo.List(ctx, Filter{
+		Statuses:      []Status{StatusNew},
+		CreatedBefore: s.now().UTC().Add(-maxAge),
+		Limit:         500,
+	})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, o := range list {
+		if _, err := s.Transition(ctx, o.ID, StatusCancelled, ActorSystem, "", ExpireReason, nil); err != nil {
+			if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrInvalid) {
+				slog.Error("qurt: muddati o'tgan buyurtmani bekor qilib bo'lmadi", "order", o.ID, "err", err)
+			}
+			continue
+		}
+		n++
+	}
+	return n, nil
 }
 
 // TransitionDate — reysdagi barcha `from` holatidagi buyurtmalarni `to` ga o'tkazadi
