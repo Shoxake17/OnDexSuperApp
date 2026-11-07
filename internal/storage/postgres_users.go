@@ -33,14 +33,14 @@ const userColumns = `id, phone, name, role, entity_id, created_at,
 	address_lat, address_lng, address_text, address_entrance, address_floor,
 	address_apartment, address_intercom, address_comment,
 	first_name, last_name, email, password_hash, phone_verified, email_verified,
-	COALESCE(telegram_id, 0), deleted_at, store_category`
+	COALESCE(telegram_id, 0), deleted_at, store_category, realm`
 
 func scanUser(row pgx.Row, u *users.User) error {
 	return row.Scan(&u.ID, &u.Phone, &u.Name, &u.Role, &u.EntityID, &u.CreatedAt,
 		&u.Address.Lat, &u.Address.Lng, &u.Address.Text, &u.Address.Entrance,
 		&u.Address.Floor, &u.Address.Apartment, &u.Address.Intercom, &u.Address.Comment,
 		&u.FirstName, &u.LastName, &u.Email, &u.PasswordHash, &u.PhoneVerified,
-		&u.EmailVerified, &u.TelegramID, &u.DeletedAt, &u.StoreCategory)
+		&u.EmailVerified, &u.TelegramID, &u.DeletedAt, &u.StoreCategory, &u.Realm)
 }
 
 // GetByTelegramID — Telegram Mini App kirishi (migration 0031).
@@ -136,14 +136,18 @@ func (r *PgUserRepo) getBy(ctx context.Context, col, val string) (*users.User, e
 }
 
 func (r *PgUserRepo) Create(ctx context.Context, u *users.User) error {
+	// Realm ROLDAN hisoblanadi (A1 bosqichi, `users/realm.go`): chaqiruvchi
+	// bergan qiymatga ishonilmaydi — bu yerda ikki manba bo'lsa, ular bir kun
+	// albatta ajralib ketadi.
+	u.Realm = users.RealmForRole(u.Role)
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO users (id, phone, name, role, entity_id, created_at,
 		                    first_name, last_name, email, password_hash, phone_verified,
-		                    email_verified, store_category)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		                    email_verified, store_category, realm)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		u.ID, u.Phone, u.Name, u.Role, u.EntityID, u.CreatedAt,
 		u.FirstName, u.LastName, u.Email, u.PasswordHash, u.PhoneVerified,
-		u.EmailVerified, string(u.StoreCategory))
+		u.EmailVerified, string(u.StoreCategory), string(u.Realm))
 	return mapUserConstraint(err)
 }
 
@@ -300,8 +304,11 @@ func (r *PgUserRepo) MarkPhoneVerified(ctx context.Context, id string) error {
 }
 
 func (r *PgUserRepo) UpdateRole(ctx context.Context, id string, role users.Role, entityID string) error {
+	// Realm rol bilan BIRGA o'zgaradi (A1). A3 da xodim akkaunti alohida
+	// merchant akkaunti bo'lib, bu metod mijozga ishlatilmaydi.
 	tag, err := r.pool.Exec(ctx,
-		`UPDATE users SET role = $2, entity_id = $3 WHERE id = $1`, id, role, entityID)
+		`UPDATE users SET role = $2, entity_id = $3, realm = $4 WHERE id = $1`,
+		id, role, entityID, string(users.RealmForRole(role)))
 	if err != nil {
 		return err
 	}

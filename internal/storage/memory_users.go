@@ -105,6 +105,7 @@ func (r *MemoryUserRepo) Create(_ context.Context, u *users.User) error {
 			return users.ErrEmailTaken
 		}
 	}
+	u.Realm = users.RealmForRole(u.Role) // Postgres bilan bir xil qoida
 	r.data[u.ID] = *u
 	return nil
 }
@@ -248,6 +249,7 @@ func (r *MemoryUserRepo) UpdateRole(_ context.Context, id string, role users.Rol
 	}
 	u.Role = role
 	u.EntityID = entityID
+	u.Realm = users.RealmForRole(role)
 	r.data[id] = u
 	return nil
 }

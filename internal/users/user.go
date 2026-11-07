@@ -64,6 +64,10 @@ type User struct {
 	// email bilan akkaunt ochib, o'sha manzilni band qilib qo'yardi.
 	EmailVerified bool `json:"email_verified"`
 	Role          Role `json:"role"`
+	// Realm — akkaunt maydoni (customer | merchant | platform), `realm.go`.
+	// A1 bosqichida HAR DOIM `RealmForRole(Role)` ga teng: repozitoriy uni
+	// yozishda o'zi hisoblaydi, chaqiruvchi to'ldirishi shart emas.
+	Realm Realm `json:"realm,omitempty"`
 	// EntityID — rol bog'langan obyekt: kuryer uchun kuryer IDsi (c1),
 	// restoran xodimi uchun restoran IDsi (r1). Mijoz/admin uchun bo'sh.
 	EntityID  string    `json:"entity_id,omitempty"`
