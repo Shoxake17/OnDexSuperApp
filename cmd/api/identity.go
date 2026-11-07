@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"chustapp/internal/httpapi"
 	"chustapp/internal/identity"
+	"chustapp/internal/identity/authz"
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
 )
@@ -98,4 +100,23 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 	}
 	slog.Info("rejim: markaziy sessiya yoqilgan", "issuer", issuerURL, "kid", active.KID, "eski_kalitlar", len(previous))
 	return svc
+}
+
+// buildAuthz — merchant ruxsatlari (A3, `internal/identity/authz`). Rol
+// shablonlari kod katalogidan HAR ishga tushishda bazaga yoziladi (kod =
+// yagona manba). Yozib bo'lmasa — xizmat o'chiq (`nil`): ruxsatsiz holatda
+// merchant /v2 marshrutlari ochilmaydi, eski marshrutlar ishlayveradi.
+func buildAuthz(ctx context.Context, pool *pgxpool.Pool) *authz.Authorizer {
+	var store authz.Store
+	if pool != nil {
+		store = storage.NewPgAuthzStore(pool)
+	} else {
+		store = authz.NewMemStore()
+		slog.Warn("merchant katalogi XOTIRADA (DATABASE_URL yo'q) — restartda yo'qoladi")
+	}
+	if err := authz.EnsureTemplates(ctx, store); err != nil {
+		slog.Error("merchant ruxsatlari O'CHIQ: rol shablonlari yozilmadi", "err", err)
+		return nil
+	}
+	return authz.New(store)
 }

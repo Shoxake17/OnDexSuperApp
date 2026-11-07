@@ -34,6 +34,7 @@ import (
 	"chustapp/internal/favorites"
 	"chustapp/internal/firebaseauth"
 	"chustapp/internal/identity"
+	"chustapp/internal/identity/authz"
 	"chustapp/internal/images"
 	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
@@ -199,6 +200,10 @@ type Deps struct {
 	// Ed25519 tokenlar, JWKS, refresh rotatsiyasi. `nil` bo'lsa `/v2/auth/*`
 	// va `/.well-known/jwks.json` 503 qaytaradi; eski `/auth/*` ishlayveradi.
 	Identity *identity.Service
+
+	// Authz — merchant ruxsatlari (`internal/identity/authz`, A3): tashkilot,
+	// biznes, rol, a'zolik. `nil` bo'lsa `/v2/merchant/*` 503 qaytaradi.
+	Authz *authz.Authorizer
 
 	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*

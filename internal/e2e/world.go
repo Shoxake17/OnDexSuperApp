@@ -21,6 +21,7 @@ import (
 	"chustapp/internal/geo"
 	"chustapp/internal/httpapi"
 	"chustapp/internal/identity"
+	"chustapp/internal/identity/authz"
 	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
@@ -142,6 +143,8 @@ type World struct {
 	// yo'q, shuning uchun ssenariylar sessiyani shu orqali to'g'ridan-to'g'ri
 	// ochadi (kimlik tekshirilgan deb), qolgan hammasi HTTP orqali.
 	Identity *identity.Service
+	// Authz — merchant ruxsatlari (xotira ombori, rol shablonlari yozilgan).
+	Authz *authz.Authorizer
 
 	Admin    *Actor
 	Customer *Actor
@@ -369,10 +372,17 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 
+	authzStore := authz.NewMemStore()
+	if err := authz.EnsureTemplates(context.Background(), authzStore); err != nil {
+		t.Fatal(err)
+	}
+	w.Authz = authz.New(authzStore)
+
 	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
 		SSO:          ssoSvc,
 		Identity:     w.Identity,
+		Authz:        w.Authz,
 		QurtRepo:     qurtProducts,
 		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
 		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,

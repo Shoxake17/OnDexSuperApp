@@ -1100,6 +1100,10 @@ func main() {
 
 	// Markaziy sessiya va token xizmati (A2): Ed25519 + JWKS + refresh rotatsiyasi.
 	identitySvc := buildIdentity(devMode, pgPool, userRepo)
+	// Merchant ruxsatlari (A3): rol shablonlari koddan bazaga yoziladi.
+	authzCtx, authzCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	authzSvc := buildAuthz(authzCtx, pgPool)
+	authzCancel()
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1537,6 +1541,7 @@ func main() {
 		WalletSvc:          walletSvc,
 		SSO:                ssoSvc,
 		Identity:           identitySvc,
+		Authz:              authzSvc,
 		QurtRepo:           qurtRepo,
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,
