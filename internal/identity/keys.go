@@ -8,6 +8,7 @@
 //   - Sessiyalar BITTA markazda (`auth_sessions`): refresh token rotatsiyasi,
 //     qayta ishlatishni aniqlash, bekor qilish. Markazda bekor qilingan
 //     sessiya barcha klientlarda (web, desktop, mobil) tugaydi.
+//
 // └───────────────────────────────────────────────────────────────────────┘
 //
 // Eski HS256 tokenlar (`users.TokenIssuer`) o'tish davrida ishlashda davom

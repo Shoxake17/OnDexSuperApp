@@ -157,10 +157,10 @@ func TestVerify_RejectsForgedAndForeignTokens(t *testing.T) {
 	foreign := mustLogin(t, otherSvc, "u_m0000001")
 
 	cases := map[string]string{
-		"alg none":      noneHdr + "." + payload + ".",
-		"HS256 aralash": hs,
-		"begona kalit":  foreign,
-		"imzo buzilgan": parts[0] + "." + payload + "." + flip(parts[2]),
+		"alg none":         noneHdr + "." + payload + ".",
+		"HS256 aralash":    hs,
+		"begona kalit":     foreign,
+		"imzo buzilgan":    parts[0] + "." + payload + "." + flip(parts[2]),
 		"payload buzilgan": parts[0] + "." + tamper(payload) + "." + parts[2],
 		"bo'sh":            "",
 		"axlat":            "abc.def.ghi",
