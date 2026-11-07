@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../session.dart';
 import '../trip/home_router.dart';
 import 'login_screen.dart';
 
@@ -52,8 +51,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _logout() async {
     await api.logout();
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

@@ -3,7 +3,6 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
-import '../session.dart';
 import '../theme.dart';
 import 'waiter_home.dart';
 
@@ -132,8 +131,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final res = await api.verify(_phone.text.trim(), _code.text.trim());
-      final user = Map<String, dynamic>.from(res['user'] as Map);
+      // Markaziy sessiya (A4a): access + refresh, ombor ApiClient'da.
+      await api.merchantVerify(_phone.text.trim(), _code.text.trim(),
+          clientId: 'ondex-pro', deviceName: 'OnDexPro');
+      final user = await api.me();
       final role = user['role'] as String? ?? '';
       final entityId = user['entity_id'] as String? ?? '';
 
@@ -148,7 +149,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // shu yaroqsiz sessiya bilan urinaverardi.
       // └───────────────────────────────────────────────────────────┘
       if (role != 'waiter' || entityId.isEmpty) {
-        api.token = null;
+        // markazda ochilgan sessiya ham yopiladi (ochiq qolmasin)
+        await api.logout();
+        await api.clearSession();
         if (mounted) {
           setState(() => _error =
               'Bu raqam affitsiant sifatida ro\'yxatdan o\'tmagan.\n'
@@ -157,7 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      await tokenStore.write(res['token'] as String);
 
       // ┌─ POSTHOG IDENTIFY — ILK KIRISHDA HAM ISHLASHI SHART ──┐
       // `main.dart` dagi tokenni tiklashda `api.me()` orqali

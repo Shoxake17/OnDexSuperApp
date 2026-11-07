@@ -19,7 +19,6 @@ import '../offer_alert.dart';
 import '../offer_recovery.dart';
 import '../push.dart';
 import '../route_throttle.dart';
-import '../session.dart';
 import '../theme.dart';
 import '../voice_navigation.dart';
 import '../widgets/courier_panel.dart';
@@ -1279,8 +1278,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
   /// Akkaunt server tomonda o'chirilgan — `api.logout()` chaqirilmaydi
   /// (token allaqachon yaroqsiz).
   Future<void> _forceLogout() async {
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Akkaunt o\'chirildi'),
@@ -1301,8 +1299,7 @@ class _CourierShellState extends State<CourierShell> with WidgetsBindingObserver
     // bilan ketadi).
     await unregisterCourierPush();
     await api.logout();
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
   }

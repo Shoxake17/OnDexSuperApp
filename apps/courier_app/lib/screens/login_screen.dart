@@ -3,7 +3,6 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
-import '../session.dart';
 import '../trip/home_router.dart';
 import 'register_screen.dart';
 
@@ -121,8 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      await api.verify(_phone.text.trim(), _code.text.trim());
-      await tokenStore.write(api.token!);
+      // Markaziy sessiya (A4a): access + refresh, ombor ApiClient'da.
+      await api.merchantVerify(_phone.text.trim(), _code.text.trim(),
+          clientId: 'ondex-go', deviceName: 'OnDexGO');
       final user = await api.me();
       final role = user['role'] as String? ?? '';
       final entityId = user['entity_id'] as String? ?? '';

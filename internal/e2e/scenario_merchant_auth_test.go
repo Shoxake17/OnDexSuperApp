@@ -169,6 +169,42 @@ func TestMerchantLoginV2(t *testing.T) {
 			"code": "123456", "client_id": "admin-web"}, 400)
 	})
 
+	w.Step(t, "A4a ko'prigi: eski marshrutlar yangi tokenni qabul qiladi; chiqish va kirish yopilishi darhol", func(t *testing.T) {
+		const p = "+998900000045"
+		mkUser(t, "e2e-m-waiter3", p, users.RoleWaiter, "")
+		if err := w.Users.UpdateRole(ctx, "e2e-m-waiter3", users.RoleWaiter, RestA); err != nil {
+			t.Fatal(err)
+		}
+		login := func() *Actor {
+			o := post(t, "/v2/auth/merchant/otp/verify", map[string]any{"phone": p, "code": code(t, p), "client_id": "ondex-pro"}, 200)
+			return &Actor{Name: "ofitsiant (v2 ko'prik)", Token: o.AccessToken}
+		}
+		a := login()
+		var me struct {
+			Role     string `json:"role"`
+			EntityID string `json:"entity_id"`
+		}
+		w.Do(t, a, "GET", "/me", nil).Expect(t, 200).JSON(t, &me)
+		if me.Role != "waiter" || me.EntityID != RestA {
+			t.Fatalf("/me v2 token bilan: %+v", me)
+		}
+		w.Do(t, a, "GET", "/waiter/me", nil).Expect(t, 200)
+		w.Do(t, a, "GET", "/courier/qurt/me", nil).Expect(t, 403) // rol baribir tekshiriladi
+		// eski staff moduli kirishni yopsa (rol -> mijoz) — refresh'ni kutmasdan 401
+		if err := w.Users.UpdateRole(ctx, "e2e-m-waiter3", users.RoleCustomer, ""); err != nil {
+			t.Fatal(err)
+		}
+		w.Do(t, a, "GET", "/me", nil).Expect(t, 401)
+		// akkaunt har so'rovda o'qiladi: kirish qayta ochilsa — yana ishlaydi
+		if err := w.Users.UpdateRole(ctx, "e2e-m-waiter3", users.RoleWaiter, RestA); err != nil {
+			t.Fatal(err)
+		}
+		w.Do(t, a, "GET", "/waiter/me", nil).Expect(t, 200)
+		// markazda chiqish -> eski marshrut ham darhol 401
+		w.Do(t, a, "POST", "/v2/auth/logout", nil).Expect(t, 204)
+		w.Do(t, a, "GET", "/waiter/me", nil).Expect(t, 401)
+	})
+
 	w.Step(t, "buzilgan mfa_token rad", func(t *testing.T) {
 		post(t, "/v2/auth/mfa/verify", map[string]any{"mfa_token": "omfa_soxta.imzo", "code": "123456"}, 401)
 		post(t, "/v2/auth/mfa/totp/enroll", map[string]any{"mfa_token": enrollToken + "x"}, 401)

@@ -4,6 +4,12 @@ import 'package:http/http.dart' as http;
 
 import 'analytics.dart';
 import 'config.dart';
+import 'token_store.dart';
+
+enum _RefreshResult { ok, rejected, network }
+
+/// 401 bo'lsa refresh QILINMAYDIGAN yo'llar (o'zlari token beradi).
+const _noRefresh = {'/v2/auth/token/refresh', '/v2/auth/merchant/otp/verify'};
 
 /// Serverdan kelgan xato — barcha ilovalar shu bitta turdan foydalanadi.
 class ApiException implements Exception {
@@ -56,7 +62,10 @@ class ApiException implements Exception {
 /// qilish kerak bo'lardi va amalda 4 marta qilinmasdi. Masalan `401`
 /// ishlash va HTTP timeout to'rtala nusxada ham yo'q edi.
 class ApiClient {
-  ApiClient({required this.baseUrl, this.timeout = const Duration(seconds: 20)});
+  ApiClient({
+    required this.baseUrl,
+    this.timeout = const Duration(seconds: 20),
+  });
 
   /// Backend manzili. `--dart-define=ONDEX_API_URL=...` orqali beriladi
   /// (qarang: `config.dart`) — kodga yozilmaydi.
@@ -76,17 +85,192 @@ class ApiClient {
   /// qaytarishi uchun. Har bir ilova o'zi ulaydi.
   void Function()? onUnauthorized;
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-        // Qaysi ilova va qaysi versiya — superadmin panelidagi
-        // "Qurilma" ustuni uchun (`config.dart`). Faqat ma'lumot:
-        // server hech qanday huquqni bu qiymatga bog'lamaydi.
-        'X-Ondex-Client': clientHeaderValue,
-      };
+  // ---------- Markaziy sessiya (A4a, AUTH-PHASE-A.md) ----------
+  //
+  // ┌─ QANDAY ISHLAYDI ───────────────────────────────────────────────────┐
+  // Yangi kirish (`merchantVerify`) access token (10 daqiqa) VA refresh
+  // token beradi. Ikkalasi `TokenStore` da (Keystore/Keychain) saqlanadi.
+  // 401 kelsa so'rov BIR MARTA refresh qilinib qayta yuboriladi — faqat
+  // refresh ham rad etilsa (sessiya markazda yopilgan, xodim bo'shatilgan)
+  // `onUnauthorized` chaqiriladi. Tarmoq xatosida sessiya O'CHIRILMAYDI.
+  //
+  // Bir vaqtda kelgan bir nechta 401 BITTA refresh'ni kutadi (refresh token
+  // bir martalik: ikki parallel refresh ikkinchisini "o'g'irlik" deb
+  // sessiyani yopib yuborardi).
+  // └─────────────────────────────────────────────────────────────────────┘
 
-  Future<dynamic> send(String method, String path,
-      [Map<String, dynamic>? body]) async {
+  /// Refresh token; `null` — eski (HS256) sessiya yoki kirilmagan.
+  String? refreshToken;
+
+  TokenStore? _store;
+  Future<_RefreshResult>? _refreshing;
+
+  /// Sessiya saqlanadigan joy (ilova ishga tushganda bir marta).
+  void attachStore(TokenStore store) => _store = store;
+
+  /// Markaziy (yangi) sessiyami.
+  bool get isCentralSession => refreshToken != null;
+
+  /// Saqlangan sessiyani tiklaydi. Eski formatdagi (bitta token satri)
+  /// sessiya ham o'qiladi — foydalanuvchi yangilanishdan keyin chiqib ketmaydi.
+  Future<bool> restoreSession() async {
+    final raw = await _store?.read();
+    if (raw == null || raw.isEmpty) return false;
+    if (raw.startsWith('{')) {
+      try {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        token = m['a'] as String?;
+        refreshToken = m['r'] as String?;
+      } catch (_) {
+        await clearSession();
+        return false;
+      }
+    } else {
+      token = raw;
+      refreshToken = null;
+    }
+    return token != null;
+  }
+
+  Future<void> _persist() async {
+    final s = _store;
+    if (s == null) return;
+    if (token == null) {
+      await s.clear();
+    } else {
+      await s.write(
+        refreshToken == null
+            ? token!
+            : jsonEncode({'a': token, 'r': refreshToken}),
+      );
+    }
+  }
+
+  /// Sessiyani shu qurilmadan o'chiradi (server chaqirilmaydi).
+  Future<void> clearSession() async {
+    token = null;
+    refreshToken = null;
+    await _store?.clear();
+  }
+
+  /// Merchant xodimi kirishi (OnDexPro / OnDexGO): telefon kodi -> markaziy
+  /// sessiya. [clientId] — `ondex-pro` yoki `ondex-go`.
+  ///
+  /// Biznes EGASI uchun server ikki bosqichli tasdiq (TOTP) talab qiladi —
+  /// mobil xodim ilovalarida bu ekran yo'q, shuning uchun aniq xabar beriladi.
+  Future<Map<String, dynamic>> merchantVerify(
+    String phone,
+    String code, {
+    required String clientId,
+    String? deviceName,
+  }) async {
+    final d = await send('POST', '/v2/auth/merchant/otp/verify', {
+      'phone': phone,
+      'code': code,
+      'client_id': clientId,
+      if (deviceName != null) 'device_name': deviceName,
+    });
+    if (d is Map && d['mfa_required'] == true) {
+      throw ApiException(
+        'Bu raqam biznes egasiniki — kirish ikki bosqichli tasdiq bilan.\n'
+        'Merchant panel orqali kiring.',
+        statusCode: 403,
+      );
+    }
+    token = d['access_token'] as String;
+    refreshToken = d['refresh_token'] as String?;
+    await _persist();
+    return Map<String, dynamic>.from(d);
+  }
+
+  Future<_RefreshResult> _refresh() {
+    return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+  }
+
+  Future<_RefreshResult> _doRefresh() async {
+    final rt = refreshToken;
+    if (rt == null) return _RefreshResult.rejected;
+    http.Response r;
+    try {
+      r = await http
+          .post(
+            Uri.parse('$baseUrl/v2/auth/token/refresh'),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Ondex-Client': clientHeaderValue,
+            },
+            body: jsonEncode({'refresh_token': rt}),
+          )
+          .timeout(timeout);
+    } catch (_) {
+      return _RefreshResult.network;
+    }
+    if (r.statusCode == 200) {
+      try {
+        final d = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+        token = d['access_token'] as String;
+        refreshToken = d['refresh_token'] as String;
+        await _persist();
+        return _RefreshResult.ok;
+      } catch (_) {
+        return _RefreshResult.network;
+      }
+    }
+    if (r.statusCode == 401) {
+      // Markazda yopilgan — qayta urinish behuda. `token` ATAYLAB qoldiriladi:
+      // ilovalarning `onUnauthorized` handleri "token null = kirish
+      // jarayonidagi xato" deb hech narsa qilmaydi; tokenni o'sha handler
+      // (`clearSession`) tozalaydi va login ekraniga o'tkazadi.
+      refreshToken = null;
+      await _store?.clear();
+      return _RefreshResult.rejected;
+    }
+    return _RefreshResult.network; // 5xx / 429 — vaqtincha, sessiya qoladi
+  }
+
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+    // Qaysi ilova va qaysi versiya — superadmin panelidagi
+    // "Qurilma" ustuni uchun (`config.dart`). Faqat ma'lumot:
+    // server hech qanday huquqni bu qiymatga bog'lamaydi.
+    'X-Ondex-Client': clientHeaderValue,
+  };
+
+  Future<dynamic> send(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final used = token;
+    var r = await _raw(method, path, body);
+    if (r.statusCode == 401 &&
+        refreshToken != null &&
+        !_noRefresh.contains(path)) {
+      if (token != null && token != used) {
+        // Shu orada boshqa so'rov allaqachon yangilagan — refresh'siz qayta.
+        r = await _raw(method, path, body);
+      } else {
+        switch (await _refresh()) {
+          case _RefreshResult.ok:
+            r = await _raw(method, path, body);
+          case _RefreshResult.network:
+            throw ApiException(
+              'Serverga ulanib bo\'lmadi — internetni tekshiring',
+            );
+          case _RefreshResult.rejected:
+            break; // pastda _parse 401 ni ko'rib onUnauthorized'ni chaqiradi
+        }
+      }
+    }
+    return _parse(r);
+  }
+
+  Future<http.Response> _raw(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
     final uri = Uri.parse('$baseUrl$path');
     http.Response r;
     try {
@@ -118,7 +302,7 @@ class ApiClient {
       // chaqiruvchi uni "server xatosi" dan ajrata oladi.
       throw ApiException('Serverga ulanib bo\'lmadi — internetni tekshiring');
     }
-    return _parse(r);
+    return r;
   }
 
   dynamic _parse(http.Response r) {
@@ -139,9 +323,11 @@ class ApiClient {
           ? data['error'].toString()
           : 'Server xatosi (${r.statusCode})';
       if (r.statusCode == 401) onUnauthorized?.call();
-      throw ApiException(msg,
-          statusCode: r.statusCode,
-          data: data is Map ? Map<String, dynamic>.from(data) : null);
+      throw ApiException(
+        msg,
+        statusCode: r.statusCode,
+        data: data is Map ? Map<String, dynamic>.from(data) : null,
+      );
     }
     return data;
   }
@@ -179,7 +365,10 @@ class ApiClient {
 
   /// Kodni tekshiradi va tokenni o'rnatadi. Javob: {token, user}.
   Future<Map<String, dynamic>> verify(String phone, String code) async {
-    final d = await send('POST', '/auth/verify', {'phone': phone, 'code': code});
+    final d = await send('POST', '/auth/verify', {
+      'phone': phone,
+      'code': code,
+    });
     token = d['token'] as String;
     return Map<String, dynamic>.from(d);
   }
@@ -190,9 +379,13 @@ class ApiClient {
   /// egasi `/me/password` bilan keyin almashtirishi mumkin. Noto'g'ri raqam
   /// ham, noto'g'ri parol ham BIR XIL xato beradi (raqam mavjudligi sezilmaydi).
   Future<Map<String, dynamic>> loginWithPassword(
-      String login, String password) async {
-    final d = await send(
-        'POST', '/auth/login', {'login': login, 'password': password});
+    String login,
+    String password,
+  ) async {
+    final d = await send('POST', '/auth/login', {
+      'login': login,
+      'password': password,
+    });
     token = d['token'] as String;
     return Map<String, dynamic>.from(d);
   }
@@ -233,8 +426,11 @@ class ApiClient {
   /// olishi kerak. Bu — qo'shimcha himoya, chiqishning sharti emas.
   Future<void> logout() async {
     try {
-      await send('POST', '/auth/logout');
+      // Markaziy sessiya — markazda yopiladi (boshqa qurilmalar tegilmaydi);
+      // eski sessiya — eski yo'l.
+      await send('POST', isCentralSession ? '/v2/auth/logout' : '/auth/logout');
     } catch (_) {}
+    refreshToken = null;
     // ┌─ TAHLILNI HAM UZAMIZ ──────────────────────────────────────┐
     // Busiz keyingi foydalanuvchining harakatlari CHIQIB KETGAN
     // odamning yo'liga yozilardi — bitta qurilmani ikki kishi
@@ -337,14 +533,14 @@ class ApiClient {
     final req = http.MultipartRequest(method, Uri.parse('$baseUrl$path'))
       ..headers['X-Ondex-Client'] = clientHeaderValue
       ..fields.addAll(fields)
-      ..files.add(http.MultipartFile.fromBytes(field, bytes,
-          filename: filename));
+      ..files.add(
+        http.MultipartFile.fromBytes(field, bytes, filename: filename),
+      );
     if (token != null) req.headers['Authorization'] = 'Bearer $token';
 
     http.Response resp;
     try {
-      final streamed =
-          await req.send().timeout(uploadTimeout ?? timeout * 6);
+      final streamed = await req.send().timeout(uploadTimeout ?? timeout * 6);
       resp = await http.Response.fromStream(streamed);
     } catch (_) {
       throw ApiException(errorText);

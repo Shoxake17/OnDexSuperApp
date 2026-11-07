@@ -104,6 +104,8 @@ void main() async {
   // (bitta telefondan soatiga ~1800 so'rov).
   // └────────────────────────────────────────────────────────────────────┘
   api.onUnauthorized = _handleUnauthorized;
+  // Markaziy sessiya (A4a): access + refresh shu omborda.
+  api.attachStore(tokenStore);
 
   // Ilova yopiq paytdagi taklif push'i uchun fon ishlovchisi — runApp dan
   // OLDIN (`push.dart`).
@@ -129,8 +131,7 @@ void _handleUnauthorized() {
   // tugashi emas, hech narsa qilinmaydi.
   if (_loggingOut || api.token == null) return;
   _loggingOut = true;
-  api.token = null;
-  unawaited(tokenStore.clear().whenComplete(() {
+  unawaited(api.clearSession().whenComplete(() {
     _loggingOut = false;
     final nav = _navigatorKey.currentState;
     if (nav == null) return;
@@ -214,12 +215,10 @@ class _RootState extends State<_Root> {
     }
     // Token shifrlangan omborda (TokenStore) — eski, shifrlanmagan
     // `SharedPreferences` nusxasi birinchi o'qishda avtomatik ko'chiriladi.
-    final token = await tokenStore.read();
-    if (token == null || token.isEmpty) {
+    if (!await api.restoreSession()) {
       if (mounted) setState(() => _loading = false);
       return;
     }
-    api.token = token;
     try {
       final user = await api.me();
       final role = user['role'] as String? ?? '';
@@ -230,8 +229,7 @@ class _RootState extends State<_Root> {
     } on ApiException catch (e) {
       if (e.isUnauthorized) {
         // Token haqiqatan yaroqsiz — faqat SHU holatda o'chiriladi.
-        await tokenStore.clear();
-        api.token = null;
+        await api.clearSession();
         _child = const LoginScreen();
       } else {
         // ┌─ TARMOQ/SERVER XATOSI — TOKEN O'CHIRILMAYDI (auditi, 6-band) ─┐

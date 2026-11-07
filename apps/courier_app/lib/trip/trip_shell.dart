@@ -7,7 +7,6 @@ import '../api.dart';
 import '../live.dart';
 import '../push.dart';
 import '../screens/login_screen.dart';
-import '../session.dart';
 import '../theme.dart';
 import '../widgets/slide_to_confirm.dart';
 
@@ -256,8 +255,7 @@ class _TripShellState extends State<TripShell> with WidgetsBindingObserver {
     } catch (_) {
       // Mahalliy chiqish baribir bajariladi.
     }
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     Navigator.of(
       context,

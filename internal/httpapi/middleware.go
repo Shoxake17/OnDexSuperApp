@@ -462,7 +462,7 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 			httpError(w, http.StatusUnauthorized, errors.New("Authorization: Bearer <token> talab qilinadi"))
 			return
 		}
-		claims, err := s.Tokens.Parse(strings.TrimPrefix(h, "Bearer "))
+		claims, err := s.parseBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
 		if err != nil {
 			httpError(w, http.StatusUnauthorized, err)
 			return
@@ -505,7 +505,7 @@ func (s *Server) optionalAuth(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		claims, err := s.Tokens.Parse(strings.TrimPrefix(h, "Bearer "))
+		claims, err := s.parseBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
 		if err != nil {
 			next(w, r)
 			return

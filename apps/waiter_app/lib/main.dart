@@ -93,6 +93,8 @@ void main() async {
   // daraxtiga HECH QACHON qo'shmagan edik (`customer_app/main.dart`
   // izohiga qarang, aynan shu bug topilgan joy).
   // └───────────────────────────────────────────────────────────────────┘
+  // Markaziy sessiya (A4a): access + refresh shu omborda.
+  api.attachStore(tokenStore);
   runApp(
     posthogEnabled
         ? const PostHogWidget(child: WaiterApp())
@@ -142,12 +144,10 @@ class _RootState extends State<_Root> {
   }
 
   Future<void> _restore() async {
-    final token = await tokenStore.read();
-    if (token == null || token.isEmpty) {
+    if (!await api.restoreSession()) {
       setState(() => _loading = false);
       return;
     }
-    api.token = token;
     try {
       final user = await api.me();
       final role = user['role'] as String? ?? '';
@@ -155,8 +155,7 @@ class _RootState extends State<_Root> {
       if (role == 'waiter' && entityId.isNotEmpty) {
         _child = const WaiterHome();
       } else {
-        await tokenStore.clear();
-        api.token = null;
+        await api.clearSession();
         _child = const LoginScreen();
       }
     } on ApiException catch (e) {
@@ -175,8 +174,7 @@ class _RootState extends State<_Root> {
       // birinchi muvaffaqiyatli so'rovda hammasi tiklanadi.
       // └───────────────────────────────────────────────────────────┘
       if (e.isUnauthorized) {
-        await tokenStore.clear();
-        api.token = null;
+        await api.clearSession();
         _child = const LoginScreen();
       } else {
         _child = const WaiterHome();

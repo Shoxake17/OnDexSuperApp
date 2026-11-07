@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../session.dart';
 import '../api.dart';
 import '../state/waiter_store.dart';
 import '../theme.dart';
@@ -46,8 +45,7 @@ class _WaiterHomeState extends State<WaiterHome> {
   /// Tokenni tozalash SHART: aks holda ilova keyingi ochilishda o'sha
   /// yaroqsiz sessiya bilan urinaverardi va odam sababni ko'rmasdi.
   Future<void> _goToLogin() async {
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
