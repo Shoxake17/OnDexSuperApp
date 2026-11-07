@@ -315,9 +315,25 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (devCode strin
 //   - Tezlik cheklovi HTTP qatlamida (routes_auth.go) — bu funksiya
 //     brute-force'dan o'zi himoyalanmaydi.
 func (s *Service) LoginWithPassword(ctx context.Context, login, password string) (string, *User, error) {
+	u, err := s.AuthenticatePassword(ctx, login, password)
+	if err != nil {
+		return "", nil, err
+	}
+	token, err := s.tokens.Issue(u)
+	if err != nil {
+		return "", nil, err
+	}
+	return token, u, nil
+}
+
+// AuthenticatePassword — `LoginWithPassword` ning tekshiruv qismi: parol
+// to'g'ri va akkaunt kirishga yaroqli bo'lsa foydalanuvchini qaytaradi,
+// TOKEN BERMAYDI (merchant oqimi markaziy sessiya ochadi). Xatolar va
+// vaqtni tenglashtirish qoidalari aynan bir xil.
+func (s *Service) AuthenticatePassword(ctx context.Context, login, password string) (*User, error) {
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {
-		return "", nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
 	var u *User
@@ -332,7 +348,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 	}
 	if err != nil || u == nil {
 		VerifyAgainstDummy(ctx, password) // vaqtni tenglashtirish
-		return "", nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 	if u.PasswordHash == "" {
 		// Parol o'rnatilmagan akkaunt (eski foydalanuvchi yoki faqat
@@ -340,11 +356,11 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 		// "bu akkauntda parol yo'q" degan xabar akkauntning MAVJUDLIGINI
 		// tasdiqlab qo'yardi.
 		VerifyAgainstDummy(ctx, password)
-		return "", nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 	ok, err := VerifyPassword(ctx, password, u.PasswordHash)
 	if err != nil || !ok {
-		return "", nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 	// Hash eski parametrlar bilan yaratilgan bo'lsa — SHU YERDA
 	// kuchaytiramiz: ochiq parol butun tizimda faqat mana shu lahzada
@@ -364,7 +380,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 	// bu yerga faqat parol TO'G'RI kelgandagina yetib kelinadi.
 	// └───────────────────────────────────────────────────────────────┘
 	if u.IsDeleted() {
-		return "", nil, ErrAccountDeleted
+		return nil, ErrAccountDeleted
 	}
 	// Telefon TASDIQLANISHI faqat telefonli akkauntlar uchun talab
 	// qilinadi. Email bilan ro'yxatdan o'tgan akkauntda telefon
@@ -374,20 +390,15 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 		// Parol to'g'ri, lekin raqam hali tasdiqlanmagan — bu ANIQ
 		// xato bo'lishi mumkin, chunki parolni bilgan odam akkaunt
 		// egasining o'zi.
-		return "", nil, ErrPhoneNotVerified
+		return nil, ErrPhoneNotVerified
 	}
 	if u.Phone == "" && u.Email != "" && !u.EmailVerified {
 		// Email bilan ochilgan akkaunt: telefon yo'q, shuning uchun
 		// yagona tasdiq — email kodi. Busiz begona manzilga ochilgan
 		// akkaunt parol bilan ishlab ketaverardi.
-		return "", nil, ErrEmailNotVerified
+		return nil, ErrEmailNotVerified
 	}
-
-	token, err := s.tokens.Issue(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	return u, nil
 }
 
 // SetPassword — mavjud foydalanuvchi parolni o'rnatadi/o'zgartiradi.

@@ -205,6 +205,10 @@ type Deps struct {
 	// biznes, rol, a'zolik. `nil` bo'lsa `/v2/merchant/*` 503 qaytaradi.
 	Authz *authz.Authorizer
 
+	// MerchantAuth — merchant realmiga kirish (A3b: parol/kod + majburiy TOTP
+	// egasi uchun). `nil` bo'lsa `/v2/auth/merchant/*`, `/v2/auth/mfa/*` 503.
+	MerchantAuth *identity.MerchantAuth
+
 	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
 	// 503 qaytaradi, qolgan API o'zgarishsiz ishlaydi.
@@ -429,6 +433,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerWsRoutes(mux)
 	s.registerAuthRoutes(mux)
 	s.registerAuthV2Routes(mux)
+	s.registerMerchantAuthRoutes(mux)
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)
 	s.registerCatalogRoutes(mux)

@@ -268,7 +268,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 		IPHash: s.ipHash(in.Meta.IP), UserAgent: clip(in.Meta.UserAgent, 300), DeviceName: clip(in.Meta.DeviceName, 100),
 	}
 	for _, a := range in.AMR {
-		if a == "totp" {
+		if a == "totp" || a == "recovery" { // tiklash kodi — TOTP o'rnini bosuvchi ikkinchi bosqich
 			t := now
 			sess.MFAAt = &t
 		}

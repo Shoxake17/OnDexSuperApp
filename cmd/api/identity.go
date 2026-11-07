@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"strings"
@@ -11,6 +13,8 @@ import (
 	"chustapp/internal/httpapi"
 	"chustapp/internal/identity"
 	"chustapp/internal/identity/authz"
+	"chustapp/internal/identity/mfa"
+	"chustapp/internal/secretstore"
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
 )
@@ -119,4 +123,44 @@ func buildAuthz(ctx context.Context, pool *pgxpool.Pool) *authz.Authorizer {
 		return nil
 	}
 	return authz.New(store)
+}
+
+// buildMerchantAuth — merchant kirish oqimlari (A3b). Egasi uchun TOTP
+// MAJBURIY, kalit `secretstore` bilan shifrlanadi: `SECRETS_ENC_KEY` yo'q
+// bo'lsa production'da xizmat o'chiq (TOTP kalitini ochiq saqlashdan ko'ra
+// kirishni bermaslik to'g'ri); dev'da vaqtinchalik kalit.
+func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer, pool *pgxpool.Pool,
+	box *secretstore.Box, us *users.Service, ur users.Repository) *identity.MerchantAuth {
+	if svc == nil || az == nil {
+		slog.Warn("merchant kirishi O'CHIQ: markaziy sessiya yoki ruxsatlar xizmati yo'q")
+		return nil
+	}
+	if box == nil {
+		if !devMode {
+			slog.Error("merchant kirishi O'CHIQ: SECRETS_ENC_KEY yo'q (TOTP kalitlari shifrlanishi SHART)")
+			return nil
+		}
+		raw := make([]byte, secretstore.KeyLen)
+		if _, err := rand.Read(raw); err != nil {
+			return nil
+		}
+		b, err := secretstore.New(hex.EncodeToString(raw))
+		if err != nil {
+			return nil
+		}
+		box = b
+		slog.Warn("merchant kirishi: SECRETS_ENC_KEY yo'q — DEV uchun VAQTINCHALIK kalit (restartdan keyin TOTP qayta ulanadi)")
+	}
+	var store mfa.Store
+	if pool != nil {
+		store = storage.NewPgMFAStore(pool)
+	} else {
+		store = mfa.NewMemStore()
+	}
+	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Phones: ur, Authz: az, MFA: store, Box: box})
+	if err != nil {
+		slog.Error("merchant kirishi O'CHIQ", "err", err)
+		return nil
+	}
+	return m
 }

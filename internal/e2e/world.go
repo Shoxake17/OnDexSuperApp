@@ -22,6 +22,7 @@ import (
 	"chustapp/internal/httpapi"
 	"chustapp/internal/identity"
 	"chustapp/internal/identity/authz"
+	"chustapp/internal/identity/mfa"
 	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
@@ -145,6 +146,9 @@ type World struct {
 	Identity *identity.Service
 	// Authz — merchant ruxsatlari (xotira ombori, rol shablonlari yozilgan).
 	Authz *authz.Authorizer
+	// AuthSvc — kod/parol xizmati (merchant ssenariylari dev_code oladi).
+	AuthSvc      *users.Service
+	MerchantAuth *identity.MerchantAuth
 
 	Admin    *Actor
 	Customer *Actor
@@ -377,12 +381,23 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 	w.Authz = authz.New(authzStore)
+	w.AuthSvc = users.NewService(w.Users, storage.NewMemoryCodeStore(), smsLog{}, w.Tokens, httpapi.NewID)
+	mfaBox, err := secretstore.New(strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Phones: w.Users,
+		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
 		SSO:          ssoSvc,
 		Identity:     w.Identity,
 		Authz:        w.Authz,
+		MerchantAuth: w.MerchantAuth,
 		QurtRepo:     qurtProducts,
 		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
 		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,
@@ -396,7 +411,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		Notifications: notifStore, PushTokens: tokenStore, Notifier: notifSvc,
 		SupportSvc: support.NewService(storage.NewMemorySupportStore(), hub, httpapi.NewID),
 		WalletSvc:  walletSvc,
-		AuthSvc:    users.NewService(w.Users, storage.NewMemoryCodeStore(), smsLog{}, w.Tokens, httpapi.NewID),
+		AuthSvc:    w.AuthSvc,
 		OrderSvc:   orderSvc, Dispatcher: dispatcher,
 		StaffSvc: staffSvc, TableSvc: tables.NewService(storage.NewMemoryTableRepo()),
 		Payments: paySvc, MC: reg,

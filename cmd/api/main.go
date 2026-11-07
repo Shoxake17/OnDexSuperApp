@@ -1104,6 +1104,8 @@ func main() {
 	authzCtx, authzCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	authzSvc := buildAuthz(authzCtx, pgPool)
 	authzCancel()
+	// Merchant kirishi (A3b): parol/kod + egasi uchun majburiy TOTP.
+	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo)
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1542,6 +1544,7 @@ func main() {
 		SSO:                ssoSvc,
 		Identity:           identitySvc,
 		Authz:              authzSvc,
+		MerchantAuth:       merchantAuth,
 		QurtRepo:           qurtRepo,
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,

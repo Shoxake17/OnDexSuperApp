@@ -193,51 +193,69 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 // Verify — kod to'g'ri bo'lsa foydalanuvchini topadi (yo'q bo'lsa mijoz sifatida
 // yaratadi) va JWT token qaytaradi.
 func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *User, error) {
-	phone, err := NormalizePhone(rawPhone)
+	phone, testLogin, err := s.checkPhoneCode(ctx, rawPhone, code)
 	if err != nil {
 		return "", nil, err
 	}
+	token, u, err := s.finishPhoneLogin(ctx, phone)
+	if err == nil && testLogin {
+		slog.Warn("test akkaunt orqali kirish (TEST_OTP)", "user", u.ID, "role", u.Role)
+	}
+	return token, u, err
+}
+
+// checkPhoneCode — telefon kodini tekshiradi va ISHLATILGAN qiladi (bir
+// martalik). Akkaunt yaratmaydi, token bermaydi — bu ishni chaqiruvchi
+// qiladi (`Verify` — mijoz kirishi, `VerifyPhoneCode` — merchant oqimi).
+func (s *Service) checkPhoneCode(ctx context.Context, rawPhone, code string) (phone string, testLogin bool, err error) {
+	phone, err = NormalizePhone(rawPhone)
+	if err != nil {
+		return "", false, err
+	}
 	c, err := s.codes.Get(ctx, phone)
 	if err != nil {
-		return "", nil, ErrInvalidCode
+		return "", false, ErrInvalidCode
 	}
 	if s.now().After(c.ExpiresAt) {
 		s.dropCode(ctx, phone)
-		return "", nil, ErrInvalidCode
+		return "", false, ErrInvalidCode
 	}
 	// Urinish AVVAL atomik hisoblanadi, KEYIN chegara tekshiriladi —
 	// aks holda parallel so'rovlar bir xil eski qiymatni o'qib,
 	// chegarani chetlab o'tardi (interfeys izohiga qarang).
 	attempts, err := s.codes.IncrementAttempts(ctx, phone)
 	if err != nil {
-		return "", nil, ErrInvalidCode
+		return "", false, ErrInvalidCode
 	}
 	if attempts > maxAttempts {
 		s.dropCode(ctx, phone)
-		return "", nil, ErrTooManyAttempts
+		return "", false, ErrTooManyAttempts
 	}
 	if !s.sameCode(phone, code, c.CodeHash) {
-		return "", nil, ErrInvalidCode
+		return "", false, ErrInvalidCode
 	}
 	// Test raqami: sobit kod faqat shu raqamga biriktirilgan rolni
 	// (kuryer yoki affitsiant) ochadi. Kod berilgandan keyin rol
 	// o'zgargan bo'lsa (masalan akkaunt restoran egasiga aylantirildi) —
 	// rad etiladi.
-	testLogin := s.isTestPhone(phone) && code == s.testCode
+	testLogin = s.isTestPhone(phone) && code == s.testCode
 	if testLogin && !s.testAccount(ctx, phone) {
 		s.dropCode(ctx, phone)
 		slog.Warn("test akkaunt: sobit kod rad etildi — akkaunt roli bu raqamga mos emas")
-		return "", nil, ErrInvalidCode
+		return "", false, ErrInvalidCode
 	}
 	if err := s.consumeCode(ctx, phone); err != nil {
-		return "", nil, err
+		return "", false, err
 	}
+	return phone, testLogin, nil
+}
 
-	token, u, err := s.finishPhoneLogin(ctx, phone)
-	if err == nil && testLogin {
-		slog.Warn("test akkaunt orqali kirish (TEST_OTP)", "user", u.ID, "role", u.Role)
-	}
-	return token, u, err
+// VerifyPhoneCode — kodni tekshirib, telefon egaligini isbotlaydi. Akkaunt
+// YARATMAYDI va eski (HS256) token BERMAYDI: merchant oqimi akkauntni o'zi
+// topadi va markaziy sessiya ochadi (`identity.MerchantAuth`).
+func (s *Service) VerifyPhoneCode(ctx context.Context, rawPhone, code string) (string, error) {
+	phone, _, err := s.checkPhoneCode(ctx, rawPhone, code)
+	return phone, err
 }
 
 // consumeCode — to'g'ri kiritilgan kodni BIR MARTALIK qiladi.
