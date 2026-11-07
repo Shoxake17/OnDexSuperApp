@@ -1097,6 +1097,9 @@ func main() {
 	} else {
 		slog.Warn("yagona kirish (SSO) O'CHIQ (SSO_MERCHANT_SECRET yo'q) — /sso/* 503 qaytaradi")
 	}
+
+	// Markaziy sessiya va token xizmati (A2): Ed25519 + JWKS + refresh rotatsiyasi.
+	identitySvc := buildIdentity(devMode, pgPool, userRepo)
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1533,6 +1536,7 @@ func main() {
 		MC:                 mcRegistry,
 		WalletSvc:          walletSvc,
 		SSO:                ssoSvc,
+		Identity:           identitySvc,
 		QurtRepo:           qurtRepo,
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,

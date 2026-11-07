@@ -80,6 +80,12 @@ var Registry = []Var{
 	{Name: "JWT_SECRET", Effect: "server ishga tushmaydi", ProdRequired: true, DeployRequired: true},
 	{Name: "ALLOWED_ORIGINS", Effect: "server ishga tushmaydi", ProdRequired: true, DeployRequired: true},
 	{Name: "TRUSTED_PROXIES", Effect: "IP cheklovlari proksi ortida NOTO'G'RI ishlaydi (bug.md 18-band)", DeployRequired: true},
+	// ---------- Markaziy sessiya (A2, internal/identity) ----------
+	// A2 da ixtiyoriy (bo'lmasa /v2/auth/* 503); A3 dan production'da MAJBURIY
+	// va DeployRequired bo'ladi.
+	{Name: "AUTH_SIGNING_KEY_FILE", Effect: "markaziy sessiya O'CHIQ: /v2/auth/* va JWKS 503 (yangi kirish ishlamaydi)"},
+	{Name: "AUTH_PREVIOUS_KEY_FILES", Effect: "kalit rotatsiyasidan keyin eski kalit bilan imzolangan tokenlar darhol rad etiladi"},
+	{Name: "AUTH_ISSUER", Effect: "token `iss` qiymati PUBLIC_API_URL dan olinadi"},
 	// Faqat DEV: `ondex run` API logini faylga ham yozadi (o'lchov/tahlil).
 	// Prod'da Docker loglari stdout'dan olinadi — compose'ga qo'shilmaydi.
 	{Name: "API_LOG_FILE", Effect: "log faqat konsolga yoziladi (faylga saqlanmaydi)"},

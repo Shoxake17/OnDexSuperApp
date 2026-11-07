@@ -20,6 +20,7 @@ import (
 	"chustapp/internal/e2e/report"
 	"chustapp/internal/geo"
 	"chustapp/internal/httpapi"
+	"chustapp/internal/identity"
 	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
@@ -137,6 +138,10 @@ type World struct {
 	Catalog  *storage.MemoryCatalogRepo
 	Payments *storage.MemoryPaymentRepo
 	Tokens   *users.TokenIssuer
+	// Identity — markaziy sessiya xizmati (A2). Kirish oqimlari (A3) hali
+	// yo'q, shuning uchun ssenariylar sessiyani shu orqali to'g'ridan-to'g'ri
+	// ochadi (kimlik tekshirilgan deb), qolgan hammasi HTTP orqali.
+	Identity *identity.Service
 
 	Admin    *Actor
 	Customer *Actor
@@ -349,9 +354,25 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatalf("SSO sozlamasi: %v", ssoErr)
 	}
 
+	idKey, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idKeys, _ := identity.NewKeySet(idKey)
+	idIssuer, err := identity.NewIssuer(idKeys, "https://api.e2e.ondex", "ondex-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Identity, err = identity.NewService(identity.NewMemoryStore(), idIssuer, w.Users,
+		identity.NopAuditor{}, httpapi.NewID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
 		SSO:          ssoSvc,
+		Identity:     w.Identity,
 		QurtRepo:     qurtProducts,
 		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
 		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,

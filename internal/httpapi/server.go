@@ -33,6 +33,7 @@ import (
 	"chustapp/internal/delivery"
 	"chustapp/internal/favorites"
 	"chustapp/internal/firebaseauth"
+	"chustapp/internal/identity"
 	"chustapp/internal/images"
 	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
@@ -193,6 +194,11 @@ type Deps struct {
 	// `nil` bo'lsa `/sso/*` 503 qaytaradi va qolgan API o'zgarishsiz
 	// ishlaydi (`SSO_MERCHANT_SECRET` sozlanmagan holat).
 	SSO *sso.Service
+
+	// Identity — MARKAZIY sessiya va token xizmati (`internal/identity`, A2):
+	// Ed25519 tokenlar, JWKS, refresh rotatsiyasi. `nil` bo'lsa `/v2/auth/*`
+	// va `/.well-known/jwks.json` 503 qaytaradi; eski `/auth/*` ishlayveradi.
+	Identity *identity.Service
 
 	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
@@ -417,6 +423,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 
 	s.registerWsRoutes(mux)
 	s.registerAuthRoutes(mux)
+	s.registerAuthV2Routes(mux)
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)
 	s.registerCatalogRoutes(mux)
