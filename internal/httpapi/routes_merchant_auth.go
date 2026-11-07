@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"chustapp/internal/identity"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/users"
 )
 
@@ -71,6 +72,10 @@ func writeOutcome(w http.ResponseWriter, out *identity.Outcome) {
 func merchantMeta(r *http.Request, device string) identity.Meta {
 	return identity.Meta{IP: clientIP(r), UserAgent: r.UserAgent(), DeviceName: device}
 }
+
+// mfaIPLimiter — ikkinchi bosqich endpointlari (akkaunt bo'yicha blok
+// `identity.MerchantAuth` ichida). Kod kiritish limiteridan alohida.
+var mfaIPLimiter = ratelimit.New(0.2, 30)
 
 // maxSecretLen — mfa_token uchun yuqori chegara.
 const maxSecretLen = 1024
@@ -139,7 +144,7 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		DeviceName string `json:"device_name"`
 	}
 	decodeMFA := func(w http.ResponseWriter, r *http.Request) (*mfaReq, bool) {
-		if !s.merchantAuthReady(w) || rateLimited(w, verifyIPLimiter, clientIP(r)) {
+		if !s.merchantAuthReady(w) || rateLimited(w, mfaIPLimiter, clientIP(r)) {
 			return nil, false
 		}
 		var req mfaReq

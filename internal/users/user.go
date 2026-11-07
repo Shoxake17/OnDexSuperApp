@@ -33,6 +33,11 @@ const (
 	// shu akkauntni taniydi) va restoran paneli ilovasiga kirish uchun.
 	// Shuning uchun u `RoleRestaurant` huquqlarini OLMAYDI.
 	RoleStore Role = "store"
+	// RoleMerchant — YANGI merchant akkaunti (A3c: ro'yxatdan o'tgan biznes
+	// egasi yoki taklif qilingan xodim). Eski marshrutlarda HECH QANDAY huquqi
+	// yo'q (hech bir `s.auth([]Role{...})` ro'yxatida emas — fail closed):
+	// kim nima qila olishini FAQAT a'zolik (`identity/authz`) hal qiladi.
+	RoleMerchant Role = "merchant"
 )
 
 type User struct {
@@ -281,6 +286,8 @@ func IsUserFacing(err error) bool {
 }
 
 type Repository interface {
+	// GetByPhone — ESKI (realmsiz) qidiruv: bir raqamda bir nechta realm
+	// akkaunti bo'lsa ENG ESKISI (0069 izohi). Yangi kod `GetByPhoneRealm`.
 	GetByPhone(ctx context.Context, phone string) (*User, error)
 	GetByID(ctx context.Context, id string) (*User, error)
 	Create(ctx context.Context, u *User) error
@@ -356,6 +363,11 @@ type Repository interface {
 	// SetStoreProfile — do'kon akkaunti nomi va kategoriyasini yangilaydi
 	// (faqat `RoleStore`; boshqa rol bo'lsa `ErrUserNotFound`).
 	SetStoreProfile(ctx context.Context, id, name string, category StoreCategory) error
+
+	// GetByPhoneRealm — shu realmdagi akkaunt (migratsiya 0069: telefon
+	// realm ichida unikal). Yangi (v2) oqimlar FAQAT shuni ishlatadi.
+	// Topilmasa ErrUserNotFound.
+	GetByPhoneRealm(ctx context.Context, realm Realm, phone string) (*User, error)
 
 	// GetByTelegramID — Telegram Mini App kirishi uchun (migration 0031).
 	// Topilmasa ErrUserNotFound.

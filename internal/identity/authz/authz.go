@@ -65,13 +65,13 @@ type Business struct {
 }
 
 type Role struct {
-	ID           string
-	OrgID        string // "" = tizim shabloni
-	BusinessType BusinessType
-	Key          string
-	Name         string
-	Permissions  []Permission
-	CreatedBy    string
+	ID           string       `json:"id"`
+	OrgID        string       `json:"org_id,omitempty"` // "" = tizim shabloni
+	BusinessType BusinessType `json:"business_type"`
+	Key          string       `json:"key"`
+	Name         string       `json:"name"`
+	Permissions  []Permission `json:"permissions"`
+	CreatedBy    string       `json:"-"`
 }
 
 type Membership struct {
@@ -86,7 +86,13 @@ type Membership struct {
 	StaffMemberID string
 	CreatedBy     string
 	CreatedAt     time.Time
+	// InvitedAt — taklif yuborilgan vaqt (status = invited). Taklif shundan
+	// `InviteTTL` ichida qabul qilinishi kerak.
+	InvitedAt time.Time
 }
+
+// InviteTTL — xodim taklifining amal qilish muddati.
+const InviteTTL = 24 * time.Hour
 
 // Grant — ombordan kelgan xom huquq: foydalanuvchining shu biznesdagi FAOL
 // a'zoligi (egalik yoki xodimlik) va tegishli rol. Effektiv ruxsatlarni
@@ -128,12 +134,18 @@ type Store interface {
 	// UpdateMembership — rol, ilovalar, holat. Bo'sh qiymat = o'zgarmaydi
 	// (`apps` uchun nil). Topilmasa ErrNotFound.
 	UpdateMembership(ctx context.Context, id string, p MembershipPatch) error
+	// ActivateInvites — foydalanuvchining `since` dan keyin yuborilgan
+	// TAKLIFLARINI faollashtiradi (telefon egaligi isbotlangach) va
+	// faollashganlarni qaytaradi. Eskirganlariga tegilmaydi.
+	ActivateInvites(ctx context.Context, userID string, since time.Time) ([]*Membership, error)
 }
 
 type MembershipPatch struct {
 	RoleID string
 	Apps   []string
 	Status string
+	// InvitedAt — qayta taklif (Status = invited bilan birga).
+	InvitedAt *time.Time
 }
 
 // Access — tekshirilgan, effektiv huquq.
@@ -143,8 +155,11 @@ type Access struct {
 	MembershipID string
 	IsOwner      bool
 	RoleKey      string
-	apps         []string
-	perms        map[Permission]bool
+	// OrgStatus — tashkilot holati (pending: KYC kutilmoqda; panel ochiladi,
+	// lekin biznes mijozlarga ko'rinmaydi).
+	OrgStatus string
+	apps      []string
+	perms     map[Permission]bool
 }
 
 func (a *Access) Has(p Permission) bool { return a.perms[p] }
@@ -253,7 +268,7 @@ func effective(userID string, g *Grant) (*Access, error) {
 	}
 	t := g.Business.Type
 	acc := &Access{UserID: userID, Business: g.Business, MembershipID: g.MembershipID,
-		IsOwner: g.IsOwner, perms: map[Permission]bool{}}
+		IsOwner: g.IsOwner, OrgStatus: g.OrgStatus, perms: map[Permission]bool{}}
 	if g.IsOwner {
 		for _, p := range Catalog(t) {
 			acc.perms[p.Key] = true

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"chustapp/internal/identity/authz"
 )
@@ -38,6 +39,38 @@ func RunStoreContract(t *testing.T, newEnv func(t *testing.T) *Env) {
 	t.Run("cheklovlar: egasi, rol turi, takror", c.constraints)
 	t.Run("a'zolikni yangilash", c.update)
 	t.Run("Grants: egalik xodimlikdan ustun, takrorsiz", c.grants)
+	t.Run("taklif: faqat muddati o'tmagani faollashadi, qayta taklif yangilaydi", c.invites)
+}
+
+func (c *contract) invites(t *testing.T) {
+	e := c.seed(t)
+	s := e.Store
+	now := time.Now().UTC().Truncate(time.Second)
+	fresh, stale := now.Add(-time.Hour), now.Add(-authz.InviteTTL-time.Hour)
+	must(t, s.CreateMembership(c.ctx, &authz.Membership{ID: "ctz_inv_new", UserID: e.Staff, OrgID: "ctz_org",
+		BusinessID: "ctz_r1", RoleID: waiterTpl(), InvitedAt: fresh}))
+	must(t, s.CreateMembership(c.ctx, &authz.Membership{ID: "ctz_inv_old", UserID: e.Staff, OrgID: "ctz_org",
+		BusinessID: "ctz_r2", RoleID: waiterTpl(), InvitedAt: stale}))
+	if m, _ := s.GetMembership(c.ctx, "ctz_inv_new"); m.Status != authz.MemberInvited || !m.InvitedAt.Equal(fresh) {
+		t.Fatalf("taklif yozuvi: %+v", m)
+	}
+	got, err := s.ActivateInvites(c.ctx, e.Staff, now.Add(-authz.InviteTTL))
+	must(t, err)
+	if len(got) != 1 || got[0].ID != "ctz_inv_new" || got[0].Status != authz.MemberActive {
+		t.Fatalf("faollashganlar: %+v", got)
+	}
+	if m, _ := s.GetMembership(c.ctx, "ctz_inv_old"); m.Status != authz.MemberInvited {
+		t.Fatalf("eskirgan taklif faollashdi: %+v", m)
+	}
+	// qayta taklif: muddati yangilanadi
+	must(t, s.UpdateMembership(c.ctx, "ctz_inv_old", authz.MembershipPatch{Status: authz.MemberInvited, InvitedAt: &now}))
+	got, _ = s.ActivateInvites(c.ctx, e.Staff, now.Add(-authz.InviteTTL))
+	if len(got) != 1 || got[0].ID != "ctz_inv_old" {
+		t.Fatalf("qayta taklif faollashmadi: %+v", got)
+	}
+	if got, _ := s.ActivateInvites(c.ctx, e.Staff, now.Add(-authz.InviteTTL)); len(got) != 0 {
+		t.Fatalf("ikkinchi marta faollashtirish: %+v", got)
+	}
 }
 
 func must(t *testing.T, err error) {

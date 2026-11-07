@@ -157,7 +157,7 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 	} else {
 		store = mfa.NewMemStore()
 	}
-	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Phones: ur, Authz: az, MFA: store, Box: box})
+	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box})
 	if err != nil {
 		slog.Error("merchant kirishi O'CHIQ", "err", err)
 		return nil

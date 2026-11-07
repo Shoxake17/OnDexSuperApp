@@ -386,7 +386,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Phones: w.Users,
+	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Repo: w.Users,
 		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox})
 	if err != nil {
 		t.Fatal(err)

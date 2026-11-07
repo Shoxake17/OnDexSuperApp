@@ -40,7 +40,7 @@ func TestRealm_SQLMatchesGo(t *testing.T) {
 	pool := realmTestPool(t)
 	ctx := context.Background()
 	roles := []users.Role{users.RoleCustomer, users.RoleCourier, users.RoleRestaurant,
-		users.RoleWaiter, users.RoleAdmin, users.RoleStore, "", "noma_lum"}
+		users.RoleWaiter, users.RoleAdmin, users.RoleStore, users.RoleMerchant, "", "noma_lum"}
 	for _, role := range roles {
 		var got string
 		if err := pool.QueryRow(ctx, `SELECT ondex_realm_for_role($1)`, string(role)).Scan(&got); err != nil {

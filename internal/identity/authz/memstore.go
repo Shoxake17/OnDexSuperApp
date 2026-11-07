@@ -268,6 +268,9 @@ func (s *MemStore) CreateMembership(_ context.Context, m *Membership) error {
 	if m.CreatedAt.IsZero() {
 		m.CreatedAt = time.Now()
 	}
+	if m.Status == MemberInvited && m.InvitedAt.IsZero() {
+		m.InvitedAt = m.CreatedAt
+	}
 	s.members[m.ID] = cloneMember(m)
 	return nil
 }
@@ -324,7 +327,24 @@ func (s *MemStore) UpdateMembership(_ context.Context, id string, p MembershipPa
 	if p.Status != "" {
 		m.Status = p.Status
 	}
+	if p.InvitedAt != nil {
+		m.InvitedAt = *p.InvitedAt
+	}
 	return nil
+}
+
+func (s *MemStore) ActivateInvites(_ context.Context, userID string, since time.Time) ([]*Membership, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []*Membership
+	for _, m := range s.members {
+		if m.UserID == userID && m.Status == MemberInvited && m.InvitedAt.After(since) {
+			m.Status = MemberActive
+			out = append(out, cloneMember(m))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 func (s *MemStore) grantLocked(m *Membership, b *Business) *Grant {

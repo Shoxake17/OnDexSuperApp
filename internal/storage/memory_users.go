@@ -25,11 +25,36 @@ func NewMemoryUserRepo(seed ...users.User) *MemoryUserRepo {
 	return r
 }
 
+// GetByPhone — Postgres bilan bir xil: bir nechta realm akkaunti bo'lsa ENG ESKISI.
 func (r *MemoryUserRepo) GetByPhone(_ context.Context, phone string) (*users.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	var best *users.User
 	for _, u := range r.data {
-		if u.Phone == phone {
+		if u.Phone != phone {
+			continue
+		}
+		if best == nil || u.CreatedAt.Before(best.CreatedAt) ||
+			(u.CreatedAt.Equal(best.CreatedAt) && u.ID < best.ID) {
+			cp := u
+			best = &cp
+		}
+	}
+	if best == nil {
+		return nil, users.ErrUserNotFound
+	}
+	return best, nil
+}
+
+// GetByPhoneRealm — realm ichida unikal (0069).
+func (r *MemoryUserRepo) GetByPhoneRealm(_ context.Context, realm users.Realm, phone string) (*users.User, error) {
+	if phone == "" || !realm.Valid() {
+		return nil, users.ErrUserNotFound
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.data {
+		if u.Phone == phone && users.RealmForRole(u.Role) == realm {
 			cp := u
 			return &cp, nil
 		}
@@ -94,11 +119,13 @@ func (r *MemoryUserRepo) GetByID(_ context.Context, id string) (*users.User, err
 func (r *MemoryUserRepo) Create(_ context.Context, u *users.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	realm := users.RealmForRole(u.Role)
 	for _, x := range r.data {
 		if x.ID == u.ID {
 			continue
 		}
-		if x.Phone == u.Phone {
+		// telefon REALM ichida unikal (0069), bo'sh telefon cheklanmaydi
+		if u.Phone != "" && x.Phone == u.Phone && users.RealmForRole(x.Role) == realm {
 			return users.ErrPhoneTaken
 		}
 		if u.Email != "" && strings.EqualFold(x.Email, u.Email) {
@@ -247,9 +274,15 @@ func (r *MemoryUserRepo) UpdateRole(_ context.Context, id string, role users.Rol
 	if !ok {
 		return users.ErrUserNotFound
 	}
+	realm := users.RealmForRole(role)
+	for xid, x := range r.data { // Postgres 0069 indeksi bilan bir xil
+		if xid != id && u.Phone != "" && x.Phone == u.Phone && users.RealmForRole(x.Role) == realm {
+			return users.ErrPhoneTaken
+		}
+	}
 	u.Role = role
 	u.EntityID = entityID
-	u.Realm = users.RealmForRole(role)
+	u.Realm = realm
 	r.data[id] = u
 	return nil
 }

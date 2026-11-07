@@ -434,6 +434,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAuthRoutes(mux)
 	s.registerAuthV2Routes(mux)
 	s.registerMerchantAuthRoutes(mux)
+	s.registerMerchantRoutes(mux)
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)
 	s.registerCatalogRoutes(mux)

@@ -24,14 +24,18 @@ type fakeUsers struct {
 	codes     map[string]string // telefon -> kod
 }
 
-func (f *fakeUsers) AuthenticatePassword(ctx context.Context, login, password string) (*users.User, error) {
+func (f *fakeUsers) AuthenticatePasswordRealm(ctx context.Context, realm users.Realm, login, password string) (*users.User, error) {
 	f.mu.Lock()
 	pw, ok := f.passwords[login]
 	f.mu.Unlock()
 	if !ok || pw != password {
 		return nil, users.ErrInvalidCredentials
 	}
-	return f.repo.GetByPhone(ctx, login)
+	u, err := f.repo.GetByPhoneRealm(ctx, realm, login)
+	if err != nil {
+		return nil, users.ErrInvalidCredentials // haqiqiy servis kabi: topilmadi = noto'g'ri
+	}
+	return u, nil
 }
 
 func (f *fakeUsers) VerifyPhoneCode(_ context.Context, phone, code string) (string, error) {
@@ -77,7 +81,7 @@ func newMerchantFixture(t *testing.T) *merchantFixture {
 		t.Fatal(err)
 	}
 	ms := mfa.NewMemStore()
-	m, err := identity.NewMerchantAuth(f.svc, identity.MerchantDeps{Users: fu, Phones: f.users,
+	m, err := identity.NewMerchantAuth(f.svc, identity.MerchantDeps{Users: fu, Repo: f.users,
 		Authz: authz.New(az), MFA: ms, Box: fakeBox{}})
 	if err != nil {
 		t.Fatal(err)

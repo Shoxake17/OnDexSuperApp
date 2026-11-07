@@ -331,6 +331,21 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 // TOKEN BERMAYDI (merchant oqimi markaziy sessiya ochadi). Xatolar va
 // vaqtni tenglashtirish qoidalari aynan bir xil.
 func (s *Service) AuthenticatePassword(ctx context.Context, login, password string) (*User, error) {
+	return s.authenticatePassword(ctx, "", login, password)
+}
+
+// AuthenticatePasswordRealm — faqat SHU realmdagi akkaunt (telefon bilan).
+// Bitta raqamda mijoz va merchant akkaunti bo'lishi mumkin (0069): merchant
+// oqimi mijoz akkauntining parolini tekshirib yubormasligi SHART.
+func (s *Service) AuthenticatePasswordRealm(ctx context.Context, realm Realm, phone, password string) (*User, error) {
+	if !realm.Valid() || strings.Contains(phone, "@") {
+		VerifyAgainstDummy(ctx, password)
+		return nil, ErrInvalidCredentials
+	}
+	return s.authenticatePassword(ctx, realm, phone, password)
+}
+
+func (s *Service) authenticatePassword(ctx context.Context, realm Realm, login, password string) (*User, error) {
 	login = strings.TrimSpace(login)
 	if login == "" || password == "" {
 		return nil, ErrInvalidCredentials
@@ -338,12 +353,17 @@ func (s *Service) AuthenticatePassword(ctx context.Context, login, password stri
 
 	var u *User
 	var err error
-	if strings.Contains(login, "@") {
+	switch {
+	case strings.Contains(login, "@"):
 		u, err = s.users.GetByEmail(ctx, login)
-	} else {
+	default:
 		var phone string
 		if phone, err = NormalizePhone(login); err == nil {
-			u, err = s.users.GetByPhone(ctx, phone)
+			if realm != "" {
+				u, err = s.users.GetByPhoneRealm(ctx, realm, phone)
+			} else {
+				u, err = s.users.GetByPhone(ctx, phone)
+			}
 		}
 	}
 	if err != nil || u == nil {

@@ -42,7 +42,7 @@ func RealmForRole(role Role) Realm {
 	switch role {
 	case RoleAdmin:
 		return RealmPlatform
-	case RoleRestaurant, RoleStore, RoleWaiter, RoleCourier:
+	case RoleRestaurant, RoleStore, RoleWaiter, RoleCourier, RoleMerchant:
 		return RealmMerchant
 	}
 	return RealmCustomer

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -189,6 +190,10 @@ func (r *PgAuthzStore) CreateMembership(ctx context.Context, m *authz.Membership
 	if m.Status == "" {
 		m.Status = authz.MemberInvited
 	}
+	var invitedAt any
+	if !m.InvitedAt.IsZero() {
+		invitedAt = m.InvitedAt
+	}
 	var biz, role, createdBy any
 	if m.BusinessID != "" {
 		biz = m.BusinessID
@@ -200,14 +205,16 @@ func (r *PgAuthzStore) CreateMembership(ctx context.Context, m *authz.Membership
 		createdBy = m.CreatedBy
 	}
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO memberships (id, user_id, org_id, business_id, role_id, is_owner, apps, status, staff_member_id, created_by)
-		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+		INSERT INTO memberships (id, user_id, org_id, business_id, role_id, is_owner, apps, status, staff_member_id, created_by,
+			invited_at)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+			CASE WHEN $8 = 'invited' THEN COALESCE($11::timestamptz, now()) END
 		WHERE $6::boolean
 		   OR EXISTS (SELECT 1 FROM businesses b JOIN roles ro ON ro.id = $5
 		              WHERE b.id = $4 AND b.org_id = $3 AND ro.business_type = b.type
 		                AND (ro.org_id IS NULL OR ro.org_id = $3))
 		RETURNING created_at`,
-		m.ID, m.UserID, m.OrgID, biz, role, m.IsOwner, nonNil(m.Apps), m.Status, m.StaffMemberID, createdBy,
+		m.ID, m.UserID, m.OrgID, biz, role, m.IsOwner, nonNil(m.Apps), m.Status, m.StaffMemberID, createdBy, invitedAt,
 	).Scan(&m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return authz.ErrInvalid
@@ -216,12 +223,15 @@ func (r *PgAuthzStore) CreateMembership(ctx context.Context, m *authz.Membership
 }
 
 const memberCols = `id, user_id, org_id, COALESCE(business_id, ''), COALESCE(role_id, ''), is_owner, apps, status,
-	staff_member_id, COALESCE(created_by, ''), created_at`
+	staff_member_id, COALESCE(created_by, ''), created_at, COALESCE(invited_at, 'epoch'::timestamptz)`
 
 func scanMember(row pgx.Row) (*authz.Membership, error) {
 	var m authz.Membership
 	err := row.Scan(&m.ID, &m.UserID, &m.OrgID, &m.BusinessID, &m.RoleID, &m.IsOwner, &m.Apps, &m.Status,
-		&m.StaffMemberID, &m.CreatedBy, &m.CreatedAt)
+		&m.StaffMemberID, &m.CreatedBy, &m.CreatedAt, &m.InvitedAt)
+	if m.InvitedAt.Unix() == 0 {
+		m.InvitedAt = time.Time{}
+	}
 	return &m, err
 }
 
@@ -253,22 +263,26 @@ func (r *PgAuthzStore) Members(ctx context.Context, businessID string) ([]*authz
 
 // UpdateMembership — yangi rol ham biznes turiga/tashkilotga mos bo'lishi SHART.
 func (r *PgAuthzStore) UpdateMembership(ctx context.Context, id string, p authz.MembershipPatch) error {
-	var apps any
+	var apps, invitedAt any
 	if p.Apps != nil {
 		apps = p.Apps
+	}
+	if p.InvitedAt != nil {
+		invitedAt = *p.InvitedAt
 	}
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE memberships m SET
 			role_id = CASE WHEN $2 = '' THEN m.role_id ELSE $2 END,
 			apps    = COALESCE($3::text[], m.apps),
 			status  = CASE WHEN $4 = '' THEN m.status ELSE $4 END,
+			invited_at = COALESCE($5::timestamptz, m.invited_at),
 			updated_at = now()
 		WHERE m.id = $1
 		  AND ($2 = '' OR (NOT m.is_owner AND EXISTS (
 		        SELECT 1 FROM businesses b JOIN roles ro ON ro.id = $2
 		        WHERE b.id = m.business_id AND ro.business_type = b.type
 		          AND (ro.org_id IS NULL OR ro.org_id = m.org_id))))`,
-		id, p.RoleID, apps, p.Status)
+		id, p.RoleID, apps, p.Status, invitedAt)
 	if err != nil {
 		return authzErr(err)
 	}
@@ -279,6 +293,26 @@ func (r *PgAuthzStore) UpdateMembership(ctx context.Context, id string, p authz.
 		return authz.ErrInvalid
 	}
 	return nil
+}
+
+// ActivateInvites — bitta UPDATE ... RETURNING (atomik).
+func (r *PgAuthzStore) ActivateInvites(ctx context.Context, userID string, since time.Time) ([]*authz.Membership, error) {
+	rows, err := r.pool.Query(ctx, `UPDATE memberships SET status = 'active', updated_at = now()
+		WHERE user_id = $1 AND status = 'invited' AND invited_at > $2
+		RETURNING `+memberCols, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*authz.Membership
+	for rows.Next() {
+		m, err := scanMember(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 // grantSelect — biznes + tashkilot holati + FAOL a'zolik (egalik yoki shu

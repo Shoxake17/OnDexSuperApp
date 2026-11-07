@@ -55,13 +55,8 @@ const (
 
 // MerchantUsers — `users.Service` ning tekshiruv funksiyalari (token bermaydi).
 type MerchantUsers interface {
-	AuthenticatePassword(ctx context.Context, login, password string) (*users.User, error)
+	AuthenticatePasswordRealm(ctx context.Context, realm users.Realm, phone, password string) (*users.User, error)
 	VerifyPhoneCode(ctx context.Context, rawPhone, code string) (string, error)
-}
-
-// PhoneLookup — kod bilan kirishda akkauntni topish.
-type PhoneLookup interface {
-	GetByPhone(ctx context.Context, phone string) (*users.User, error)
 }
 
 // Sealer — TOTP kalitini shifrlash (`secretstore.Box`).
@@ -72,11 +67,12 @@ type Sealer interface {
 
 // MerchantDeps — `NewMerchantAuth` bog'liqliklari (hammasi majburiy).
 type MerchantDeps struct {
-	Users  MerchantUsers
-	Phones PhoneLookup
-	Authz  *authz.Authorizer
-	MFA    mfa.Store
-	Box    Sealer
+	Users MerchantUsers
+	// Repo — akkauntlar (realm bo'yicha qidiruv, yangi merchant akkaunti yaratish).
+	Repo  users.Repository
+	Authz *authz.Authorizer
+	MFA   mfa.Store
+	Box   Sealer
 	// TOTPIssuer — autentifikator ilovasida ko'rinadigan nom.
 	TOTPIssuer string
 }
@@ -90,7 +86,7 @@ type MerchantAuth struct {
 }
 
 func NewMerchantAuth(svc *Service, d MerchantDeps) (*MerchantAuth, error) {
-	if svc == nil || d.Users == nil || d.Phones == nil || d.Authz == nil || d.MFA == nil || d.Box == nil {
+	if svc == nil || d.Users == nil || d.Repo == nil || d.Authz == nil || d.MFA == nil || d.Box == nil {
 		return nil, errors.New("identity: merchant kirishi uchun barcha bog'liqliklar majburiy")
 	}
 	if d.TOTPIssuer == "" {
@@ -203,7 +199,7 @@ func (m *MerchantAuth) LoginPassword(ctx context.Context, phone, password, clien
 	if err != nil {
 		return nil, err
 	}
-	u, err := m.d.Users.AuthenticatePassword(ctx, phone, password)
+	u, err := m.d.Users.AuthenticatePasswordRealm(ctx, users.RealmMerchant, phone, password)
 	if err != nil {
 		return nil, err
 	}
@@ -228,11 +224,13 @@ func (m *MerchantAuth) LoginCode(ctx context.Context, phone, code, clientID stri
 	if err != nil {
 		return nil, err
 	}
-	u, err := m.d.Phones.GetByPhone(ctx, p)
+	u, err := m.d.Repo.GetByPhoneRealm(ctx, users.RealmMerchant, p)
 	if err != nil {
 		// Kod to'g'ri, lekin bu raqamda merchant akkaunti yo'q.
 		return nil, users.ErrInvalidCredentials
 	}
+	// Telefon egaligi hozirgina isbotlandi — kutayotgan takliflar faollashadi.
+	m.activateInvites(ctx, u, meta)
 	kind, org, err := m.classify(ctx, u, app)
 	switch {
 	case errors.Is(err, ErrAppNotAllowed):
@@ -305,7 +303,7 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 		}
 		add = "otp"
 	} else {
-		pu, err := m.d.Users.AuthenticatePassword(ctx, u.Phone, secret)
+		pu, err := m.d.Users.AuthenticatePasswordRealm(ctx, users.RealmMerchant, u.Phone, secret)
 		if err != nil || pu.ID != u.ID {
 			m.mfaFailed(ctx, c, meta)
 			return nil, users.ErrInvalidCredentials

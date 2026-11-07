@@ -21,6 +21,23 @@ func (r *PgUserRepo) GetByPhone(ctx context.Context, phone string) (*users.User,
 	return r.getBy(ctx, "phone", phone)
 }
 
+// GetByPhoneRealm — realm ichida unikal (0069 `idx_users_realm_phone`).
+func (r *PgUserRepo) GetByPhoneRealm(ctx context.Context, realm users.Realm, phone string) (*users.User, error) {
+	if phone == "" || !realm.Valid() {
+		return nil, users.ErrUserNotFound
+	}
+	var u users.User
+	err := scanUser(r.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE realm = $1 AND phone = $2`, string(realm), phone), &u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, users.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 func (r *PgUserRepo) GetByID(ctx context.Context, id string) (*users.User, error) {
 	return r.getBy(ctx, "id", id)
 }
@@ -113,7 +130,10 @@ func (r *PgUserRepo) getBy(ctx context.Context, col, val string) (*users.User, e
 	var query string
 	switch col {
 	case "phone":
-		query = `SELECT ` + userColumns + ` FROM users WHERE phone = $1`
+		// Bir raqamda bir nechta realm akkaunti bo'lishi mumkin (0069) —
+		// eski qidiruv ENG ESKISINI oladi (mavjud foydalanuvchilar uchun
+		// natija 0069 dan oldingidek).
+		query = `SELECT ` + userColumns + ` FROM users WHERE phone = $1 ORDER BY created_at, id LIMIT 1`
 	case "id":
 		query = `SELECT ` + userColumns + ` FROM users WHERE id = $1`
 	case "email":
@@ -310,7 +330,8 @@ func (r *PgUserRepo) UpdateRole(ctx context.Context, id string, role users.Role,
 		`UPDATE users SET role = $2, entity_id = $3, realm = $4 WHERE id = $1`,
 		id, role, entityID, string(users.RealmForRole(role)))
 	if err != nil {
-		return err
+		// yangi realmda shu raqamli akkaunt bor (0069) — xom 23505 emas
+		return mapUserConstraint(err)
 	}
 	if tag.RowsAffected() == 0 {
 		return users.ErrUserNotFound

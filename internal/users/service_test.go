@@ -24,6 +24,14 @@ func (r *fakeUserRepo) GetByPhone(_ context.Context, phone string) (*User, error
 	return nil, ErrUserNotFound
 }
 
+func (r *fakeUserRepo) GetByPhoneRealm(ctx context.Context, realm Realm, phone string) (*User, error) {
+	u, err := r.GetByPhone(ctx, phone)
+	if err != nil || RealmForRole(u.Role) != realm {
+		return nil, ErrUserNotFound
+	}
+	return u, nil
+}
+
 // Telegram Mini App bog'lanishi (migration 0031). Xotira va Postgres
 // implementatsiyalari bilan BIR XIL semantika: eski bog'lanish avval
 // uziladi, aks holda odam Mini App'da begona hisobga tushardi.
