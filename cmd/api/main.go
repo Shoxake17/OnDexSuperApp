@@ -1108,6 +1108,7 @@ func main() {
 	authzCancel()
 	// Merchant kirishi (A3b): parol/kod + egasi uchun majburiy TOTP.
 	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo)
+	wireInviteAlerts(merchantAuth, tgClient, userRepo)
 	// OnDex OIDC provayderi (A4c): Merchant web (ShoxPos BFF) shu orqali kiradi.
 	oidcProvider := buildOIDC(identitySvc, pgPool)
 	// Akkaunt rasmi (0073): markazlashgan, R2'da; ilovalar OIDC `picture` dan oladi.

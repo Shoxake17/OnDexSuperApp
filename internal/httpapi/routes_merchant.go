@@ -40,6 +40,9 @@ func respondDirectoryError(w http.ResponseWriter, err error) {
 		httpError(w, http.StatusForbidden, err)
 	case errors.Is(err, authz.ErrInvalid):
 		httpError(w, http.StatusBadRequest, err)
+	case errors.Is(err, identity.ErrStepUpRequired):
+		// Ilova Authenticator kodini so'rab, so'rovni `stepup_code` bilan takrorlaydi.
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error(), "step_up_required": true})
 	case errors.Is(err, authz.ErrConflict), errors.Is(err, identity.ErrAccountExists):
 		httpError(w, http.StatusConflict, err)
 	default:
@@ -156,12 +159,13 @@ func (s *Server) registerMerchantRoutes(mux *http.ServeMux) {
 			LastName  string   `json:"last_name"`
 			RoleID    string   `json:"role_id"`
 			Apps      []string `json:"apps"`
+			StepUp    string   `json:"stepup_code"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
 		v, err := s.MerchantAuth.AddStaff(r.Context(), actor, biz, identity.AddStaffInput{Phone: req.Phone,
-			FirstName: req.FirstName, LastName: req.LastName, RoleID: req.RoleID, Apps: req.Apps}, merchantMeta(r, ""))
+			FirstName: req.FirstName, LastName: req.LastName, RoleID: req.RoleID, Apps: req.Apps, StepUpCode: req.StepUp}, merchantMeta(r, ""))
 		if err != nil {
 			respondDirectoryError(w, err)
 			return
@@ -173,12 +177,13 @@ func (s *Server) registerMerchantRoutes(mux *http.ServeMux) {
 		var req struct {
 			RoleID string   `json:"role_id"`
 			Apps   []string `json:"apps"`
+			StepUp string   `json:"stepup_code"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
 		v, err := s.MerchantAuth.UpdateStaff(r.Context(), actor, biz, r.PathValue("mid"),
-			identity.UpdateStaffInput{RoleID: req.RoleID, Apps: req.Apps}, merchantMeta(r, ""))
+			identity.UpdateStaffInput{RoleID: req.RoleID, Apps: req.Apps, StepUpCode: req.StepUp}, merchantMeta(r, ""))
 		if err != nil {
 			respondDirectoryError(w, err)
 			return
@@ -217,12 +222,13 @@ func (s *Server) registerMerchantRoutes(mux *http.ServeMux) {
 			Key         string             `json:"key"`
 			Name        string             `json:"name"`
 			Permissions []authz.Permission `json:"permissions"`
+			StepUp      string             `json:"stepup_code"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
 		role, err := s.MerchantAuth.CreateRole(r.Context(), actor, biz,
-			identity.CreateRoleInput{Key: req.Key, Name: req.Name, Permissions: req.Permissions}, merchantMeta(r, ""))
+			identity.CreateRoleInput{Key: req.Key, Name: req.Name, Permissions: req.Permissions, StepUpCode: req.StepUp}, merchantMeta(r, ""))
 		if err != nil {
 			respondDirectoryError(w, err)
 			return

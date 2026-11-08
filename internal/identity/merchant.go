@@ -85,6 +85,37 @@ type MerchantAuth struct {
 	d        MerchantDeps
 	tokenKey []byte
 	guard    *failGuard
+	// inviteHook — `OnInvite` (xodimga "sizni taklif qilishdi" xabari).
+	inviteHook func(ctx context.Context, inv Invite)
+}
+
+// Invite — xodim taklifi (yangi yoki qayta) xabari uchun.
+type Invite struct {
+	UserID       string
+	Phone        string
+	BusinessName string
+	RoleName     string
+	Apps         []string
+}
+
+// OnInvite — taklif yuborilganda (AddStaff, ReinviteStaff). Hook alohida
+// goroutine'da: xabar xatosi taklifni buzmaydi.
+func (m *MerchantAuth) OnInvite(fn func(ctx context.Context, inv Invite)) { m.inviteHook = fn }
+
+func (m *MerchantAuth) notifyInvite(ctx context.Context, mb *authz.Membership, bizName string) {
+	if m.inviteHook == nil || mb == nil {
+		return
+	}
+	u, err := m.d.Repo.GetByID(ctx, mb.UserID)
+	if err != nil {
+		return
+	}
+	inv := Invite{UserID: u.ID, Phone: u.Phone, BusinessName: bizName, Apps: slices.Clone(mb.Apps)}
+	if r, err := m.d.Authz.Store().GetRole(ctx, mb.RoleID); err == nil {
+		inv.RoleName = r.Name
+	}
+	hook := m.inviteHook
+	go hook(context.WithoutCancel(ctx), inv)
 }
 
 func NewMerchantAuth(svc *Service, d MerchantDeps) (*MerchantAuth, error) {

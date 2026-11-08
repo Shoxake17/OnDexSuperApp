@@ -293,6 +293,21 @@ func (m *MerchantAuth) ListStaff(ctx context.Context, actorID, bizID string) ([]
 	return out, nil
 }
 
+// stepUpForGrant — xavfli ruxsat (pul yechish, xodimlarni boshqarish va h.k.,
+// `authz.IsDangerous`) berilayotgan bo'lsa egasi Authenticator kodi bilan
+// HOZIR qayta tasdiqlashi SHART (AUTH-PHASE-A.md 5-bo'lim, Plane 135):
+// o'g'irlangan sessiya bilan o'ziga yoki sherigiga pul huquqini berib
+// bo'lmaydi. Tekshiruv forma tekshiruvlaridan KEYIN — xato forma TOTP
+// qadamini yemaydi.
+func (m *MerchantAuth) stepUpForGrant(ctx context.Context, acc *authz.Access, perms []authz.Permission, code, action string, meta Meta) error {
+	for _, p := range perms {
+		if authz.IsDangerous(acc.Business.Type, p) {
+			return m.StepUp(ctx, acc.UserID, code, action, meta)
+		}
+	}
+	return nil
+}
+
 // grantableRole — rol shu biznesda ishlatila oladi va `acc` uni bera oladi.
 func (m *MerchantAuth) grantableRole(ctx context.Context, acc *authz.Access, roleID string) (*authz.Role, error) {
 	r, err := m.d.Authz.Store().GetRole(ctx, roleID)
@@ -329,6 +344,8 @@ type AddStaffInput struct {
 	Phone, FirstName, LastName string
 	RoleID                     string
 	Apps                       []string // nil — rol shablonidagi standart ilovalar
+	// StepUpCode — xavfli ruxsatli rol berilsa: egasining Authenticator kodi.
+	StepUpCode string
 }
 
 // AddStaff — merchant akkaunti (yo'q bo'lsa yaratiladi) + `invited` a'zolik.
@@ -365,6 +382,9 @@ func (m *MerchantAuth) AddStaff(ctx context.Context, actorID, bizID string, in A
 	if utf8.RuneCountInString(last) > users.MaxNameLength {
 		return nil, invalid("familiya juda uzun")
 	}
+	if err := m.stepUpForGrant(ctx, acc, role.Permissions, in.StepUpCode, "staff.invite", meta); err != nil {
+		return nil, err
+	}
 
 	u, err := m.d.Repo.GetByPhoneRealm(ctx, users.RealmMerchant, phone)
 	if errors.Is(err, users.ErrUserNotFound) {
@@ -394,6 +414,7 @@ func (m *MerchantAuth) AddStaff(ctx context.Context, actorID, bizID string, in A
 	m.d.Authz.Invalidate()
 	m.audit(ctx, actorID, acc.Business.OrgID, bizID, "staff.invite", mb.ID, meta,
 		map[string]any{"role": role.Key, "apps": apps})
+	m.notifyInvite(ctx, mb, acc.Business.Name)
 	v := m.staffView(ctx, mb)
 	return &v, nil
 }
@@ -424,8 +445,9 @@ func (m *MerchantAuth) target(ctx context.Context, acc *authz.Access, mid string
 
 // UpdateStaffInput — bo'sh RoleID / nil Apps = o'zgarmaydi.
 type UpdateStaffInput struct {
-	RoleID string
-	Apps   []string
+	RoleID     string
+	Apps       []string
+	StepUpCode string // xavfli ruxsatli rolga o'tkazishda
 }
 
 func (m *MerchantAuth) UpdateStaff(ctx context.Context, actorID, bizID, mid string, in UpdateStaffInput, meta Meta) (*StaffView, error) {
@@ -441,6 +463,9 @@ func (m *MerchantAuth) UpdateStaff(ctx context.Context, actorID, bizID, mid stri
 	if in.RoleID != "" {
 		r, err := m.grantableRole(ctx, acc, in.RoleID)
 		if err != nil {
+			return nil, err
+		}
+		if err := m.stepUpForGrant(ctx, acc, r.Permissions, in.StepUpCode, "staff.update", meta); err != nil {
 			return nil, err
 		}
 		p.RoleID = r.ID
@@ -510,6 +535,7 @@ func (m *MerchantAuth) ReinviteStaff(ctx context.Context, actorID, bizID, mid st
 	if err != nil {
 		return nil, err
 	}
+	m.notifyInvite(ctx, mb, acc.Business.Name)
 	v := m.staffView(ctx, mb)
 	return &v, nil
 }
@@ -541,6 +567,7 @@ func (m *MerchantAuth) Roles(ctx context.Context, actorID, bizID string) (*Roles
 type CreateRoleInput struct {
 	Key, Name   string
 	Permissions []authz.Permission
+	StepUpCode  string // xavfli ruxsatli rol yaratishda
 }
 
 func (m *MerchantAuth) CreateRole(ctx context.Context, actorID, bizID string, in CreateRoleInput, meta Meta) (*authz.Role, error) {
@@ -553,6 +580,9 @@ func (m *MerchantAuth) CreateRole(ctx context.Context, actorID, bizID string, in
 	}
 	name, err := cleanName(in.Name, 80, "rol nomi")
 	if err != nil {
+		return nil, err
+	}
+	if err := m.stepUpForGrant(ctx, acc, in.Permissions, in.StepUpCode, "role.create", meta); err != nil {
 		return nil, err
 	}
 	r := &authz.Role{ID: m.svc.newID(), OrgID: acc.Business.OrgID, BusinessType: acc.Business.Type,

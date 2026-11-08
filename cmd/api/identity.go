@@ -138,16 +138,7 @@ func wireNewDeviceAlerts(svc *identity.Service, tg *telegram.Client, ur users.Re
 	svc.OnNewDevice(func(ctx context.Context, d identity.NewDevice) {
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		u, err := ur.GetByID(ctx, d.UserID)
-		if err != nil {
-			return
-		}
-		chat := u.TelegramID
-		if chat == 0 && u.Phone != "" {
-			if c, err := ur.GetByPhoneRealm(ctx, users.RealmCustomer, u.Phone); err == nil {
-				chat = c.TelegramID
-			}
-		}
+		chat := telegramChatFor(ctx, ur, d.UserID)
 		if chat == 0 {
 			slog.Info("yangi qurilma: Telegram bog'lanmagan — xabar yuborilmadi", "user", d.UserID)
 			return
@@ -158,6 +149,42 @@ func wireNewDeviceAlerts(svc *identity.Service, tg *telegram.Client, ur users.Re
 		}
 		if err := tg.SendMessage(ctx, chat, identity.NewDeviceText(d, app, accountURL, loc)); err != nil {
 			slog.Warn("yangi qurilma xabari yuborilmadi", "user", d.UserID, "err", err)
+		}
+	})
+}
+
+// telegramChatFor — akkauntga bog'langan Telegram chat; bo'lmasa shu
+// raqamdagi mijoz akkauntiniki (bitta odam, bitta Telegram). 0 — yo'q.
+func telegramChatFor(ctx context.Context, ur users.Repository, userID string) int64 {
+	u, err := ur.GetByID(ctx, userID)
+	if err != nil {
+		return 0
+	}
+	if u.TelegramID != 0 || u.Phone == "" {
+		return u.TelegramID
+	}
+	if c, err := ur.GetByPhoneRealm(ctx, users.RealmCustomer, u.Phone); err == nil {
+		return c.TelegramID
+	}
+	return 0
+}
+
+// wireInviteAlerts — xodim taklifi xodimning Telegram'iga (Plane 135).
+// Telegram bog'lanmagan xodimga egasi o'zi aytadi (panelda taklif holati).
+func wireInviteAlerts(m *identity.MerchantAuth, tg *telegram.Client, ur users.Repository) {
+	if m == nil || tg == nil || !tg.Configured() {
+		return
+	}
+	m.OnInvite(func(ctx context.Context, inv identity.Invite) {
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		chat := telegramChatFor(ctx, ur, inv.UserID)
+		if chat == 0 {
+			slog.Info("taklif: xodim Telegram'i bog'lanmagan — xabar yuborilmadi", "user", inv.UserID)
+			return
+		}
+		if err := tg.SendMessage(ctx, chat, identity.InviteText(inv)); err != nil {
+			slog.Warn("taklif xabari yuborilmadi", "user", inv.UserID, "err", err)
 		}
 	})
 }
