@@ -221,7 +221,7 @@ func financeServerFull(t *testing.T, mc *multicard.Client, baseURL string,
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -241,6 +241,7 @@ func financeServerFull(t *testing.T, mc *multicard.Client, baseURL string,
 	orderRepo := storage.NewMemoryOrderRepo()
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      orderRepo,
@@ -1007,13 +1008,13 @@ func TestFinanceConnectNeedsEncryptionKey(t *testing.T) {
 	if err := userRepo.Create(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
-	tok, err := tokens.Issue(u)
+	tok, err := testToken(t, tokens, userRepo, u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	orderRepo := storage.NewMemoryOrderRepo()
 	h := New(Deps{
-		UserRepo: userRepo, CatalogRepo: catalogRepo,
+		UserRepo: userRepo, Identity: testIdentityFor(userRepo), CatalogRepo: catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(), OrderRepo: orderRepo,
 		TableSvc: tables.NewService(storage.NewMemoryTableRepo()), Tokens: tokens,
 		CatalogSvc: catalog.NewService(catalogRepo),

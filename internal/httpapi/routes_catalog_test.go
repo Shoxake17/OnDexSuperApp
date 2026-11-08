@@ -45,7 +45,7 @@ func catalogServer(t *testing.T) (http.Handler, string, string) {
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		jwt, err := tokens.Issue(u)
+		jwt, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,6 +72,7 @@ func catalogServer(t *testing.T) (http.Handler, string, string) {
 	)
 	deps := Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),

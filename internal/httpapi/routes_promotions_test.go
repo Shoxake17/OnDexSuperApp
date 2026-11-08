@@ -41,7 +41,7 @@ func promoServer(t *testing.T, promos ...*promotions.Promotion) (http.Handler, s
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		jwt, err := tokens.Issue(u)
+		jwt, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,6 +71,7 @@ func promoServer(t *testing.T, promos ...*promotions.Promotion) (http.Handler, s
 
 	deps := Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: promoRepo,
 		OrderRepo:      storage.NewMemoryOrderRepo(),

@@ -39,7 +39,7 @@ func newWaiterFixture(t *testing.T) *waiterFixture {
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,6 +66,7 @@ func newWaiterFixture(t *testing.T) *waiterFixture {
 	tableSvc := tables.NewService(storage.NewMemoryTableRepo())
 	deps := Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		OrderRepo:      orderRepo,
 		CatalogRepo:    catalogRepo,
 		CourierRepo:    storage.NewMemoryCourierRepo(),

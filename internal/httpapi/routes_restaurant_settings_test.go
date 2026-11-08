@@ -30,7 +30,7 @@ func settingsServer(t *testing.T) (http.Handler, *tables.Service, map[string]str
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,6 +54,7 @@ func settingsServer(t *testing.T) (http.Handler, *tables.Service, map[string]str
 	tableSvc := tables.NewService(storage.NewMemoryTableRepo())
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      orderRepo,

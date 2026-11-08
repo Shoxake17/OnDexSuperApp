@@ -76,7 +76,16 @@ func (t *TokenIssuer) IssuePhoneProven(u *User) (string, error) {
 	return t.issue(u, true)
 }
 
+// ErrLegacyMerchantToken — merchant realmi (restoran, do'kon, kuryer, ofitsiant)
+// eski HS256 token OLMAYDI va bunday token QABUL QILINMAYDI (A5). Ular faqat
+// markaziy sessiya (EdDSA, `internal/identity`) bilan kiradi: u yerda TOTP,
+// qurilma ro'yxati va markazdan bekor qilish bor; eski tokenda yo'q.
+var ErrLegacyMerchantToken = errors.New("biznes akkaunti eski kirish orqali kira olmaydi — OnDex Merchant, OnDexPro yoki OnDexGO ilovasining yangi versiyasidan kiring")
+
 func (t *TokenIssuer) issue(u *User, phoneProven bool) (string, error) {
+	if RealmForRole(u.Role) == RealmMerchant {
+		return "", ErrLegacyMerchantToken
+	}
 	now := time.Now()
 	claims := Claims{
 		Role:        u.Role,
@@ -101,6 +110,10 @@ func (t *TokenIssuer) Parse(tokenStr string) (*Claims, error) {
 	})
 	if err != nil || !token.Valid {
 		return nil, errors.New("token yaroqsiz")
+	}
+	// A5 gacha berilgan merchant tokenlari (30 kun) shu yerda o'ladi.
+	if RealmForRole(claims.Role) == RealmMerchant {
+		return nil, ErrLegacyMerchantToken
 	}
 	return &claims, nil
 }

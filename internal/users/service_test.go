@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type fakeUserRepo struct {
@@ -440,7 +442,7 @@ func TestResendCooldown(t *testing.T) {
 
 func TestTokenIssueAndParse(t *testing.T) {
 	issuer := NewTokenIssuer("secret1", time.Hour)
-	u := &User{ID: "u1", Role: RoleCourier, EntityID: "c1"}
+	u := &User{ID: "u1", Role: RoleCustomer}
 	tok, err := issuer.Issue(u)
 	if err != nil {
 		t.Fatal(err)
@@ -449,8 +451,31 @@ func TestTokenIssueAndParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.Subject != "u1" || claims.Role != RoleCourier || claims.EntityID != "c1" {
+	if claims.Subject != "u1" || claims.Role != RoleCustomer {
 		t.Errorf("claims noto'g'ri: %+v", claims)
+	}
+
+	// A5: merchant realmi eski token OLMAYDI va (A5 dan oldin berilgan,
+	// to'g'ri imzoli) eski token QABUL QILINMAYDI.
+	for _, role := range []Role{RoleRestaurant, RoleStore, RoleCourier, RoleWaiter, RoleMerchant} {
+		if _, err := issuer.Issue(&User{ID: "m1", Role: role, EntityID: "e1"}); !errors.Is(err, ErrLegacyMerchantToken) {
+			t.Errorf("%s: eski token berildi (%v)", role, err)
+		}
+		if _, err := issuer.IssuePhoneProven(&User{ID: "m1", Role: role}); !errors.Is(err, ErrLegacyMerchantToken) {
+			t.Errorf("%s: eski PhoneProven token berildi (%v)", role, err)
+		}
+		old, err := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{Role: role, EntityID: "e1",
+			RegisteredClaims: jwt.RegisteredClaims{Subject: "m1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+		}).SignedString([]byte("secret1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := issuer.Parse(old); !errors.Is(err, ErrLegacyMerchantToken) {
+			t.Errorf("%s: A5 dan oldingi eski token qabul qilindi (%v)", role, err)
+		}
+	}
+	if _, err := issuer.Issue(&User{ID: "a1", Role: RoleAdmin}); err != nil {
+		t.Errorf("admin (A6 gacha) eski token olishi kerak: %v", err)
 	}
 
 	// Boshqa secret bilan imzolangan token rad etiladi

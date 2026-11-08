@@ -55,12 +55,13 @@ func mapsServer(t *testing.T, mode mapprovider.Mode, od ondexmap.API) (http.Hand
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatal(err)
 	}
-	tok, err := tokens.Issue(u)
+	tok, err := testToken(t, tokens, repo, u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := New(Deps{
 		UserRepo:     repo,
+		Identity:     testIdentityFor(repo),
 		Tokens:       tokens,
 		Revoked:      revoke.New(nil, time.Hour),
 		Hub:          ws.NewHub(nil),

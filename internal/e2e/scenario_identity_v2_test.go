@@ -51,8 +51,8 @@ func TestCentralSessionsV2(t *testing.T) {
 	})
 
 	webOwner, webTok := open(t, w.Owner, "merchant-web")
-	deskOwner, _ := open(t, w.Owner, "merchant-desktop")
-	ownerB, _ := open(t, w.OwnerB, "merchant-web")
+	deskOwner, deskTok := open(t, w.Owner, "merchant-desktop")
+	ownerB, ownerBTok := open(t, w.OwnerB, "merchant-web")
 
 	w.Step(t, "mijoz akkaunti merchant ilovasida sessiya OCHOLMAYDI", func(t *testing.T) {
 		_, err := w.Identity.Create(ctx, identity.CreateInput{UserID: w.Customer.UserID, ClientID: "merchant-web"})
@@ -70,8 +70,10 @@ func TestCentralSessionsV2(t *testing.T) {
 			} `json:"sessions"`
 		}
 		w.Do(t, webOwner, "GET", "/v2/auth/sessions", nil).Expect(t, 200).JSON(t, &out)
-		if len(out.Sessions) != 2 {
-			t.Fatalf("2 ta sessiya kutilgan, keldi %d", len(out.Sessions))
+		// 3 = shu ssenariyning ikki sessiyasi + dunyo yaratilganda egasiga
+		// ochilgan sessiya (A5: merchant aktyorlar faqat markaziy sessiyada).
+		if len(out.Sessions) != 3 {
+			t.Fatalf("3 ta sessiya kutilgan, keldi %d", len(out.Sessions))
 		}
 		current := 0
 		for _, s := range out.Sessions {
@@ -88,7 +90,7 @@ func TestCentralSessionsV2(t *testing.T) {
 	})
 
 	w.Step(t, "eski HS256 token va tokensiz so'rov — 401", func(t *testing.T) {
-		w.Do(t, w.Owner, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
+		w.Do(t, &Actor{Name: "eski-hs256", Token: w.LegacyMerchantToken(t, w.Owner)}, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 		w.Do(t, nil, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 	})
 
@@ -109,23 +111,12 @@ func TestCentralSessionsV2(t *testing.T) {
 	})
 
 	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {
-		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
-		if len(list) != 1 {
-			t.Fatal("B egasining sessiyasi yo'q")
-		}
-		w.Do(t, webOwner, "DELETE", "/v2/auth/sessions/"+list[0].ID, nil).Expect(t, 404)
+		w.Do(t, webOwner, "DELETE", "/v2/auth/sessions/"+ownerBTok.SessionID, nil).Expect(t, 404)
 		w.Do(t, ownerB, "GET", "/v2/auth/sessions", nil).Expect(t, 200)
 	})
 
 	w.Step(t, "boshqa qurilmani yopish — uning tokeni darhol o'ladi", func(t *testing.T) {
-		list, _ := w.Identity.ListSessions(ctx, w.Owner.UserID)
-		var deskID string
-		for _, s := range list {
-			if s.ClientID == "merchant-desktop" {
-				deskID = s.ID
-			}
-		}
-		w.Do(t, webOwner, "DELETE", "/v2/auth/sessions/"+deskID, nil).Expect(t, 204)
+		w.Do(t, webOwner, "DELETE", "/v2/auth/sessions/"+deskTok.SessionID, nil).Expect(t, 204)
 		w.Do(t, deskOwner, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 	})
 

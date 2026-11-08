@@ -29,7 +29,7 @@ func alertsServer(t *testing.T) (http.Handler, *alerts.Service, map[string]strin
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +46,7 @@ func alertsServer(t *testing.T) (http.Handler, *alerts.Service, map[string]strin
 	svc := alerts.NewService(storage.NewMemoryAlertStore(), ws.NewHub(nil), NewID)
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),

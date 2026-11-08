@@ -43,7 +43,7 @@ func cityListServerAs(t *testing.T, role users.Role, addrLat, addrLng float64) (
 	if err := userRepo.Create(ctx, customer); err != nil {
 		t.Fatal(err)
 	}
-	jwt, err := tokens.Issue(customer)
+	jwt, err := testToken(t, tokens, userRepo, customer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +60,7 @@ func cityListServerAs(t *testing.T, role users.Role, addrLat, addrLng float64) (
 	)
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   storage.NewMemoryOrderRepo(),
 		CatalogRepo: catalogRepo,
 		Tokens:      tokens,

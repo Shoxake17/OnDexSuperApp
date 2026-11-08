@@ -61,6 +61,7 @@ func totalCheckServer(t *testing.T) (http.Handler, string) {
 
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
 		Tokens:      tokens,

@@ -406,7 +406,7 @@ func (s *Service) LoginWithTelegramID(ctx context.Context, telegramID int64) (st
 // shu yerda birlashadi — ikkalasi ham "raqam egaligi isbotlandi"
 // degan bir xil holatga keladi, shuning uchun mantiq BITTA joyda.
 func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *User, error) {
-	u, err := s.users.GetByPhone(ctx, phone)
+	u, err := s.legacyByPhone(ctx, phone)
 	if errors.Is(err, ErrUserNotFound) {
 		u = &User{
 			ID:            s.idgen(),
@@ -461,6 +461,32 @@ func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *
 		return "", nil, err
 	}
 	return token, u, nil
+}
+
+// legacyByPhone — eski kirish (mijoz ilovasi, admin paneli, HS256) uchun
+// shu raqamdagi akkaunt.
+//
+// A5: merchant akkaunti (restoran, do'kon, kuryer, ofitsiant) eski tokenga
+// YARAMAYDI va eski yo'l unga TEGMAYDI (tasdiqlash, parolni tozalash,
+// tiklash — hech biri). Bitta raqamda mijoz va merchant akkaunti bo'lishi
+// mumkin (0069): shu raqamda platforma yoki mijoz akkaunti bo'lsa o'sha
+// olinadi, bo'lmasa "topilmadi" — telefon kodi yo'lida yangi MIJOZ
+// akkaunti ochiladi (realmlar ajratilgan, ADR-002).
+func (s *Service) legacyByPhone(ctx context.Context, phone string) (*User, error) {
+	u, err := s.users.GetByPhone(ctx, phone)
+	if err != nil || RealmForRole(u.Role) != RealmMerchant {
+		return u, err
+	}
+	for _, r := range []Realm{RealmPlatform, RealmCustomer} {
+		v, err := s.users.GetByPhoneRealm(ctx, r, phone)
+		if err == nil {
+			return v, nil
+		}
+		if !errors.Is(err, ErrUserNotFound) {
+			return nil, err
+		}
+	}
+	return nil, ErrUserNotFound
 }
 
 // reactivateIfDeleted — akkaunt yumshoq o'chirilgan bo'lsa tiklaydi

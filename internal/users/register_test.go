@@ -132,17 +132,27 @@ func TestVerifyKeepsStaffAccountName(t *testing.T) {
 		Role: RoleRestaurant, EntityID: "r1", PhoneVerified: false,
 	}
 
+	orig := repo.data[phone]
+	orig.PasswordHash = "eski-hash"
+
 	_, code, err := s.RequestCode(ctx, phone)
 	if err != nil {
 		t.Fatalf("RequestCode: %v", err)
 	}
-	if _, _, err := s.Verify(ctx, phone, code); err != nil {
+	// A5: eski (mijoz) kirish merchant akkauntiga TEGMAYDI — shu raqamga
+	// alohida MIJOZ akkaunti ochiladi, merchant yozuvi o'zgarishsiz qoladi.
+	tok, u, err := s.Verify(ctx, phone, code)
+	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-
-	u, _ := s.users.GetByPhone(ctx, phone)
-	if u.Name != "Chust Osh Markazi" {
-		t.Fatalf("xodim akkaunti nomi buzildi: %q", u.Name)
+	if u.Role != RoleCustomer || u.ID == orig.ID {
+		t.Fatalf("eski kirish merchant akkauntini ochdi: %+v", u)
+	}
+	if c, err := s.tokens.Parse(tok); err != nil || c.Role != RoleCustomer {
+		t.Fatalf("token: %+v %v", c, err)
+	}
+	if orig.Name != "Chust Osh Markazi" || orig.PhoneVerified || orig.PasswordHash != "eski-hash" {
+		t.Fatalf("merchant akkaunti o'zgartirildi: %+v", orig)
 	}
 }
 

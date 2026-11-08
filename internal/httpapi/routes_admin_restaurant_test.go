@@ -49,6 +49,7 @@ func adminRestaurantServer(t *testing.T, userRepo users.Repository) (http.Handle
 	catalogRepo := storage.NewMemoryCatalogRepo(nil, nil)
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),

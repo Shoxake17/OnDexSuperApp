@@ -48,6 +48,7 @@ func cityOrderServer(t *testing.T, restLat, restLng, addrLat, addrLng float64) (
 	orderRepo := storage.NewMemoryOrderRepo()
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
 		Tokens:      tokens,

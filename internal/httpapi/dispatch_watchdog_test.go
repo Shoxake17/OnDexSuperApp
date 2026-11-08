@@ -74,7 +74,7 @@ func newWatchFixture(t *testing.T, withDispatcher bool) *watchFixture {
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,6 +88,7 @@ func newWatchFixture(t *testing.T, withDispatcher bool) *watchFixture {
 	courierRepo := storage.NewMemoryCourierRepo()
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   repo,
 		OrderSvc:    svc,
 		CourierRepo: courierRepo,

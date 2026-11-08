@@ -45,7 +45,7 @@ func staffServer(t *testing.T) staffFixture {
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,6 +77,7 @@ func staffServer(t *testing.T) staffFixture {
 	orderSvc.WithDelivery(NewDeliveryPricer(staffRepo))
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),

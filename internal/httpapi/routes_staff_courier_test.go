@@ -42,7 +42,7 @@ func staffCourier(t *testing.T, f staffFixture, phone string) (staffMemberView, 
 	if err != nil {
 		t.Fatalf("kuryer yozuvi yaratilmadi: %v", err)
 	}
-	tok, err := f.tokens.Issue(u)
+	tok, err := testToken(t, f.tokens, f.users, u)
 	if err != nil {
 		t.Fatal(err)
 	}

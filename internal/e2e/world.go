@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"chustapp/internal/alerts"
 	"chustapp/internal/catalog"
 	"chustapp/internal/couriers"
@@ -341,33 +343,8 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	dispatcher := couriers.NewDispatcher(w.Couriers, &offerLog{w: w, next: notifier}, noGoogle{}, offerTTL)
 
-	mk := func(name, id string, role users.Role, entity, phone string, addr users.AddressDetails) *Actor {
-		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entity,
-			PhoneVerified: true, CreatedAt: time.Now(), Address: addr}
-		if err := w.Users.Create(ctx, u); err != nil {
-			t.Fatal(err)
-		}
-		tok, err := w.Tokens.Issue(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return &Actor{Name: name, Token: tok, UserID: id, Phone: phone, Entity: entity}
-	}
-	home := users.AddressDetails{Lat: ChustLat + 0.002, Lng: ChustLng + 0.002, Text: "Chust, Navoiy ko'chasi 5"}
-	w.Admin = mk("admin", "e2e-admin", users.RoleAdmin, "", "+998900000001", users.AddressDetails{})
-	w.Customer = mk("mijoz", "e2e-cust", users.RoleCustomer, "", "+998900000002", home)
-	w.Other = mk("begona-mijoz", "e2e-cust-2", users.RoleCustomer, "", "+998900000003", home)
-	w.Owner = mk("restoran-A", "e2e-owner-a", users.RoleRestaurant, RestA, "+998900000004", users.AddressDetails{})
-	w.OwnerB = mk("restoran-B", "e2e-owner-b", users.RoleRestaurant, RestB, "+998900000005", users.AddressDetails{})
-
-	ssoSvc, ssoErr := sso.New([]sso.Client{{
-		ID: SSOClientID, Name: "OnDex Merchant Panel", Secret: SSOClientSecret,
-		RedirectURIs: []string{SSORedirectURI},
-	}}, w.Users)
-	if ssoErr != nil {
-		t.Fatalf("SSO sozlamasi: %v", ssoErr)
-	}
-
+	// Markaziy sessiya xizmati aktyorlardan OLDIN: A5 dan keyin merchant
+	// aktyorlar (restoran, kuryer, ofitsiant) faqat shu xizmat tokenini oladi.
 	idKey, err := identity.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
@@ -388,6 +365,33 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		identity.NopAuditor{}, httpapi.NewID, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	mk := func(name, id string, role users.Role, entity, phone string, addr users.AddressDetails) *Actor {
+		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entity,
+			PhoneVerified: true, CreatedAt: time.Now(), Address: addr}
+		if err := w.Users.Create(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+		tok, err := w.tokenFor(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &Actor{Name: name, Token: tok, UserID: id, Phone: phone, Entity: entity}
+	}
+	home := users.AddressDetails{Lat: ChustLat + 0.002, Lng: ChustLng + 0.002, Text: "Chust, Navoiy ko'chasi 5"}
+	w.Admin = mk("admin", "e2e-admin", users.RoleAdmin, "", "+998900000001", users.AddressDetails{})
+	w.Customer = mk("mijoz", "e2e-cust", users.RoleCustomer, "", "+998900000002", home)
+	w.Other = mk("begona-mijoz", "e2e-cust-2", users.RoleCustomer, "", "+998900000003", home)
+	w.Owner = mk("restoran-A", "e2e-owner-a", users.RoleRestaurant, RestA, "+998900000004", users.AddressDetails{})
+	w.OwnerB = mk("restoran-B", "e2e-owner-b", users.RoleRestaurant, RestB, "+998900000005", users.AddressDetails{})
+
+	ssoSvc, ssoErr := sso.New([]sso.Client{{
+		ID: SSOClientID, Name: "OnDex Merchant Panel", Secret: SSOClientSecret,
+		RedirectURIs: []string{SSORedirectURI},
+	}}, w.Users)
+	if ssoErr != nil {
+		t.Fatalf("SSO sozlamasi: %v", ssoErr)
 	}
 
 	authzStore := authz.NewMemStore()
@@ -687,9 +691,51 @@ func (w *World) LoginAs(t *testing.T, name, phone string) *Actor {
 	if err != nil {
 		t.Fatalf("%s akkaunti topilmadi (%s): %v", name, phone, err)
 	}
-	tok, err := w.Tokens.Issue(u)
+	tok, err := w.tokenFor(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &Actor{Name: name, Token: tok, UserID: u.ID, Phone: phone, Entity: u.EntityID}
+}
+
+// LegacyMerchantToken — A5 dan OLDIN berilgandek, imzosi to'g'ri eski HS256
+// merchant tokeni (server endi bunday tokenni yasamaydi). Faqat "eski token
+// o'ladi" tekshiruvlari uchun.
+func (w *World) LegacyMerchantToken(t *testing.T, a *Actor) string {
+	t.Helper()
+	u, err := w.Users.GetByID(context.Background(), a.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, users.Claims{Role: u.Role, EntityID: u.EntityID,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID, IssuedAt: jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+	}).SignedString([]byte("e2e-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok
+}
+
+// tokenFor — production'dagi kabi: merchant realmi (restoran, do'kon,
+// kuryer, ofitsiant) -> markaziy sessiya (rolga mos ilova klienti); mijoz va
+// admin -> eski HS256 (A5; admin A6 da markaziyga o'tadi).
+func (w *World) tokenFor(u *users.User) (string, error) {
+	if users.RealmForRole(u.Role) != users.RealmMerchant {
+		return w.Tokens.Issue(u)
+	}
+	client := "merchant-desktop"
+	switch u.Role {
+	case users.RoleCourier:
+		client = "ondex-go"
+	case users.RoleWaiter:
+		client = "ondex-pro"
+	}
+	tok, err := w.Identity.Create(context.Background(), identity.CreateInput{
+		UserID: u.ID, ClientID: client, AMR: []string{"otp"},
+	})
+	if err != nil {
+		return "", err
+	}
+	return tok.AccessToken, nil
 }

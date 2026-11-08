@@ -151,7 +151,7 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 	}
 	jwt := map[users.Role]string{}
 	for role, u := range made {
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,6 +167,7 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 
 	deps := Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		OrderRepo:      orderRepo,
 		CourierRepo:    courierRepo,
 		CatalogRepo:    storage.NewMemoryCatalogRepo(nil, nil),

@@ -162,6 +162,7 @@ func paymentsServer(t *testing.T, statusFails bool) *payFixture {
 
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
 		Tokens:      tokens,

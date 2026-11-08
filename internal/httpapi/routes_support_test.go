@@ -26,7 +26,7 @@ func supportServer(t *testing.T) (http.Handler, *support.Service, map[string]str
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +46,7 @@ func supportServer(t *testing.T) (http.Handler, *support.Service, map[string]str
 	svc := support.NewService(storage.NewMemorySupportStore(), hub, NewID)
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),

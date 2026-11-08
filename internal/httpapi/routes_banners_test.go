@@ -66,6 +66,7 @@ func bannerServer(t *testing.T, addrLat, addrLng float64) (http.Handler, string)
 
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		CatalogRepo: catalogRepo,
 		BannerRepo:  bannerRepo,
 		Tokens:      tokens,

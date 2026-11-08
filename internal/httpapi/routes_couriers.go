@@ -64,13 +64,10 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			u.Role = users.RoleCourier
-			u.EntityID = c.ID
-			newToken, err := s.Tokens.Issue(u)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
+			// A5: kuryer merchant realmida — eski HS256 token BERILMAYDI.
+			// Mijoz ilovasidagi (endi kuryerga aylangan) eski token ham
+			// yopiladi: kuryer OnDexGO'ga markaziy kirish orqali kiradi.
+			s.Revoked.Revoke(r.Context(), u.ID)
 			// Superadmin paneliga jonli xabar: ariza TASDIQ KUTMOQDA.
 			//
 			// Bu yerda kutish narxi yuqori — kuryer tasdiqlanmaguncha
@@ -81,9 +78,9 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				"courier_id": c.ID,
 			})
 			writeJSON(w, http.StatusCreated, map[string]any{
-				"courier": c,
-				"token":   newToken,
-				"message": "Ariza qabul qilindi. Admin tasdiqlagach ishlay boshlaysiz.",
+				"courier":          c,
+				"relogin_required": true,
+				"message":          "Ariza qabul qilindi. OnDexGO ilovasiga shu raqam bilan kiring — admin tasdiqlagach ishlay boshlaysiz.",
 			})
 		}))
 

@@ -62,6 +62,7 @@ func dineInServer(t *testing.T) (http.Handler, *tables.Service, string) {
 
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
 		Tokens:      tokens,

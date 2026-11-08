@@ -79,15 +79,14 @@ func TestTestLoginOpensStaffAccounts(t *testing.T) {
 			if got := sms.calls.Load(); got != 0 {
 				t.Errorf("test raqamiga SMS yuborilmasligi kerak, chaqiruvlar: %d", got)
 			}
-			token, u, err := s.Verify(ctx, phone, TestLoginCode)
-			if err != nil {
-				t.Fatalf("Verify: %v", err)
-			}
-			if token == "" || u.Role != c.role {
-				t.Fatalf("token=%q rol=%q, kutilgan rol %q", token, u.Role, c.role)
+			// A5: OnDexGO/OnDexPro merchant oqimidan kiradi (`VerifyPhoneCode`
+			// -> markaziy sessiya); eski HS256 yo'li xodimga token bermaydi.
+			got, err := s.VerifyPhoneCode(ctx, phone, TestLoginCode)
+			if err != nil || got != phone {
+				t.Fatalf("VerifyPhoneCode: %q %v", got, err)
 			}
 			// Bir martalik: o'sha kod ikkinchi marta o'tmaydi.
-			if _, _, err := s.Verify(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
+			if _, err := s.VerifyPhoneCode(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
 				t.Fatalf("kod qayta ishlatildi: %v", err)
 			}
 		})
@@ -147,11 +146,11 @@ func TestTestLoginNeverOpensPrivilegedOrCustomerAccounts(t *testing.T) {
 				if code == TestLoginCode {
 					t.Fatal("imtiyozli/mijoz akkauntiga sobit kod berildi")
 				}
-				if _, _, err := s.Verify(ctx, p, TestLoginCode); err == nil {
+				if _, err := s.VerifyPhoneCode(ctx, p, TestLoginCode); err == nil {
 					t.Fatal("sobit kod imtiyozli/mijoz akkauntini ochdi")
 				}
 				// Haqiqiy egasi esa o'z kodini (Telegram'dan) kiritib kira oladi.
-				if _, _, err := s.Verify(ctx, p, code); err != nil {
+				if _, err := s.VerifyPhoneCode(ctx, p, code); err != nil {
 					t.Fatalf("haqiqiy kod ishlashi kerak edi: %v", err)
 				}
 			})

@@ -95,7 +95,7 @@ func pushTestServer(t *testing.T, store *recordingTokenStore) (
 		if err := userRepo.Create(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}
-		jwt, err := tokens.Issue(u)
+		jwt, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,6 +104,7 @@ func pushTestServer(t *testing.T, store *recordingTokenStore) (
 
 	deps := Deps{
 		UserRepo:      userRepo,
+		Identity:      testIdentityFor(userRepo),
 		Tokens:        tokens,
 		Notifications: storage.NewMemoryNotificationStore(),
 		DevMode:       true,
@@ -295,7 +296,7 @@ func TestNotificationsAreScopedToUser(t *testing.T) {
 		if err := userRepo.Create(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}
-		jwts[id], _ = tokens.Issue(u)
+		jwts[id], _ = testToken(t, tokens, userRepo, u)
 	}
 	h := New(Deps{UserRepo: userRepo, Tokens: tokens,
 		Notifications: store, DevMode: true}).Routes(nil)

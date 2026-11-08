@@ -23,7 +23,7 @@ func TestMeOrdersIncludesOrderNumber(t *testing.T) {
 	if err := userRepo.Create(ctx, u); err != nil {
 		t.Fatal(err)
 	}
-	tok, err := tokens.Issue(u)
+	tok, err := testToken(t, tokens, userRepo, u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,7 @@ func TestMeOrdersIncludesOrderNumber(t *testing.T) {
 
 	h := New(Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		OrderSvc:    svc,
 		CatalogRepo: storage.NewMemoryCatalogRepo(nil, nil),

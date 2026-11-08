@@ -84,6 +84,7 @@ func adminServer(t *testing.T) *adminFixture {
 
 	deps := Deps{
 		UserRepo:    userRepo,
+		Identity:    testIdentityFor(userRepo),
 		OrderRepo:   orderRepo,
 		CourierRepo: courierRepo,
 		CatalogRepo: storage.NewMemoryCatalogRepo(nil, nil),

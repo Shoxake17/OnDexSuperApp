@@ -36,7 +36,7 @@ func statsServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, map[stri
 		if err := userRepo.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := tokens.Issue(u)
+		tok, err := testToken(t, tokens, userRepo, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,6 +57,7 @@ func statsServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, map[stri
 
 	h := New(Deps{
 		UserRepo:       userRepo,
+		Identity:       testIdentityFor(userRepo),
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      orderRepo,

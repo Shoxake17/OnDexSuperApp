@@ -166,6 +166,8 @@ func TestMerchantDirectoryV2(t *testing.T) {
 		other := signup(t, "+998900000053", "Begona Cafe")
 		w.Do(t, other, "GET", "/v2/merchant/businesses/"+bizID+"/staff", nil).Expect(t, 404)
 		w.Do(t, other, "POST", "/v2/merchant/businesses/"+bizID+"/staff/"+staffMID+"/dismiss", nil).Expect(t, 404)
-		w.Do(t, w.Owner, "GET", "/v2/merchant/me", nil).Expect(t, 401)
+		// Imzosi TO'G'RI eski HS256 token (A5 dan oldin berilgandek).
+		w.Do(t, &Actor{Name: "eski-hs256", Token: w.LegacyMerchantToken(t, w.Owner)},
+			"GET", "/v2/merchant/me", nil).Expect(t, 401)
 	})
 }
