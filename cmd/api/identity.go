@@ -91,6 +91,11 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 		slog.Error("markaziy sessiya O'CHIQ", "err", err)
 		return nil
 	}
+	// A6: admin (platform) tokenlari ALOHIDA kalit bilan. Yo'q bo'lsa admin
+	// markaziy kirishi o'chiq (eski admin kirishi o'zgarmaydi).
+	if ps := loadPlatformKeys(devMode); ps != nil {
+		issuer.WithPlatformKeys(ps)
+	}
 
 	var store identity.Store
 	var audit identity.Auditor
@@ -187,6 +192,55 @@ func wireInviteAlerts(m *identity.MerchantAuth, tg *telegram.Client, ur users.Re
 			slog.Warn("taklif xabari yuborilmadi", "user", inv.UserID, "err", err)
 		}
 	})
+}
+
+// loadPlatformKeys — `AUTH_PLATFORM_KEY_FILE` (Ed25519 PKCS#8 PEM, `go run
+// ./cmd/authkey`, ASOSIY kalitdan BOSHQA fayl) va rotatsiya uchun
+// `AUTH_PLATFORM_PREVIOUS_KEY_FILES`. Dev'da yo'q bo'lsa vaqtinchalik kalit.
+func loadPlatformKeys(devMode bool) *identity.KeySet {
+	var active *identity.SigningKey
+	if path := strings.TrimSpace(os.Getenv("AUTH_PLATFORM_KEY_FILE")); path != "" {
+		k, err := identity.LoadPrivateKeyFile(path)
+		if err != nil {
+			slog.Error("admin markaziy kirishi O'CHIQ: platform kalitini o'qib bo'lmadi", "err", err)
+			return nil
+		}
+		active = k
+	} else if devMode {
+		k, err := identity.GenerateKey()
+		if err != nil {
+			return nil
+		}
+		active = k
+		slog.Warn("admin markaziy kirishi: AUTH_PLATFORM_KEY_FILE yo'q — DEV uchun VAQTINCHALIK kalit")
+	} else {
+		slog.Warn("admin markaziy kirishi O'CHIQ (AUTH_PLATFORM_KEY_FILE yo'q)")
+		return nil
+	}
+	if main := strings.TrimSpace(os.Getenv("AUTH_SIGNING_KEY_FILE")); main != "" {
+		if mk, err := identity.LoadPrivateKeyFile(main); err == nil && mk.KID == active.KID {
+			slog.Error("admin markaziy kirishi O'CHIQ: platform kaliti asosiy kalit bilan BIR XIL — alohida kalit yarating")
+			return nil
+		}
+	}
+	var previous []*identity.SigningKey
+	for _, p := range strings.Split(os.Getenv("AUTH_PLATFORM_PREVIOUS_KEY_FILES"), ",") {
+		if p = strings.TrimSpace(p); p == "" {
+			continue
+		}
+		if k, err := identity.LoadPrivateKeyFile(p); err == nil {
+			previous = append(previous, k)
+		} else {
+			slog.Error("eski platform kalitini o'qib bo'lmadi", "file", p, "err", err)
+		}
+	}
+	ks, err := identity.NewKeySet(active, previous...)
+	if err != nil {
+		slog.Error("admin markaziy kirishi O'CHIQ", "err", err)
+		return nil
+	}
+	slog.Info("rejim: admin (platform) kaliti yoqilgan", "kid", active.KID)
+	return ks
 }
 
 // buildAuthz — merchant ruxsatlari (A3, `internal/identity/authz`). Rol

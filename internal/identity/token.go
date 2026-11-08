@@ -47,6 +47,28 @@ type Issuer struct {
 	issuer   string
 	audience string
 	now      func() time.Time
+	// platform — admin (platform realmi) tokenlari uchun ALOHIDA kalitlar
+	// (A6). Merchant/mijoz kaliti sizib chiqsa ham admin tokeni yasab
+	// bo'lmaydi va aksincha. Berilmasa platform tokeni CHIQARILMAYDI.
+	platform *KeySet
+}
+
+// ErrPlatformKeyMissing — platform (admin) kaliti sozlanmagan.
+var ErrPlatformKeyMissing = errors.New("identity: admin (platform) imzolash kaliti sozlanmagan")
+
+// WithPlatformKeys — admin tokenlari uchun alohida kalitlar (A6).
+func (i *Issuer) WithPlatformKeys(ks *KeySet) *Issuer {
+	i.platform = ks
+	return i
+}
+
+// keysFor — realm uchun kalitlar: platform -> faqat platform kalitlari,
+// qolganlar -> faqat asosiy kalitlar. Ikki to'plam ARALASHMAYDI.
+func (i *Issuer) keysFor(realm users.Realm) *KeySet {
+	if realm == users.RealmPlatform {
+		return i.platform
+	}
+	return i.keys
 }
 
 // NewIssuer — `issuer` (masalan "https://api.ondex.uz") va `audience`
@@ -91,9 +113,13 @@ func (i *Issuer) issue(s *Session, notAfter time.Time) (string, time.Time, error
 			ID:        newJTI(),
 		},
 	}
+	ks := i.keysFor(s.Realm)
+	if ks == nil {
+		return "", time.Time{}, ErrPlatformKeyMissing
+	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	tok.Header["kid"] = i.keys.active.KID
-	signed, err := tok.SignedString(i.keys.active.Private)
+	tok.Header["kid"] = ks.active.KID
+	signed, err := tok.SignedString(ks.active.Private)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -126,7 +152,17 @@ func (i *Issuer) Verify(raw string, realms ...users.Realm) (*AccessClaims, error
 		if kid == "" {
 			return nil, errors.New("kid yo'q")
 		}
-		pub, ok := i.keys.PublicKey(kid)
+		// Kalit to'plami TOKENDAGI realmga qarab: admin tokeni faqat platform
+		// kaliti bilan, boshqasi faqat asosiy kalit bilan o'tadi.
+		c, _ := t.Claims.(*AccessClaims)
+		if c == nil {
+			return nil, errors.New("claims yo'q")
+		}
+		ks := i.keysFor(c.Realm)
+		if ks == nil {
+			return nil, ErrPlatformKeyMissing
+		}
+		pub, ok := ks.PublicKey(kid)
 		if !ok {
 			return nil, fmt.Errorf("noma'lum kid %q", kid)
 		}

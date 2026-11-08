@@ -376,6 +376,13 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A6: admin tokenlari alohida kalit bilan (production'dagi kabi).
+	platKey, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	platKeys, _ := identity.NewKeySet(platKey)
+	idIssuer.WithPlatformKeys(platKeys)
 	w.Identity, err = identity.NewService(identity.NewMemoryStore(), idIssuer, w.Users,
 		identity.NopAuditor{}, httpapi.NewID, nil)
 	if err != nil {

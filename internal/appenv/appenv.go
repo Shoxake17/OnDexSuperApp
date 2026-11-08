@@ -85,6 +85,8 @@ var Registry = []Var{
 	// va DeployRequired bo'ladi.
 	{Name: "AUTH_SIGNING_KEY_FILE", Effect: "markaziy sessiya O'CHIQ: /v2/auth/* va JWKS 503 (yangi kirish ishlamaydi)"},
 	{Name: "AUTH_PREVIOUS_KEY_FILES", Effect: "kalit rotatsiyasidan keyin eski kalit bilan imzolangan tokenlar darhol rad etiladi"},
+	{Name: "AUTH_PLATFORM_KEY_FILE", Effect: "admin markaziy kirishi (A6) O'CHIQ: admin faqat eski kirish bilan", DeployRequired: true},
+	{Name: "AUTH_PLATFORM_PREVIOUS_KEY_FILES", Effect: "platform kaliti rotatsiyasidan keyin eski admin tokenlari darhol rad etiladi"},
 	{Name: "AUTH_ISSUER", Effect: "token `iss` qiymati PUBLIC_API_URL dan olinadi"},
 	// Faqat DEV: `ondex run` API logini faylga ham yozadi (o'lchov/tahlil).
 	// Prod'da Docker loglari stdout'dan olinadi — compose'ga qo'shilmaydi.

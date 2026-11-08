@@ -135,6 +135,29 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		writeOutcome(w, out)
 	})
 
+	// Admin (platform realmi, A6): kod -> parol -> TOTP (har kirishda).
+	// Keyingi bosqichlar umumiy /v2/auth/mfa/* orqali (mfa_token ichida
+	// klient = admin-web, realm akkauntdan).
+	mux.HandleFunc("POST /v2/auth/admin/otp/verify", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, verifyIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			Phone      string `json:"phone"`
+			Code       string `json:"code"`
+			DeviceName string `json:"device_name"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		out, err := s.MerchantAuth.AdminLoginCode(r.Context(), req.Phone, req.Code, merchantMeta(r, req.DeviceName))
+		if err != nil {
+			respondMerchantAuthError(w, err)
+			return
+		}
+		writeOutcome(w, out)
+	})
+
 	// Ikkinchi bosqich endpointlari: IP bo'yicha cheklov + akkaunt bo'yicha
 	// cheklov (`MerchantAuth` ichida, mfa_token egasi bo'yicha).
 	type mfaReq struct {

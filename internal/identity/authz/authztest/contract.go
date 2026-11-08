@@ -40,6 +40,39 @@ func RunStoreContract(t *testing.T, newEnv func(t *testing.T) *Env) {
 	t.Run("a'zolikni yangilash", c.update)
 	t.Run("Grants: egalik xodimlikdan ustun, takrorsiz", c.grants)
 	t.Run("taklif: faqat muddati o'tmagani faollashadi, qayta taklif yangilaydi", c.invites)
+	t.Run("KYC: navbat, tasdiq kim/qachon, rad sababi", c.kyc)
+}
+
+func (c *contract) kyc(t *testing.T) {
+	e := c.seed(t)
+	s := e.Store
+	pending, err := s.ListOrganizations(c.ctx, authz.OrgPending, 50)
+	must(t, err)
+	ids := []string{}
+	for _, o := range pending {
+		ids = append(ids, o.ID)
+	}
+	if !slices.Contains(ids, "ctz_org") || !slices.Contains(ids, "ctz_org2") {
+		t.Fatalf("KYC navbati: %v", ids)
+	}
+	// e.Other — tasdiqlovchi sifatida (users jadvalida mavjud akkaunt).
+	must(t, s.UpdateOrganizationStatus(c.ctx, "ctz_org", authz.OrgActive, "", e.Other))
+	o, err := s.GetOrganization(c.ctx, "ctz_org")
+	must(t, err)
+	if o.Status != authz.OrgActive || o.VerifiedBy != e.Other || o.VerifiedAt == nil {
+		t.Fatalf("tasdiq yozilmadi: %+v", o)
+	}
+	must(t, s.UpdateOrganizationStatus(c.ctx, "ctz_org2", authz.OrgRejected, "STIR mos emas", e.Other))
+	o, _ = s.GetOrganization(c.ctx, "ctz_org2")
+	if o.Status != authz.OrgRejected || o.StatusReason != "STIR mos emas" || o.VerifiedAt != nil {
+		t.Fatalf("rad: %+v", o)
+	}
+	if err := s.UpdateOrganizationStatus(c.ctx, "ctz_yoq", authz.OrgActive, "", e.Other); !errors.Is(err, authz.ErrNotFound) {
+		t.Fatalf("yo'q tashkilot: %v", err)
+	}
+	if err := s.UpdateOrganizationStatus(c.ctx, "ctz_org", "boshqa", "", e.Other); err == nil {
+		t.Fatal("noma'lum holat qabul qilindi")
+	}
 }
 
 func (c *contract) invites(t *testing.T) {

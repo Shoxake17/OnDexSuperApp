@@ -37,6 +37,7 @@ type fixture struct {
 	users  *storage.MemoryUserRepo
 	store  *identity.MemoryStore
 	key    *identity.SigningKey
+	pkey   *identity.SigningKey // admin (platform) kaliti — A6
 	clk    *clock
 	ctx    context.Context
 	idSeq  int
@@ -54,7 +55,13 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{users: storage.NewMemoryUserRepo(), store: identity.NewMemoryStore(), key: key,
+	pkey, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pks, _ := identity.NewKeySet(pkey)
+	issuer.WithPlatformKeys(pks)
+	f := &fixture{users: storage.NewMemoryUserRepo(), store: identity.NewMemoryStore(), key: key, pkey: pkey,
 		clk: &clock{t: time.Now().UTC().Truncate(time.Second)}, ctx: context.Background()}
 	f.svc, err = identity.NewService(f.store, issuer, f.users, identity.NopAuditor{}, f.nextID, nil)
 	if err != nil {

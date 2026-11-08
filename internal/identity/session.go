@@ -290,6 +290,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 		return nil, ErrRealmMismatch
 	}
 
+	if realm == users.RealmPlatform && s.issuer.platform == nil {
+		return nil, ErrPlatformKeyMissing // sessiya yozuvi yetim qolmasin
+	}
 	refresh, hash, err := newRefresh()
 	if err != nil {
 		return nil, err
@@ -311,7 +314,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 	// Yangi qurilma: faqat merchant realmi, faqat to'g'ridan-to'g'ri kirish
 	// (OIDC bola sessiyasi — ota SSO sessiyasi allaqachon xabar bergan).
 	newDevice := false
-	if s.newDeviceHook != nil && realm == users.RealmMerchant && in.ParentID == "" {
+	if s.newDeviceHook != nil && (realm == users.RealmMerchant || realm == users.RealmPlatform) && in.ParentID == "" {
 		newDevice = true
 		if list, lerr := s.store.ListActive(ctx, u.ID, now); lerr == nil {
 			for _, x := range list {

@@ -66,14 +66,59 @@ func (r *PgAuthzStore) CreateOrganization(ctx context.Context, o *authz.Organiza
 	return authzErr(err)
 }
 
-func (r *PgAuthzStore) GetOrganization(ctx context.Context, id string) (*authz.Organization, error) {
+const orgColumns = `id, name, legal_form, tin, status, owner_user_id, created_at, status_reason, verified_at, COALESCE(verified_by, '')`
+
+func scanOrg(row pgx.Row) (*authz.Organization, error) {
 	var o authz.Organization
-	err := r.pool.QueryRow(ctx, `SELECT id, name, legal_form, tin, status, owner_user_id, created_at
-		FROM organizations WHERE id = $1`, id).Scan(&o.ID, &o.Name, &o.LegalForm, &o.TIN, &o.Status, &o.OwnerUserID, &o.CreatedAt)
+	err := row.Scan(&o.ID, &o.Name, &o.LegalForm, &o.TIN, &o.Status, &o.OwnerUserID, &o.CreatedAt,
+		&o.StatusReason, &o.VerifiedAt, &o.VerifiedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, authz.ErrNotFound
 	}
 	return &o, err
+}
+
+func (r *PgAuthzStore) GetOrganization(ctx context.Context, id string) (*authz.Organization, error) {
+	return scanOrg(r.pool.QueryRow(ctx, `SELECT `+orgColumns+` FROM organizations WHERE id = $1`, id))
+}
+
+// ListOrganizations — admin KYC navbati (A6).
+func (r *PgAuthzStore) ListOrganizations(ctx context.Context, status string, limit int) ([]*authz.Organization, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := r.pool.Query(ctx, `SELECT `+orgColumns+` FROM organizations
+		WHERE ($1 = '' OR status = $1) ORDER BY created_at DESC LIMIT $2`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*authz.Organization{}
+	for rows.Next() {
+		o, err := scanOrg(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// UpdateOrganizationStatus — KYC qarori. `active` — kim va qachon tasdiqlagani
+// yoziladi (jadval CHECK'i ham shuni talab qiladi).
+func (r *PgAuthzStore) UpdateOrganizationStatus(ctx context.Context, id, status, reason, by string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE organizations SET status = $2, status_reason = $3,
+		verified_at = CASE WHEN $2 = 'active' THEN now() ELSE verified_at END,
+		verified_by = CASE WHEN $2 = 'active' THEN NULLIF($4, '') ELSE verified_by END,
+		updated_at = now()
+		WHERE id = $1`, id, status, reason, by)
+	if err != nil {
+		return authzErr(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return authz.ErrNotFound
+	}
+	return nil
 }
 
 func (r *PgAuthzStore) CreateBusiness(ctx context.Context, b *authz.Business) error {

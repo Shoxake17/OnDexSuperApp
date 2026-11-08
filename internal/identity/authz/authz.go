@@ -45,13 +45,16 @@ const (
 )
 
 type Organization struct {
-	ID          string
-	Name        string
-	LegalForm   string // "" | llc | sole | other
-	TIN         string // STIR, 9 raqam yoki ""
-	Status      string
-	OwnerUserID string
-	CreatedAt   time.Time
+	ID           string
+	Name         string
+	LegalForm    string // "" | llc | sole | other
+	TIN          string // STIR, 9 raqam yoki ""
+	Status       string
+	OwnerUserID  string
+	CreatedAt    time.Time
+	StatusReason string     // rad/to'xtatish sababi (egasiga ko'rsatiladi)
+	VerifiedAt   *time.Time // KYC tasdiqlangan vaqt (A6)
+	VerifiedBy   string     // tasdiqlagan admin
 }
 
 type Business struct {
@@ -117,6 +120,10 @@ type Store interface {
 
 	CreateOrganization(ctx context.Context, o *Organization) error
 	GetOrganization(ctx context.Context, id string) (*Organization, error)
+	// ListOrganizations — admin KYC navbati (status "" — hammasi), yangilari oldin.
+	ListOrganizations(ctx context.Context, status string, limit int) ([]*Organization, error)
+	// UpdateOrganizationStatus — KYC qarori (A6): active -> verified_at/by.
+	UpdateOrganizationStatus(ctx context.Context, id, status, reason, byUserID string) error
 	CreateBusiness(ctx context.Context, b *Business) error
 	GetBusiness(ctx context.Context, id string) (*Business, error)
 

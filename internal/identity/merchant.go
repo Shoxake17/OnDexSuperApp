@@ -342,7 +342,9 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 		}
 		add = "otp"
 	} else {
-		pu, err := m.d.Users.AuthenticatePasswordRealm(ctx, users.RealmMerchant, u.Phone, secret)
+		// Akkauntning O'Z realmi (merchant yoki admin — A6): boshqa realmdagi
+		// shu raqamli akkaunt paroli o'tmasin.
+		pu, err := m.d.Users.AuthenticatePasswordRealm(ctx, users.RealmForRole(u.Role), u.Phone, secret)
 		if err != nil || pu.ID != u.ID {
 			m.mfaFailed(ctx, c, meta)
 			return nil, users.ErrInvalidCredentials

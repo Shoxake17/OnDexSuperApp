@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/golang-jwt/jwt/v5"
 
@@ -39,12 +40,17 @@ func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, er
 	if s.Identity == nil || !isEdDSA(raw) {
 		return nil, err
 	}
-	c, aerr := s.Identity.Authenticate(ctx, raw, users.RealmMerchant)
+	c, aerr := s.Identity.Authenticate(ctx, raw, users.RealmMerchant, users.RealmPlatform)
 	if aerr != nil {
 		return nil, errSessionGone
 	}
+	// A6: admin tokeni faqat TOTP (yoki tiklash kodi) bilan ochilgan
+	// sessiyadan — ikkinchi omilsiz admin sessiyasi hech qachon o'tmaydi.
+	if c.Realm == users.RealmPlatform && !slices.Contains(c.AMR, "totp") && !slices.Contains(c.AMR, "recovery") {
+		return nil, errSessionGone
+	}
 	u, uerr := s.UserRepo.GetByID(ctx, c.Subject)
-	if uerr != nil || u.IsDeleted() || users.RealmForRole(u.Role) != users.RealmMerchant {
+	if uerr != nil || u.IsDeleted() || users.RealmForRole(u.Role) != c.Realm {
 		return nil, errSessionGone
 	}
 	return &users.Claims{Role: u.Role, EntityID: u.EntityID, RegisteredClaims: jwt.RegisteredClaims{

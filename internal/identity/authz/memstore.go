@@ -82,6 +82,41 @@ func (s *MemStore) GetOrganization(_ context.Context, id string) (*Organization,
 	return &c, nil
 }
 
+func (s *MemStore) ListOrganizations(_ context.Context, status string, limit int) ([]*Organization, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []*Organization{}
+	for _, o := range s.orgs {
+		if status == "" || o.Status == status {
+			c := *o
+			out = append(out, &c)
+		}
+	}
+	slices.SortFunc(out, func(a, b *Organization) int { return b.CreatedAt.Compare(a.CreatedAt) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *MemStore) UpdateOrganizationStatus(_ context.Context, id, status, reason, by string) error {
+	if !slices.Contains([]string{OrgPending, OrgActive, OrgSuspended, OrgRejected}, status) {
+		return ErrInvalid
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, ok := s.orgs[id]
+	if !ok {
+		return ErrNotFound
+	}
+	o.Status, o.StatusReason = status, reason
+	if status == OrgActive {
+		now := time.Now()
+		o.VerifiedAt, o.VerifiedBy = &now, by
+	}
+	return nil
+}
+
 // SetOrganizationStatus — faqat xotira rejimi/testlar (platform tasdiqlashi A6 da).
 func (s *MemStore) SetOrganizationStatus(id, status string) {
 	s.mu.Lock()
