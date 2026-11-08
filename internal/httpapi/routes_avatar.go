@@ -78,6 +78,23 @@ func (s *Server) registerAvatarRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusInternalServerError, errors.New("rasm saqlashda xato"))
 			return
 		}
+		// Disk ombori nisbiy yo'l (`/uploads/...`) qaytaradi: rasm BOSHQA
+		// domendagi ilovalarda (ShoxPos) ochilishi uchun to'liq manzil kerak.
+		// R2 allaqachon to'liq manzil beradi.
+		if strings.HasPrefix(url, "/") {
+			base := ""
+			if s.OIDC != nil {
+				base = s.OIDC.IssuerURL()
+			}
+			if base == "" {
+				scheme := "https"
+				if h := strings.Split(r.Host, ":")[0]; h == "localhost" || h == "127.0.0.1" {
+					scheme = "http"
+				}
+				base = scheme + "://" + r.Host
+			}
+			url = strings.TrimRight(base, "/") + url
+		}
 		if err := s.Avatars.Set(r.Context(), c.Subject, url); err != nil {
 			httpError(w, http.StatusInternalServerError, err)
 			return
