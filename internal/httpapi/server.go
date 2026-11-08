@@ -213,6 +213,9 @@ type Deps struct {
 	// bo'lsa bu marshrutlar 503 (klient sozlanmagan).
 	OIDC *identity.Provider
 
+	// Avatars — akkaunt rasmi (0073). `nil` bo'lsa /v2/me/avatar 503.
+	Avatars AvatarStore
+
 	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
 	// 503 qaytaradi, qolgan API o'zgarishsiz ishlaydi.
@@ -442,6 +445,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAuthV2Routes(mux)
 	s.registerMerchantAuthRoutes(mux)
 	s.registerOIDCRoutes(mux)
+	s.registerAvatarRoutes(mux)
 	s.registerMerchantRoutes(mux)
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)

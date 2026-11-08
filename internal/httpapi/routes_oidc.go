@@ -336,6 +336,11 @@ func (s *Server) oidcUserinfo(r *http.Request, c *identity.AccessClaims) (map[st
 	// akkauntdan quriladi — eski `internal/sso` sozlanganiga BOG'LIQ EMAS
 	// (2026-11-08 ikki serverli sinovda topilgan: SSO o'chiq bo'lsa hamkor
 	// ma'lumoti kelmay, kirish `not_linked` bo'lib qolardi).
+	if s.Avatars != nil {
+		if pic, err := s.Avatars.Get(r.Context(), u.ID); err == nil && pic != "" {
+			out["picture"] = pic // OIDC standart da'vosi (barcha ilovalar bir xil rasmni ko'radi)
+		}
+	}
 	if p := s.partnerOf(r, u); p != nil {
 		out["partner"] = p
 	}

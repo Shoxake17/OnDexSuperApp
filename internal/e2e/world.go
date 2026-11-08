@@ -413,6 +413,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		Authz:        w.Authz,
 		MerchantAuth: w.MerchantAuth,
 		OIDC:         w.OIDC,
+		Avatars:      storage.NewMemoryAvatarStore(),
 		QurtRepo:     qurtProducts,
 		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
 		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,

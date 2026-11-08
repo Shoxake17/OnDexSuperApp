@@ -1,10 +1,14 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"image"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -240,6 +244,48 @@ func TestOIDCMerchantWeb(t *testing.T) {
 		}
 		h, b = form(url.Values{"grant_type": {"password"}})
 		send(t, "POST", "/v2/oauth/token", h, b).Expect(t, 400)
+	})
+
+	w.Step(t, "avatar: OnDex akkauntida (R2), userinfo picture; rasm bo'lmagan fayl rad", func(t *testing.T) {
+		r := send(t, "GET", authQ(nil), map[string]string{"Cookie": cookie}, "").Expect(t, 302)
+		tr := exchange(t, codeFrom(t, r.Header.Get("Location")), OIDCClientSecret, verifier, 200)
+		bearer := map[string]string{"Authorization": "Bearer " + tr.AccessToken}
+		multipartFile := func(name string, data []byte) (map[string]string, string) {
+			var buf bytes.Buffer
+			mw := multipart.NewWriter(&buf)
+			fw, _ := mw.CreateFormFile("file", name)
+			_, _ = fw.Write(data)
+			_ = mw.Close()
+			return map[string]string{"Authorization": "Bearer " + tr.AccessToken, "Content-Type": mw.FormDataContentType()}, buf.String()
+		}
+		img := image.NewRGBA(image.Rect(0, 0, 64, 48))
+		for i := range img.Pix {
+			img.Pix[i] = byte(i)
+		}
+		var pngBuf bytes.Buffer
+		_ = png.Encode(&pngBuf, img)
+
+		h, b := multipartFile("rasm.png", []byte("bu rasm emas"))
+		send(t, "PUT", "/v2/me/avatar", h, b).Expect(t, 400)
+		send(t, "PUT", "/v2/me/avatar", nil, "").Expect(t, 401)
+
+		h, b = multipartFile("yuz.png", pngBuf.Bytes())
+		var out map[string]string
+		send(t, "PUT", "/v2/me/avatar", h, b).Expect(t, 200).JSON(t, &out)
+		if !strings.HasSuffix(out["picture"], ".webp") {
+			t.Fatalf("avatar manzili: %v", out)
+		}
+		var ui map[string]any
+		send(t, "GET", "/v2/oauth/userinfo", bearer, "").Expect(t, 200).JSON(t, &ui)
+		if ui["picture"] != out["picture"] {
+			t.Fatalf("userinfo picture: %v != %v", ui["picture"], out["picture"])
+		}
+		send(t, "DELETE", "/v2/me/avatar", bearer, "").Expect(t, 204)
+		ui = nil
+		send(t, "GET", "/v2/oauth/userinfo", bearer, "").Expect(t, 200).JSON(t, &ui)
+		if _, has := ui["picture"]; has {
+			t.Fatal("o'chirilgan avatar userinfo'da qoldi")
+		}
 	})
 
 	w.Step(t, "chiqish: hint'siz GET faqat tasdiq (CSRF), hint bilan -> SSO va ilova sessiyasi yopiladi", func(t *testing.T) {

@@ -1108,6 +1108,11 @@ func main() {
 	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo)
 	// OnDex OIDC provayderi (A4c): Merchant web (ShoxPos BFF) shu orqali kiradi.
 	oidcProvider := buildOIDC(identitySvc, pgPool)
+	// Akkaunt rasmi (0073): markazlashgan, R2'da; ilovalar OIDC `picture` dan oladi.
+	var avatarStore httpapi.AvatarStore = storage.NewMemoryAvatarStore()
+	if pgPool != nil {
+		avatarStore = storage.NewPgAvatarStore(pgPool)
+	}
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1548,6 +1553,7 @@ func main() {
 		Authz:              authzSvc,
 		MerchantAuth:       merchantAuth,
 		OIDC:               oidcProvider,
+		Avatars:            avatarStore,
 		QurtRepo:           qurtRepo,
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,
