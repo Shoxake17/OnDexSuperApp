@@ -885,14 +885,27 @@ jobs:
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
+      # ┌─ DEPLOY FAQAT QO'LDA (2026-11-08, egasi qarori) ─────────────────┐
+      # Bepul tarifda "required reviewers" ishlamaydi (422). Shuning uchun
+      # tasdiq quvurning o'zida: push testlar + skanerlar + image'ni
+      # quradi va GHCR'ga yuboradi, lekin production'ga TEGMAYDI. Deploy —
+      # Actions -> "Run workflow" (workflow_dispatch) yoki
+      # `gh workflow run deploy.yml`, zaxira va sozlamalar tekshirilgach.
+      # Avtomatik deploy'ni qaytarish: repo o'zgaruvchisi AUTO_DEPLOY=true.
+      # └───────────────────────────────────────────────────────────────────┘
       - id: check
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
+          EVENT: ${{ github.event_name }}
+          AUTO_DEPLOY: ${{ vars.AUTO_DEPLOY }}
         run: |
-          if [ -n "$SSH_HOST" ]; then
+          if [ -z "$SSH_HOST" ]; then
+            echo "::notice::SSH_HOST sozlanmagan — deploy o'tkazib yuborildi"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_dispatch" ] || [ "$AUTO_DEPLOY" = "true" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::SSH_HOST sozlanmagan — deploy o'tkazib yuborildi"
+            echo "::notice::Avtomatik deploy o'chiq — production'ga chiqarish: Actions -> Run workflow (yoki AUTO_DEPLOY=true)"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
