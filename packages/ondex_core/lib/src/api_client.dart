@@ -14,6 +14,8 @@ const _noRefresh = {
   '/v2/auth/token/refresh',
   '/v2/auth/merchant/otp/verify',
   '/v2/auth/merchant/password',
+  '/v2/auth/admin/otp/verify',
+  '/v2/auth/mfa/password',
   '/v2/auth/mfa/factor',
   '/v2/auth/mfa/verify',
   '/v2/auth/mfa/totp/enroll',
@@ -244,6 +246,18 @@ class ApiClient {
     'phone': phone,
     'code': code,
     'client_id': clientId,
+    if (deviceName != null) 'device_name': deviceName,
+  });
+
+  /// OnDex egasi (admin, platform realmi — A6): telefon + kod. Keyin HAR
+  /// safar parol va TOTP (`mfaFactor` / `mfaSetPassword` / `mfaVerify`).
+  Future<MerchantStep> adminLoginCode(
+    String phone,
+    String code, {
+    String? deviceName,
+  }) => _merchantStep('/v2/auth/admin/otp/verify', {
+    'phone': phone,
+    'code': code,
     if (deviceName != null) 'device_name': deviceName,
   });
 

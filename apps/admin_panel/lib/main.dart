@@ -14,6 +14,10 @@ void main() async {
   // to'sqinlik qilmasligi kerak.
   await Analytics.bootstrap();
 
+  // Markaziy sessiya (A6): access + refresh shu omborda; 401 da ApiClient
+  // o'zi BIR MARTA refresh qiladi. Eski (bitta token) format ham o'qiladi.
+  api.attachStore(adminTokenStore);
+
   runApp(const AdminApp());
 }
 
@@ -53,12 +57,10 @@ class _RootState extends State<_Root> {
 
   Future<void> _restore() async {
     // Shifrlangan ombordan (`ondex_core.TokenStore`) — bug.md 2-band.
-    final token = await adminTokenStore.read();
-    if (token == null || token.isEmpty) {
+    if (!await api.restoreSession()) {
       if (mounted) setState(() => _loading = false);
       return;
     }
-    api.token = token;
     // ┌─ TUZATILGAN NOSOZLIK (bug.md 63-band) ────────────────────────┐
     // Panel AVVAL tokenni HECH TEKSHIRMASDAN ichkariga kiritardi.
     // Muddati o'tgan yoki bekor qilingan token bilan ham panel
@@ -77,14 +79,12 @@ class _RootState extends State<_Root> {
       final user = await api.me();
       _loggedIn = (user['role'] as String? ?? '') == 'admin';
       if (!_loggedIn) {
-        await adminTokenStore.clear();
-        api.token = null;
+        await api.clearSession();
       }
     } on ApiException catch (e) {
       // Faqat 401 da chiqaramiz — tarmoq xatosida emas (60-band).
       if (e.isUnauthorized) {
-        await adminTokenStore.clear();
-        api.token = null;
+        await api.clearSession();
         _loggedIn = false;
       } else {
         _loggedIn = true;

@@ -19,6 +19,8 @@ dependencies:
   # Telegram bot havolasini ochish uchun (kirish oqimi). Kod SMS emas,
   # bot orqali keladi — `api.telegramStart` izohiga qarang.
   url_launcher: ^6.3.2
+  # Authenticator ulash QR kodi (A6 — admin kirishida TOTP majburiy).
+  qr_flutter: ^4.1.0
   # Windows desktopda xarita uchun. `google_maps_flutter` Windows'ni
   # QO'LLAB-QUVVATLAMAYDI (paket faqat android/ios/web ni e'lon qiladi),
   # shuning uchun desktopda Google Maps JS WebView2 ichida ko'rsatiladi —

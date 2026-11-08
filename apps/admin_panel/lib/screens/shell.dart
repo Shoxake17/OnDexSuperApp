@@ -198,8 +198,7 @@ class _AdminShellState extends State<AdminShell> {
       // Server bilan bog'lanib bo'lmadi — mahalliy chiqish baribir
       // bajariladi (pastda).
     }
-    await adminTokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
