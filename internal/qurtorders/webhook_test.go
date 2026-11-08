@@ -1,6 +1,7 @@
 package qurtorders
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -54,7 +55,7 @@ func TestNotifySignsAndHidesPII(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n.Notify(nil, "created", testOrder())
+	n.Notify(context.Background(), "created", testOrder())
 
 	select {
 	case r := <-got:
@@ -93,7 +94,7 @@ func TestNotifySendsEveryOrderEventAndIgnoresUnknown(t *testing.T) {
 	n, _ := NewPOSNotifier(srv.URL, testSecret)
 	// Noma'lum/bo'sh voqea yuborilmaydi.
 	for _, ev := range []string{"", "bogus", "debug"} {
-		n.Notify(nil, ev, testOrder())
+		n.Notify(context.Background(), ev, testOrder())
 	}
 	time.Sleep(300 * time.Millisecond)
 	if atomic.LoadInt32(&hits) != 0 {
@@ -103,7 +104,7 @@ func TestNotifySendsEveryOrderEventAndIgnoresUnknown(t *testing.T) {
 	events := []string{"created", "confirmed", "packed", "collected", "out_for_delivery", "delivered",
 		"rejected", "failed", "cancelled", "assigned", "unassigned", "cash_settled"}
 	for _, ev := range events {
-		n.Notify(nil, ev, testOrder())
+		n.Notify(context.Background(), ev, testOrder())
 	}
 	time.Sleep(600 * time.Millisecond)
 	if got := atomic.LoadInt32(&hits); int(got) != len(events) {
@@ -124,7 +125,7 @@ func TestNotifyRetriesThenSucceeds(t *testing.T) {
 	defer srv.Close()
 	n, _ := NewPOSNotifier(srv.URL, testSecret)
 	n.backoff = []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}
-	n.Notify(nil, "created", testOrder())
+	n.Notify(context.Background(), "created", testOrder())
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):

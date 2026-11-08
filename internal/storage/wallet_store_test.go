@@ -31,7 +31,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Keshbek: 1500 tiyin kredit.
 	bal, applied, err := repo.Credit(ctx, &wallet.Transaction{
-		ID: "tx1", UserID: userID, OrderID: "order1", AmountTiyin: 1500,
+		ID: userID + "-tx1", UserID: userID, OrderID: userID + "-order1", AmountTiyin: 1500,
 		Type: wallet.TypeCashback, CreatedAt: now,
 	})
 	if err != nil || !applied || bal != 1500 {
@@ -40,7 +40,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Idempotentlik: xuddi shu (order_id, type) qayta kredit qo'shmaydi.
 	bal, applied, err = repo.Credit(ctx, &wallet.Transaction{
-		ID: "tx1-retry", UserID: userID, OrderID: "order1", AmountTiyin: 1500,
+		ID: userID + "-tx1-retry", UserID: userID, OrderID: userID + "-order1", AmountTiyin: 1500,
 		Type: wallet.TypeCashback, CreatedAt: now,
 	})
 	if err != nil || applied || bal != 1500 {
@@ -49,7 +49,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Yana bitta buyurtmadan keshbek — jamlanadi.
 	bal, applied, err = repo.Credit(ctx, &wallet.Transaction{
-		ID: "tx2", UserID: userID, OrderID: "order2", AmountTiyin: 500,
+		ID: userID + "-tx2", UserID: userID, OrderID: userID + "-order2", AmountTiyin: 500,
 		Type: wallet.TypeCashback, CreatedAt: now,
 	})
 	if err != nil || !applied || bal != 2000 {
@@ -58,7 +58,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Debit: balansdan katta summa — rad etiladi, balans o'zgarmaydi.
 	_, applied, err = repo.Debit(ctx, &wallet.Transaction{
-		ID: "tx3", UserID: userID, OrderID: "order3", AmountTiyin: 5000,
+		ID: userID + "-tx3", UserID: userID, OrderID: userID + "-order3", AmountTiyin: 5000,
 		Type: wallet.TypeSpend, CreatedAt: now,
 	})
 	if !errors.Is(err, wallet.ErrInsufficientBalance) || applied {
@@ -70,7 +70,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Debit: yetarli summa.
 	bal, applied, err = repo.Debit(ctx, &wallet.Transaction{
-		ID: "tx4", UserID: userID, OrderID: "order4", AmountTiyin: 800,
+		ID: userID + "-tx4", UserID: userID, OrderID: userID + "-order4", AmountTiyin: 800,
 		Type: wallet.TypeSpend, CreatedAt: now,
 	})
 	if err != nil || !applied || bal != 1200 {
@@ -79,7 +79,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Debit idempotentligi.
 	bal, applied, err = repo.Debit(ctx, &wallet.Transaction{
-		ID: "tx4-retry", UserID: userID, OrderID: "order4", AmountTiyin: 800,
+		ID: userID + "-tx4-retry", UserID: userID, OrderID: userID + "-order4", AmountTiyin: 800,
 		Type: wallet.TypeSpend, CreatedAt: now,
 	})
 	if err != nil || applied || bal != 1200 {
@@ -88,7 +88,7 @@ func runWalletRepoSuite(t *testing.T, repo wallet.Repository, userID string) {
 
 	// Refund (Credit turi boshqa) — bir xil order_id, boshqa type — bloklanmaydi.
 	bal, applied, err = repo.Credit(ctx, &wallet.Transaction{
-		ID: "tx5", UserID: userID, OrderID: "order4", AmountTiyin: 800,
+		ID: userID + "-tx5", UserID: userID, OrderID: userID + "-order4", AmountTiyin: 800,
 		Type: wallet.TypeRefund, CreatedAt: now,
 	})
 	if err != nil || !applied || bal != 2000 {

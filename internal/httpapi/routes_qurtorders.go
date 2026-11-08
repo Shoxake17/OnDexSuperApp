@@ -16,11 +16,8 @@ import (
 	"chustapp/internal/users"
 )
 
-// Qurt buyurtmalari limitlari: mijoz bo'yicha (token) va POS serveri bo'yicha.
-var (
-	qurtOrderCreateLimiter   = ratelimit.New(1, 20)
-	qurtOrderMerchantLimiter = ratelimit.New(20, 60)
-)
+// Qurt buyurtma yaratish limiti (mijoz tokeni bo'yicha).
+var qurtOrderCreateLimiter = ratelimit.New(1, 20)
 
 // qurtOrderError — domen xatosini HTTP javobiga aylantiradi. Ichki xato matni
 // mijozga CHIQMAYDI (500 da umumiy xabar).

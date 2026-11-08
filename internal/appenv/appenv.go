@@ -225,6 +225,7 @@ var Registry = []Var{
 	{Name: "QURT_POS_WEBHOOK_SECRET", Effect: "qurt buyurtmasi do'kon panelida jonli signalsiz qoladi (panel davriy so'raydi)"},
 	{Name: "QURT_DELIVERY_DAYS", Effect: "qurt reys kunlari standart (seshanba va juma) bo'ladi"},
 	{Name: "QURT_ORDER_CUTOFF_HOUR", Effect: "qurt buyurtma qabul qilish muddati standart (reysdan bir kun oldin 18:00) bo'ladi"},
+	{Name: "QURT_NEW_ORDER_TTL_HOURS", Effect: "do'kon qabul qilmagan qurt buyurtmasi standart 24 soatdan keyin avtomatik bekor qilinadi (1..168)"},
 	{Name: "SSO_MERCHANT_NAME", Effect: "tasdiqlash sahifasida standart nom (OnDex Merchant Panel) ko'rsatiladi", DeployRequired: true},
 
 	// ---------- 3D model (Tripo) ----------
