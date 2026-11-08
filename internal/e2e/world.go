@@ -61,11 +61,11 @@ const (
 	// Yagona kirish (SSO) test klienti.
 	SSOClientID     = "merchant"
 	SSOClientSecret = "e2e-sso-secret-e2e-sso-secret-e2e-sso-secret-0123456789"
-	SSORedirectURI  = "https://pos.ondex.uz/auth/callback"
+	SSORedirectURI  = "https://merchant.ondex.uz/auth/callback"
 
 	// OnDex OIDC (A4c) test klienti — Merchant web BFF.
 	OIDCClientSecret = "e2e-oidc-bff-secret-e2e-oidc-bff-secret-0123456789"
-	OIDCRedirectURI  = "https://pos.ondex.uz/api/auth/oidc/callback"
+	OIDCRedirectURI  = "https://merchant.ondex.uz/api/auth/oidc/callback"
 )
 
 // noGoogle — Google Distance Matrix o'rniga: har doim xato qaytaradi va
@@ -400,7 +400,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 
 	w.OIDC, err = identity.NewProvider(w.Identity, identity.NewMemoryCodeStore(), []identity.OIDCClient{{
 		ID: "merchant-web", Name: "OnDex Merchant (web)", SecretHash: identity.HashClientSecret(OIDCClientSecret),
-		RedirectURIs: []string{OIDCRedirectURI}, PostLogoutRedirectURIs: []string{"https://pos.ondex.uz/"},
+		RedirectURIs: []string{OIDCRedirectURI}, PostLogoutRedirectURIs: []string{"https://merchant.ondex.uz/"},
 	}})
 	if err != nil {
 		t.Fatal(err)

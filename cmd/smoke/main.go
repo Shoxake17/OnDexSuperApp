@@ -10,7 +10,7 @@
 // Natija Prometheus textfile formatida (stdout yoki -out fayl, atomik
 // yoziladi). Alertmanager yiqilgan tekshiruvni Telegram'ga yuboradi.
 //
-//	go run ./cmd/smoke -api https://api.ondex.uz -web https://ondex.uz -pos https://pos.ondex.uz \
+//	go run ./cmd/smoke -api https://api.ondex.uz -web https://ondex.uz -pos https://merchant.ondex.uz \
 //	   -waiter +998999999999 -courier +998888888888 -out /var/lib/node_exporter/textfile/ondex_smoke.prom
 //
 // Chiqish kodi: 0 — hammasi o'tdi, 1 — kamida bitta yiqildi (CI uchun).

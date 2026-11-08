@@ -19,7 +19,7 @@ class StoreHomeScreen extends StatelessWidget {
 
   // Mahalliy API bo'lsa — mahalliy veb panel (`ondex run`), aks holda ishchi manzil.
   static String get _posUrl =>
-      isLocalDevApi() ? 'http://localhost:3001' : 'https://pos.ondex.uz';
+      isLocalDevApi() ? 'http://localhost:3001' : 'https://merchant.ondex.uz';
 
   Future<void> _logout(BuildContext context) async {
     // Markaziy sessiya serverda ham yopiladi (internet bo'lmasa ham

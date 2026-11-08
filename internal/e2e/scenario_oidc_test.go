@@ -303,9 +303,9 @@ func TestOIDCMerchantWeb(t *testing.T) {
 		}
 		w.Do(t, bff, "GET", "/v2/auth/sessions", nil).Expect(t, 200) // hali tirik
 
-		q := url.Values{"id_token_hint": {tr.IDToken}, "post_logout_redirect_uri": {"https://pos.ondex.uz/"}, "state": {"bye"}}
+		q := url.Values{"id_token_hint": {tr.IDToken}, "post_logout_redirect_uri": {"https://merchant.ondex.uz/"}, "state": {"bye"}}
 		r = send(t, "GET", "/v2/oauth/logout?"+q.Encode(), map[string]string{"Cookie": cookie}, "").Expect(t, 302)
-		if r.Header.Get("Location") != "https://pos.ondex.uz/?state=bye" {
+		if r.Header.Get("Location") != "https://merchant.ondex.uz/?state=bye" {
 			t.Fatalf("chiqishdan keyin qaytish: %q", r.Header.Get("Location"))
 		}
 		w.Do(t, bff, "GET", "/v2/auth/sessions", nil).Expect(t, 401)

@@ -23,7 +23,7 @@ func TestSSOFlow(t *testing.T) {
 		m := w.Do(t, nil, "GET",
 			"/sso/client?client_id="+SSOClientID+"&redirect_uri="+redirect, nil).
 			Expect(t, 200).Map(t)
-		if m["name"] != "OnDex Merchant Panel" || m["redirect_host"] != "pos.ondex.uz" {
+		if m["name"] != "OnDex Merchant Panel" || m["redirect_host"] != "merchant.ondex.uz" {
 			t.Fatalf("ilova ma'lumoti noto'g'ri: %v", m)
 		}
 		// Ro'yxatda yo'q manzil yoki klient — javob BERILMAYDI.

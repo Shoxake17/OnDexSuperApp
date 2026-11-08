@@ -129,7 +129,7 @@ func buildAuthz(ctx context.Context, pool *pgxpool.Pool) *authz.Authorizer {
 // BFF, `merchant-web`). Sozlamalar:
 //
 //	OIDC_MERCHANT_WEB_SECRET          — klient siri (>= 32 belgi; BFF'da ham shu)
-//	OIDC_MERCHANT_WEB_REDIRECT_URIS   — vergul bilan, ANIQ (masalan https://pos.ondex.uz/api/auth/oidc/callback)
+//	OIDC_MERCHANT_WEB_REDIRECT_URIS   — vergul bilan, ANIQ (masalan https://merchant.ondex.uz/api/auth/oidc/callback)
 //	OIDC_MERCHANT_WEB_POST_LOGOUT_URIS — chiqishdan keyin qaytish (ixtiyoriy)
 //	OIDC_MERCHANT_WEB_BACKCHANNEL_URI — back-channel logout (ixtiyoriy)
 //

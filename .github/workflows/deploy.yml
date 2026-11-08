@@ -1115,7 +1115,7 @@ jobs:
         run: |
           # yangi konteyner migratsiya/ishga tushishni tugatsin
           sleep 15
-          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://pos.ondex.uz/ \
+          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://merchant.ondex.uz/ \
             -waiter +998999999999 -courier +998888888888 -out /tmp/smoke.prom
           echo "### Smoke: hammasi o'tdi" >> "$GITHUB_STEP_SUMMARY"
 
@@ -1183,7 +1183,7 @@ jobs:
         if: failure() && steps.rollback.outcome == 'success'
         run: |
           sleep 20
-          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://pos.ondex.uz/ || {
+          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://merchant.ondex.uz/ || {
             echo "::error::Rollbackdan keyin ham production sog'lom emas — QO'LDA tekshiring"; exit 1; }
           echo "### ↩️ Production oldingi versiyada va sog'lom" >> "$GITHUB_STEP_SUMMARY"
           echo "::error::Yangi versiya chiqmadi (deploy yoki smoke yiqildi) — production oldingi versiyada qoldi"
