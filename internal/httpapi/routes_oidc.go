@@ -148,8 +148,14 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 			return
 		}
 		noStore(w)
-		req, err := s.OIDC.OpenRequest(r.URL.Query().Get("req"))
+		raw := r.URL.Query().Get("req")
+		req, err := s.OIDC.OpenRequest(raw)
 		if err != nil {
+			// Eskirgan (imzosi to'g'ri) so'rov — sahifa ilovadan qayta boshlaydi.
+			if u := s.OIDC.RestartURL(raw); u != "" {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "request_expired", "restart_url": u})
+				return
+			}
 			writeOAuthJSONError(w, err)
 			return
 		}
@@ -174,7 +180,22 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 		}
 		req, err := s.OIDC.OpenRequest(body.Req)
 		if err != nil {
-			writeOAuthJSONError(w, err)
+			// Kirish shu yerda TUGAGAN (masalan TOTP ulashga 15 daqiqadan ko'p ketdi),
+			// so'rov esa eskirgan: SSO cookie baribir qo'yiladi va ilova qaytadan
+			// boshlaydi — SSO tufayli darhol kiradi, foydalanuvchi qayta kiritmaydi.
+			restart := s.OIDC.RestartURL(body.Req)
+			h := r.Header.Get("Authorization")
+			if restart == "" || !strings.HasPrefix(h, "Bearer ") {
+				writeOAuthJSONError(w, err)
+				return
+			}
+			sso, aerr := s.OIDC.SSOSessionFromAccess(r.Context(), strings.TrimPrefix(h, "Bearer "))
+			if aerr != nil {
+				httpError(w, http.StatusUnauthorized, identity.ErrTokenInvalid)
+				return
+			}
+			setSSOCookie(w, s.OIDC.SSOCookie(sso.ID), sso.AbsExpiresAt)
+			writeJSON(w, http.StatusOK, map[string]string{"redirect_to": restart})
 			return
 		}
 		h := r.Header.Get("Authorization")

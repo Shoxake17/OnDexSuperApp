@@ -70,6 +70,10 @@ type OIDCClient struct {
 	// BackchannelLogoutURI — sessiya markazda yopilganda imzolangan
 	// logout_token shu manzilga POST qilinadi (A4c.3).
 	BackchannelLogoutURI string
+	// InitiateLoginURI — ilovada kirishni boshlash manzili (OIDC
+	// `initiate_login_uri`): eskirgan kirish so'rovidan shu yerga qaytiladi.
+	// Bo'sh — qaytarilmaydi (xato ko'rsatiladi).
+	InitiateLoginURI string
 }
 
 // HashClientSecret — konfiguratsiyadagi sirdan xesh.
@@ -186,6 +190,11 @@ func NewProvider(svc *Service, codes CodeStore, clients []OIDCClient) (*Provider
 		for _, u := range append(append([]string{}, c.RedirectURIs...), c.PostLogoutRedirectURIs...) {
 			if err := validateClientURI(u); err != nil {
 				return nil, errors.New("oidc: " + c.ID + ": " + err.Error())
+			}
+		}
+		if c.InitiateLoginURI != "" {
+			if err := validateClientURI(c.InitiateLoginURI); err != nil {
+				return nil, errors.New("oidc: " + c.ID + " initiate_login_uri: " + err.Error())
 			}
 		}
 		if c.BackchannelLogoutURI != "" {
@@ -330,24 +339,49 @@ func (p *Provider) SignRequest(req *AuthorizeRequest) (string, error) {
 
 // OpenRequest — imzo va muddatni tekshiradi, klient/redirect hali ro'yxatda.
 func (p *Provider) OpenRequest(raw string) (*AuthorizeRequest, error) {
-	bad := oauthErr("invalid_request", "kirish so'rovi yaroqsiz yoki muddati o'tgan — ilovadan qayta boshlang", 400)
+	r, expired, err := p.openRequest(raw)
+	if err != nil || expired {
+		return nil, errRequestBad
+	}
+	return r, nil
+}
+
+var errRequestBad = oauthErr("invalid_request", "kirish so'rovi yaroqsiz yoki muddati o'tgan — ilovadan qayta boshlang", 400)
+
+// openRequest — imzo, format va klient tekshiriladi; muddat ALOHIDA
+// qaytariladi (expired). Imzosi to'g'ri, lekin eskirgan so'rov — foydalanuvchi
+// eski tabni qayta ochgan yoki TOTP ulashga ko'p vaqt ketgan: soxta emas.
+func (p *Provider) openRequest(raw string) (*AuthorizeRequest, bool, error) {
 	payload, sig, ok := strings.Cut(raw, ".")
 	if !ok || len(raw) > 4096 || !hmac.Equal([]byte(sig), []byte(p.mac(p.reqK, payload))) {
-		return nil, bad
+		return nil, false, errRequestBad
 	}
 	b, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {
-		return nil, bad
+		return nil, false, errRequestBad
 	}
 	var r AuthorizeRequest
-	if json.Unmarshal(b, &r) != nil || p.svc.now().Unix() > r.Exp {
-		return nil, bad
+	if json.Unmarshal(b, &r) != nil {
+		return nil, false, errRequestBad
 	}
 	c, ok := p.clients[r.ClientID]
 	if !ok || !slices.Contains(c.RedirectURIs, r.RedirectURI) {
-		return nil, bad
+		return nil, false, errRequestBad
 	}
-	return &r, nil
+	return &r, p.svc.now().Unix() > r.Exp, nil
+}
+
+// RestartURL — muddati o'tgan, lekin IMZOSI TO'G'RI so'rov uchun klientning
+// kirishni qayta boshlash manzili (OIDC `initiate_login_uri`). Foydalanuvchi
+// "ilovadan qayta boshlang" degan boshi berk sahifada qolmaydi: ilova yangi
+// so'rov (yangi state/nonce/PKCE) bilan qaytadan boshlaydi, SSO bo'lsa —
+// darhol kiradi. Soxta/buzilgan so'rov uchun "" (hech qayerga yuborilmaydi).
+func (p *Provider) RestartURL(raw string) string {
+	r, expired, err := p.openRequest(raw)
+	if err != nil || !expired {
+		return ""
+	}
+	return p.clients[r.ClientID].InitiateLoginURI
 }
 
 // SSOCookie — SSO sessiyasi uchun cookie qiymati (sid + HMAC). Sessiyaning

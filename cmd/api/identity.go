@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 
@@ -168,6 +169,8 @@ func buildOIDC(svc *identity.Service, pool *pgxpool.Pool) *identity.Provider {
 		RedirectURIs:           csv(os.Getenv("OIDC_MERCHANT_WEB_REDIRECT_URIS")),
 		PostLogoutRedirectURIs: csv(os.Getenv("OIDC_MERCHANT_WEB_POST_LOGOUT_URIS")),
 		BackchannelLogoutURI:   strings.TrimSpace(os.Getenv("OIDC_MERCHANT_WEB_BACKCHANNEL_URI")),
+		// Eskirgan kirish so'rovidan qaytish: birinchi redirect_uri'ning origin'i + /login.
+		InitiateLoginURI: initiateLoginFrom(os.Getenv("OIDC_MERCHANT_WEB_REDIRECT_URIS")),
 	}})
 	if err != nil {
 		slog.Error("OnDex OIDC O'CHIQ", "err", err)
@@ -175,6 +178,18 @@ func buildOIDC(svc *identity.Service, pool *pgxpool.Pool) *identity.Provider {
 	}
 	slog.Info("rejim: OnDex OIDC yoqilgan", "issuer", p.IssuerURL())
 	return p
+}
+
+// initiateLoginFrom — redirect_uri ro'yxatining birinchisidan ilovaning kirish
+// sahifasi (origin + /login). Alohida sozlama shart emas: kirish sahifasi har
+// doim ilovaning o'z domenida.
+func initiateLoginFrom(csv string) string {
+	first, _, _ := strings.Cut(csv, ",")
+	u, err := url.Parse(strings.TrimSpace(first))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + "/login"
 }
 
 // buildMerchantAuth — merchant kirish oqimlari (A3b). Egasi uchun TOTP

@@ -210,6 +210,17 @@
     if (btn) { e.preventDefault(); btn.click(); }
   });
 
+  function restartAllowed() {
+    try {
+      var now = Date.now();
+      var hits = JSON.parse(sessionStorage.getItem('ondexRestart') || '[]').filter(function (t) { return now - t < 120000; });
+      if (hits.length >= 2) { return false; }
+      hits.push(now);
+      sessionStorage.setItem('ondexRestart', JSON.stringify(hits));
+      return true;
+    } catch (e) { return false; }
+  }
+
   // ── so'rovni tekshirish ───────────────────────────────────────────────
   if (!REQ) {
     showErr("Kirish so'rovi yo'q — ilovadan qaytadan boshlang.");
@@ -219,6 +230,14 @@
   fetch('/v2/oauth/login/info?req=' + encodeURIComponent(REQ), { cache: 'no-store', credentials: 'same-origin' })
     .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
     .then(function (x) {
+      // Eskirgan so'rov (eski tab, uzoq kutish) — ilova yangi so'rov bilan qayta
+      // boshlaydi. Aylana himoyasi: 2 daqiqada 2 martadan ortiq emas.
+      if (!x.ok && x.d.restart_url && /^https?:\/\//.test(x.d.restart_url) && restartAllowed()) {
+        $('s-start').hidden = true;
+        $('client').textContent = "Kirish yangilanmoqda…";
+        location.replace(x.d.restart_url);
+        return;
+      }
       if (!x.ok) { throw new Error(x.d.error_description || "So'rov yaroqsiz"); }
       if (x.d.client_name) { $('client').textContent = x.d.client_name + ' uchun'; }
       show('s-start');
