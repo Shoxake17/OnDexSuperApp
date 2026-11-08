@@ -158,7 +158,26 @@ type Service struct {
 	ipKey   []byte
 	// revokeHook — `OnRevoke` (OIDC back-channel logout).
 	revokeHook func(ctx context.Context, sess *Session)
+	// newDeviceHook — `OnNewDevice` (egasiga "yangi qurilmadan kirildi" xabari).
+	newDeviceHook func(ctx context.Context, d NewDevice)
 }
+
+// NewDevice — merchant akkauntiga yangi qurilma (brauzer/ilova) dan kirish.
+// "Yangi" — shu foydalanuvchining FAOL sessiyalari orasida bunday
+// UserAgent yo'q (AUTH-PHASE-A.md: "Windows, Chust, 14:32 — sizmisiz?").
+type NewDevice struct {
+	UserID     string
+	ClientID   string
+	DeviceName string
+	UserAgent  string
+	IP         string
+	At         time.Time
+}
+
+// OnNewDevice — yangi qurilmadan kirish xabari. Hook ALOHIDA goroutine'da
+// chaqiriladi (kirish sekinlashmasin, xabar xatosi kirishni buzmasin);
+// konteksti so'rovdan ajratilgan.
+func (s *Service) OnNewDevice(fn func(ctx context.Context, d NewDevice)) { s.newDeviceHook = fn }
 
 // NewService — `clients` nil bo'lsa `DefaultClients`.
 func NewService(store Store, issuer *Issuer, ur UserReader, audit Auditor,
@@ -289,12 +308,32 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 			sess.MFAAt = &t
 		}
 	}
+	// Yangi qurilma: faqat merchant realmi, faqat to'g'ridan-to'g'ri kirish
+	// (OIDC bola sessiyasi — ota SSO sessiyasi allaqachon xabar bergan).
+	newDevice := false
+	if s.newDeviceHook != nil && realm == users.RealmMerchant && in.ParentID == "" {
+		newDevice = true
+		if list, lerr := s.store.ListActive(ctx, u.ID, now); lerr == nil {
+			for _, x := range list {
+				if x.UserAgent == sess.UserAgent {
+					newDevice = false
+					break
+				}
+			}
+		}
+	}
 	if err := s.store.Create(ctx, sess, hash); err != nil {
 		return nil, err
 	}
 	access, exp, err := s.issuer.issue(sess, sess.AbsExpiresAt)
 	if err != nil {
 		return nil, err
+	}
+	if newDevice {
+		d := NewDevice{UserID: u.ID, ClientID: in.ClientID, DeviceName: sess.DeviceName,
+			UserAgent: sess.UserAgent, IP: in.Meta.IP, At: now}
+		hook := s.newDeviceHook
+		go hook(context.WithoutCancel(ctx), d)
 	}
 	s.audit.Record(ctx, Event{Action: "session.create", Result: ResultOK, ActorUserID: u.ID,
 		Realm: string(realm), OrgID: in.OrgID, Target: sess.ID, IPHash: sess.IPHash, UserAgent: sess.UserAgent,

@@ -1100,6 +1100,8 @@ func main() {
 
 	// Markaziy sessiya va token xizmati (A2): Ed25519 + JWKS + refresh rotatsiyasi.
 	identitySvc := buildIdentity(devMode, pgPool, userRepo)
+	// Yangi qurilmadan kirish — egasining Telegram'iga xabar (135).
+	wireNewDeviceAlerts(identitySvc, tgClient, userRepo, os.Getenv("AUTH_ISSUER"))
 	// Merchant ruxsatlari (A3): rol shablonlari koddan bazaga yoziladi.
 	authzCtx, authzCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	authzSvc := buildAuthz(authzCtx, pgPool)

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -17,6 +18,7 @@ import (
 	"chustapp/internal/identity/mfa"
 	"chustapp/internal/secretstore"
 	"chustapp/internal/storage"
+	"chustapp/internal/telegram"
 	"chustapp/internal/users"
 )
 
@@ -105,6 +107,59 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 	}
 	slog.Info("rejim: markaziy sessiya yoqilgan", "issuer", issuerURL, "kid", active.KID, "eski_kalitlar", len(previous))
 	return svc
+}
+
+// newDeviceAppNames — xabarda ilova nomi.
+var newDeviceAppNames = map[string]string{
+	identity.SSOClientID: "OnDex ID (brauzer)",
+	"merchant-web":       "OnDex Merchant (web)",
+	"merchant-desktop":   "OnDex Merchant (Windows)",
+	"ondex-pro":          "OnDexPro",
+	"ondex-go":           "OnDexGO",
+}
+
+// wireNewDeviceAlerts — merchant akkauntiga yangi qurilmadan kirilganda
+// egasining Telegram'iga xabar (Plane 135). Chat — akkauntga bog'langan
+// Telegram; bo'lmasa shu raqamdagi mijoz akkauntiniki (bitta odam, bitta
+// Telegram). Bog'lanmagan bo'lsa xabar yuborilmaydi (jim, log bilan).
+func wireNewDeviceAlerts(svc *identity.Service, tg *telegram.Client, ur users.Repository, issuer string) {
+	if svc == nil || tg == nil || !tg.Configured() {
+		slog.Warn("yangi qurilma xabarlari O'CHIQ (markaziy sessiya yoki Telegram bot yo'q)")
+		return
+	}
+	loc, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		loc = time.FixedZone("UZT", 5*3600)
+	}
+	accountURL := ""
+	if issuer = strings.TrimRight(strings.TrimSpace(issuer), "/"); strings.HasPrefix(issuer, "https://") {
+		accountURL = issuer + "/v2/oauth/account"
+	}
+	svc.OnNewDevice(func(ctx context.Context, d identity.NewDevice) {
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		u, err := ur.GetByID(ctx, d.UserID)
+		if err != nil {
+			return
+		}
+		chat := u.TelegramID
+		if chat == 0 && u.Phone != "" {
+			if c, err := ur.GetByPhoneRealm(ctx, users.RealmCustomer, u.Phone); err == nil {
+				chat = c.TelegramID
+			}
+		}
+		if chat == 0 {
+			slog.Info("yangi qurilma: Telegram bog'lanmagan — xabar yuborilmadi", "user", d.UserID)
+			return
+		}
+		app := newDeviceAppNames[d.ClientID]
+		if app == "" {
+			app = d.ClientID
+		}
+		if err := tg.SendMessage(ctx, chat, identity.NewDeviceText(d, app, accountURL, loc)); err != nil {
+			slog.Warn("yangi qurilma xabari yuborilmadi", "user", d.UserID, "err", err)
+		}
+	})
 }
 
 // buildAuthz — merchant ruxsatlari (A3, `internal/identity/authz`). Rol
