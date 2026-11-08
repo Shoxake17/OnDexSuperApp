@@ -150,6 +150,10 @@ func TestOIDCMerchantWeb(t *testing.T) {
 		}
 		send(t, "GET", "/v2/oauth/assets/login.js", nil, "").Expect(t, 200)
 		send(t, "GET", "/v2/oauth/assets/login.css", nil, "").Expect(t, 200)
+		if r := send(t, "GET", "/v2/oauth/assets/bg.jpg", nil, "").Expect(t, 200); r.Header.Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("fon turi: %q", r.Header.Get("Content-Type"))
+		}
+		send(t, "GET", "/v2/oauth/assets/logo.png", nil, "").Expect(t, 200)
 		var info map[string]string
 		send(t, "GET", "/v2/oauth/login/info?req="+url.QueryEscape(reqBlob), nil, "").Expect(t, 200).JSON(t, &info)
 		if info["client_name"] == "" {

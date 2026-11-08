@@ -113,28 +113,30 @@
     if (!phone) { throw new Error("Telefon raqami noto'g'ri (+998 XX XXX XX XX)"); }
   }
 
-  // ── boshlash ──────────────────────────────────────────────────────────
-  function tab(pwd) {
-    $('tab-pwd').classList.toggle('on', pwd); $('tab-pwd').setAttribute('aria-selected', String(pwd));
-    $('tab-code').classList.toggle('on', !pwd); $('tab-code').setAttribute('aria-selected', String(!pwd));
-    $('pwd-box').hidden = !pwd; $('code-box').hidden = pwd;
+  // ── boshlash: telefon -> "Davom etish" ────────────────────────────────
+  // Asosiy yo'l — Telegram kodi: u HAMMA uchun ishlaydi (xodim, parolsiz
+  // egasi, parolli egasi — keyingi bosqichni server o'zi aytadi). Parol —
+  // ixtiyoriy havola. Akkaunt mavjudligi hech qaysi javobdan bilinmaydi.
+  var pwdMode = false;
+  function setMode(pwd) {
+    pwdMode = pwd;
+    $('pwd-box').hidden = !pwd;
+    $('btn-mode').textContent = pwd ? 'Telegram kodi bilan kirish' : 'Parol bilan kirish';
+    $('start-hint').textContent = pwd ? 'Keyin Telegram kodi yoki Authenticator so\'raladi.' : 'Kod Telegram orqali keladi.';
+    hideErr();
+    (pwd ? $('password') : $('phone')).focus();
   }
-  $('tab-pwd').addEventListener('click', function () { tab(true); });
-  $('tab-code').addEventListener('click', function () { tab(false); });
+  $('btn-mode').addEventListener('click', function () { setMode(!pwdMode); });
 
-  $('btn-pwd').addEventListener('click', function () {
+  $('btn-next').addEventListener('click', function () {
     run(this, function () {
       needPhone();
-      var pw = $('password').value;
-      if (!pw) { throw new Error('Parolni kiriting'); }
-      return api('/v2/auth/merchant/password',
-        { phone: phone, password: pw, client_id: CLIENT, device_name: DEVICE }).then(outcome);
-    });
-  });
-
-  $('btn-send').addEventListener('click', function () {
-    run(this, function () {
-      needPhone();
+      if (pwdMode) {
+        var pw = $('password').value;
+        if (!pw) { throw new Error('Parolni kiriting'); }
+        return api('/v2/auth/merchant/password',
+          { phone: phone, password: pw, client_id: CLIENT, device_name: DEVICE }).then(outcome);
+      }
       codeMode = 'login';
       $('code-hint').textContent = "Telegram'ga kelgan kodni kiriting.";
       $('btn-back').hidden = false;

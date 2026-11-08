@@ -29,7 +29,7 @@ import (
 // o'qiy olmaydi, JavaScript ham (HttpOnly).
 // └───────────────────────────────────────────────────────────────────────┘
 
-//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css
+//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css assets/oidc_bg.jpg assets/oidc_logo.png
 var oidcLoginFS embed.FS
 
 // ssoCookieName — `__Host-`: faqat Secure, Path=/, Domain'siz (subdomen
@@ -58,6 +58,8 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 	page := mustEmbed("assets/oidc_login.html")
 	js := mustEmbed("assets/oidc_login.js")
 	css := mustEmbed("assets/oidc_login.css")
+	bg := mustEmbed("assets/oidc_bg.jpg")
+	logo := mustEmbed("assets/oidc_logo.png")
 
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		if !s.oidcReady(w) {
@@ -129,6 +131,16 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("GET /v2/oauth/assets/login.js", asset(js, "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /v2/oauth/assets/login.css", asset(css, "text/css; charset=utf-8"))
+	// Rasmlar o'zgarmaydi (embed) — uzoq kesh; yangilanganda fayl nomi o'zgartiriladi.
+	image := func(body []byte, ctype string) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", ctype)
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			_, _ = w.Write(body)
+		}
+	}
+	mux.HandleFunc("GET /v2/oauth/assets/bg.jpg", image(bg, "image/jpeg"))
+	mux.HandleFunc("GET /v2/oauth/assets/logo.png", image(logo, "image/png"))
 
 	// info — sahifada "<ilova> ga kirish" deb ko'rsatish uchun.
 	mux.HandleFunc("GET /v2/oauth/login/info", func(w http.ResponseWriter, r *http.Request) {

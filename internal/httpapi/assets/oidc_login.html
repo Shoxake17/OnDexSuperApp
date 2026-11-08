@@ -4,42 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>OnDex — kirish</title>
+<meta name="color-scheme" content="dark">
+<title>OnDex ID — kirish</title>
 <link rel="stylesheet" href="/v2/oauth/assets/login.css">
 </head>
 <body>
 <main class="card" aria-live="polite">
-  <div class="brand">OnDex</div>
-  <h1 id="title">Biznes kabinetiga kirish</h1>
+  <div class="brand">
+    <img src="/v2/oauth/assets/logo.png" alt="" width="48" height="50">
+    <span>OnDex<b>ID</b></span>
+  </div>
+  <h1 id="title">OnDex ID bilan kirish</h1>
   <p class="sub" id="client"></p>
 
   <div id="err" class="err" role="alert" hidden></div>
 
-  <!-- 1. Telefon + usul -->
+  <!-- 1. Telefon -> Davom etish (Telegram kodi). Parol — ixtiyoriy havola. -->
   <section id="s-start">
-    <label for="phone">Telefon raqami</label>
-    <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+998 90 123 45 67">
-    <div class="tabs" role="tablist">
-      <button type="button" id="tab-pwd" class="tab on" role="tab" aria-selected="true">Parol</button>
-      <button type="button" id="tab-code" class="tab" role="tab" aria-selected="false">Telegram kodi</button>
+    <label class="field">
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h10V4H7Zm5 13a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg>
+      </span>
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+998 90 123 45 67" aria-label="Telefon raqami">
+    </label>
+    <div id="pwd-box" hidden>
+      <label class="field">
+        <span class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a5 5 0 0 1 5 5v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5Zm0 2a3 3 0 0 0-3 3v3h6V7a3 3 0 0 0-3-3Z"/></svg>
+        </span>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Parol" aria-label="Parol">
+      </label>
     </div>
-    <div id="pwd-box">
-      <label for="password">Parol</label>
-      <input id="password" type="password" autocomplete="current-password">
-      <button type="button" id="btn-pwd" class="primary">Kirish</button>
-    </div>
-    <div id="code-box" hidden>
-      <button type="button" id="btn-send" class="primary">Telegram orqali kod olish</button>
-      <p class="hint">Telegram bot ochiladi — u yerda raqamingizni tasdiqlang, kod keladi.</p>
-    </div>
+    <button type="button" id="btn-next" class="primary">Davom etish</button>
+    <button type="button" id="btn-mode" class="link">Parol bilan kirish</button>
+    <p class="hint" id="start-hint">Kod Telegram orqali keladi.</p>
   </section>
 
-  <!-- 2. Kod kiritish (birinchi bosqich yoki ikkinchi omil) -->
+  <!-- 2. Kod (birinchi bosqich yoki ikkinchi omil) -->
   <section id="s-code" hidden>
     <p class="hint" id="code-hint">Telegram'ga kelgan kodni kiriting.</p>
-    <p><a id="tg-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Telegram botni ochish</a></p>
-    <label for="code">Kod</label>
-    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+    <a id="tg-link" class="ghost" href="#" target="_blank" rel="noopener noreferrer" hidden>Telegram botni ochish</a>
+    <label class="field">
+      <input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Kod" aria-label="Kod">
+    </label>
     <button type="button" id="btn-code" class="primary">Tasdiqlash</button>
     <button type="button" id="btn-back" class="link">Orqaga</button>
   </section>
@@ -47,8 +54,7 @@
   <!-- 2b. Parol — ikkinchi omil -->
   <section id="s-fpwd" hidden>
     <p class="hint">Xavfsizlik uchun parolingizni ham kiriting.</p>
-    <label for="fpassword">Parol</label>
-    <input id="fpassword" type="password" autocomplete="current-password">
+    <label class="field"><input id="fpassword" type="password" autocomplete="current-password" placeholder="Parol" aria-label="Parol"></label>
     <button type="button" id="btn-fpwd" class="primary">Davom etish</button>
   </section>
 
@@ -56,18 +62,15 @@
   <section id="s-setpwd" hidden>
     <p class="hint">Biznes akkauntingizda hali parol yo'q. Xavfsizlik uchun yangi parol o'rnating
       (kamida 8 belgi; 12345678 kabi oddiy parollar qabul qilinmaydi).</p>
-    <label for="npassword">Yangi parol</label>
-    <input id="npassword" type="password" autocomplete="new-password">
-    <label for="npassword2">Parolni takrorlang</label>
-    <input id="npassword2" type="password" autocomplete="new-password">
+    <label class="field"><input id="npassword" type="password" autocomplete="new-password" placeholder="Yangi parol" aria-label="Yangi parol"></label>
+    <label class="field"><input id="npassword2" type="password" autocomplete="new-password" placeholder="Parolni takrorlang" aria-label="Parolni takrorlang"></label>
     <button type="button" id="btn-setpwd" class="primary">Parolni saqlash</button>
   </section>
 
   <!-- 3. TOTP -->
   <section id="s-totp" hidden>
     <p class="hint">Authenticator ilovasidagi 6 xonali kodni kiriting (yoki tiklash kodini).</p>
-    <label for="totp">Kod</label>
-    <input id="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="20">
+    <label class="field"><input id="totp" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="Kod" aria-label="Kod"></label>
     <button type="button" id="btn-totp" class="primary">Kirish</button>
   </section>
 
@@ -77,8 +80,7 @@
       ilovada QR kodni skanerlang.</p>
     <img id="qr" alt="TOTP QR kod" width="246" height="246">
     <p class="mono" id="secret"></p>
-    <label for="ecode">Ilovadagi 6 xonali kod</label>
-    <input id="ecode" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    <label class="field"><input id="ecode" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 xonali kod" aria-label="Ilovadagi 6 xonali kod"></label>
     <button type="button" id="btn-enroll" class="primary">Ulash</button>
   </section>
 
@@ -91,7 +93,7 @@
     <button type="button" id="btn-done" class="primary" disabled>Davom etish</button>
   </section>
 
-  <p class="foot">Parol va kodlar faqat OnDex serveriga yuboriladi.</p>
+  <p class="foot">OnDex ID — barcha OnDex xizmatlari uchun yagona kalit.<br>Parol va kodlar faqat OnDex serveriga yuboriladi.</p>
 </main>
 <script src="/v2/oauth/assets/login.js"></script>
 </body>
