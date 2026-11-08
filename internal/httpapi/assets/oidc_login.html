@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>OnDex — kirish</title>
+<link rel="stylesheet" href="/v2/oauth/assets/login.css">
+</head>
+<body>
+<main class="card" aria-live="polite">
+  <div class="brand">OnDex</div>
+  <h1 id="title">Biznes kabinetiga kirish</h1>
+  <p class="sub" id="client"></p>
+
+  <div id="err" class="err" role="alert" hidden></div>
+
+  <!-- 1. Telefon + usul -->
+  <section id="s-start">
+    <label for="phone">Telefon raqami</label>
+    <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+998 90 123 45 67">
+    <div class="tabs" role="tablist">
+      <button type="button" id="tab-pwd" class="tab on" role="tab" aria-selected="true">Parol</button>
+      <button type="button" id="tab-code" class="tab" role="tab" aria-selected="false">Telegram kodi</button>
+    </div>
+    <div id="pwd-box">
+      <label for="password">Parol</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <button type="button" id="btn-pwd" class="primary">Kirish</button>
+    </div>
+    <div id="code-box" hidden>
+      <button type="button" id="btn-send" class="primary">Telegram orqali kod olish</button>
+      <p class="hint">Telegram bot ochiladi — u yerda raqamingizni tasdiqlang, kod keladi.</p>
+    </div>
+  </section>
+
+  <!-- 2. Kod kiritish (birinchi bosqich yoki ikkinchi omil) -->
+  <section id="s-code" hidden>
+    <p class="hint" id="code-hint">Telegram'ga kelgan kodni kiriting.</p>
+    <p><a id="tg-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Telegram botni ochish</a></p>
+    <label for="code">Kod</label>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+    <button type="button" id="btn-code" class="primary">Tasdiqlash</button>
+    <button type="button" id="btn-back" class="link">Orqaga</button>
+  </section>
+
+  <!-- 2b. Parol — ikkinchi omil -->
+  <section id="s-fpwd" hidden>
+    <p class="hint">Xavfsizlik uchun parolingizni ham kiriting.</p>
+    <label for="fpassword">Parol</label>
+    <input id="fpassword" type="password" autocomplete="current-password">
+    <button type="button" id="btn-fpwd" class="primary">Davom etish</button>
+  </section>
+
+  <!-- 3. TOTP -->
+  <section id="s-totp" hidden>
+    <p class="hint">Authenticator ilovasidagi 6 xonali kodni kiriting (yoki tiklash kodini).</p>
+    <label for="totp">Kod</label>
+    <input id="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="20">
+    <button type="button" id="btn-totp" class="primary">Kirish</button>
+  </section>
+
+  <!-- 4. TOTP ulash (birinchi marta) -->
+  <section id="s-enroll" hidden>
+    <p class="hint">Biznes egasi uchun ikki bosqichli himoya majburiy. Google Authenticator yoki shunga o'xshash
+      ilovada QR kodni skanerlang.</p>
+    <img id="qr" alt="TOTP QR kod" width="246" height="246">
+    <p class="mono" id="secret"></p>
+    <label for="ecode">Ilovadagi 6 xonali kod</label>
+    <input id="ecode" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    <button type="button" id="btn-enroll" class="primary">Ulash</button>
+  </section>
+
+  <!-- 5. Tiklash kodlari -->
+  <section id="s-recovery" hidden>
+    <p class="hint"><b>Tiklash kodlarini saqlang.</b> Telefoningiz yo'qolsa, shular bilan kirasiz. Ular boshqa
+      ko'rsatilmaydi.</p>
+    <pre id="codes" class="mono"></pre>
+    <label class="check"><input type="checkbox" id="saved"> Kodlarni xavfsiz joyga saqladim</label>
+    <button type="button" id="btn-done" class="primary" disabled>Davom etish</button>
+  </section>
+
+  <p class="foot">Parol va kodlar faqat OnDex serveriga yuboriladi.</p>
+</main>
+<script src="/v2/oauth/assets/login.js"></script>
+</body>
+</html>

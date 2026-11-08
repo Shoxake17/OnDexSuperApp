@@ -44,6 +44,56 @@ func RunStoreContract(t *testing.T, newStore func(t *testing.T) identity.Store, 
 	t.Run("Revoke, ListActive, RevokeAllForUser", c.revocation)
 	t.Run("parallel refresh: faqat BITTASI o'tadi", c.parallel)
 	t.Run("bir xil refresh xeshi ikki sessiyada bo'lmaydi", c.duplicateHash)
+	t.Run("parent_id saqlanadi, RevokeChildren faqat bolalarni yopadi", c.children)
+}
+
+// children — OIDC: SSO sessiyasi va undan ochilgan ilova sessiyalari.
+func (c *contract) children(t *testing.T) {
+	st := c.newStore(t)
+	parent := c.session(t, st, "ch-parent")
+	other := c.session(t, st, "ch-other")
+	var kids []string
+	for i, ref := range []string{"ch-k1", "ch-k2"} {
+		c.mu.Lock()
+		c.seq++
+		n := c.seq
+		c.mu.Unlock()
+		k := &identity.Session{ID: fmt.Sprintf("ctrk_%d_%d_%d", time.Now().UnixNano(), n, i), UserID: c.userID,
+			Realm: users.RealmMerchant, ClientID: "merchant-web", CreatedAt: base, LastUsedAt: base,
+			IdleExpiresAt: base.Add(time.Hour), AbsExpiresAt: base.Add(24 * time.Hour), ParentID: parent.ID}
+		if err := st.Create(c.ctx, k, h(ref+k.ID)); err != nil {
+			t.Fatal(err)
+		}
+		kids = append(kids, k.ID)
+	}
+	got, err := st.Get(c.ctx, kids[0])
+	if err != nil || got.ParentID != parent.ID {
+		t.Fatalf("parent_id saqlanmadi: %v %+v", err, got)
+	}
+	if p, _ := st.Get(c.ctx, parent.ID); p.ParentID != "" {
+		t.Fatalf("ota sessiyada parent_id bo'sh bo'lishi kerak: %q", p.ParentID)
+	}
+	revoked, err := st.RevokeChildren(c.ctx, parent.ID, "sso_logout", base.Add(time.Minute))
+	if err != nil || len(revoked) != 2 {
+		t.Fatalf("RevokeChildren: %v, %d ta", err, len(revoked))
+	}
+	for _, id := range kids {
+		if s, _ := st.Get(c.ctx, id); s.RevokedAt == nil || s.RevokeReason != "sso_logout" {
+			t.Fatalf("bola sessiya yopilmadi: %+v", s)
+		}
+	}
+	for _, id := range []string{parent.ID, other.ID} {
+		if s, _ := st.Get(c.ctx, id); s.RevokedAt != nil {
+			t.Fatalf("begona sessiya yopildi: %s", id)
+		}
+	}
+	again, _ := st.RevokeChildren(c.ctx, parent.ID, "sso_logout", base.Add(2*time.Minute))
+	if len(again) != 0 {
+		t.Fatalf("allaqachon yopilgan bolalar qayta qaytarildi: %d", len(again))
+	}
+	if none, _ := st.RevokeChildren(c.ctx, "", "x", base); len(none) != 0 {
+		t.Fatal("bo'sh parent bilan sessiyalar yopildi")
+	}
 }
 
 func (c *contract) session(t *testing.T, st identity.Store, refresh string) *identity.Session {

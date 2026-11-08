@@ -1106,6 +1106,8 @@ func main() {
 	authzCancel()
 	// Merchant kirishi (A3b): parol/kod + egasi uchun majburiy TOTP.
 	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo)
+	// OnDex OIDC provayderi (A4c): Merchant web (ShoxPos BFF) shu orqali kiradi.
+	oidcProvider := buildOIDC(identitySvc, pgPool)
 	orderSvc.WithWallet(walletSvc)
 
 	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
@@ -1545,6 +1547,7 @@ func main() {
 		Identity:           identitySvc,
 		Authz:              authzSvc,
 		MerchantAuth:       merchantAuth,
+		OIDC:               oidcProvider,
 		QurtRepo:           qurtRepo,
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,

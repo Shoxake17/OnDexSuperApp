@@ -209,6 +209,10 @@ type Deps struct {
 	// egasi uchun). `nil` bo'lsa `/v2/auth/merchant/*`, `/v2/auth/mfa/*` 503.
 	MerchantAuth *identity.MerchantAuth
 
+	// OIDC — OnDex OIDC provayderi (A4c): `/v2/oauth/*`, discovery. `nil`
+	// bo'lsa bu marshrutlar 503 (klient sozlanmagan).
+	OIDC *identity.Provider
+
 	// QurtRepo — qurt do'konlari mahsulotlari (internal/qurt): POS serveri
 	// yozadi, mijoz ilovasi o'qiydi. `nil` bo'lsa /qurt/* va /merchant/qurt/*
 	// 503 qaytaradi, qolgan API o'zgarishsiz ishlaydi.
@@ -437,6 +441,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAuthRoutes(mux)
 	s.registerAuthV2Routes(mux)
 	s.registerMerchantAuthRoutes(mux)
+	s.registerOIDCRoutes(mux)
 	s.registerMerchantRoutes(mux)
 	s.registerMeRoutes(mux)
 	s.registerNotificationRoutes(mux)

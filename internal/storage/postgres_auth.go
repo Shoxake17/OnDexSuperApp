@@ -22,14 +22,15 @@ func NewPgAuthSessionStore(pool *pgxpool.Pool) *PgAuthSessionStore {
 }
 
 const authSessionCols = `id, user_id, realm, client_id, org_id, amr, mfa_at, created_at, last_used_at,
-	idle_expires_at, abs_expires_at, revoked_at, revoke_reason, ip_hash, user_agent, device_name`
+	idle_expires_at, abs_expires_at, revoked_at, revoke_reason, ip_hash, user_agent, device_name,
+	COALESCE(parent_id, '')`
 
 func scanAuthSession(row pgx.Row) (*identity.Session, error) {
 	var s identity.Session
 	var realm string
 	err := row.Scan(&s.ID, &s.UserID, &realm, &s.ClientID, &s.OrgID, &s.AMR, &s.MFAAt, &s.CreatedAt,
 		&s.LastUsedAt, &s.IdleExpiresAt, &s.AbsExpiresAt, &s.RevokedAt, &s.RevokeReason, &s.IPHash,
-		&s.UserAgent, &s.DeviceName)
+		&s.UserAgent, &s.DeviceName, &s.ParentID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,10 +45,10 @@ func (r *PgAuthSessionStore) Create(ctx context.Context, s *identity.Session, re
 	}
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO auth_sessions (id, user_id, realm, client_id, family_id, refresh_hash, org_id, amr, mfa_at,
-			created_at, last_used_at, idle_expires_at, abs_expires_at, ip_hash, user_agent, device_name)
-		VALUES ($1,$2,$3,$4,$1,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+			created_at, last_used_at, idle_expires_at, abs_expires_at, ip_hash, user_agent, device_name, parent_id)
+		VALUES ($1,$2,$3,$4,$1,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16, ''))`,
 		s.ID, s.UserID, string(s.Realm), s.ClientID, refreshHash, s.OrgID, amr, s.MFAAt,
-		s.CreatedAt, s.LastUsedAt, s.IdleExpiresAt, s.AbsExpiresAt, s.IPHash, s.UserAgent, s.DeviceName)
+		s.CreatedAt, s.LastUsedAt, s.IdleExpiresAt, s.AbsExpiresAt, s.IPHash, s.UserAgent, s.DeviceName, s.ParentID)
 	return err
 }
 
@@ -159,6 +160,26 @@ func (r *PgAuthSessionStore) RevokeAllForUser(ctx context.Context, userID, reaso
 		return 0, err
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// RevokeChildren — `parentID` dan ochilgan faol sessiyalarni yopadi va
+// ularni qaytaradi (back-channel logout uchun).
+func (r *PgAuthSessionStore) RevokeChildren(ctx context.Context, parentID, reason string, now time.Time) ([]*identity.Session, error) {
+	rows, err := r.pool.Query(ctx, `UPDATE auth_sessions SET revoked_at = $2, revoke_reason = $3
+		WHERE parent_id = $1 AND revoked_at IS NULL RETURNING `+authSessionCols, parentID, now, reason)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*identity.Session
+	for rows.Next() {
+		s, err := scanAuthSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // PgAuditLog — `audit_log` (0067, faqat qo'shiladi). Yozib bo'lmasa asosiy

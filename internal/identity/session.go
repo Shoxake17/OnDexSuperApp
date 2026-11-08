@@ -33,6 +33,10 @@ var DefaultClients = map[string]ClientPolicy{
 	"ondex-pro":        {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"ondex-go":         {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"admin-web":        {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour},
+	// ondex-sso — OnDex kirish sahifasining brauzer sessiyasi (OIDC SSO
+	// cookie). Refresh ishlatilmaydi (cookie faqat sid ko'rsatkichi), shuning
+	// uchun idle = abs: 7 kundan keyin qayta kirish.
+	SSOClientID: {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 7 * 24 * time.Hour},
 }
 
 // refreshRaceGrace — HALOL poyga: klient bir refresh tokenni tarmoq xatosi
@@ -75,6 +79,10 @@ type Session struct {
 	IPHash        []byte
 	UserAgent     string
 	DeviceName    string
+	// ParentID — OIDC orqali ochilgan ilova sessiyasining SSO sessiyasi
+	// (`ondex-sso`). Bo'sh — to'g'ridan-to'g'ri kirish. SSO yopilsa bolalari
+	// ham yopiladi (`RevokeChildren`).
+	ParentID string
 }
 
 // Active — sessiya hozir yaroqlimi.
@@ -110,6 +118,9 @@ type Store interface {
 	ListActive(ctx context.Context, userID string, now time.Time) ([]*Session, error)
 	Revoke(ctx context.Context, id, reason string, now time.Time) error
 	RevokeAllForUser(ctx context.Context, userID, reason string, now time.Time) (int, error)
+	// RevokeChildren — `parentID` dan ochilgan faol sessiyalarni yopadi va
+	// yopilganlarini qaytaradi (back-channel logout yuborish uchun).
+	RevokeChildren(ctx context.Context, parentID, reason string, now time.Time) ([]*Session, error)
 }
 
 // UserReader — sessiya egasini tekshirish uchun (o'chirilgan akkaunt,
@@ -145,6 +156,8 @@ type Service struct {
 	now     func() time.Time
 	active  *ttlcache.Cache[bool]
 	ipKey   []byte
+	// revokeHook — `OnRevoke` (OIDC back-channel logout).
+	revokeHook func(ctx context.Context, sess *Session)
 }
 
 // NewService — `clients` nil bo'lsa `DefaultClients`.
@@ -227,6 +240,8 @@ type CreateInput struct {
 	OrgID    string
 	AMR      []string // pwd | otp | totp
 	Meta     Meta
+	// ParentID — OIDC: kod qaysi SSO sessiyasidan berilgan (bo'sh — yo'q).
+	ParentID string
 }
 
 // Create — sessiya ochadi va token juftligini qaytaradi.
@@ -266,6 +281,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 		AMR: in.AMR, CreatedAt: now, LastUsedAt: now,
 		IdleExpiresAt: now.Add(pol.Idle), AbsExpiresAt: now.Add(pol.Abs),
 		IPHash: s.ipHash(in.Meta.IP), UserAgent: clip(in.Meta.UserAgent, 300), DeviceName: clip(in.Meta.DeviceName, 100),
+		ParentID: in.ParentID,
 	}
 	for _, a := range in.AMR {
 		if a == "totp" || a == "recovery" { // tiklash kodi — TOTP o'rnini bosuvchi ikkinchi bosqich
@@ -308,6 +324,7 @@ func (s *Service) Refresh(ctx context.Context, refresh string, meta Meta) (*Toke
 	case RotateOK:
 	case RotateReused:
 		s.active.Invalidate(sess.ID)
+		s.notifyRevoked(ctx, sess)
 		s.audit.Record(ctx, Event{Action: "session.refresh_reuse", Result: ResultDenied, ActorUserID: sess.UserID,
 			Realm: string(sess.Realm), Target: sess.ID, IPHash: s.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 		slog.Warn("identity: refresh qayta ishlatildi — sessiya bekor qilindi", "session", sess.ID, "user", sess.UserID)
@@ -337,18 +354,65 @@ func (s *Service) Refresh(ctx context.Context, refresh string, meta Meta) (*Toke
 	return &Tokens{AccessToken: access, RefreshToken: newTok, TokenType: "Bearer", ExpiresAt: exp, SessionID: sess.ID}, nil
 }
 
+// RefreshForClient — `Refresh` + sessiya SHU klientga tegishliligi (OIDC
+// /token). Boshqa klientning refresh tokeni kelsa — o'g'irlik belgisi:
+// sessiya yopiladi (rotatsiya allaqachon bo'lgan, egasi baribir qayta kiradi).
+func (s *Service) RefreshForClient(ctx context.Context, refresh, clientID string, meta Meta) (*Tokens, error) {
+	tok, err := s.Refresh(ctx, refresh, meta)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := s.store.Get(ctx, tok.SessionID)
+	if err != nil {
+		return nil, ErrRefreshInvalid
+	}
+	if sess.ClientID != clientID {
+		_ = s.revoke(ctx, sess, "refresh_wrong_client")
+		return nil, ErrRefreshInvalid
+	}
+	return tok, nil
+}
+
 // idleFor — klientning harakatsizlik chegarasi; noma'lum klient — 0
 // (Store sessiyani yopadi).
 func (s *Service) idleFor(clientID string) time.Duration {
 	return s.clients[clientID].Idle
 }
 
+// OnRevoke — sessiya markazda yopilganda chaqiriladi (OIDC back-channel
+// logout). Bitta kuzatuvchi; `nil` — o'chiq. Chaqiruv bloklamasligi SHART.
+func (s *Service) OnRevoke(fn func(ctx context.Context, sess *Session)) { s.revokeHook = fn }
+
+func (s *Service) notifyRevoked(ctx context.Context, sess *Session) {
+	if s.revokeHook != nil && sess != nil {
+		s.revokeHook(ctx, sess)
+	}
+}
+
 func (s *Service) revoke(ctx context.Context, sess *Session, reason string) error {
 	err := s.store.Revoke(ctx, sess.ID, reason, s.now())
 	s.active.Invalidate(sess.ID)
+	s.notifyRevoked(ctx, sess)
 	s.audit.Record(ctx, Event{Action: "session.revoke", Result: ResultOK, ActorUserID: sess.UserID,
 		Realm: string(sess.Realm), Target: sess.ID, Details: map[string]any{"reason": reason}})
 	return err
+}
+
+// revokeTree — sessiyani va uning BOLALARINI (OIDC: SSO'dan ochilgan ilova
+// sessiyalari) yopadi. Yopilgan bolalar qaytariladi.
+func (s *Service) revokeTree(ctx context.Context, sess *Session, reason string) ([]*Session, error) {
+	err := s.revoke(ctx, sess, reason)
+	kids, kerr := s.store.RevokeChildren(ctx, sess.ID, reason, s.now())
+	for _, k := range kids {
+		s.active.Invalidate(k.ID)
+		s.notifyRevoked(ctx, k)
+		s.audit.Record(ctx, Event{Action: "session.revoke", Result: ResultOK, ActorUserID: k.UserID,
+			Realm: string(k.Realm), Target: k.ID, Details: map[string]any{"reason": reason, "parent": sess.ID}})
+	}
+	if err == nil {
+		err = kerr
+	}
+	return kids, err
 }
 
 // Authenticate — access tokenni tekshiradi VA sessiya markazda hali
@@ -411,6 +475,7 @@ func (s *Service) RevokeAllForUser(ctx context.Context, userID, reason string) (
 	n, err := s.store.RevokeAllForUser(ctx, userID, reason, s.now())
 	for _, x := range list {
 		s.active.Invalidate(x.ID)
+		s.notifyRevoked(ctx, x)
 	}
 	s.audit.Record(ctx, Event{Action: "session.revoke_all", Result: ResultOK, ActorUserID: userID,
 		Target: userID, Details: map[string]any{"reason": reason, "count": n}})

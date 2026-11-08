@@ -218,6 +218,12 @@ var Registry = []Var{
 	{Name: "GEMINI_TTS_MODEL", Effect: "ovozli yo'l ko'rsatishda standart TTS modeli ishlatiladi"},
 	{Name: "GEMINI_TTS_VOICE", Effect: "ovozli yo'l ko'rsatishda standart ovoz (Kore) ishlatiladi"},
 
+	// ---------- OnDex OIDC provayderi (A4c, `internal/identity/oidc.go`) ----------
+	{Name: "OIDC_MERCHANT_WEB_SECRET", Effect: "Merchant web (ShoxPos) OnDex OIDC orqali kira olmaydi (/v2/oauth/* → 503)", DeployRequired: true},
+	{Name: "OIDC_MERCHANT_WEB_REDIRECT_URIS", Effect: "OIDC yoqilmaydi (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},
+	{Name: "OIDC_MERCHANT_WEB_POST_LOGOUT_URIS", Effect: "chiqishdan keyin ilovaga qaytarilmaydi (OnDex sahifasida qoladi)"},
+	{Name: "OIDC_MERCHANT_WEB_BACKCHANNEL_URI", Effect: "markazda yopilgan sessiya ShoxPos'da darhol emas, keyingi refresh'da (≤10 daqiqa) tugaydi"},
+
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
 	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
 	{Name: "SSO_MERCHANT_REDIRECT_URIS", Effect: "yagona kirish YOQILMAYDI (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},

@@ -248,7 +248,9 @@ func ValidApp(a string) bool { return a == AppPanel || a == AppPro || a == AppGo
 // a'zolik uni ruxsat etmaydi).
 func AppForClient(clientID string) string {
 	switch clientID {
-	case "merchant-web", "merchant-desktop":
+	// ondex-sso — OnDex kirish sahifasi: undan faqat panel klientlariga
+	// (merchant-web) kod beriladi, shuning uchun panel ruxsati talab qilinadi.
+	case "merchant-web", "merchant-desktop", "ondex-sso":
 		return AppPanel
 	case "ondex-pro":
 		return AppPro

@@ -395,6 +395,12 @@ func (s *Service) identityOf(ctx context.Context, userID string) (*Identity, err
 	return id, nil
 }
 
+// IdentityOf — foydalanuvchining hamkor kimligi (OIDC userinfo uchun; kod
+// almashuvisiz, chaqiruvchi tokenni o'zi tekshirgan bo'lishi SHART).
+func (s *Service) IdentityOf(ctx context.Context, userID string) (*Identity, error) {
+	return s.identityOf(ctx, userID)
+}
+
 // WithEntityNamer — restoran nomini katalogdan olish uchun (ixtiyoriy).
 func (s *Service) WithEntityNamer(n EntityNamer) *Service {
 	s.namer = n

@@ -200,7 +200,9 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			return
 		}
 		noStore(w)
-		writeJSON(w, http.StatusOK, en)
+		// qr_png — QR rasm serverda chiziladi (data: URI): kalit uchinchi
+		// tomon QR xizmatiga ketmaydi; web kirish sahifasi shuni ko'rsatadi.
+		writeJSON(w, http.StatusOK, map[string]string{"secret": en.Secret, "otpauth_uri": en.URI, "qr_png": qrDataURI(en.URI)})
 	})
 
 	mux.HandleFunc("POST /v2/auth/mfa/totp/confirm", func(w http.ResponseWriter, r *http.Request) {

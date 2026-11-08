@@ -62,6 +62,10 @@ const (
 	SSOClientID     = "merchant"
 	SSOClientSecret = "e2e-sso-secret-e2e-sso-secret-e2e-sso-secret-0123456789"
 	SSORedirectURI  = "https://pos.ondex.uz/auth/callback"
+
+	// OnDex OIDC (A4c) test klienti — Merchant web BFF.
+	OIDCClientSecret = "e2e-oidc-bff-secret-e2e-oidc-bff-secret-0123456789"
+	OIDCRedirectURI  = "https://pos.ondex.uz/api/auth/oidc/callback"
 )
 
 // noGoogle — Google Distance Matrix o'rniga: har doim xato qaytaradi va
@@ -149,6 +153,8 @@ type World struct {
 	// AuthSvc — kod/parol xizmati (merchant ssenariylari dev_code oladi).
 	AuthSvc      *users.Service
 	MerchantAuth *identity.MerchantAuth
+	// OIDC — OnDex OIDC provayderi (A4c), klient `merchant-web`.
+	OIDC *identity.Provider
 
 	Admin    *Actor
 	Customer *Actor
@@ -392,12 +398,21 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 
+	w.OIDC, err = identity.NewProvider(w.Identity, identity.NewMemoryCodeStore(), []identity.OIDCClient{{
+		ID: "merchant-web", Name: "OnDex Merchant (web)", SecretHash: identity.HashClientSecret(OIDCClientSecret),
+		RedirectURIs: []string{OIDCRedirectURI}, PostLogoutRedirectURIs: []string{"https://pos.ondex.uz/"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
 		SSO:          ssoSvc,
 		Identity:     w.Identity,
 		Authz:        w.Authz,
 		MerchantAuth: w.MerchantAuth,
+		OIDC:         w.OIDC,
 		QurtRepo:     qurtProducts,
 		QurtOrderSvc: &qurtorders.Service{Repo: storage.NewMemoryQurtOrderRepo(), Products: qurtProducts, NewID: httpapi.NewID},
 		UserRepo:     w.Users, OrderRepo: w.Orders, CourierRepo: w.Couriers,

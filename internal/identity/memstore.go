@@ -122,6 +122,20 @@ func (m *MemoryStore) Revoke(_ context.Context, id, reason string, now time.Time
 	return nil
 }
 
+func (m *MemoryStore) RevokeChildren(_ context.Context, parentID, reason string, now time.Time) ([]*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*Session
+	for _, r := range m.rows {
+		if parentID != "" && r.s.ParentID == parentID && r.s.RevokedAt == nil {
+			t := now
+			r.s.RevokedAt, r.s.RevokeReason = &t, reason
+			out = append(out, cloneSession(&r.s))
+		}
+	}
+	return out, nil
+}
+
 func (m *MemoryStore) RevokeAllForUser(_ context.Context, userID, reason string, now time.Time) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

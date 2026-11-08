@@ -125,6 +125,58 @@ func buildAuthz(ctx context.Context, pool *pgxpool.Pool) *authz.Authorizer {
 	return authz.New(store)
 }
 
+// buildOIDC — OnDex OIDC provayderi (A4c). Klient: Merchant web (ShoxPos
+// BFF, `merchant-web`). Sozlamalar:
+//
+//	OIDC_MERCHANT_WEB_SECRET          — klient siri (>= 32 belgi; BFF'da ham shu)
+//	OIDC_MERCHANT_WEB_REDIRECT_URIS   — vergul bilan, ANIQ (masalan https://pos.ondex.uz/api/auth/oidc/callback)
+//	OIDC_MERCHANT_WEB_POST_LOGOUT_URIS — chiqishdan keyin qaytish (ixtiyoriy)
+//	OIDC_MERCHANT_WEB_BACKCHANNEL_URI — back-channel logout (ixtiyoriy)
+//
+// Sir yo'q bo'lsa provayder o'chiq (`nil`) — /v2/oauth/* 503.
+func buildOIDC(svc *identity.Service, pool *pgxpool.Pool) *identity.Provider {
+	if svc == nil {
+		return nil
+	}
+	secret := strings.TrimSpace(os.Getenv("OIDC_MERCHANT_WEB_SECRET"))
+	if secret == "" {
+		slog.Warn("OnDex OIDC O'CHIQ (OIDC_MERCHANT_WEB_SECRET yo'q) — /v2/oauth/* 503")
+		return nil
+	}
+	if len(secret) < 32 {
+		slog.Error("OnDex OIDC O'CHIQ: OIDC_MERCHANT_WEB_SECRET kamida 32 belgi bo'lishi shart")
+		return nil
+	}
+	csv := func(raw string) []string {
+		var out []string
+		for _, v := range strings.Split(raw, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	var codes identity.CodeStore
+	if pool != nil {
+		codes = storage.NewPgOAuthCodeStore(pool)
+	} else {
+		codes = identity.NewMemoryCodeStore()
+		slog.Warn("OIDC kodlari XOTIRADA (DATABASE_URL yo'q)")
+	}
+	p, err := identity.NewProvider(svc, codes, []identity.OIDCClient{{
+		ID: "merchant-web", Name: "OnDex Merchant (web)", SecretHash: identity.HashClientSecret(secret),
+		RedirectURIs:           csv(os.Getenv("OIDC_MERCHANT_WEB_REDIRECT_URIS")),
+		PostLogoutRedirectURIs: csv(os.Getenv("OIDC_MERCHANT_WEB_POST_LOGOUT_URIS")),
+		BackchannelLogoutURI:   strings.TrimSpace(os.Getenv("OIDC_MERCHANT_WEB_BACKCHANNEL_URI")),
+	}})
+	if err != nil {
+		slog.Error("OnDex OIDC O'CHIQ", "err", err)
+		return nil
+	}
+	slog.Info("rejim: OnDex OIDC yoqilgan", "issuer", p.IssuerURL())
+	return p
+}
+
 // buildMerchantAuth — merchant kirish oqimlari (A3b). Egasi uchun TOTP
 // MAJBURIY, kalit `secretstore` bilan shifrlanadi: `SECRETS_ENC_KEY` yo'q
 // bo'lsa production'da xizmat o'chiq (TOTP kalitini ochiq saqlashdan ko'ra
