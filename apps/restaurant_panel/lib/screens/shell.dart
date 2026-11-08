@@ -47,6 +47,7 @@ class _RestaurantShellState extends State<RestaurantShell> {
   String _name = '';
   String _address = '';
   String _logoUrl = '';
+
   /// Qo'lda bosiladigan "Ochiq/Yopiq" tugmasi.
   bool _open = true;
 
@@ -75,7 +76,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
     super.initState();
     _loadInfo();
     // Ish vaqti chegarasida (masalan 22:00) belgi o'zi almashsin.
-    _openTicker = Timer.periodic(const Duration(seconds: 30), (_) => _tickOpenStatus());
+    _openTicker =
+        Timer.periodic(const Duration(seconds: 30), (_) => _tickOpenStatus());
     _pollOrders();
     // Jonli kanal BUTUN panel uchun shu yerda ochiladi — buyurtmalar
     // sahifasi ham xuddi shunga obuna bo'ladi (`lib/live.dart`).
@@ -185,7 +187,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
         message = 'Tugma yoqildi, lekin hozir ish vaqti emas — '
             '${detail ?? 'buyurtmalar ish vaqtida qabul qilinadi'}';
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -206,10 +209,9 @@ class _RestaurantShellState extends State<RestaurantShell> {
     try {
       await api.logout();
     } catch (_) {}
-    await restTokenStore.clear();
+    await api.clearSession();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('rest_rid');
-    api.token = null;
     api.rid = '';
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -250,7 +252,9 @@ class _RestaurantShellState extends State<RestaurantShell> {
   }
 
   Future<void> _goTo(int i) async {
-    if (_index == _iSettings && i != _iSettings && _settingsGuard.hasUnsavedChanges) {
+    if (_index == _iSettings &&
+        i != _iSettings &&
+        _settingsGuard.hasUnsavedChanges) {
       if (!await confirmDiscardSettings(context) || !mounted) return;
     }
     // Yon menyudan "Statistika" bosilsa — "Barcha buyurtmalar" ichida

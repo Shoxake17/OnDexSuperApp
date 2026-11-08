@@ -8,8 +8,42 @@ import 'token_store.dart';
 
 enum _RefreshResult { ok, rejected, network }
 
-/// 401 bo'lsa refresh QILINMAYDIGAN yo'llar (o'zlari token beradi).
-const _noRefresh = {'/v2/auth/token/refresh', '/v2/auth/merchant/otp/verify'};
+/// 401 bo'lsa refresh QILINMAYDIGAN yo'llar (o'zlari token beradi yoki
+/// kirish bosqichi: 401 = noto'g'ri parol/kod, sessiya tugashi emas).
+const _noRefresh = {
+  '/v2/auth/token/refresh',
+  '/v2/auth/merchant/otp/verify',
+  '/v2/auth/merchant/password',
+  '/v2/auth/mfa/factor',
+  '/v2/auth/mfa/verify',
+  '/v2/auth/mfa/totp/enroll',
+  '/v2/auth/mfa/totp/confirm',
+};
+
+/// Biznes egasi kirishining bir bosqichi natijasi.
+class MerchantStep {
+  MerchantStep._done(this.data) : done = true, mfaToken = null, method = null;
+  MerchantStep._challenge(this.mfaToken, this.method, this.data) : done = false;
+
+  /// Sessiya o'rnatildi (token omborda).
+  final bool done;
+
+  /// Keyingi bosqich tokeni (5–10 daqiqa).
+  final String? mfaToken;
+
+  /// `otp` | `password` | `totp_enroll` | `totp`.
+  final String? method;
+
+  /// Server javobi.
+  final Map<String, dynamic> data;
+}
+
+/// TOTP ulash ma'lumoti: `uri` — QR uchun, `secret` — qo'lda kiritish uchun.
+class TotpEnrollment {
+  const TotpEnrollment({required this.secret, required this.uri});
+  final String secret;
+  final String uri;
+}
 
 /// Serverdan kelgan xato — barcha ilovalar shu bitta turdan foydalanadi.
 class ApiException implements Exception {
@@ -164,23 +198,113 @@ class ApiClient {
     required String clientId,
     String? deviceName,
   }) async {
-    final d = await send('POST', '/v2/auth/merchant/otp/verify', {
-      'phone': phone,
-      'code': code,
-      'client_id': clientId,
-      if (deviceName != null) 'device_name': deviceName,
-    });
-    if (d is Map && d['mfa_required'] == true) {
+    final step = await merchantLoginCode(
+      phone,
+      code,
+      clientId: clientId,
+      deviceName: deviceName,
+    );
+    if (!step.done) {
       throw ApiException(
         'Bu raqam biznes egasiniki — kirish ikki bosqichli tasdiq bilan.\n'
         'Merchant panel orqali kiring.',
         statusCode: 403,
       );
     }
+    return step.data;
+  }
+
+  // ---------- Biznes egasi kirishi (A4b): bosqichma-bosqich ----------
+  //
+  // Server oqimi (`internal/httpapi/routes_merchant_auth.go`):
+  //   parol | kod  ->  [otp | password]  ->  [totp_enroll -> confirm]  ->  totp  ->  sessiya
+  // Har chaqiruv `MerchantStep` qaytaradi: `done` bo'lsa sessiya o'rnatilgan
+  // (token + refresh omborda), aks holda `method` keyingi bosqichni bildiradi.
+
+  /// Telefon + parol (faqat egasi). Xodim/mijoz — 401 (bir xil xato).
+  Future<MerchantStep> merchantLoginPassword(
+    String phone,
+    String password, {
+    required String clientId,
+    String? deviceName,
+  }) => _merchantStep('/v2/auth/merchant/password', {
+    'phone': phone,
+    'password': password,
+    'client_id': clientId,
+    if (deviceName != null) 'device_name': deviceName,
+  });
+
+  /// Telefon + kod (`telegramStart` / `requestCode` dan keyin).
+  Future<MerchantStep> merchantLoginCode(
+    String phone,
+    String code, {
+    required String clientId,
+    String? deviceName,
+  }) => _merchantStep('/v2/auth/merchant/otp/verify', {
+    'phone': phone,
+    'code': code,
+    'client_id': clientId,
+    if (deviceName != null) 'device_name': deviceName,
+  });
+
+  /// `method == otp` (telefon kodi) yoki `password` (parol) bosqichi.
+  Future<MerchantStep> mfaFactor(
+    String mfaToken, {
+    String? code,
+    String? password,
+  }) => _merchantStep('/v2/auth/mfa/factor', {
+    'mfa_token': mfaToken,
+    if (code != null) 'code': code,
+    if (password != null) 'password': password,
+  });
+
+  /// `method == totp`: autentifikator kodi YOKI tiklash kodi.
+  Future<MerchantStep> mfaVerify(String mfaToken, String code) => _merchantStep(
+    '/v2/auth/mfa/verify',
+    {'mfa_token': mfaToken, 'code': code},
+  );
+
+  /// `method == totp_enroll`: yangi kalit (QR uchun `otpauth://` havola).
+  Future<TotpEnrollment> mfaEnroll(String mfaToken) async {
+    final d = await send('POST', '/v2/auth/mfa/totp/enroll', {
+      'mfa_token': mfaToken,
+    });
+    return TotpEnrollment(
+      secret: d['secret'] as String,
+      uri: d['otpauth_uri'] as String,
+    );
+  }
+
+  /// Ulashni yakunlaydi: sessiya o'rnatiladi, tiklash kodlari BIR MARTA qaytadi.
+  Future<List<String>> mfaConfirm(String mfaToken, String code) async {
+    final d = await send('POST', '/v2/auth/mfa/totp/confirm', {
+      'mfa_token': mfaToken,
+      'code': code,
+    });
+    await _setCentral(Map<String, dynamic>.from(d['tokens'] as Map));
+    return List<String>.from(d['recovery_codes'] as List);
+  }
+
+  Future<MerchantStep> _merchantStep(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final d = Map<String, dynamic>.from(await send('POST', path, body) as Map);
+    if (d['mfa_required'] == true) {
+      return MerchantStep._challenge(
+        d['mfa_token'] as String,
+        d['method'] as String,
+        d,
+      );
+    }
+    await _setCentral(d);
+    return MerchantStep._done(d);
+  }
+
+  Future<void> _setCentral(Map<String, dynamic> d) async {
     token = d['access_token'] as String;
     refreshToken = d['refresh_token'] as String?;
     await _persist();
-    return Map<String, dynamic>.from(d);
   }
 
   Future<_RefreshResult> _refresh() {
@@ -263,7 +387,8 @@ class ApiClient {
         }
       }
     }
-    return _parse(r);
+    // Kirish bosqichidagi 401 — noto'g'ri parol/kod, sessiya tugashi EMAS.
+    return _parse(r, notifyUnauthorized: !_noRefresh.contains(path));
   }
 
   Future<http.Response> _raw(
@@ -305,7 +430,7 @@ class ApiClient {
     return r;
   }
 
-  dynamic _parse(http.Response r) {
+  dynamic _parse(http.Response r, {bool notifyUnauthorized = true}) {
     dynamic data;
     if (r.body.isNotEmpty) {
       try {
@@ -322,7 +447,7 @@ class ApiClient {
       final msg = (data is Map && data['error'] != null)
           ? data['error'].toString()
           : 'Server xatosi (${r.statusCode})';
-      if (r.statusCode == 401) onUnauthorized?.call();
+      if (r.statusCode == 401 && notifyUnauthorized) onUnauthorized?.call();
       throw ApiException(
         msg,
         statusCode: r.statusCode,

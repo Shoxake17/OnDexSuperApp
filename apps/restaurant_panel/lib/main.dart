@@ -22,6 +22,9 @@ void main() async {
   // birinchi buyurtma kelishidan OLDIN o'qilishi kerak.
   await PanelPrefs.load();
 
+  // Markaziy sessiya (A4b): access + refresh shifrlangan omborda.
+  api.attachStore(restTokenStore);
+
   runApp(const RestaurantApp());
 }
 
@@ -29,7 +32,10 @@ void main() async {
 /// build'da `false`.
 bool isLocalDevApi([String url = baseUrl]) {
   final host = Uri.tryParse(url)?.host ?? '';
-  return host == 'localhost' || host == '127.0.0.1' || host == '[::1]' || host == '::1';
+  return host == 'localhost' ||
+      host == '127.0.0.1' ||
+      host == '[::1]' ||
+      host == '::1';
 }
 
 class RestaurantApp extends StatelessWidget {
@@ -53,7 +59,8 @@ class RestaurantApp extends StatelessWidget {
                 // Navigator (va uning Overlay'i) ustida turadi.
                 initialEntries: [
                   OverlayEntry(
-                    builder: (_) => SelectionArea(child: child ?? const SizedBox.shrink()),
+                    builder: (_) =>
+                        SelectionArea(child: child ?? const SizedBox.shrink()),
                   ),
                 ],
               )
@@ -87,12 +94,10 @@ class _RootState extends State<_Root> {
     // Token — shifrlangan ombordan (bug.md 2-band). `rest_rid` sir
     // emas (oddiy restoran ID'si) va `SharedPreferences` da qoladi —
     // lekin u endi FAQAT zaxira: haqiqiy manba `me()` javobi.
-    final token = await restTokenStore.read();
-    if (token == null || token.isEmpty) {
+    if (!await api.restoreSession()) {
       if (mounted) setState(() => _loading = false);
       return;
     }
-    api.token = token;
     // ┌─ TUZATILGAN NOSOZLIK (bug.md 63-band) ────────────────────────┐
     // Panel AVVAL tokenni ham, `rid` ni ham tekshirmasdan ichkariga
     // kiritardi (sabab admin panelidagi bir xil izohda).
@@ -118,15 +123,13 @@ class _RootState extends State<_Root> {
         _storePhone = user['phone'] as String? ?? '';
         _isStore = true;
       } else {
-        await restTokenStore.clear();
-        api.token = null;
+        await api.clearSession();
       }
     } on ApiException catch (e) {
       // Faqat 401 da chiqaramiz — tarmoq xatosida emas (60-band):
       // restoran zaif tarmoqda ham panelni ocha olishi kerak.
       if (e.isUnauthorized) {
-        await restTokenStore.clear();
-        api.token = null;
+        await api.clearSession();
         _loggedIn = false;
       } else {
         _loggedIn = await _resumeFromCache();

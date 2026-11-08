@@ -22,8 +22,12 @@ class StoreHomeScreen extends StatelessWidget {
       isLocalDevApi() ? 'http://localhost:3001' : 'https://pos.ondex.uz';
 
   Future<void> _logout(BuildContext context) async {
-    await restTokenStore.clear();
-    api.token = null;
+    // Markaziy sessiya serverda ham yopiladi (internet bo'lmasa ham
+    // mahalliy chiqish bajariladi).
+    try {
+      await api.logout();
+    } catch (_) {}
+    await api.clearSession();
     if (!context.mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const RestaurantLoginScreen()),
