@@ -15,6 +15,7 @@ import '../data/quote_service.dart';
 import '../widgets/product_grid.dart' show discountLineLabel;
 import '../widgets/sheet_page.dart';
 import 'address_screen.dart';
+import '../payment_nav_policy.dart' show isAcceptablePayUrl;
 import 'catalog_screen.dart' show kBrand;
 import 'payment_webview_screen.dart';
 import 'tracking_screen.dart';
@@ -360,7 +361,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentSystem: _payMethod.channel,
       );
       final url = (p['pay_url'] as String?) ?? '';
-      if (url.isEmpty) throw Exception('havola bo\'sh');
+      // Faqat https (bug.md 85d) — web bilan bir xil shart.
+      if (!isAcceptablePayUrl(url)) throw Exception('to\'lov havolasi yaroqsiz');
 
       // ┌─ ILOVA HAVOLASI WEBVIEW'DA OCHILMAYDI ────────────────────┐
       // Mijoz Payme/Click/Uzum ni tanlasa, shlyuz o'sha ilovaga

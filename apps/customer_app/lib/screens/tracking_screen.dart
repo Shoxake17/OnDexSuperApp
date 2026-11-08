@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
 import '../api.dart';
+import '../payment_nav_policy.dart' show isAcceptablePayUrl;
 import 'ar_table_screen.dart';
 import '../live.dart';
 import '../widgets/common.dart';
@@ -407,7 +408,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
     try {
       final p = await api.startPayment(widget.orderId, retry: true);
       final url = (p['pay_url'] as String?) ?? '';
-      if (url.isEmpty) throw Exception('havola bo\'sh');
+      // Faqat https (bug.md 85d).
+      if (!isAcceptablePayUrl(url)) throw Exception('to\'lov havolasi yaroqsiz');
       if (!mounted) return;
       await Navigator.of(context).push<bool>(
         MaterialPageRoute(

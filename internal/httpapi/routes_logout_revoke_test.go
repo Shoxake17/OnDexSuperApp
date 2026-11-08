@@ -39,6 +39,12 @@ func TestLogoutRevokesEarlierTokens(t *testing.T) {
 	if w := do(t, h, "POST", "/ws/ticket", customer, `{}`); w.Code != http.StatusUnauthorized {
 		t.Fatalf("XAVFSIZLIK: chiqishdan keyin eski token bilan WS bilet olindi: %d", w.Code)
 	}
+	// bug.md 33-band: WebSocket'ning `Authorization` yo'li ham bekor
+	// qilinganlikni tekshiradi (ilgari faqat imzo/muddat — chiqib ketilgan
+	// token muddati tugaguncha jonli xabarlarni olardi).
+	if w := do(t, h, "GET", "/ws", customer, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("XAVFSIZLIK: chiqishdan keyin eski token bilan WS'ga ulanildi: %d", w.Code)
+	}
 	// Boshqa foydalanuvchining sessiyasi tegilmaydi.
 	if w := do(t, h, "GET", "/me", jwt[users.RoleAdmin], ""); w.Code != http.StatusOK {
 		t.Fatalf("boshqa foydalanuvchi sessiyasi ham bekor bo'ldi: %d", w.Code)

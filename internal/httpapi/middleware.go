@@ -455,6 +455,29 @@ const claimsKey ctxKey = 0
 // endi parametr emas, bog'liqlik. Shu sababli chaqiruv joyi qisqaradi
 // (`s.auth(roles, fn)`) va — muhimrog'i — hech bir handler bu
 // tekshiruvni CHETLAB o'tolmaydi, chunki boshqa yo'l yo'q.
+var errSessionRevoked = errors.New("sessiya bekor qilingan — qaytadan kiring")
+
+// verifyBearer — Bearer tokenning TO'LIQ tekshiruvi: imzo/muddat (eski
+// HS256 yoki markaziy EdDSA, `parseBearer`) + muddatidan oldin bekor
+// qilinganlik (chiqish, akkaunt o'chirilishi, kuryer tasdig'i olinishi;
+// RAM'dagi map — DB/tarmoq murojaati yo'q).
+//
+// Token qabul qiladigan HAR BIR joy shuni chaqirishi SHART. bug.md
+// 33-band: WebSocket'ning `Authorization` yo'li faqat `Tokens.Parse`
+// ni chaqirardi — chiqib ketilgan token muddati tugaguncha jonli
+// xabarlarni olishda davom etardi.
+func (s *Server) verifyBearer(ctx context.Context, raw string) (*users.Claims, error) {
+	claims, err := s.parseBearer(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	if s.Revoked != nil && claims.IssuedAt != nil &&
+		s.Revoked.IsRevoked(claims.Subject, claims.IssuedAt.Time) {
+		return nil, errSessionRevoked
+	}
+	return claims, nil
+}
+
 func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h := r.Header.Get("Authorization")
@@ -462,17 +485,9 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 			httpError(w, http.StatusUnauthorized, errors.New("Authorization: Bearer <token> talab qilinadi"))
 			return
 		}
-		claims, err := s.parseBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
+		claims, err := s.verifyBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
 		if err != nil {
 			httpError(w, http.StatusUnauthorized, err)
-			return
-		}
-		// Muddatidan oldin bekor qilingan sessiya (chiqish, akkaunt
-		// o'chirilishi, kuryer tasdig'ining olib tashlanishi). Bu
-		// tekshiruv RAM'dagi map orqali — DB/tarmoq murojaati yo'q.
-		if s.Revoked != nil && claims.IssuedAt != nil &&
-			s.Revoked.IsRevoked(claims.Subject, claims.IssuedAt.Time) {
-			httpError(w, http.StatusUnauthorized, errors.New("sessiya bekor qilingan — qaytadan kiring"))
 			return
 		}
 		if len(roles) > 0 && !slices.Contains(roles, claims.Role) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../payment_nav_policy.dart';
 import 'catalog_screen.dart' show kBrand;
 
 /// Octo to'lov sahifasini ILOVA ICHIDA ochadi.
@@ -82,27 +83,40 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       ..loadRequest(Uri.parse(widget.payUrl));
   }
 
+  // Qoida `payment_nav_policy.dart` da (bug.md 85-band) — test bilan
+  // qulflangan. Bu yerda faqat qaror bajariladi.
   NavigationDecision _onNavigation(NavigationRequest req) {
-    // 1) Qaytish manziliga o'tildi — jarayon tugadi, oynani yopamiz.
-    //    `startsWith` ishlatiladi, chunki provayder manzilga o'z
-    //    parametrlarini qo'shib yuborishi mumkin.
-    if (widget.returnUrl.isNotEmpty && req.url.startsWith(widget.returnUrl)) {
-      _finish();
-      return NavigationDecision.prevent;
+    switch (decidePaymentNav(req.url, returnUrl: widget.returnUrl)) {
+      case PayNav.navigate:
+        return NavigationDecision.navigate;
+      case PayNav.finish:
+        // Qaytish manziliga o'tildi — jarayon tugadi, oynani yopamiz.
+        _finish();
+        return NavigationDecision.prevent;
+      case PayNav.launchApp:
+        // Bank ilovasiga havola (`uzcard://`, `intent://`) — WebView
+        // ocholmaydi, tizimga uzatamiz.
+        final uri = Uri.tryParse(req.url);
+        if (uri != null) {
+          launchUrl(uri, mode: LaunchMode.externalApplication)
+              .catchError((_) => false);
+        }
+        return NavigationDecision.prevent;
+      case PayNav.external:
+        // Noma'lum domen: "To'lov" sarlavhali, manzil satrisiz oynada
+        // OCHILMAYDI — brauzerda, manzil ko'rinib turadi.
+        if (req.isMainFrame) {
+          final uri = Uri.tryParse(req.url);
+          if (uri != null) {
+            launchUrl(uri, mode: LaunchMode.externalApplication)
+                .catchError((_) => false);
+          }
+          _finish();
+        }
+        return NavigationDecision.prevent;
+      case PayNav.block:
+        return NavigationDecision.prevent;
     }
-
-    // 2) http(s) bo'lmagan sxema: bank ilovasiga havola (masalan
-    //    `uzcard://`, `intent://`). WebView bularni ocholmaydi —
-    //    tizimga uzatamiz, aks holda mijoz oq ekranda qolib ketadi.
-    final uri = Uri.tryParse(req.url);
-    if (uri != null && uri.scheme != 'http' && uri.scheme != 'https') {
-      launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) {
-        return false;
-      });
-      return NavigationDecision.prevent;
-    }
-
-    return NavigationDecision.navigate;
   }
 
   void _finish() {

@@ -22,17 +22,25 @@ func TestBucketsAreBounded(t *testing.T) {
 	}
 }
 
-// Chegaraga yetganda yangi kalitlar RAD ETILADI (fail-closed), ya'ni
-// hujumchi ko'p kalit yaratib cheklovdan qutulib qololmaydi.
-func TestOverflowFailsClosed(t *testing.T) {
-	l := New(1, 5)
-	for i := 0; i < maxBuckets; i++ {
-		l.Allow(fmt.Sprint("kalit-", i))
+// bug.md 49-band: hujumchi xaritani soxta kalitlar bilan to'ldirsa ham
+// HALOL foydalanuvchi rad etilmaydi (ilgari har yangi kalit 429 olardi —
+// butun kirish o'chardi). Shu bilan birga yangi kalit baribir CHEKLANADI
+// (fail-open emas) va xotira chegarada qoladi.
+func TestOverflowEvictsInsteadOfDenyingEveryone(t *testing.T) {
+	l := New(0.001, 5)
+	for i := 0; i < maxBuckets+1_000; i++ {
+		l.Allow(fmt.Sprint("soxta-", i))
 	}
-	if ok, wait := l.AllowWithWait("butunlay-yangi-kalit"); ok {
-		t.Fatal("chegara to'lganda ham yangi kalit o'tkazildi")
-	} else if wait <= 0 {
-		t.Fatal("kutish vaqti berilmadi")
+	for i := 0; i < 5; i++ {
+		if !l.Allow("halol-foydalanuvchi") {
+			t.Fatalf("xarita to'lgan: halol foydalanuvchi %d-urinishda rad etildi", i+1)
+		}
+	}
+	if l.Allow("halol-foydalanuvchi") {
+		t.Fatal("yangi kalit cheklanmadi — siqib chiqarish fail-open bo'lib qolgan")
+	}
+	if got := l.Len(); got > maxBuckets {
+		t.Fatalf("chelaklar soni chegaradan oshdi: %d > %d", got, maxBuckets)
 	}
 }
 

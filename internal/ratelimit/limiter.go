@@ -126,14 +126,22 @@ func (l *Limiter) AllowWithWait(key string) (bool, time.Duration) {
 
 	b, ok := l.buckets[key]
 	if !ok {
-		// Xotira chegarasi to'lgan bo'lsa (tozalashdan keyin ham) yangi
-		// kalit QO'SHILMAYDI va so'rov RAD ETILADI.
+		// ┌─ XARITA TO'LGANDA: RAD EMAS, SIQIB CHIQARISH (bug.md 49) ──────┐
+		// Ilgari yangi kalit RAD ETILARDI (fail-closed). Lekin kalitlar
+		// hujumchi nazoratida (login satri, IP): 50 000 ta soxta kalit
+		// yuborib xaritani to'ldirsa, keyin HAR BIR halol foydalanuvchi
+		// 429 olardi — butun kirish o'chardi.
 		//
-		// FAIL-CLOSED ataylab: kuzata olmaydigan trafikni o'tkazib
-		// yuborish cheklovni butunlay bekor qilardi — hujumchi
-		// shunchaki ko'p kalit yaratib, cheklovdan qutulib qolardi.
+		// Endi eng uzoq ishlatilmagan chelak (taxminiy LRU, tasodifiy
+		// tanlanma) chiqariladi. Fail-open EMAS: yangi kalit baribir
+		// chelak oladi va cheklanadi. Narxi — chiqarilgan kalit yangi
+		// chelak bilan qaytadi; uni qayta "tozalash" uchun hujumchi
+		// yana ~maxBuckets so'rov yuborishi kerak (o'zi esa IP
+		// cheklovchisiga uriladi) — bitta nishonga qo'shimcha urinish
+		// juda qimmat, umumiy rad etish esa endi imkonsiz.
+		// └────────────────────────────────────────────────────────────────┘
 		if len(l.buckets) >= maxBuckets {
-			return false, l.waitFor(1)
+			l.evictOneLocked()
 		}
 		// Yangi kalit — to'la chelak, bittasi darhol sarflanadi.
 		l.buckets[key] = &bucket{tokens: l.capacity - 1, lastSeen: now}
@@ -195,6 +203,31 @@ func (l *Limiter) sweepLocked(now time.Time) {
 		if now.Sub(b.lastSeen) > ttl {
 			delete(l.buckets, k)
 		}
+	}
+}
+
+// evictSample — siqib chiqarishda ko'rib chiqiladigan yozuvlar soni.
+// Go map iteratsiyasi tasodifiy boshlanadi, shuning uchun bu
+// "eng eskisi"ga yaqin (Redis'dagi taxminiy LRU kabi), O(evictSample).
+const evictSample = 64
+
+// evictOneLocked — tanlanmadagi eng uzoq ishlatilmagan chelakni
+// o'chiradi. Chaqiruvchi mutex'ni ushlab turishi shart.
+func (l *Limiter) evictOneLocked() {
+	var victim string
+	var oldest time.Time
+	n := 0
+	for k, b := range l.buckets {
+		if n == 0 || b.lastSeen.Before(oldest) {
+			victim, oldest = k, b.lastSeen
+		}
+		n++
+		if n >= evictSample {
+			break
+		}
+	}
+	if n > 0 {
+		delete(l.buckets, victim)
 	}
 }
 

@@ -82,7 +82,9 @@ func (s *Server) registerWsRoutes(mux *http.ServeMux) {
 		// obuna bo'la oladi (`wsSubscriptionKeys` ichidagi egalik
 		// tekshiruvi).
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			claims, err := s.Tokens.Parse(strings.TrimPrefix(h, "Bearer "))
+			// verifyBearer: bekor qilingan sessiya va markaziy (EdDSA) token
+			// ham shu yerda tekshiriladi (bug.md 33-band).
+			claims, err := s.verifyBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
 			if err != nil {
 				httpError(w, http.StatusUnauthorized, err)
 				return
