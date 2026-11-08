@@ -332,12 +332,12 @@ func (s *Server) oidcUserinfo(r *http.Request, c *identity.AccessClaims) (map[st
 		"sid": c.SessionID, "org": c.OrgID,
 	}
 	// Eski hamkor akkaunti (rol restaurant/store, A1 dan oldingi model):
-	// ShoxPos `resolveUser` shu maydonlarga tayanadi (`internal/sso` bilan bir xil).
-	if s.SSO != nil {
-		if id, err := s.SSO.IdentityOf(r.Context(), u.ID); err == nil && id.Role != "" {
-			out["partner"] = map[string]any{"role": id.Role, "entity_id": id.EntityID,
-				"entity_name": id.EntityName, "store_category": id.StoreCategory}
-		}
+	// ShoxPos `resolveUser` shu maydonlarga tayanadi. To'g'ridan-to'g'ri
+	// akkauntdan quriladi — eski `internal/sso` sozlanganiga BOG'LIQ EMAS
+	// (2026-11-08 ikki serverli sinovda topilgan: SSO o'chiq bo'lsa hamkor
+	// ma'lumoti kelmay, kirish `not_linked` bo'lib qolardi).
+	if p := s.partnerOf(r, u); p != nil {
+		out["partner"] = p
 	}
 	if s.Authz != nil {
 		list, err := s.Authz.List(r.Context(), u.ID)
@@ -356,6 +356,32 @@ func (s *Server) oidcUserinfo(r *http.Request, c *identity.AccessClaims) (map[st
 		out["businesses"] = bs
 	}
 	return out, nil
+}
+
+// partnerOf — restoran/do'kon hamkor akkaunti ma'lumoti (`internal/sso`
+// Identity bilan bir xil qoidalar), aks holda nil.
+func (s *Server) partnerOf(r *http.Request, u *users.User) map[string]any {
+	if (u.Role != users.RoleRestaurant && u.Role != users.RoleStore) || u.EntityID == "" {
+		return nil
+	}
+	p := map[string]any{"role": string(u.Role), "entity_id": u.EntityID, "entity_name": u.Name, "store_category": ""}
+	switch u.Role {
+	case users.RoleStore:
+		// Kategoriya yozilmagan (eski) do'kon — oddiy do'kon; cheklangan panel
+		// faqat ANIQ "qurt" qiymatida.
+		cat := string(u.StoreCategory)
+		if cat == "" {
+			cat = string(users.StoreCategoryStore)
+		}
+		p["store_category"] = cat
+	case users.RoleRestaurant:
+		if s.CatalogRepo != nil {
+			if rest, err := s.CatalogRepo.GetRestaurant(r.Context(), u.EntityID); err == nil && rest != nil && rest.Name != "" {
+				p["entity_name"] = rest.Name
+			}
+		}
+	}
+	return p
 }
 
 func setSSOCookie(w http.ResponseWriter, value string, until time.Time) {
