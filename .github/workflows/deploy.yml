@@ -1063,6 +1063,11 @@ jobs:
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
             docker compose pull api web
+            # Belgi: yangi versiya HAQIQATAN qo'yila boshladi. Rollback
+            # faqat shu belgi shu SHA bo'lsa ishlaydi — skript shu yerdan
+            # keyin yiqilsa ham (yarim deploy) qaytarish kafolatlanadi,
+            # undan oldin yiqilsa esa production'ga tegilmaydi.
+            echo "${IMAGE_TAG}" > .deploy-applied
             docker compose up -d --no-deps --force-recreate api web
 
             docker logout ghcr.io
@@ -1126,7 +1131,9 @@ jobs:
 
       - name: Rollback (oldingi versiyaga qaytarish)
         id: rollback
-        if: failure() && steps.ssh_deploy.outcome == 'success'
+        # Deploy qadami yarim yo'lda yiqilgan bo'lsa ham ishlaydi; nima
+        # qilishni serverdagi .deploy-applied belgisi hal qiladi.
+        if: failure() && (steps.ssh_deploy.outcome == 'success' || steps.ssh_deploy.outcome == 'failure')
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           BAD_TAG: ${{ github.sha }}
@@ -1152,6 +1159,10 @@ jobs:
               docker exec alertmanager wget -qO- --header 'Content-Type: application/json' \
                 --post-data "$B" http://localhost:9093/api/v2/alerts >/dev/null 2>&1 || echo "::warning::Alertmanager'ga yuborilmadi"
             }
+            if [ "$(cat .deploy-applied 2>/dev/null)" != "$BAD_TAG" ]; then
+              echo "::notice::${BAD_TAG:0:7} serverga qo'yilmagan — production o'zgarmagan, qaytarish shart emas"
+              exit 0
+            fi
             if [ ! -s .deploy-prev ]; then
               alert OnDexDeployYiqildi "🔴 Deploy ${BAD_TAG:0:7} tekshiruvdan o'tmadi, oldingi versiya noma'lum — QO'LDA tekshiring"
               echo "::error::.deploy-prev yo'q — rollback mumkin emas"; exit 1
@@ -1174,6 +1185,6 @@ jobs:
           sleep 20
           /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://pos.ondex.uz/ || {
             echo "::error::Rollbackdan keyin ham production sog'lom emas — QO'LDA tekshiring"; exit 1; }
-          echo "### ↩️ Oldingi versiyaga qaytarildi va u sog'lom" >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::Yangi versiya smoke'dan o'tmadi — production oldingi versiyada qoldi"
+          echo "### ↩️ Production oldingi versiyada va sog'lom" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Yangi versiya chiqmadi (deploy yoki smoke yiqildi) — production oldingi versiyada qoldi"
           exit 1
