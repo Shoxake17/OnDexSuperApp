@@ -48,6 +48,24 @@ func (f *fakeUsers) VerifyPhoneCode(_ context.Context, phone, code string) (stri
 	return phone, nil
 }
 
+// SetPassword — haqiqiy xizmat kabi: kuchlilik, mos kelish, akkauntga xesh.
+func (f *fakeUsers) SetPassword(ctx context.Context, userID, _ string, password, confirm string, _ bool) error {
+	if password != confirm {
+		return users.ErrPasswordMismatch
+	}
+	if err := users.ValidatePassword(password); err != nil {
+		return err
+	}
+	u, err := f.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	f.mu.Lock()
+	f.passwords[u.Phone] = password
+	f.mu.Unlock()
+	return f.repo.SetPasswordHash(ctx, userID, "test-hash:"+password)
+}
+
 func (f *fakeUsers) sendCode(phone string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -71,6 +89,20 @@ type merchantFixture struct {
 	fu    *fakeUsers
 	az    *authz.MemStore
 	mfaSt *mfa.MemStore
+}
+
+// setPassword — parol fake xizmatda VA akkauntda (PasswordHash bo'sh emas):
+// parolsiz egasi uchun alohida `password_set` bosqichi bor.
+func (f *merchantFixture) setPassword(t *testing.T, phone, pw string) {
+	t.Helper()
+	f.fu.passwords[phone] = pw
+	u, err := f.fu.repo.GetByPhone(f.ctx, phone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.fu.repo.SetPasswordHash(f.ctx, u.ID, "test-hash:"+pw); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newMerchantFixture(t *testing.T) *merchantFixture {
@@ -136,7 +168,7 @@ func TestMerchant_OwnerEnrollThenTOTPEveryLogin(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_owner01", users.RoleRestaurant)
 	phone := f.phoneOf(t, "u_owner01")
-	f.fu.passwords[phone] = "parol-123"
+	f.setPassword(t, phone, "parol-123")
 	secret, _ := f.enroll(t, "u_owner01")
 
 	// Keyingi kirish: parol -> TOTP (ulash qayta so'ralmaydi).
@@ -171,7 +203,7 @@ func TestMerchant_EnrollNeedsBothPasswordAndPhone(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_owner02", users.RoleStore)
 	phone := f.phoneOf(t, "u_owner02")
-	f.fu.passwords[phone] = "parol-123"
+	f.setPassword(t, phone, "parol-123")
 	out, err := f.m.LoginPassword(f.ctx, phone, "parol-123", "merchant-web", meta)
 	if err != nil || out.MFA.Method != "otp" {
 		t.Fatalf("%+v %v", out, err)
@@ -200,7 +232,7 @@ func TestMerchant_RecoveryCodeOnce(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_owner03", users.RoleRestaurant)
 	phone := f.phoneOf(t, "u_owner03")
-	f.fu.passwords[phone] = "parol-123"
+	f.setPassword(t, phone, "parol-123")
 	_, rec := f.enroll(t, "u_owner03")
 	login := func() string {
 		out, err := f.m.LoginPassword(f.ctx, phone, "parol-123", "merchant-web", meta)
@@ -227,7 +259,7 @@ func TestMerchant_StaffCodeOnlyAndAppScoped(t *testing.T) {
 	// Eski (ko'chirilmagan) ofitsiant: faqat OnDexPro.
 	f.user(t, "u_waiter1", users.RoleWaiter)
 	wp := f.phoneOf(t, "u_waiter1")
-	f.fu.passwords[wp] = "parol-123"
+	f.setPassword(t, wp, "parol-123")
 	if _, err := f.m.LoginPassword(f.ctx, wp, "parol-123", "ondex-pro", meta); !errors.Is(err, users.ErrInvalidCredentials) {
 		t.Fatalf("xodim parol bilan kirdi: %v", err)
 	}
@@ -271,7 +303,7 @@ func TestMerchant_RejectsCustomersAndForeignClients(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_custom1", users.RoleCustomer)
 	p := f.phoneOf(t, "u_custom1")
-	f.fu.passwords[p] = "parol-123"
+	f.setPassword(t, p, "parol-123")
 	if _, err := f.m.LoginPassword(f.ctx, p, "parol-123", "merchant-web", meta); !errors.Is(err, users.ErrInvalidCredentials) {
 		t.Fatalf("mijoz parol bilan: %v", err)
 	}
@@ -289,7 +321,7 @@ func TestMerchant_MFATokenHardening(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_owner04", users.RoleRestaurant)
 	phone := f.phoneOf(t, "u_owner04")
-	f.fu.passwords[phone] = "parol-123"
+	f.setPassword(t, phone, "parol-123")
 	secret, _ := f.enroll(t, "u_owner04")
 	out, err := f.m.LoginPassword(f.ctx, phone, "parol-123", "merchant-web", meta)
 	if err != nil {
@@ -323,7 +355,7 @@ func TestMerchant_TOTPBruteForceLimited(t *testing.T) {
 	f := newMerchantFixture(t)
 	f.user(t, "u_owner05", users.RoleRestaurant)
 	phone := f.phoneOf(t, "u_owner05")
-	f.fu.passwords[phone] = "parol-123"
+	f.setPassword(t, phone, "parol-123")
 	f.enroll(t, "u_owner05")
 	out, _ := f.m.LoginPassword(f.ctx, phone, "parol-123", "merchant-web", meta)
 	var last error
@@ -332,5 +364,62 @@ func TestMerchant_TOTPBruteForceLimited(t *testing.T) {
 	}
 	if !errors.Is(last, identity.ErrMFATooMany) {
 		t.Fatalf("10 ta noto'g'ri urinishdan keyin: %v", last)
+	}
+}
+
+// Parolsiz egasi (A3'gacha admin parolsiz yaratgan): kod -> parol O'RNATISH ->
+// TOTP ulash. Ilgari bu boshi berk ko'cha edi (kod -> "parol" so'raladi).
+func TestMerchant_PasswordlessOwnerSetsPasswordAfterCode(t *testing.T) {
+	f := newMerchantFixture(t)
+	f.user(t, "u_owner09", users.RoleRestaurant)
+	phone := f.phoneOf(t, "u_owner09")
+
+	if _, err := f.m.LoginPassword(f.ctx, phone, "har-qanday-parol", "merchant-web", meta); !errors.Is(err, users.ErrInvalidCredentials) {
+		t.Fatalf("parolsiz akkaunt parol bilan: %v", err)
+	}
+	out, err := f.m.LoginCode(f.ctx, phone, f.fu.sendCode(phone), "merchant-web", meta)
+	if err != nil || out.MFA.Method != "password_set" {
+		t.Fatalf("parolsiz egasi kod bilan: %+v %v", out, err)
+	}
+	tok := out.MFA.Token
+	if _, err := f.m.AddFactor(f.ctx, tok, "har-qanday", meta); err == nil {
+		t.Fatal("parolsiz akkauntda parol 'tekshiruvi' o'tdi")
+	}
+	if _, err := f.m.SetInitialPassword(f.ctx, tok, "123", "123", meta); err == nil {
+		t.Fatal("zaif parol qabul qilindi")
+	}
+	if _, err := f.m.SetInitialPassword(f.ctx, tok, "Kuchli-Parol-2026!", "Boshqa-Parol-2026!", meta); err == nil {
+		t.Fatal("mos kelmaydigan parol qabul qilindi")
+	}
+	out, err = f.m.SetInitialPassword(f.ctx, tok, "Kuchli-Parol-2026!", "Kuchli-Parol-2026!", meta)
+	if err != nil || out.MFA.Method != "totp_enroll" {
+		t.Fatalf("parol o'rnatilgach: %+v %v", out, err)
+	}
+	if _, err := f.m.SetInitialPassword(f.ctx, tok, "Yana-Boshqa-2026!", "Yana-Boshqa-2026!", meta); err == nil {
+		t.Fatal("XAVFSIZLIK: parol o'rnatilgan akkauntda eski token bilan parol qayta almashtirildi")
+	}
+	// Endi parol bilan kirish ishlaydi -> ikkinchi omil kod.
+	out, err = f.m.LoginPassword(f.ctx, phone, "Kuchli-Parol-2026!", "merchant-web", meta)
+	if err != nil || out.MFA.Method != "otp" {
+		t.Fatalf("o'rnatilgan parol bilan: %+v %v", out, err)
+	}
+	// Parol bilan olingan token (amr=pwd) parol o'rnatish uchun yaramaydi.
+	if _, err := f.m.SetInitialPassword(f.ctx, out.MFA.Token, "Uchinchi-Parol-26!", "Uchinchi-Parol-26!", meta); !errors.Is(err, identity.ErrMFATokenInvalid) {
+		t.Fatalf("pwd token bilan parol o'rnatish: %v", err)
+	}
+}
+
+// Parolli egasi kod bilan kirsa — avvalgidek parol SO'RALADI (o'rnatilMAYDI).
+func TestMerchant_OwnerWithPasswordCannotResetViaCode(t *testing.T) {
+	f := newMerchantFixture(t)
+	f.user(t, "u_owner10", users.RoleRestaurant)
+	phone := f.phoneOf(t, "u_owner10")
+	f.setPassword(t, phone, "parol-123")
+	out, err := f.m.LoginCode(f.ctx, phone, f.fu.sendCode(phone), "merchant-web", meta)
+	if err != nil || out.MFA.Method != "password" {
+		t.Fatalf("parolli egasi kod bilan: %+v %v", out, err)
+	}
+	if _, err := f.m.SetInitialPassword(f.ctx, out.MFA.Token, "Yangi-Parol-2026!", "Yangi-Parol-2026!", meta); !errors.Is(err, identity.ErrMFATokenInvalid) {
+		t.Fatalf("XAVFSIZLIK: kod egasi mavjud parolni almashtira oldi: %v", err)
 	}
 }

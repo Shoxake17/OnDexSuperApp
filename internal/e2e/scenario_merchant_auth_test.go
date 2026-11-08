@@ -81,6 +81,30 @@ func TestMerchantLoginV2(t *testing.T) {
 	var secret, enrollToken, confirmCode string
 	var recovery []string
 
+	w.Step(t, "parolsiz egasi: kod -> parol O'RNATISH -> TOTP ulash (boshi berk ko'cha emas)", func(t *testing.T) {
+		const np = "+998900000049"
+		mkUser(t, "e2e-m-nopass", np, users.RoleRestaurant, "")
+		post(t, "/v2/auth/merchant/password", map[string]any{"phone": np, "password": "har-qanday-parol",
+			"client_id": "merchant-web"}, 401)
+		o := post(t, "/v2/auth/merchant/otp/verify", map[string]any{"phone": np, "code": code(t, np),
+			"client_id": "merchant-web"}, 200)
+		if o.Method != "password_set" {
+			t.Fatalf("parolsiz egasiga parol o'rnatish taklif qilinmadi: %+v", o)
+		}
+		post(t, "/v2/auth/mfa/password", map[string]any{"mfa_token": o.MFAToken, "password": "12345678",
+			"password_confirm": "12345678"}, 400)
+		o = post(t, "/v2/auth/mfa/password", map[string]any{"mfa_token": o.MFAToken, "password": "Yangi-Parol-2026!",
+			"password_confirm": "Yangi-Parol-2026!"}, 200)
+		if o.Method != "totp_enroll" {
+			t.Fatalf("parol o'rnatilgach: %+v", o)
+		}
+		// Endi parol bilan kirish ishlaydi.
+		if o = post(t, "/v2/auth/merchant/password", map[string]any{"phone": np, "password": "Yangi-Parol-2026!",
+			"client_id": "merchant-web"}, 200); o.Method != "otp" {
+			t.Fatalf("o'rnatilgan parol bilan: %+v", o)
+		}
+	})
+
 	w.Step(t, "egasi parol bilan: sessiya EMAS, telefon kodi so'raladi", func(t *testing.T) {
 		o := post(t, "/v2/auth/merchant/password", map[string]any{"phone": ownerPhone, "password": pw,
 			"client_id": "merchant-web", "device_name": "Chrome"}, 200)

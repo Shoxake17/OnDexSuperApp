@@ -175,6 +175,38 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		writeOutcome(w, out)
 	})
 
+	// password_set — parolsiz egasi kod bilan kirgach parolni O'RNATADI
+	// (keyin TOTP ulash). Faqat amr=otp va parol hali yo'q akkauntda.
+	mux.HandleFunc("POST /v2/auth/mfa/password", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, mfaIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			MFAToken        string `json:"mfa_token"`
+			Password        string `json:"password"`
+			PasswordConfirm string `json:"password_confirm"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if len(req.MFAToken) > maxSecretLen || len(req.Password) > users.MaxPasswordLength ||
+			len(req.PasswordConfirm) > users.MaxPasswordLength {
+			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
+			return
+		}
+		out, err := s.MerchantAuth.SetInitialPassword(r.Context(), req.MFAToken, req.Password, req.PasswordConfirm,
+			merchantMeta(r, ""))
+		if err != nil {
+			if users.IsUserFacing(err) {
+				httpError(w, http.StatusBadRequest, err) // zaif parol, mos kelmaydi
+				return
+			}
+			respondMerchantAuthError(w, err)
+			return
+		}
+		writeOutcome(w, out)
+	})
+
 	mux.HandleFunc("POST /v2/auth/mfa/verify", func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decodeMFA(w, r)
 		if !ok {

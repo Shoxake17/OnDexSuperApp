@@ -57,6 +57,8 @@ const (
 type MerchantUsers interface {
 	AuthenticatePasswordRealm(ctx context.Context, realm users.Realm, phone, password string) (*users.User, error)
 	VerifyPhoneCode(ctx context.Context, rawPhone, code string) (string, error)
+	// SetPassword — `users.Service.SetPassword` (kuchlilik qoidalari, Argon2id).
+	SetPassword(ctx context.Context, userID, current, password, confirm string, phoneProven bool) error
 }
 
 // Sealer — TOTP kalitini shifrlash (`secretstore.Box`).
@@ -265,6 +267,12 @@ func (m *MerchantAuth) secondFactor(ctx context.Context, u *users.User, clientID
 		switch {
 		case !slices.Contains(amr, "otp"):
 			purpose, method = mfaPurposeFactor, "otp"
+		case !slices.Contains(amr, "pwd") && u.PasswordHash == "":
+			// Parolsiz egasi (A3'gacha admin parolsiz yaratgan, faqat kod bilan
+			// kirgan akkaunt): parol SO'RALSA boshi berk ko'cha edi (2026-11-08,
+			// Book Cafe). Telefon egaligi hozirgina kod bilan isbotlangan —
+			// `/me/password` qoidasi bilan bir xil: shu yerda parol O'RNATILADI.
+			purpose, method = mfaPurposeFactor, "password_set"
 		case !slices.Contains(amr, "pwd"):
 			purpose, method = mfaPurposeFactor, "password"
 		default:
@@ -312,6 +320,34 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 	}
 	m.guard.Reset(c.User)
 	return m.secondFactor(ctx, u, c.Client, c.Org, append(slices.Clone(c.AMR), add))
+}
+
+// SetInitialPassword — parolsiz egasi kod bilan kirgach parol o'rnatadi
+// (`password_set` bosqichi). Faqat: mfa_token telefon kodi bilan olingan
+// (amr = otp), akkauntda parol HALI YO'Q. Parolli akkauntda bu yo'l yopiq —
+// aks holda kod egasi (SIM almashtirish) parolni almashtirib qo'ya olardi.
+func (m *MerchantAuth) SetInitialPassword(ctx context.Context, mfaToken, password, confirm string, meta Meta) (*Outcome, error) {
+	c, err := m.parseMFA(mfaToken, mfaPurposeFactor)
+	if err != nil {
+		return nil, err
+	}
+	if m.guard.Blocked(c.User) {
+		return nil, ErrMFATooMany
+	}
+	if !slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "pwd") {
+		return nil, ErrMFATokenInvalid
+	}
+	u, err := m.svc.users.GetByID(ctx, c.User)
+	if err != nil || u.PasswordHash != "" || u.IsDeleted() {
+		return nil, ErrMFATokenInvalid
+	}
+	if err := m.d.Users.SetPassword(ctx, u.ID, "", password, confirm, true); err != nil {
+		return nil, err // zaif parol / mos emas — foydalanuvchiga ko'rinadigan xato
+	}
+	m.svc.audit.Record(ctx, Event{Action: "merchant.password_set", Result: ResultOK, ActorUserID: u.ID,
+		Realm: string(users.RealmMerchant), Target: c.Client, IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
+	m.guard.Reset(c.User)
+	return m.secondFactor(ctx, u, c.Client, c.Org, append(slices.Clone(c.AMR), "pwd"))
 }
 
 // VerifyMFA — TOTP yoki tiklash kodi; to'g'ri bo'lsa sessiya ochiladi.

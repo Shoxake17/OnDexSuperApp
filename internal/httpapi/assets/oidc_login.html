@@ -52,6 +52,17 @@
     <button type="button" id="btn-fpwd" class="primary">Davom etish</button>
   </section>
 
+  <!-- 2c. Parol o'rnatish (parolsiz egasi, kod bilan kirgach) -->
+  <section id="s-setpwd" hidden>
+    <p class="hint">Biznes akkauntingizda hali parol yo'q. Xavfsizlik uchun yangi parol o'rnating
+      (kamida 8 belgi; 12345678 kabi oddiy parollar qabul qilinmaydi).</p>
+    <label for="npassword">Yangi parol</label>
+    <input id="npassword" type="password" autocomplete="new-password">
+    <label for="npassword2">Parolni takrorlang</label>
+    <input id="npassword2" type="password" autocomplete="new-password">
+    <button type="button" id="btn-setpwd" class="primary">Parolni saqlash</button>
+  </section>
+
   <!-- 3. TOTP -->
   <section id="s-totp" hidden>
     <p class="hint">Authenticator ilovasidagi 6 xonali kodni kiriting (yoki tiklash kodini).</p>

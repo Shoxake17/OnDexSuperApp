@@ -16,7 +16,7 @@
   var pendingAccess = '';
 
   function $(id) { return document.getElementById(id); }
-  var sections = ['s-start', 's-code', 's-fpwd', 's-totp', 's-enroll', 's-recovery'];
+  var sections = ['s-start', 's-code', 's-fpwd', 's-setpwd', 's-totp', 's-enroll', 's-recovery'];
   var codeMode = 'login'; // login | factor
 
   function show(id) {
@@ -62,6 +62,7 @@
     switch (d.method) {
       case 'otp': return startFactorCode();
       case 'password': show('s-fpwd'); return;
+      case 'password_set': show('s-setpwd'); return;
       case 'totp': show('s-totp'); return;
       case 'totp_enroll': return startEnroll();
       default: throw new Error("Noma'lum tekshiruv usuli");
@@ -159,6 +160,15 @@
       var pw = $('fpassword').value;
       if (!pw) { throw new Error('Parolni kiriting'); }
       return api('/v2/auth/mfa/factor', { mfa_token: mfaToken, password: pw, device_name: DEVICE }).then(outcome);
+    });
+  });
+
+  $('btn-setpwd').addEventListener('click', function () {
+    run(this, function () {
+      var a = $('npassword').value, b = $('npassword2').value;
+      if (a.length < 8) { throw new Error('Parol kamida 8 belgi bo\'lsin'); }
+      if (a !== b) { throw new Error('Parollar mos kelmadi'); }
+      return api('/v2/auth/mfa/password', { mfa_token: mfaToken, password: a, password_confirm: b }).then(outcome);
     });
   });
 
