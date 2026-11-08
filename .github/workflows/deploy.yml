@@ -918,6 +918,22 @@ jobs:
     # production'ga chiqishni QO'LDA tasdiqlash talab qilinishi mumkin.
     environment: production
     steps:
+      # Smoke vositasi production'ga TEGISHDAN OLDIN quriladi: qurilmasa
+      # deploy boshlanmaydi, health yiqilganda ham rollbackdan keyingi
+      # tekshiruv uchun tayyor turadi (ONDEXECOSY-169, pastda).
+      - name: Checkout (smoke)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go (smoke)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: Build smoke
+        run: CGO_ENABLED=0 go build -o /tmp/smoke ./cmd/smoke
+
       # ┌─ NEGA ALOHIDA DIAGNOSTIKA ────────────────────────────────────┐
       # `dial tcp ***:22: i/o timeout` xatosi HECH NARSA aytmaydi:
       # host noto'g'rimi, port boshqami, firewall bloklayaptimi —
@@ -960,6 +976,7 @@ jobs:
           fi
 
       - name: Deploy via SSH
+        id: ssh_deploy
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           IMAGE_TAG: ${{ github.sha }}
@@ -1010,6 +1027,19 @@ jobs:
             # └───────────────────────────────────────────────────────┘
             [ -s .env ] && [ "$(tail -c1 .env | wc -l)" -eq 0 ] && echo >> .env
 
+            # ┌─ ROLLBACK UCHUN OLDINGI VERSIYA (ONDEXECOSY-169) ─────┐
+            # Smoke yiqilsa "Rollback" qadami shu fayldan eski teglarni
+            # tiklaydi. Bir xil SHA qayta deploy qilinsa (Run workflow
+            # takrori) fayl ATAYLAB yangilanmaydi — aks holda "oldingi"
+            # versiya yangisining o'zi bo'lib qolardi.
+            # └───────────────────────────────────────────────────────┘
+            CUR_API=$(sed -n 's/^API_TAG=//p' .env | tail -1)
+            CUR_WEB=$(sed -n 's/^WEB_TAG=//p' .env | tail -1)
+            if [ -n "$CUR_API" ] && [ "$CUR_API" != "$IMAGE_TAG" ]; then
+              printf 'API_TAG=%s\nWEB_TAG=%s\n' "$CUR_API" "${CUR_WEB:-$CUR_API}" > .deploy-prev
+              echo "oldingi versiya eslab qolindi: $CUR_API"
+            fi
+
             sed -i '/^API_TAG=/d;/^WEB_TAG=/d' .env
             echo "API_TAG=${IMAGE_TAG}" >> .env
             echo "WEB_TAG=${IMAGE_TAG}" >> .env
@@ -1040,7 +1070,8 @@ jobs:
 
       # Deploy'dan keyin server HAQIQATAN javob berayotganini
       # tekshiramiz. Busiz "yashil" quvur o'lik serverni yashirardi.
-      - name: Smoke test
+      - name: Health check
+        id: health
         env:
           URL: ${{ secrets.HEALTHCHECK_URL }}
         run: |
@@ -1053,4 +1084,96 @@ jobs:
             sleep 3
           done
           echo "::error::Deploy'dan keyin server javob bermayapti"
+          exit 1
+
+      # ┌─ FOYDALANUVCHI O'RNIDA TEKSHIRUV + AVTO ROLLBACK (ONDEXECOSY-169) ─┐
+      # Health faqat "server tirik"ligini aytadi. cmd/smoke esa haqiqiy
+      # oqimni yuradi: katalog, JWKS, web, POS, OnDexPro/GO test akkaunti
+      # bilan kirish -> eski marshrut -> refresh -> chiqish. U shu commit
+      # kodidan quriladi, shuning uchun tekshiruv har doim yangi versiyaga
+      # mos. Xuddi shu vosita VPS cron'ida har 15 daqiqada ishlaydi.
+      #
+      # Yiqilsa (health YOKI smoke) — oldingi image teglari (.deploy-prev)
+      # tiklanadi, qayta tekshiriladi va Telegram'ga xabar ketadi.
+      #
+      # CHEKLOV: ma'lumotlar bazasi migratsiyasi QAYTARILMAYDI. Eski kod
+      # yangi sxema bilan ishlaydi, chunki migratsiyalar faqat qo'shuvchi
+      # (ustun/jadval o'chirish alohida, keyingi relizda). Shu qoidani
+      # buzadigan migratsiya rollback'ni ham buzadi.
+      #
+      # OTP cheklovi IP'ga ~5 so'rov: shuning uchun to'liq smoke bir marta
+      # (ichida bitta qayta urinish bilan), rollbackdan keyingisi esa
+      # akkauntlarsiz (katalog/JWKS/web/POS).
+      # └─────────────────────────────────────────────────────────────────────┘
+      - name: Smoke test (foydalanuvchi oqimi)
+        id: smoke
+        run: |
+          # yangi konteyner migratsiya/ishga tushishni tugatsin
+          sleep 15
+          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://pos.ondex.uz/ \
+            -waiter +998999999999 -courier +998888888888 -out /tmp/smoke.prom
+          echo "### Smoke: hammasi o'tdi" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke natijasi (yiqilganda)
+        if: failure() && steps.smoke.outcome == 'failure'
+        run: |
+          {
+            echo "### ❌ Smoke yiqildi"
+            echo '```'
+            grep '^ondex_smoke_check_success' /tmp/smoke.prom 2>/dev/null || echo "(natija fayli yo'q)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rollback (oldingi versiyaga qaytarish)
+        id: rollback
+        if: failure() && steps.ssh_deploy.outcome == 'success'
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          BAD_TAG: ${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          timeout: 30s
+          command_timeout: 10m
+          envs: BAD_TAG,GHCR_USER,GHCR_TOKEN,RUN_URL
+          script: |
+            set -euo pipefail
+            cd ~/ondex
+            alert() { # $1 nom, $2 matn — Alertmanager -> Telegram (30 daqiqa)
+              END=$(date -u -d '+30 min' +%Y-%m-%dT%H:%M:%SZ)
+              B=$(printf '[{"labels":{"alertname":"%s","severity":"critical"},"annotations":{"summary":"%s","description":"%s"},"endsAt":"%s"}]' \
+                "$1" "$2" "$RUN_URL" "$END")
+              docker exec alertmanager wget -qO- --header 'Content-Type: application/json' \
+                --post-data "$B" http://localhost:9093/api/v2/alerts >/dev/null 2>&1 || echo "::warning::Alertmanager'ga yuborilmadi"
+            }
+            if [ ! -s .deploy-prev ]; then
+              alert OnDexDeployYiqildi "🔴 Deploy ${BAD_TAG:0:7} tekshiruvdan o'tmadi, oldingi versiya noma'lum — QO'LDA tekshiring"
+              echo "::error::.deploy-prev yo'q — rollback mumkin emas"; exit 1
+            fi
+            . ./.deploy-prev
+            [ "$API_TAG" != "$BAD_TAG" ] || { echo "::error::oldingi teg yangisi bilan bir xil"; exit 1; }
+            [ "$(tail -c1 .env | wc -l)" -eq 0 ] && echo >> .env
+            sed -i '/^API_TAG=/d;/^WEB_TAG=/d' .env
+            printf 'API_TAG=%s\nWEB_TAG=%s\n' "$API_TAG" "$WEB_TAG" >> .env
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+            docker compose pull api web
+            docker compose up -d --no-deps --force-recreate api web
+            docker logout ghcr.io
+            echo "qaytarildi: ${BAD_TAG:0:7} -> ${API_TAG:0:7}"
+            alert OnDexDeployQaytarildi "↩️ Deploy ${BAD_TAG:0:7} smoke'dan o'tmadi — avtomatik ${API_TAG:0:7} ga qaytarildi"
+
+      - name: Rollbackdan keyin tekshiruv
+        if: failure() && steps.rollback.outcome == 'success'
+        run: |
+          sleep 20
+          /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://pos.ondex.uz/ || {
+            echo "::error::Rollbackdan keyin ham production sog'lom emas — QO'LDA tekshiring"; exit 1; }
+          echo "### ↩️ Oldingi versiyaga qaytarildi va u sog'lom" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Yangi versiya smoke'dan o'tmadi — production oldingi versiyada qoldi"
           exit 1
