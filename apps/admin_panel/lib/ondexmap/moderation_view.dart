@@ -824,9 +824,9 @@ class OndexMapProblem extends StatelessWidget {
   final ModerationException error;
   final Future<void> Function() onRetry;
 
-  /// Masofaviy (production) rejimdami — `ModerationApi.remote` dan.
-  /// `true` va `error.unauthorized` bo'lsa kalit kiritish tugmasi ham
-  /// ko'rsatiladi (lokal rejimda kalit fayldan keladi, kiritilmaydi).
+  /// Masofaviy (production) rejimdami — `ModerationApi.remote` dan. Kalit
+  /// kiritish YO'Q (A6/138): masofaviy rejim adminning OnDex ID sessiyasi
+  /// bilan ishlaydi; 401 — qaytadan kirish kerak.
   final bool remote;
 
   const OndexMapProblem(
@@ -835,14 +835,8 @@ class OndexMapProblem extends StatelessWidget {
       required this.onRetry,
       this.remote = false});
 
-  Future<void> _enterKey(BuildContext context) async {
-    final saved = await showOndexMapAdminKeyDialog(context);
-    if (saved) await onRetry();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final showKeyButton = remote && error.unauthorized;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
@@ -857,25 +851,11 @@ class OndexMapProblem extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
-            if (showKeyButton) ...[
-              FilledButton.icon(
-                key: const ValueKey('mod-enter-key'),
-                onPressed: () => _enterKey(context),
-                icon: const Icon(Icons.key),
-                label: const Text('Admin kalitini kiritish'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Qayta urinish'),
-              ),
-            ] else
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Qayta urinish'),
-              ),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Qayta urinish'),
+            ),
           ],
         ),
       ),

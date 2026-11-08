@@ -35,6 +35,21 @@ func (s *Server) adminV2(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) registerAdminV2Routes(mux *http.ServeMux) {
+	// whoami — ekotizimning boshqa servislari (OnDexMap admin serveri, 138)
+	// admin tokenini SHU YERDA tekshiradi: imzo, platform kaliti, sessiya
+	// faolligi (chiqish/bloklash darhol kuchga kiradi), TOTP. Ular kalit
+	// saqlamaydi va o'z akkaunt bazasini yuritmaydi — bitta panel, bitta kirish.
+	mux.HandleFunc("GET /v2/admin/whoami", s.adminV2(func(w http.ResponseWriter, r *http.Request) {
+		c := claimsV2From(r)
+		u, err := s.UserRepo.GetByID(r.Context(), c.Subject)
+		if err != nil || u.Role != users.RoleAdmin || u.IsDeleted() {
+			httpError(w, http.StatusUnauthorized, errors.New("admin emas"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"user_id": u.ID, "name": u.Name, "phone": u.Phone,
+			"session_id": c.SessionID, "amr": c.AMR, "expires_at": c.ExpiresAt})
+	}))
+
 	mux.HandleFunc("GET /v2/admin/organizations", s.adminV2(func(w http.ResponseWriter, r *http.Request) {
 		list, err := s.MerchantAuth.Organizations(r.Context(), claimsV2From(r).Subject, r.URL.Query().Get("status"))
 		if err != nil {

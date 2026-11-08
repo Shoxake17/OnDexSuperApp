@@ -2,73 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:ondex_core/ondex_core.dart';
 
+import '../api.dart' show api;
 import 'ondexmap_session.dart';
-
-/// Masofaviy (production) rejimda `ONDEXMAP_ADMIN_KEY` shu yerda saqlanadi —
-/// `adminTokenStore` (ChustApp'ning o'z tokeni) bilan BIR XIL mexanizm
-/// (`flutter_secure_storage`, shifrlangan), boshqa kalit ostida.
-const ondexmapAdminKeyStore = TokenStore('ondexmap_admin_key');
-
-/// Masofaviy rejimda `ONDEXMAP_ADMIN_KEY`ni qo'lda kiritish oynasi.
-///
-/// `true` — kalit kiritildi va saqlandi (chaqiruvchi qayta urinishi kerak);
-/// `false` — bekor qilindi yoki bo'sh qoldirildi.
-Future<bool> showOndexMapAdminKeyDialog(BuildContext context) async {
-  final controller = TextEditingController();
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('OnDexMap admin kaliti'),
-      content: SizedBox(
-        width: 380,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Bu kalit OnDexMap production serveridagi ONDEXMAP_ADMIN_KEY '
-              'qiymati. Qurilmada shifrlangan holda saqlanadi, ekranga '
-              'boshqa joyda chiqmaydi.',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('ondexmap-admin-key-field'),
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Kalit',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (_) => Navigator.pop(ctx, true),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Bekor'),
-        ),
-        FilledButton(
-          key: const ValueKey('ondexmap-admin-key-save'),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Saqlash'),
-        ),
-      ],
-    ),
-  );
-  if (saved != true) return false;
-  final key = controller.text.trim();
-  if (key.isEmpty) return false;
-  await ondexmapAdminKeyStore.write(key);
-  return true;
-}
 
 /// OnDexMap admin serveri bilan ishlash: foydalanuvchilar yuborgan
 /// ob'ektlarni MODERATSIYA qilish.
@@ -377,10 +315,12 @@ class ModerationApi {
   final String defaultUrl;
   final OndexMapSession? Function() _session;
 
-  /// Masofaviy rejimda kalitni O'QISH — standart `ondexmapAdminKeyStore`,
-  /// testlarda soxta qiymat bilan almashtiriladi (`_session` bilan BIR XIL
-  /// in'ektsiya naqshi — haqiqiy shifrlangan ombor testda kerak emas).
-  final Future<String?> Function() _remoteKey;
+  /// Masofaviy rejimda token — adminning O'Z OnDex ID sessiyasi (A6, Plane
+  /// 138): `api.freshAccessToken()`. OnDexMap admin serveri uni OnDex'ning
+  /// `/v2/admin/whoami` orqali tekshiradi — statik kalit YO'Q, admin chiqsa
+  /// yoki bloklansa OnDexMap ruxsati ham darhol yopiladi. Testlarda soxta
+  /// qiymat bilan almashtiriladi (`_session` bilan bir xil in'ektsiya).
+  final Future<String?> Function() _remoteToken;
 
   /// `true` — masofaviy (production) rejim.
   final bool remote;
@@ -388,19 +328,12 @@ class ModerationApi {
   ModerationApi({
     required this.defaultUrl,
     OndexMapSession? Function()? session,
-    Future<String?> Function()? remoteKey,
+    Future<String?> Function()? remoteToken,
   })  : _session = session ?? readOndexMapSession,
-        _remoteKey = remoteKey ?? ondexmapAdminKeyStore.read,
+        _remoteToken = remoteToken ?? api.freshAccessToken,
         remote = !isLoopbackHttp(defaultUrl);
 
   static const _timeout = Duration(seconds: 20);
-
-  /// Masofaviy rejimda kalit oldin kiritilganmi (UI shu bo'yicha
-  /// boshlang'ich holatni ko'rsatishi mumkin — ixtiyoriy).
-  Future<bool> hasStoredAdminKey() async {
-    final v = await _remoteKey();
-    return v != null && v.isNotEmpty;
-  }
 
   Future<PlacesMeta> meta() async =>
       PlacesMeta.fromJson(await _json('GET', '/api/places/meta'));
@@ -548,16 +481,16 @@ class ModerationApi {
     final String key;
 
     if (remote) {
-      // ── Masofaviy: token qo'lda kiritilgan, sessiya fayli YO'Q ────────
+      // ── Masofaviy: adminning OnDex ID tokeni, sessiya fayli YO'Q ──────
       base = defaultUrl;
-      final stored = await _remoteKey();
-      if (stored == null || stored.isEmpty) {
+      final tok = await _remoteToken();
+      if (tok == null || tok.isEmpty) {
         throw const ModerationException(
-          'OnDexMap admin kaliti kiritilmagan.',
+          'OnDex sessiyasi tugagan — paneldan chiqib, qaytadan kiring.',
           unauthorized: true,
         );
       }
-      key = stored;
+      key = tok;
     } else {
       // ── Lokal: token sessiya faylidan, manzil HAR SAFAR tekshiriladi ──
       final s = _session();
@@ -596,7 +529,12 @@ class ModerationApi {
 
     final client = http.Client();
     try {
-      final headers = {'X-API-Key': key, 'Accept': 'application/json'};
+      // Masofaviy — `Authorization: Bearer` (OnDex tokeni); lokal —
+      // `X-API-Key` (cmd/admin sessiya fayli).
+      final headers = {
+        if (remote) 'Authorization': 'Bearer $key' else 'X-API-Key': key,
+        'Accept': 'application/json',
+      };
       final http.Response res;
       if (method == 'GET') {
         res = await client.get(uri, headers: headers).timeout(_timeout);
@@ -632,7 +570,8 @@ class ModerationApi {
   String _errorText(http.Response res) {
     if (res.statusCode == 401) {
       return remote
-          ? 'ONDEXMAP_ADMIN_KEY noto\'g\'ri yoki eskirgan. Kalitni qayta kiriting.'
+          ? 'OnDexMap ruxsat bermadi: OnDex admin sessiyasi tugagan yoki '
+              'ikki bosqichli tasdiqsiz. Paneldan chiqib, qaytadan kiring.'
           : 'Sessiya qabul qilinmadi (OnDexMap serveri qayta ishga tushgan '
               'bo\'lishi mumkin). Sahifani yangilang.';
     }

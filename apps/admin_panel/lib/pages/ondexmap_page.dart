@@ -68,18 +68,6 @@ class _OndexMapPageState extends State<OndexMapPage> {
   /// Kutilayotgan takliflar soni («Takliflar (3)» belgisi uchun).
   int _pending = 0;
 
-  /// Har safar oshadi: `IndexedStack` ichidagi ekranlarni MAJBURIY qayta
-  /// yaratish uchun (`key` sifatida) — muharrir/moderatsiya `initState`da
-  /// birinchi so'rovni qiladi, u YANGI kalit bilan qayta ishga tushishi
-  /// kerak, lekin `_api` obyektining o'zi (shu bilan uning `hashCode`i)
-  /// o'zgarmaydi — shuning uchun alohida hisoblagich.
-  int _apiVersion = 0;
-
-  /// Kalitni (qayta) kiritish — masofaviy rejimda, xato kutmasdan ham.
-  Future<void> _changeKey() async {
-    final saved = await showOndexMapAdminKeyDialog(context);
-    if (mounted && saved) setState(() => _apiVersion++);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,13 +102,8 @@ class _OndexMapPageState extends State<OndexMapPage> {
                   ),
                 ),
               ),
-              if (_api.remote)
-                IconButton(
-                  key: const ValueKey('ondexmap-change-key'),
-                  tooltip: 'Admin kalitini o\'zgartirish',
-                  icon: const Icon(Icons.key_outlined),
-                  onPressed: _changeKey,
-                ),
+              // Masofaviy rejim adminning OnDex ID sessiyasi bilan ishlaydi
+              // (A6/138) — alohida kalit va uni almashtirish tugmasi YO'Q.
             ],
           ),
         ),
@@ -131,7 +114,6 @@ class _OndexMapPageState extends State<OndexMapPage> {
           child: kIsWeb
               ? const _WebNote()
               : IndexedStack(
-                  key: ValueKey(_apiVersion),
                   index: _section,
                   children: [
                     OndexMapEditor(api: _api),

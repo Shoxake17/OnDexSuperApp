@@ -337,6 +337,42 @@ class ApiClient {
     return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
   }
 
+  /// Boshqa OnDex servisiga (masalan OnDexMap admin serveri) yuboriladigan
+  /// access token — muddati 60 soniyadan kam qolgan bo'lsa AVVAL yangilanadi
+  /// (o'sha servis OnDex'ni chaqirib tekshiradi, eskirgan token 401 bo'lardi).
+  /// Sessiya yo'q yoki markazda yopilgan — `null`.
+  Future<String?> freshAccessToken() async {
+    final t = token;
+    if (t == null) return null;
+    if (refreshToken == null || !_expiresSoon(t)) return t;
+    switch (await _refresh()) {
+      case _RefreshResult.ok:
+        return token;
+      case _RefreshResult.network:
+        return t; // tarmoq — eski token bilan urinib ko'radi
+      case _RefreshResult.rejected:
+        return null;
+    }
+  }
+
+  static bool _expiresSoon(String jwt) {
+    try {
+      final parts = jwt.split('.');
+      if (parts.length != 3) return false;
+      final payload =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+              )
+              as Map<String, dynamic>;
+      final exp = payload['exp'];
+      if (exp is! num) return false;
+      final at = DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+      return at.difference(DateTime.now()) < const Duration(seconds: 60);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<_RefreshResult> _doRefresh() async {
     final rt = refreshToken;
     if (rt == null) return _RefreshResult.rejected;

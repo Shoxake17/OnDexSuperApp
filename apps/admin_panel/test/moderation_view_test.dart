@@ -488,7 +488,7 @@ void main() {
   // avtomatik `true` bo'ladi (`ondexmap_page.dart`dagi bilan bir xil mantiq).
 
   testWidgets(
-      'masofaviy: kalit kiritilmagan — kiritish tugmasi, so\'rov yuborilmaydi',
+      'masofaviy: OnDex sessiyasi yo\'q — xato, kalit kiritish YO\'Q, so\'rov yuborilmaydi',
       (tester) async {
     final server = _Server();
     tester.view.physicalSize = const Size(1400, 2600);
@@ -496,7 +496,7 @@ void main() {
     addTearDown(tester.view.reset);
     final api = ModerationApi(
       defaultUrl: 'https://maps.example.test/admin',
-      remoteKey: () async => null,
+      remoteToken: () async => null,
     );
     await http.runWithClient(() async {
       await tester.pumpWidget(MaterialApp(
@@ -506,12 +506,13 @@ void main() {
     }, () => MockClient((r) async => server.handle(r)));
 
     expect(find.byKey(const ValueKey('mod-error')), findsOneWidget);
-    expect(find.byKey(const ValueKey('mod-enter-key')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mod-enter-key')), findsNothing);
     expect(server.requests, isEmpty,
-        reason: 'kalit yo\'q bo\'lsa so\'rov umuman yuborilmasin');
+        reason: 'sessiya yo\'q bo\'lsa so\'rov umuman yuborilmasin');
   });
 
-  testWidgets('masofaviy: to\'g\'ri kalit bilan yuklanadi (X-API-Key bilan)',
+  testWidgets(
+      'masofaviy: OnDex ID tokeni bilan yuklanadi (Authorization: Bearer, X-API-Key YO\'Q)',
       (tester) async {
     final server = _Server();
     tester.view.physicalSize = const Size(1400, 2600);
@@ -519,7 +520,7 @@ void main() {
     addTearDown(tester.view.reset);
     final api = ModerationApi(
       defaultUrl: 'https://maps.example.test/admin',
-      remoteKey: () async => 'haqiqiy-kalit',
+      remoteToken: () async => 'ondex-access-token',
     );
     await http.runWithClient(() async {
       await tester.pumpWidget(MaterialApp(
@@ -530,7 +531,9 @@ void main() {
 
     expect(find.byKey(const ValueKey('mod-error')), findsNothing);
     expect(server.requests, isNotEmpty);
-    expect(server.requests.first.headers['X-API-Key'], 'haqiqiy-kalit');
+    expect(server.requests.first.headers['Authorization'],
+        'Bearer ondex-access-token');
+    expect(server.requests.first.headers.containsKey('X-API-Key'), isFalse);
     expect(server.requests.first.url.origin, 'https://maps.example.test');
     // `defaultUrl`ning O'Z YO'LI (`/admin`) so'rovga QO'SHILISHI SHART —
     // almashtirilib YO'QOLMASIN (production'da aynan shu bug chiqqan edi:
@@ -539,14 +542,14 @@ void main() {
   });
 
   testWidgets(
-      'masofaviy 401: "kalit noto\'g\'ri" xabari va kiritish tugmasi ko\'rinadi',
+      'masofaviy 401: "qaytadan kiring" xabari, kalit kiritish tugmasi YO\'Q',
       (tester) async {
     tester.view.physicalSize = const Size(1400, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final api = ModerationApi(
       defaultUrl: 'https://maps.example.test/admin',
-      remoteKey: () async => 'eski-kalit',
+      remoteToken: () async => 'eskirgan-token',
     );
     await http.runWithClient(() async {
       await tester.pumpWidget(MaterialApp(
@@ -557,8 +560,7 @@ void main() {
         () => MockClient(
             (r) async => _json({'error': 'admin kaliti yaroqsiz'}, 401)));
 
-    expect(
-        find.textContaining('ONDEXMAP_ADMIN_KEY noto\'g\'ri'), findsOneWidget);
-    expect(find.byKey(const ValueKey('mod-enter-key')), findsOneWidget);
+    expect(find.textContaining('qaytadan kiring'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mod-enter-key')), findsNothing);
   });
 }

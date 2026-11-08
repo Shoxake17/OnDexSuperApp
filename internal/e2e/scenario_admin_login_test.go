@@ -133,6 +133,16 @@ func TestAdminLoginV2(t *testing.T) {
 		if res.Status != authz.OrgActive {
 			t.Fatalf("tasdiqlanmadi: %+v", res)
 		}
+		// whoami: ekotizim servislari (OnDexMap) admin tokenini shu yerda tekshiradi.
+		var who struct {
+			UserID string `json:"user_id"`
+		}
+		w.Do(t, adm, "GET", "/v2/admin/whoami", nil).Expect(t, 200).JSON(t, &who)
+		if who.UserID != "e2e-a6-admin" {
+			t.Fatalf("whoami: %+v", who)
+		}
+		w.Do(t, w.Owner, "GET", "/v2/admin/whoami", nil).Expect(t, 401)
+		w.Do(t, w.Admin, "GET", "/v2/admin/whoami", nil).Expect(t, 401)
 		got, _ := w.Authz.Store().GetOrganization(ctx, org.ID)
 		if got.VerifiedBy != "e2e-a6-admin" || got.VerifiedAt == nil {
 			t.Fatalf("kim tasdiqlagani yozilmadi: %+v", got)
