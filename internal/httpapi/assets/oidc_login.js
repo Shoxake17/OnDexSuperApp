@@ -11,6 +11,8 @@
   var DEVICE = 'Brauzer (OnDex kirish)';
   var params = new URLSearchParams(location.search);
   var REQ = params.get('req') || '';
+  // Akkaunt sahifasiga kirish (passport.ondex.uz): ilova so'rovi yo'q.
+  var ACCOUNT = !REQ && params.get('account') === '1';
   var phone = '';
   var mfaToken = '';
   var pendingAccess = '';
@@ -70,7 +72,7 @@
   }
 
   function complete(access) {
-    return api('/v2/oauth/login/complete', { req: REQ }, access).then(function (d) {
+    return api('/v2/oauth/login/complete', ACCOUNT ? { account: true } : { req: REQ }, access).then(function (d) {
       if (!d.redirect_to) { throw new Error('Qaytish manzili kelmadi'); }
       location.replace(d.redirect_to);
     });
@@ -222,6 +224,11 @@
   }
 
   // ── so'rovni tekshirish ───────────────────────────────────────────────
+  if (ACCOUNT) {
+    $('client').textContent = 'Akkauntingizni boshqarish uchun';
+    show('s-start');
+    return;
+  }
   if (!REQ) {
     showErr("Kirish so'rovi yo'q — ilovadan qaytadan boshlang.");
     $('s-start').hidden = true;

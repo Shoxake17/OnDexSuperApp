@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>OnDex ID — akkaunt</title>
+<link rel="icon" type="image/png" href="/v2/oauth/assets/logo.png">
+<link rel="stylesheet" href="/v2/oauth/assets/login.css">
+</head>
+<body>
+<main class="card wide" aria-live="polite">
+  <div class="brand">
+    <img src="/v2/oauth/assets/logo.png" alt="" width="48" height="50">
+    <span>OnDex<b>ID</b></span>
+  </div>
+
+  <div id="err" class="err" role="alert" hidden></div>
+  <div id="ok" class="ok-msg" role="status" hidden></div>
+
+  <div id="loading" class="hint">Yuklanmoqda…</div>
+
+  <div id="content" hidden>
+    <!-- Profil -->
+    <div class="acc-head">
+      <div id="avatar" class="avatar" aria-hidden="true"></div>
+      <div class="who">
+        <div class="name" id="name"></div>
+        <div class="phone" id="phone"></div>
+      </div>
+    </div>
+
+    <!-- Xavfsizlik -->
+    <section class="box" aria-labelledby="h-sec">
+      <h2 id="h-sec">Xavfsizlik</h2>
+      <div class="row"><span>Parol</span><span id="pwd-badge" class="badge"></span></div>
+      <div class="row"><span>Ikki bosqichli himoya (Authenticator)</span><span id="totp-badge" class="badge"></span></div>
+      <button type="button" id="btn-pwd-open" class="small">Parolni almashtirish</button>
+      <div id="pwd-form" hidden>
+        <section>
+          <label class="field"><input id="cur" type="password" autocomplete="current-password" placeholder="Joriy parol" aria-label="Joriy parol"></label>
+          <label class="field"><input id="np1" type="password" autocomplete="new-password" placeholder="Yangi parol (kamida 8 belgi)" aria-label="Yangi parol"></label>
+          <label class="field"><input id="np2" type="password" autocomplete="new-password" placeholder="Yangi parolni takrorlang" aria-label="Yangi parolni takrorlang"></label>
+          <label class="field" id="code-box"><input id="code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="Authenticator kodi" aria-label="Authenticator kodi"></label>
+          <p class="hint">Parol almashgach barcha qurilmalardan chiqiladi — yangi parol bilan qayta kirasiz.</p>
+          <button type="button" id="btn-pwd" class="primary">Parolni saqlash</button>
+        </section>
+      </div>
+    </section>
+
+    <!-- Ulangan xizmatlar -->
+    <section class="box" aria-labelledby="h-apps">
+      <h2 id="h-apps">OnDex xizmatlari</h2>
+      <ul class="list" id="apps"></ul>
+      <ul class="list" id="biz"></ul>
+    </section>
+
+    <!-- Qurilmalar -->
+    <section class="box" aria-labelledby="h-dev">
+      <h2 id="h-dev">Qurilmalar va sessiyalar</h2>
+      <ul class="list" id="sessions"></ul>
+      <button type="button" id="btn-all" class="small danger">Hamma qurilmalardan chiqish</button>
+    </section>
+
+    <button type="button" id="btn-logout" class="link">Shu brauzerdan chiqish</button>
+  </div>
+
+  <p class="foot">OnDex ID — barcha OnDex xizmatlari uchun yagona kalit.</p>
+</main>
+<script src="/v2/oauth/assets/account.js"></script>
+</body>
+</html>

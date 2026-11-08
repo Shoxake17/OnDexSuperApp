@@ -359,45 +359,56 @@ func (m *MerchantAuth) VerifyMFA(ctx context.Context, mfaToken, code string, met
 	if m.guard.Blocked(c.User) {
 		return nil, ErrMFATooMany
 	}
-	f, err := m.d.MFA.Confirmed(ctx, c.User)
-	if err != nil {
-		if errors.Is(err, mfa.ErrNotFound) {
-			return nil, ErrMFATokenInvalid // faktor shu orada o'chirilgan
-		}
+	factor, err := m.checkFactorCode(ctx, c.User, code)
+	switch {
+	case errors.Is(err, mfa.ErrNotFound):
+		return nil, ErrMFATokenInvalid // faktor shu orada o'chirilgan
+	case errors.Is(err, ErrMFAInvalid):
+		m.mfaFailed(ctx, c, meta)
+		return nil, ErrMFAInvalid
+	case err != nil:
 		return nil, err
-	}
-	factor := "totp"
-	if mfa.LooksLikeRecovery(code) {
-		ok, err := m.d.MFA.UseRecovery(ctx, c.User, mfa.HashRecovery(code), m.svc.now())
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			m.mfaFailed(ctx, c, meta)
-			return nil, ErrMFAInvalid
-		}
-		factor = "recovery"
-		left, _ := m.d.MFA.RecoveryLeft(ctx, c.User)
-		slog.Warn("identity: tiklash kodi bilan kirish", "user", c.User, "qolgan", left)
-	} else {
-		secret, err := m.d.Box.Open(f.SecretEnc)
-		if err != nil {
-			return nil, err
-		}
-		step, ok := mfa.Validate(secret, code, m.svc.now())
-		if ok {
-			if ok, err = m.d.MFA.UseStep(ctx, f.ID, step); err != nil {
-				return nil, err
-			}
-		}
-		if !ok {
-			m.mfaFailed(ctx, c, meta)
-			return nil, ErrMFAInvalid
-		}
 	}
 	m.guard.Reset(c.User)
 	return m.svc.Create(ctx, CreateInput{UserID: c.User, ClientID: c.Client, OrgID: c.Org,
 		AMR: append(slices.Clone(c.AMR), factor), Meta: meta})
+}
+
+// checkFactorCode — foydalanuvchining tasdiqlangan TOTP kodi yoki tiklash
+// kodi (bir martalik: qadam/kod qayta o'tmaydi). Natija — "totp" yoki
+// "recovery"; noto'g'ri kod — ErrMFAInvalid; faktor yo'q — mfa.ErrNotFound.
+// Urinishlar hisobi (`guard`) CHAQIRUVCHIDA.
+func (m *MerchantAuth) checkFactorCode(ctx context.Context, userID, code string) (string, error) {
+	f, err := m.d.MFA.Confirmed(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if mfa.LooksLikeRecovery(code) {
+		ok, err := m.d.MFA.UseRecovery(ctx, userID, mfa.HashRecovery(code), m.svc.now())
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", ErrMFAInvalid
+		}
+		left, _ := m.d.MFA.RecoveryLeft(ctx, userID)
+		slog.Warn("identity: tiklash kodi ishlatildi", "user", userID, "qolgan", left)
+		return "recovery", nil
+	}
+	secret, err := m.d.Box.Open(f.SecretEnc)
+	if err != nil {
+		return "", err
+	}
+	step, ok := mfa.Validate(secret, code, m.svc.now())
+	if ok {
+		if ok, err = m.d.MFA.UseStep(ctx, f.ID, step); err != nil {
+			return "", err
+		}
+	}
+	if !ok {
+		return "", ErrMFAInvalid
+	}
+	return "totp", nil
 }
 
 func (m *MerchantAuth) mfaFailed(ctx context.Context, c *mfaClaims, meta Meta) {

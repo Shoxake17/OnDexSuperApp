@@ -47,6 +47,33 @@ pre.mono { background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 
 .check { display: flex; gap: 8px; align-items: center; justify-content: center; font-size: 14px; }
 .foot { color: var(--muted); font-size: 12px; margin: 20px 0 0; text-align: center; line-height: 1.6; }
 [hidden] { display: none !important; }
+
+/* Akkaunt sahifasi (passport.ondex.uz) */
+.card.wide { max-width: 640px; min-width: 0; }
+.card.wide, .box, .list li, .row { overflow-wrap: anywhere; }
+.list li > div:first-child, .row > span:first-child { min-width: 0; flex: 1 1 180px; }
+.acc-head { display: flex; align-items: center; gap: 14px; margin: 18px 0 6px; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--field);
+  border: 1px solid var(--line); flex: none; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 22px; color: var(--brand); }
+.acc-head .who { min-width: 0; }
+.acc-head .name { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+.acc-head .phone { color: var(--muted); font-size: 14px; }
+.box { border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-top: 14px; display: grid; gap: 10px; }
+.box h2 { font-size: 16px; margin: 0; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.row .meta { color: var(--muted); font-size: 13px; }
+.badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--field);
+  border: 1px solid var(--line); }
+.badge.ok { color: #7ee2a8; border-color: rgba(126, 226, 168, 0.35); }
+.badge.warn { color: #ffcf8a; border-color: rgba(255, 207, 138, 0.35); }
+.small { padding: 8px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: none; color: var(--fg);
+  font-weight: 600; font-size: 14px; }
+.small.danger { color: var(--err-fg); border-color: rgba(255, 180, 180, 0.35); }
+.list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 14px; background: var(--field); }
+.ok-msg { background: rgba(126, 226, 168, 0.12); color: #b9f3d0; border-radius: 14px; padding: 10px 14px; font-size: 14px; }
 @media (max-width: 480px) {
   body { padding: 12px; align-items: flex-start; background-attachment: scroll; }
   .card { padding: 26px 18px 20px; border-radius: 22px; margin-top: 8vh; }

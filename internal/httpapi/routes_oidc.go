@@ -29,7 +29,7 @@ import (
 // o'qiy olmaydi, JavaScript ham (HttpOnly).
 // └───────────────────────────────────────────────────────────────────────┘
 
-//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css assets/oidc_bg.jpg assets/oidc_logo.png
+//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css assets/oidc_bg.jpg assets/oidc_logo.png assets/oidc_account.html assets/oidc_account.js
 var oidcLoginFS embed.FS
 
 // ssoCookieName — `__Host-`: faqat Secure, Path=/, Domain'siz (subdomen
@@ -173,9 +173,32 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 		}
 		noStore(w)
 		var body struct {
-			Req string `json:"req"`
+			Req     string `json:"req"`
+			Account bool   `json:"account"`
 		}
 		if !decodeJSON(w, r, &body) {
+			return
+		}
+		// Akkaunt sahifasiga kirish (passport.ondex.uz): ilova yo'q, kod
+		// berilmaydi — faqat SSO cookie va o'z sahifamizga qaytish.
+		if body.Account && body.Req == "" {
+			h := r.Header.Get("Authorization")
+			if !strings.HasPrefix(h, "Bearer ") {
+				httpError(w, http.StatusUnauthorized, identity.ErrTokenInvalid)
+				return
+			}
+			sso, err := s.OIDC.SSOSessionFromAccess(r.Context(), strings.TrimPrefix(h, "Bearer "))
+			if err != nil {
+				httpError(w, http.StatusUnauthorized, identity.ErrTokenInvalid)
+				return
+			}
+			if c, cerr := r.Cookie(ssoCookieName); cerr == nil {
+				if old, oerr := s.OIDC.SSOSession(r.Context(), c.Value); oerr == nil && old.ID != sso.ID {
+					_ = s.OIDC.EndSSO(r.Context(), old, "sso_replaced")
+				}
+			}
+			setSSOCookie(w, s.OIDC.SSOCookie(sso.ID), sso.AbsExpiresAt)
+			writeJSON(w, http.StatusOK, map[string]string{"redirect_to": "/v2/oauth/account"})
 			return
 		}
 		req, err := s.OIDC.OpenRequest(body.Req)

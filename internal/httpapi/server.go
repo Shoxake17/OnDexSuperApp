@@ -445,6 +445,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAuthV2Routes(mux)
 	s.registerMerchantAuthRoutes(mux)
 	s.registerOIDCRoutes(mux)
+	s.registerAccountRoutes(mux)
 	s.registerAvatarRoutes(mux)
 	s.registerMerchantRoutes(mux)
 	s.registerMeRoutes(mux)

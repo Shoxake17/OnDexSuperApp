@@ -49,7 +49,19 @@ func (f *fakeUsers) VerifyPhoneCode(_ context.Context, phone, code string) (stri
 }
 
 // SetPassword — haqiqiy xizmat kabi: kuchlilik, mos kelish, akkauntga xesh.
-func (f *fakeUsers) SetPassword(ctx context.Context, userID, _ string, password, confirm string, _ bool) error {
+func (f *fakeUsers) SetPassword(ctx context.Context, userID, current string, password, confirm string, phoneProven bool) error {
+	if !phoneProven {
+		u, err := f.repo.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		f.mu.Lock()
+		pw, ok := f.passwords[u.Phone]
+		f.mu.Unlock()
+		if !ok || pw != current {
+			return users.ErrCurrentPasswordWrong
+		}
+	}
 	if password != confirm {
 		return users.ErrPasswordMismatch
 	}
