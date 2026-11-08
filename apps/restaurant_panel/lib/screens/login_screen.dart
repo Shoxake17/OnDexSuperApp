@@ -18,10 +18,20 @@ const _deviceName = 'Merchant panel (Windows)';
 ///   code       — Telegram'dan kelgan kod (birinchi bosqich)
 ///   factorOtp  — TOTP ulashdan oldin: telefon kodi (parol bilan kirgan bo'lsa)
 ///   factorPwd  — TOTP ulashdan oldin: parol (kod bilan kirgan bo'lsa)
+///   passwordSet — parolsiz egasi: kod bilan kirgach yangi parol o'rnatadi
 ///   enroll     — autentifikator ilovasini ulash (QR)
 ///   recovery   — 10 ta tiklash kodi (BIR MARTA ko'rsatiladi)
 ///   totp       — har kirishda: autentifikator kodi yoki tiklash kodi
-enum _Stage { start, code, factorOtp, factorPwd, enroll, recovery, totp }
+enum _Stage {
+  start,
+  code,
+  factorOtp,
+  factorPwd,
+  passwordSet,
+  enroll,
+  recovery,
+  totp
+}
 
 /// Restoran/do'kon paneliga kirish. Ro'yxatdan o'tish bu ekranda YO'Q —
 /// akkauntni superadmin yaratadi.
@@ -36,6 +46,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   final _phone = TextEditingController(text: '+998');
   final _code = TextEditingController();
   final _password = TextEditingController();
+  final _password2 = TextEditingController();
   bool _passwordMode = true;
   bool _busy = false;
   String? _error;
@@ -55,6 +66,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
     _phone.dispose();
     _code.dispose();
     _password.dispose();
+    _password2.dispose();
     super.dispose();
   }
 
@@ -81,6 +93,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         _deepLink = null;
         _code.clear();
         _password.clear();
+        _password2.clear();
         _error = null;
       });
 
@@ -132,6 +145,20 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         await _handle(s);
       });
 
+  Future<void> _setPassword() => _run(() async {
+        if (_password.text.length < 8) {
+          throw ApiException('Parol kamida 8 belgi bo\'lsin');
+        }
+        if (_password.text != _password2.text) {
+          throw ApiException('Parollar mos kelmadi');
+        }
+        final s = await api.mfaSetPassword(
+            _mfaToken!, _password.text, _password2.text);
+        _password.clear();
+        _password2.clear();
+        await _handle(s);
+      });
+
   Future<void> _confirmEnroll() => _run(() async {
         final codes = await api.mfaConfirm(_mfaToken!, _code.text.trim());
         setState(() {
@@ -164,6 +191,10 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
       case 'password':
         _password.clear();
         setState(() => _stage = _Stage.factorPwd);
+      case 'password_set':
+        _password.clear();
+        _password2.clear();
+        setState(() => _stage = _Stage.passwordSet);
       case 'totp_enroll':
         final en = await api.mfaEnroll(_mfaToken!);
         setState(() {
@@ -288,6 +319,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   String get _subtitle => switch (_stage) {
         _Stage.factorOtp => 'Xavfsizlik: telefon raqamingizni tasdiqlang',
         _Stage.factorPwd => 'Xavfsizlik: parolingizni kiriting',
+        _Stage.passwordSet => 'Xavfsizlik: yangi parol o\'rnating',
         _Stage.enroll => 'Ikki bosqichli tasdiqni yoqing (majburiy)',
         _Stage.recovery => 'Tiklash kodlarini saqlab qo\'ying',
         _Stage.totp => 'Ikki bosqichli tasdiq',
@@ -307,6 +339,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
         _Stage.start => _passwordMode ? _loginWithPassword() : _startTelegram(),
         _Stage.code => _verifyCode(),
         _Stage.factorOtp || _Stage.factorPwd => _submitFactor(),
+        _Stage.passwordSet => _setPassword(),
         _Stage.enroll => _confirmEnroll(),
         _Stage.recovery => _run(_afterSession),
         _Stage.totp => _verifyTotp(),
@@ -367,6 +400,23 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
               'Ikki bosqichli tasdiqni yoqishdan oldin akkaunt parolingizni kiriting.'),
           const SizedBox(height: 12),
           passwordField('Parol'),
+        ];
+      case _Stage.passwordSet:
+        return [
+          const Text(
+              'Biznes akkauntingizda hali parol yo\'q. Xavfsizlik uchun yangi '
+              'parol o\'rnating (kamida 8 belgi; 12345678 kabi oddiy parollar '
+              'qabul qilinmaydi).'),
+          const SizedBox(height: 12),
+          passwordField('Yangi parol'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _password2,
+            obscureText: true,
+            onSubmitted: (_) => _busy ? null : _submit(),
+            decoration: const InputDecoration(
+                labelText: 'Parolni takrorlang', border: OutlineInputBorder()),
+          ),
         ];
       case _Stage.enroll:
         final en = _enrollment;

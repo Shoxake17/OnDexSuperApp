@@ -22,6 +22,24 @@ void main() {
             ? <String, dynamic>{}
             : jsonDecode(req.body) as Map<String, dynamic>;
         switch (req.url.path) {
+          case '/v2/auth/merchant/otp/verify':
+            // parolsiz egasi: kod to'g'ri -> parol o'rnatish bosqichi
+            return json(200, {
+              'mfa_required': true,
+              'mfa_token': 'omfa_p',
+              'method': 'password_set'
+            });
+          case '/v2/auth/mfa/password':
+            expect(b['mfa_token'], 'omfa_p');
+            if (b['password'] == '12345678') {
+              return json(400, {'error': 'parol juda oddiy'});
+            }
+            expect(b['password_confirm'], b['password']);
+            return json(200, {
+              'mfa_required': true,
+              'mfa_token': 'omfa_3',
+              'method': 'totp_enroll'
+            });
           case '/v2/auth/merchant/password':
             expect(b['client_id'], 'merchant-desktop');
             if (b['password'] != 'Parol-123') {
@@ -55,7 +73,8 @@ void main() {
         return json(404, {'error': 'yoq'});
       });
 
-  // Soxta HTTP va platforma kanallari HAQIQIY asinxron: pumpAndSettle`n  // ularni kutmaydi — qisqa haqiqiy kutishdan keyin kadrlar chiziladi.
+  // Soxta HTTP va platforma kanallari HAQIQIY asinxron: pumpAndSettle
+  // ularni kutmaydi — qisqa haqiqiy kutishdan keyin kadrlar chiziladi.
   Future<void> settle(WidgetTester t) async {
     for (var i = 0; i < 5; i++) {
       await t.runAsync(
@@ -122,6 +141,54 @@ void main() {
       await t.tap(find.byType(CheckboxListTile));
       await t.pump();
       expect(t.widget<FilledButton>(btn).onPressed, isNotNull);
+    });
+  });
+  testWidgets('parolsiz egasi: kod -> yangi parol -> QR', (t) async {
+    t.view.physicalSize = const Size(1200, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+
+    await go(t, () async {
+      await t.pumpWidget(const MaterialApp(home: RestaurantLoginScreen()));
+      await t.enterText(
+          find.widgetWithText(TextField, 'Telefon raqami'), '+998901234567');
+      await t.tap(find.text('Telegram kodi bilan kirish'));
+      await t.pump();
+      await t
+          .tap(find.widgetWithText(FilledButton, 'Telegram orqali kod olish'));
+      await settle(t);
+      await t.enterText(
+          find.widgetWithText(TextField, 'Telegramdan kelgan kod'), '424242');
+      await t.tap(find.widgetWithText(FilledButton, 'Davom etish'));
+      await settle(t);
+      expect(find.text("Xavfsizlik: yangi parol o'rnating"), findsOneWidget);
+
+      // mos kelmaydi — serverga yuborilmaydi
+      await t.enterText(
+          find.widgetWithText(TextField, 'Yangi parol'), 'Kuchli-Parol-1');
+      await t.enterText(
+          find.widgetWithText(TextField, 'Parolni takrorlang'), 'boshqa');
+      await t.tap(find.widgetWithText(FilledButton, 'Davom etish'));
+      await settle(t);
+      expect(find.text('Parollar mos kelmadi'), findsOneWidget);
+      expect(calls, isNot(contains('/v2/auth/mfa/password')));
+
+      // server zaif parolni rad etadi
+      await t.enterText(
+          find.widgetWithText(TextField, 'Yangi parol'), '12345678');
+      await t.enterText(
+          find.widgetWithText(TextField, 'Parolni takrorlang'), '12345678');
+      await t.tap(find.widgetWithText(FilledButton, 'Davom etish'));
+      await settle(t);
+      expect(find.text('parol juda oddiy'), findsOneWidget);
+
+      await t.enterText(
+          find.widgetWithText(TextField, 'Yangi parol'), 'Kuchli-Parol-1');
+      await t.enterText(find.widgetWithText(TextField, 'Parolni takrorlang'),
+          'Kuchli-Parol-1');
+      await t.tap(find.widgetWithText(FilledButton, 'Davom etish'));
+      await settle(t);
+      expect(find.byType(QrImageView), findsOneWidget);
     });
   });
 }

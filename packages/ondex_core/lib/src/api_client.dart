@@ -258,6 +258,18 @@ class ApiClient {
     if (password != null) 'password': password,
   });
 
+  /// `method == password_set`: parolsiz egasi kod bilan kirgach yangi parol
+  /// o'rnatadi (server zaif parolni 400 bilan rad etadi).
+  Future<MerchantStep> mfaSetPassword(
+    String mfaToken,
+    String password,
+    String confirm,
+  ) => _merchantStep('/v2/auth/mfa/password', {
+    'mfa_token': mfaToken,
+    'password': password,
+    'password_confirm': confirm,
+  });
+
   /// `method == totp`: autentifikator kodi YOKI tiklash kodi.
   Future<MerchantStep> mfaVerify(String mfaToken, String code) => _merchantStep(
     '/v2/auth/mfa/verify',
