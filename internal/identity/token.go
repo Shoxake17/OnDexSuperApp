@@ -38,6 +38,10 @@ type AccessClaims struct {
 	OrgID     string      `json:"org,omitempty"`
 	AMR       []string    `json:"amr,omitempty"`
 	ClientID  string      `json:"azp"`
+	// AuthTime — sessiya OCHILGAN vaqt (kirish), unix soniya. Refresh'da
+	// o'zgarmaydi: "yaqinda kod bilan kirdi" (parol o'rnatish imtiyozi,
+	// 15 daqiqa) shu bilan o'lchanadi, token yangilanishi bilan emas.
+	AuthTime int64 `json:"auth_time,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -103,6 +107,7 @@ func (i *Issuer) issue(s *Session, notAfter time.Time) (string, time.Time, error
 		OrgID:     s.OrgID,
 		AMR:       s.AMR,
 		ClientID:  s.ClientID,
+		AuthTime:  s.CreatedAt.Unix(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    i.issuer,
 			Subject:   s.UserID,

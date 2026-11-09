@@ -4,7 +4,6 @@ import '../api.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
 import '../services/push.dart';
-import '../session.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
 import 'web_session.dart';
@@ -322,8 +321,7 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
         // Tarmoq bo'lmasa ham lokal tozalash BAJARILADI.
       }
     }
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     await AppPin.clear();
     await clearMiniAppSession();
     if (!mounted) return;

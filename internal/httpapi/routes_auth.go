@@ -315,7 +315,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// POST /auth/verify  {"phone":"+998901234567","code":"123456"} -> {token, user}
@@ -348,7 +348,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// POST /auth/telegram/start — Telegram bot orqali kod olish.
@@ -447,7 +447,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// POST /auth/telegram/login/start — "Telegram bilan kirish".
@@ -579,7 +579,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// GET /auth/telegram/login/status?token=... — ilova shu yerni
@@ -640,7 +640,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": authToken, "user": u})
+		s.writeLogin(w, r, authToken, u)
 	})
 
 	// GET /auth/telegram/return?c=... — botdagi "OnDex'ga qaytish"
@@ -725,7 +725,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// POST /auth/email/request-code — emailga 6 xonali kod.
@@ -793,7 +793,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+		s.writeLogin(w, r, token, u)
 	})
 
 	// POST /auth/logout — HAQIQIY chiqish.

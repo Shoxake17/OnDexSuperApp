@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 
@@ -40,7 +41,7 @@ func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, er
 	if s.Identity == nil || !isEdDSA(raw) {
 		return nil, err
 	}
-	c, aerr := s.Identity.Authenticate(ctx, raw, users.RealmMerchant, users.RealmPlatform)
+	c, aerr := s.Identity.Authenticate(ctx, raw, users.RealmMerchant, users.RealmPlatform, users.RealmCustomer)
 	if aerr != nil {
 		return nil, errSessionGone
 	}
@@ -53,9 +54,20 @@ func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, er
 	if uerr != nil || u.IsDeleted() || users.RealmForRole(u.Role) != c.Realm {
 		return nil, errSessionGone
 	}
-	return &users.Claims{Role: u.Role, EntityID: u.EntityID, RegisteredClaims: jwt.RegisteredClaims{
-		Subject: u.ID, IssuedAt: c.IssuedAt, ExpiresAt: c.ExpiresAt, ID: c.ID,
-	}}, nil
+	// IssuedAt = KIRISH vaqti (auth_time), token yangilangan vaqt emas:
+	//   - foydalanuvchi darajasidagi bekor qilish (`Revoked`: parol
+	//     almashtirish, bloklash, "hamma joydan chiqish") shu vaqtdan oldin
+	//     ochilgan sessiyalarni ham o'ldiradi — refresh uni aylanib o'tolmaydi;
+	//   - "kod bilan HOZIRGINA kirdi" (PhoneProven, 15 daqiqa — joriy
+	//     parolsiz parol o'rnatish) refresh bilan uzaymaydi.
+	iat := c.IssuedAt
+	if c.AuthTime > 0 {
+		iat = jwt.NewNumericDate(time.Unix(c.AuthTime, 0))
+	}
+	return &users.Claims{Role: u.Role, EntityID: u.EntityID,
+		PhoneProven: c.Realm == users.RealmCustomer && (slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "email")),
+		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID, IssuedAt: iat, ExpiresAt: c.ExpiresAt, ID: c.ID},
+	}, nil
 }
 
 // isEdDSA — token sarlavhasida `alg: EdDSA` (imzo tekshirilMAYDI — bu faqat

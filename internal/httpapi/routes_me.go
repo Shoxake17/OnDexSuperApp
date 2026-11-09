@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"chustapp/internal/delivery"
+	"chustapp/internal/identity"
 	"chustapp/internal/users"
 )
 
@@ -88,6 +89,25 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
+			// Markaziy sessiyadagi mijoz (137): BARCHA sessiyalar markazda
+			// ham yopiladi va shu qurilmaga YANGI sessiya beriladi —
+			// parolni almashtirgan odam o'zi chiqib ketmaydi.
+			if isCentralRequest(r) && s.Identity != nil && users.RealmForRole(u.Role) == users.RealmCustomer {
+				if _, err := s.Identity.RevokeAllForUser(r.Context(), uid, "password_changed"); err != nil {
+					httpError(w, http.StatusInternalServerError, err)
+					return
+				}
+				tok, err := s.Identity.Create(r.Context(), identity.CreateInput{UserID: uid, ClientID: identity.CustomerClientID,
+					AMR: []string{"pwd"}, Meta: identity.Meta{IP: clientIP(r), UserAgent: r.UserAgent(), DeviceName: r.Header.Get("X-Ondex-Client")}})
+				if err != nil {
+					httpError(w, http.StatusInternalServerError, err)
+					return
+				}
+				noStore(w)
+				writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "token": tok.AccessToken,
+					"access_token": tok.AccessToken, "refresh_token": tok.RefreshToken, "expires_at": tok.ExpiresAt})
+				return
+			}
 			token, err := s.Tokens.Issue(u)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err)
@@ -126,6 +146,10 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 			// Qo'lidagi token (shu jumladan hozirgi so'rovniki) DARHOL
 			// yaroqsiz bo'ladi — "chiqish" emas, akkaunt yopilishi.
 			s.Revoked.Revoke(r.Context(), c.Subject)
+			if s.Identity != nil {
+				// Markaziy sessiyalar ham (137) — o'chirilgan akkaunt hech qaysi qurilmada qolmaydi.
+				_, _ = s.Identity.RevokeAllForUser(r.Context(), c.Subject, "account_deleted")
+			}
 			writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 		}))
 

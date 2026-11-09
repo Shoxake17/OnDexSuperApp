@@ -13,6 +13,11 @@ import (
 // harakatsiz, 12 soat mutlaq (`DefaultClients`).
 const AdminClientID = "admin-web"
 
+// CustomerClientID — mijoz mobil ilovasi (customer realmi, 137). Kirish
+// ekranlari eski endpointlarda; ilova `X-Ondex-Session: v2` yuborsa ular
+// shu klient bilan markaziy sessiya ochadi.
+const CustomerClientID = "ondex-customer"
+
 // AdminLoginCode — OnDex egasi (platform realmi) kirishi, A6 / CC-0.1.
 //
 // Oqim: telefon + Telegram kodi -> parol (yo'q bo'lsa o'rnatiladi) ->

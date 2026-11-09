@@ -147,6 +147,44 @@ class ApiClient {
   /// Markaziy (yangi) sessiyami.
   bool get isCentralSession => refreshToken != null;
 
+  /// Mijoz ilovasi (137): eski kirish endpointlari (`/auth/verify`,
+  /// `/auth/login`, Google, Firebase, email, Telegram) `X-Ondex-Session: v2`
+  /// sarlavhasi bilan chaqiriladi — server eski 30 kunlik token o'rniga
+  /// markaziy sessiya (access + refresh) beradi. Kirish ekranlari o'zgarmaydi.
+  bool wantCentralSession = false;
+
+  /// Kirish javobini qabul qiladi: markaziy sessiya (`refresh_token` bor)
+  /// yoki eski token. Sessiya omborga (`attachStore`) yoziladi.
+  Future<void> adoptLogin(Map d) async {
+    final rt = d['refresh_token'];
+    if (rt is String && rt.isNotEmpty) {
+      token = (d['access_token'] ?? d['token']) as String;
+      refreshToken = rt;
+    } else {
+      token = d['token'] as String;
+      refreshToken = null;
+    }
+    await _persist();
+  }
+
+  /// Foydalanuvchining faol sessiyalari (qurilmalar) — markaziy sessiyada.
+  /// Har biri: id, client_id, device_name, created_at, last_used_at, current.
+  Future<List<Map<String, dynamic>>> mySessions() async {
+    final d = await send('GET', '/v2/auth/sessions');
+    return [
+      for (final s in ((d as Map)['sessions'] as List? ?? const []))
+        Map<String, dynamic>.from(s as Map),
+    ];
+  }
+
+  /// Boshqa qurilmani chiqarish (o'sha qurilmaning tokeni darhol o'ladi).
+  Future<void> revokeSession(String id) =>
+      send('DELETE', '/v2/auth/sessions/${Uri.encodeComponent(id)}');
+
+  /// Joriy sessiyani omborga qayta yozadi (ilova kodi tokenni o'zi
+  /// yozmasin: refresh token yo'qolib qolardi).
+  Future<void> saveSession() => _persist();
+
   /// Saqlangan sessiyani tiklaydi. Eski formatdagi (bitta token satri)
   /// sessiya ham o'qiladi — foydalanuvchi yangilanishdan keyin chiqib ketmaydi.
   Future<bool> restoreSession() async {
@@ -421,6 +459,7 @@ class ApiClient {
     // "Qurilma" ustuni uchun (`config.dart`). Faqat ma'lumot:
     // server hech qanday huquqni bu qiymatga bog'lamaydi.
     'X-Ondex-Client': clientHeaderValue,
+    if (wantCentralSession) 'X-Ondex-Session': 'v2',
   };
 
   Future<dynamic> send(
@@ -556,7 +595,7 @@ class ApiClient {
       'phone': phone,
       'code': code,
     });
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 
@@ -573,7 +612,7 @@ class ApiClient {
       'login': login,
       'password': password,
     });
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 

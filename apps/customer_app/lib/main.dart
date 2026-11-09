@@ -23,6 +23,13 @@ import 'widgets/agent_overlay.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Markaziy sessiya (137): kirish ekranlari o'zgarmaydi; server kirishda
+  // access + refresh beradi, ular shu omborda (Keystore). 401 da ApiClient
+  // BIR MARTA refresh qiladi. Eski (bitta token) sessiya ham o'qiladi —
+  // yangilangan ilova foydalanuvchini chiqarib yubormaydi.
+  api.attachStore(tokenStore);
+  api.wantCentralSession = true;
+
   // MapLibre'ni birinchi xaritadan OLDIN to'g'ri rejimga o'tkazamiz —
   // keyin kech (`map/ondex_brand.dart` izohiga qarang). Har doim:
   // "OnDex Xarita" ekrani va OnDexMap rejimi ikkalasi ham MapLibre'ga
@@ -340,9 +347,7 @@ class _RootState extends State<_Root> {
   Future<void> _restore() async {
     // TokenStore — Keystore bilan shifrlangan ombor (eski, shifrlanmagan
     // SharedPreferences nusxasini avtomatik ko'chirib o'chiradi).
-    final token = await tokenStore.read();
-    if (token != null && token.isNotEmpty) {
-      api.token = token;
+    if (await api.restoreSession()) {
       _loggedIn = true;
     }
     setState(() => _loading = false);

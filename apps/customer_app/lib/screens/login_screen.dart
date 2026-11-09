@@ -4,7 +4,6 @@ import '../api.dart';
 import '../widgets/common.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
-import '../session.dart';
 import '../widgets/auth_flow.dart';
 import '../widgets/auth_ui.dart';
 import 'forgot_password_screen.dart';
@@ -98,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen>
 
 
   Future<void> _goHome() async {
-    await tokenStore.write(api.token!);
+    await api.saveSession();
     // ┌─ POSTHOG IDENTIFY: BARCHA LOGIN USULLARI UCHUN ──────────┐
     // identify() faqat `ApiClient.me()` ichida chaqiriladi va u
     // PostHog person yaratadi. Password/SMS/Firebase/email har

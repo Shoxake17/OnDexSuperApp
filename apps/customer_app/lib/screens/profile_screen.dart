@@ -13,10 +13,10 @@ import '../services/app_pin.dart';
 import '../services/firebase_phone.dart';
 import '../services/google_auth.dart';
 import '../services/push.dart';
-import '../session.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'address_screen.dart';
 import 'delete_account_screen.dart';
+import 'devices_screen.dart';
 import 'legal_webview_screen.dart';
 import 'login_screen.dart';
 import 'web_session.dart';
@@ -238,8 +238,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // qurilmadagi nusxani o'chirardi va o'g'irlangan token yana 30 kun
     // ishlayverardi (backend: POST /auth/logout).
     await api.logout();
-    await tokenStore.clear();
-    api.token = null;
+    await api.clearSession();
     // Google va Firebase O'Z sessiyalarini alohida saqlaydi — ular
     // tozalanmasa "chiqish" faqat yarim ish bo'lardi:
     //   * Google: keyingi safar hisob tanlash oynasi KO'RSATILMAY,
@@ -432,6 +431,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   value: 'PIN kodni o\'zgartirish',
                   onTap: _changePin,
                 ),
+                // Qurilmalar (137) — faqat markaziy sessiyada (eski tokenda
+                // server qurilmalarni alohida bilmaydi).
+                if (api.isCentralSession) ...[
+                  const SizedBox(height: 8),
+                  _InfoRow(
+                    icon: Icons.devices_outlined,
+                    label: 'Qurilmalar',
+                    value: 'Kirilgan qurilmalar va chiqarish',
+                    onTap:
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DevicesScreen(),
+                          ),
+                        ),
+                  ),
+                ],
 
                 // Shaddiy nimalar qila olishi.
                 //
@@ -520,11 +535,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: LegalSection(
                     iconColor: const Color(0xFF9E9E9E),
-                    onOpen: (context, title, url) => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => LegalWebViewScreen(title: title, url: url),
-                      ),
-                    ),
+                    onOpen:
+                        (context, title, url) => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder:
+                                (_) =>
+                                    LegalWebViewScreen(title: title, url: url),
+                          ),
+                        ),
                   ),
                 ),
 

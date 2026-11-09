@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../widgets/common.dart';
-import '../session.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
 import '../widgets/auth_flow.dart';
@@ -226,7 +225,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         password: _password.text,
         passwordConfirm: _passwordConfirm.text,
       );
-      await tokenStore.write(api.token!);
+      await api.saveSession();
       if (!mounted) return;
       snack('Parol yangilandi');
       Navigator.of(context).pushAndRemoveUntil(

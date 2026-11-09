@@ -452,7 +452,7 @@ class CustomerApi extends ApiClient {
   /// ekanini talab qiladi.
   Future<Map<String, dynamic>> loginWithGoogle(String firebaseIdToken) async {
     final d = await send('POST', '/auth/google', {'id_token': firebaseIdToken});
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 
@@ -486,7 +486,7 @@ class CustomerApi extends ApiClient {
         '?token=${Uri.encodeQueryComponent(pollToken)}'
         '&c=${Uri.encodeQueryComponent(confirmSecret)}');
     if (d is Map && d['pending'] == true) return null;
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 
@@ -501,7 +501,7 @@ class CustomerApi extends ApiClient {
   /// yozib yuborardi.
   Future<Map<String, dynamic>> loginWithFirebase(String idToken) async {
     final d = await send('POST', '/auth/firebase', {'id_token': idToken});
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 
@@ -522,7 +522,7 @@ class CustomerApi extends ApiClient {
   Future<Map<String, dynamic>> verifyEmail(String email, String code) async {
     final d = await send(
         'POST', '/auth/email/verify', {'email': email, 'code': code});
-    token = d['token'] as String;
+    await adoptLogin(d as Map);
     return Map<String, dynamic>.from(d);
   }
 
@@ -550,7 +550,7 @@ class CustomerApi extends ApiClient {
       'password_confirm': passwordConfirm,
     });
     if (d is Map && d['token'] is String) {
-      token = d['token'] as String;
+      await adoptLogin(d);
     }
   }
 

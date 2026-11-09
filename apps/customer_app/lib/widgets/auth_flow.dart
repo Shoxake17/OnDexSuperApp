@@ -8,7 +8,6 @@ import '../services/firebase_phone.dart' show PhoneAuthFailure;
 import '../services/google_auth.dart';
 import '../services/otp_delivery.dart' show OtpDeliveryFailure;
 import '../services/telegram_auth.dart';
-import '../session.dart';
 import 'auth_ui.dart';
 
 /// Kirish / ro'yxatdan o'tish / parol tiklash ekranlarining UMUMIY
@@ -189,7 +188,7 @@ mixin SocialAuthMixin<T extends StatefulWidget> on State<T> {
       return; // eskirgan/uzilgan so'rov jimgina tashlab yuboriladi
     }
     if (res == null || !mounted) return;
-    await tokenStore.write(api.token!);
+    await api.saveSession();
     // ┌─ POSTHOG IDENTIFY TELEGRAM RESUME UCHUN ─────────────────────┐
     // `_goHome()` da api.me() orqali identify() chaqiriladi — bu yerda
     // ham xuddi shu amal bajarilishi shart. Aks holda bu yo'ldan
@@ -222,7 +221,7 @@ mixin SocialAuthMixin<T extends StatefulWidget> on State<T> {
         }
         return;
       }
-      await tokenStore.write(api.token!);
+      await api.saveSession();
       // ┌─ POSTHOG IDENTIFY GOOGLE/TELEGRAM LOGIN UCHUN ──────────────┐
       // `api.me()` ichida identify() chaqiriladi va PostHog person
       // yaratiladi. Bu qilinmasa Google yoki Telegram orqali kirgan

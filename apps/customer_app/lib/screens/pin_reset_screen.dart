@@ -4,7 +4,6 @@ import '../api.dart';
 import '../widgets/common.dart';
 import '../services/firebase_phone.dart';
 import '../services/otp_delivery.dart';
-import '../session.dart';
 import '../widgets/auth_flow.dart';
 import '../widgets/auth_ui.dart';
 import 'pin_screen.dart';
@@ -155,7 +154,7 @@ class _PinResetScreenState extends State<PinResetScreen>
       }
       // Tasdiqlash yangi token beradi — uni saqlaymiz, aks holda
       // eskisi bilan qolib ketardik.
-      await tokenStore.write(api.token!);
+      await api.saveSession();
       if (!mounted) return;
       setState(() => _verified = true);
     } on PhoneAuthFailure catch (e) {

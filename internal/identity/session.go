@@ -33,6 +33,11 @@ var DefaultClients = map[string]ClientPolicy{
 	"ondex-pro":        {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"ondex-go":         {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"admin-web":        {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour},
+	// ondex-customer — mijoz ilovasi (137). Eski token 30 kun mutlaq edi;
+	// endi 30 kun HARAKATSIZ (ishlatib turgan mijoz chiqib ketmaydi), 180
+	// kun mutlaq — keyin bir marta qayta kirish. Qurilma alohida ko'rinadi
+	// va alohida yopiladi.
+	CustomerClientID: {Realm: users.RealmCustomer, Idle: 30 * 24 * time.Hour, Abs: 180 * 24 * time.Hour},
 	// ondex-sso — OnDex kirish sahifasining brauzer sessiyasi (OIDC SSO
 	// cookie). Refresh ishlatilmaydi (cookie faqat sid ko'rsatkichi), shuning
 	// uchun idle = abs: 7 kundan keyin qayta kirish.
