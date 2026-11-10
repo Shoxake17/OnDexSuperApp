@@ -78,7 +78,7 @@ func TestValidatePassword(t *testing.T) {
 		wantErr error
 	}{
 		{"juda qisqa", "1234567", ErrPasswordTooShort},
-		{"eng qisqa ruxsat etilgan", "12345678x", nil},
+		{"eng qisqa ruxsat etilgan", "Tq7#mZ2p", nil}, // 12345678x endi NCSC ro'yxatida - rad
 		{"juda uzun", strings.Repeat("a", MaxPasswordLength+1), ErrPasswordTooLong},
 		{"ommaviy parol", "password123", ErrPasswordTooCommon},
 		{"ommaviy — katta harf bilan ham", "PASSWORD123", ErrPasswordTooCommon},

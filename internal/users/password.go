@@ -168,7 +168,7 @@ func ValidatePassword(p string) error {
 	if n > MaxPasswordLength {
 		return ErrPasswordTooLong
 	}
-	if commonPasswords[strings.ToLower(p)] {
+	if isWeakPassword(p) {
 		return ErrPasswordTooCommon
 	}
 	return nil
