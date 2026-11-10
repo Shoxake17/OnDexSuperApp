@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clearSessionToken, getClientKind, getSessionToken } from "@/lib/session";
-import { goFetch } from "@/lib/api";
+import {
+  clearSessionToken,
+  getClientKind,
+  getRefreshToken,
+  getSessionToken,
+  setSession,
+} from "@/lib/session";
+import { GO_API_URL, goFetch } from "@/lib/api";
+import { refreshSession } from "@/lib/central-session";
 
 // Generic BFF proksi: /api/proxy/restaurants -> Go GET /restaurants,
 // /api/proxy/orders -> Go POST /orders va h.k. Brauzer/WebView hech qachon
@@ -122,7 +129,20 @@ async function handle(req: NextRequest, path: string[]): Promise<NextResponse> {
 
   // Sessiya qanday ochilgani (`tma`/`web`) Go tomonga uzatiladi —
   // superadmin panelidagi "Qurilma" ustuni shundan to'ladi.
-  const res = await goFetch(targetPath, init, token, await getClientKind());
+  const kind = await getClientKind();
+  let res = await goFetch(targetPath, init, token, kind);
+
+  // Markaziy sessiya (137): access shu orada eskirgan bo'lishi mumkin —
+  // Route Handler cookie yoza oladi, shuning uchun BIR MARTA refresh +
+  // qayta yuborish. Rad etilsa pastdagi 401 shoxi cookie'larni tozalaydi.
+  const refresh = await getRefreshToken();
+  if (res.status === 401 && token && refresh) {
+    const r = await refreshSession(GO_API_URL, refresh);
+    if (r.ok) {
+      await setSession({ access_token: r.access, refresh_token: r.refresh });
+      res = await goFetch(targetPath, init, r.access, kind);
+    }
+  }
 
   // ┌─ 401 => SESSIYANI TOZALASH ───────────────────────────────────┐
   // Go tokenni muddatidan oldin bekor qilishi mumkin: superadmin

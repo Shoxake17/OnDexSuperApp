@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { goFetch } from "@/lib/api";
-import { setClientKind, setSessionToken } from "@/lib/session";
+import { setClientKind, setSession } from "@/lib/session";
 
 // POST /api/auth/verify {"phone":"...","code":"..."} — Go'ning
 // POST /auth/verify'ini chaqiradi va muvaffaqiyatda qaytgan JWT'ni
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   if (!res.ok || typeof data?.token !== "string") {
     return NextResponse.json(data, { status: res.status || 400 });
   }
-  await setSessionToken(data.token);
+  await setSession(data);
   // SMS/Telegram kodi bilan kirish — oddiy brauzer sahifasi.
   await setClientKind("web");
   return NextResponse.json({ ok: true, user: data.user });

@@ -1,4 +1,11 @@
 import { cookies } from "next/headers";
+import {
+  ACCESS_COOKIE,
+  CENTRAL_MAX_AGE,
+  LEGACY_MAX_AGE,
+  REFRESH_COOKIE,
+  cookieOptions,
+} from "./central-session";
 
 // Go backend chiqargan JWT shu httpOnly cookie'da saqlanadi — brauzer JS
 // unga umuman kira olmaydi (XSS orqali o'g'irlab bo'lmaydi). Bitta domen
@@ -73,6 +80,33 @@ export async function setSessionToken(token: string) {
   });
 }
 
+/**
+ * Kirish javobini saqlaydi (137): markaziy sessiya (access + refresh,
+ * 180 kun) yoki eski token (30 kun). Refresh — alohida httpOnly cookie.
+ */
+export async function setSession(data: {
+  token?: string;
+  access_token?: string;
+  refresh_token?: string;
+}) {
+  const store = await cookies();
+  const access = data.access_token ?? data.token;
+  if (!access) return;
+  if (data.refresh_token) {
+    store.set(ACCESS_COOKIE, access, cookieOptions(CENTRAL_MAX_AGE));
+    store.set(REFRESH_COOKIE, data.refresh_token, cookieOptions(CENTRAL_MAX_AGE));
+  } else {
+    store.set(ACCESS_COOKIE, access, cookieOptions(LEGACY_MAX_AGE));
+    store.delete({ name: REFRESH_COOKIE, path: "/", domain: COOKIE_DOMAIN });
+  }
+}
+
+/** Markaziy sessiyaning refresh tokeni (eski sessiyada yo'q). */
+export async function getRefreshToken(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(REFRESH_COOKIE)?.value ?? null;
+}
+
 export async function getSessionToken(): Promise<string | null> {
   const store = await cookies();
   return store.get(COOKIE_NAME)?.value ?? null;
@@ -89,6 +123,7 @@ export async function clearSessionToken() {
   // davom etardi.
   // └───────────────────────────────────────────────────────────────────┘
   store.delete({ name: COOKIE_NAME, path: "/", domain: COOKIE_DOMAIN });
+  store.delete({ name: REFRESH_COOKIE, path: "/", domain: COOKIE_DOMAIN });
   store.delete({ name: CLIENT_COOKIE, path: "/", domain: COOKIE_DOMAIN });
 }
 

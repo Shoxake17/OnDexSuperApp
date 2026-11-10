@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { goFetch } from "@/lib/api";
-import { setClientKind, setSessionToken } from "@/lib/session";
+import { setClientKind, setSession } from "@/lib/session";
 
 // POST /api/auth/password-login {"login":"+998...","password":"..."} — Go'ning
 // POST /auth/login'ini chaqiradi va muvaffaqiyatda JWT'ni httpOnly cookie'ga
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       { status: res.status || 400 },
     );
   }
-  await setSessionToken(data.token);
+  await setSession(data);
   await setClientKind("web");
   return NextResponse.json({ ok: true });
 }

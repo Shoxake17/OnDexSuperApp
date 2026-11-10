@@ -26,6 +26,9 @@ export async function goFetch(
   if (clientKind) {
     outgoing.set("X-Ondex-Client", `${clientKind}/${APP_VERSION}`);
   }
+  // 137: kirish endpointlari markaziy sessiya (access + refresh) bersin.
+  // Boshqa endpointlarga ta'siri yo'q — server sarlavhani faqat kirishda o'qiydi.
+  outgoing.set("X-Ondex-Session", "v2");
   if (init.body && !outgoing.has("Content-Type")) {
     outgoing.set("Content-Type", "application/json");
   }

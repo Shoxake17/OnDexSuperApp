@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { goFetch } from "@/lib/api";
 import { safeRedirect } from "@/lib/safe-redirect";
-import { setClientKind, setSessionToken } from "@/lib/session";
+import { setClientKind, setSession } from "@/lib/session";
 
 // GET /api/auth/telegram-return?c=... — botning "OnDex'ga qaytish"
 // tugmasi ANIQ SHU manzilga ishora qiladi (`WEB_PUBLIC_BASE_URL` +
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=telegram", origin), 303);
   }
 
-  await setSessionToken(data.token);
+  await setSession(data);
   await setClientKind("web");
   return NextResponse.redirect(new URL(next, origin), 303);
 }

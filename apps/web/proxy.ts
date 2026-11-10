@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  ACCESS_COOKIE,
+  CENTRAL_MAX_AGE,
+  REFRESH_COOKIE,
+  cookieOptions,
+  expiresWithin,
+  refreshSession,
+} from "./lib/central-session";
 
 /**
  * Domen bo'yicha marshrutlash: `ondex.uz` — tanishtiruv sahifasi,
@@ -33,18 +41,51 @@ const LANDING_HOSTS = (process.env.LANDING_HOSTS ?? "ondex.uz,www.ondex.uz")
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean);
 
-export function proxy(request: NextRequest) {
+const GO_API_URL = process.env.GO_API_URL ?? "http://localhost:8080";
+
+export async function proxy(request: NextRequest) {
   // Port bilan kelgan host ham to'g'ri tanilsin (`ondex.uz:3000`).
   const host = (request.headers.get("host") ?? "").toLowerCase().split(":")[0];
+  const landing = request.nextUrl.pathname === "/" && LANDING_HOSTS.includes(host);
 
-  if (request.nextUrl.pathname === "/" && LANDING_HOSTS.includes(host)) {
-    return NextResponse.rewrite(new URL("/landing", request.url));
+  // ── Markaziy sessiya (137): access eskirayotgan bo'lsa render'dan OLDIN
+  // yangilanadi (`lib/central-session.ts` izohiga qarang). Eski (refresh'siz)
+  // sessiyaga tegilmaydi.
+  const refresh = request.cookies.get(REFRESH_COOKIE)?.value;
+  const access = request.cookies.get(ACCESS_COOKIE)?.value;
+  let renewed: { access: string; refresh: string } | null = null;
+  let rejected = false;
+  if (refresh && (!access || expiresWithin(access, 60))) {
+    const r = await refreshSession(GO_API_URL, refresh);
+    if (r.ok) {
+      renewed = { access: r.access, refresh: r.refresh };
+      // Joriy so'rovning o'zi ham YANGI token bilan render bo'lsin.
+      request.cookies.set(ACCESS_COOKIE, r.access);
+      request.cookies.set(REFRESH_COOKIE, r.refresh);
+    } else if (r.rejected) {
+      rejected = true;
+      request.cookies.delete(ACCESS_COOKIE);
+      request.cookies.delete(REFRESH_COOKIE);
+    }
   }
-  return NextResponse.next();
+
+  const init = { request: { headers: request.headers } };
+  const response = landing
+    ? NextResponse.rewrite(new URL("/landing", request.url), init)
+    : NextResponse.next(init);
+  if (renewed) {
+    response.cookies.set(ACCESS_COOKIE, renewed.access, cookieOptions(CENTRAL_MAX_AGE));
+    response.cookies.set(REFRESH_COOKIE, renewed.refresh, cookieOptions(CENTRAL_MAX_AGE));
+  } else if (rejected) {
+    // Sessiya markazda yopilgan (chiqish, parol almashtirish, bloklash).
+    response.cookies.set(ACCESS_COOKIE, "", cookieOptions(0));
+    response.cookies.set(REFRESH_COOKIE, "", cookieOptions(0));
+  }
+  return response;
 }
 
 export const config = {
-  // FAQAT ildiz tekshiriladi. Butun saytni proxy'dan o'tkazish
-  // keraksiz yuk bo'lardi va statik fayllarni ham ushlab qolardi.
-  matcher: "/",
+  // Sahifalar va API marshrutlari; statik fayllar (`_next/static`, rasmlar,
+  // fayl kengaytmali hammasi) proxy'dan O'TMAYDI — keraksiz yuk bo'lmasin.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
