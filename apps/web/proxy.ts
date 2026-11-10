@@ -43,7 +43,39 @@ const LANDING_HOSTS = (process.env.LANDING_HOSTS ?? "ondex.uz,www.ondex.uz")
 
 const GO_API_URL = process.env.GO_API_URL ?? "http://localhost:8080";
 
+/**
+ * ┌─ CSRF: o'zgartiruvchi API so'rovi faqat O'Z sahifamizdan (AUD-14) ──┐
+ * Sessiya cookie'lari `SameSite=lax` — begona SAYT (cross-site) POST'iga
+ * qo'shilmaydi. Lekin `*.ondex.uz` ostidagi har qanday subdomen brauzer
+ * uchun "o'sha sayt" (same-site): ularning birida XSS bo'lsa, mijoz nomidan
+ * `/api/proxy/*` orqali buyurtma, manzil va h.k. o'zgartirib bo'lardi.
+ * Shuning uchun GET/HEAD/OPTIONS dan boshqa `/api/*` so'rovlari:
+ *   - `Sec-Fetch-Site: cross-site | same-site` — rad;
+ *   - `Origin` bor va host boshqa — rad;
+ *   - sarlavhalar umuman yo'q (eski native WebView) — o'tadi: brauzer
+ *     begona sahifadan POST'da `Origin` ni HAR DOIM yuboradi.
+ * └────────────────────────────────────────────────────────────────────┘
+ */
+function crossOriginWrite(request: NextRequest): boolean {
+  const m = request.method;
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return false;
+  if (!request.nextUrl.pathname.startsWith("/api/")) return false;
+  const site = request.headers.get("sec-fetch-site");
+  if (site === "cross-site" || site === "same-site") return true;
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  const host = (request.headers.get("host") ?? request.nextUrl.host).toLowerCase();
+  try {
+    return new URL(origin).host.toLowerCase() !== host;
+  } catch {
+    return true; // "null" yoki buzilgan Origin
+  }
+}
+
 export async function proxy(request: NextRequest) {
+  if (crossOriginWrite(request)) {
+    return NextResponse.json({ error: "So'rov manbasi tasdiqlanmadi" }, { status: 403 });
+  }
   // Port bilan kelgan host ham to'g'ri tanilsin (`ondex.uz:3000`).
   const host = (request.headers.get("host") ?? "").toLowerCase().split(":")[0];
   const landing = request.nextUrl.pathname === "/" && LANDING_HOSTS.includes(host);
