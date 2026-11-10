@@ -18,8 +18,61 @@ const baseUrl = apiBaseUrl;
 /// da. Ilgari bu yerda ULARNING NUSXASI turardi va u yomonroq edi:
 /// timeout yo'q, tarmoq xatosi ushlanmaydi, nginx HTML javobi
 /// `FormatException` bilan yiqiladi, 401 ishlanmaydi.
+/// Xavfli amal uchun foydalanuvchidan olinadigan tasdiq (CC-0.4).
+typedef AdminActionConfirm = ({String reason, String code});
+
+/// Xavfli amal tasdiq oynasi — ilova (`main.dart`) navigator orqali ulaydi.
+/// [needReason]/[needCode] — server nimani so'ragani; [error] — oldingi
+/// urinish xatosi (noto'g'ri kod). `null` — foydalanuvchi bekor qildi.
+typedef AdminActionPrompt = Future<AdminActionConfirm?> Function({
+  required bool needReason,
+  required bool needCode,
+  String? error,
+});
+
 class AdminApi extends ApiClient {
   AdminApi() : super(baseUrl: apiBaseUrl);
+
+  /// Xavfli amal tasdiq oynasi (CC-0.4). Ulanmagan bo'lsa (testlar) server
+  /// talabi oddiy xato sifatida qaytadi.
+  AdminActionPrompt? actionPrompt;
+
+  /// Xavfli admin amali (o'chirish, hamkor yaratish): server 428 bilan sabab
+  /// yoki Authenticator kodini so'rasa — oyna ochiladi va so'rov sarlavhalar
+  /// bilan QAYTA yuboriladi. Noto'g'ri kod (403 step_up_invalid) — oyna xato
+  /// bilan qayta ochiladi. Bekor qilinsa — `ApiException('Bekor qilindi')`.
+  Future<dynamic> guarded(String method, String path,
+      [Map<String, dynamic>? body]) async {
+    var reason = '';
+    var code = '';
+    String? error;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        return await sendWithHeaders(method, path, body, {
+          if (reason.isNotEmpty)
+            'X-OnDex-Reason': Uri.encodeQueryComponent(reason),
+          if (code.isNotEmpty) 'X-OnDex-StepUp': code,
+        });
+      } on ApiException catch (e) {
+        final d = e.data ?? const {};
+        final needReason = d['reason_required'] == true;
+        final needCode = d['step_up_required'] == true;
+        final badCode = d['step_up_invalid'] == true;
+        final prompt = actionPrompt;
+        if (prompt == null || !(needReason || needCode || badCode)) rethrow;
+        error = badCode ? e.message : null;
+        final c = await prompt(
+          needReason: needReason || reason.isEmpty,
+          needCode: needCode || badCode || code.isNotEmpty,
+          error: error,
+        );
+        if (c == null) throw ApiException('Bekor qilindi');
+        if (c.reason.isNotEmpty) reason = c.reason;
+        code = c.code;
+      }
+    }
+    throw ApiException('Tasdiq olinmadi');
+  }
 
   /// Umumiy statistika. [period]: `today`, `7d`, `30d`, `all` (server
   /// noma'lum qiymatni 30 kunga tushiradi).
@@ -90,7 +143,7 @@ class AdminApi extends ApiClient {
   /// WebSocket orqali `account_deleted` yuboradi va shaxsiy
   /// ma'lumotlarni o'chiradi. Yakunlanmagan buyurtmasi bor akkaunt
   /// uchun 409 qaytadi — bu XATO EMAS, ataylab qo'yilgan to'siq.
-  Future<void> deleteUser(String id) => send('DELETE', '/admin/users/$id');
+  Future<void> deleteUser(String id) => guarded('DELETE', '/admin/users/$id');
 
   // ── Kafe kutubxonasi ────────────────────────────────────────────
   //
@@ -194,7 +247,7 @@ class AdminApi extends ApiClient {
     double lng = 71.2360,
     String password = '',
   }) async =>
-      Map<String, dynamic>.from(await send('POST', '/admin/restaurants', {
+      Map<String, dynamic>.from(await guarded('POST', '/admin/restaurants', {
         'name': name,
         'address': address,
         'phone': phone,
@@ -212,14 +265,14 @@ class AdminApi extends ApiClient {
     required String category,
     String password = '',
   }) async =>
-      Map<String, dynamic>.from(await send('POST', '/admin/stores', {
+      Map<String, dynamic>.from(await guarded('POST', '/admin/stores', {
         'name': name,
         'phone': phone,
         'category': category,
         if (password.isNotEmpty) 'password': password,
       }));
 
-  Future<void> deleteStore(String id) => send('DELETE', '/admin/stores/$id');
+  Future<void> deleteStore(String id) => guarded('DELETE', '/admin/stores/$id');
 
   // ── Qurt statistikasi (`internal/qurtorders`) — FAQAT o'qish ──
   //
@@ -247,7 +300,7 @@ class AdminApi extends ApiClient {
       send('POST', '/admin/restaurants/$id/open', {'open': open});
 
   Future<void> deleteRestaurant(String id) =>
-      send('DELETE', '/admin/restaurants/$id');
+      guarded('DELETE', '/admin/restaurants/$id');
 
   // ── Reklama/aksiya bannerlari (`internal/banners`) ──
   //

@@ -131,7 +131,7 @@ func (s *Server) registerAdminUserRoutes(mux *http.ServeMux) {
 	// bo'lsa, oradagi soniyalarda akkaunt bazada yo'q, LEKIN qo'lidagi
 	// token hamon amal qilardi (`auth()` bazaga qaramaydi).
 	// └───────────────────────────────────────────────────────────────┘
-	mux.HandleFunc("DELETE /admin/users/{id}", s.auth([]users.Role{users.RoleAdmin},
+	mux.HandleFunc("DELETE /admin/users/{id}", s.auth([]users.Role{users.RoleAdmin}, s.adminAction("user.delete", true,
 		func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")
 			admin := claimsFrom(r)
@@ -222,7 +222,7 @@ func (s *Server) registerAdminUserRoutes(mux *http.ServeMux) {
 				"user", u.ID, "role", u.Role, "by", admin.Subject)
 
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
-		}))
+		})))
 }
 
 // blockIfBusy — akkauntni o'chirish HOZIR xavfsizmi.

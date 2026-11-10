@@ -191,7 +191,7 @@ func TestQurtFlow(t *testing.T) {
 		w.Do(t, pos, "DELETE", "/merchant/qurt/products/bad%20key", nil).Expect(t, 400)
 
 		w.Do(t, pos, "PUT", "/merchant/qurt/products/sku-2", body(nil)).Expect(t, 200)
-		w.Do(t, w.Admin, "DELETE", "/admin/stores/"+qurtStore, nil).Expect(t, 200)
+		w.Do(t, w.Admin.WithReason("e2e: tozalash"), "DELETE", "/admin/stores/"+qurtStore, nil).Expect(t, 200)
 		var m struct {
 			Items []any `json:"items"`
 		}

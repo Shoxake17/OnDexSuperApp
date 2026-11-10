@@ -61,7 +61,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 	// POST /admin/restaurants — restoran + unga kirish akkaunti bir amalda.
 	// Restoranlar o'zi ro'yxatdan o'tmaydi: akkauntni faqat superadmin yaratadi,
 	// restoran o'z paneliga shu telefon raqami bilan (SMS kod) kiradi.
-	mux.HandleFunc("POST /admin/restaurants", s.auth([]users.Role{users.RoleAdmin},
+	mux.HandleFunc("POST /admin/restaurants", s.auth([]users.Role{users.RoleAdmin}, s.adminAction("restaurant.create", false,
 		func(w http.ResponseWriter, r *http.Request) {
 			var req struct {
 				Name      string  `json:"name"`
@@ -147,9 +147,9 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				return
 			}
 			writeJSON(w, http.StatusCreated, map[string]any{"restaurant": rest, "account": account})
-		}))
+		})))
 
-	mux.HandleFunc("DELETE /admin/restaurants/{id}", s.auth([]users.Role{users.RoleAdmin},
+	mux.HandleFunc("DELETE /admin/restaurants/{id}", s.auth([]users.Role{users.RoleAdmin}, s.adminAction("restaurant.delete", true,
 		func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")
 			if _, err := s.CatalogRepo.GetRestaurant(r.Context(), id); err != nil {
@@ -199,7 +199,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 			}
 			slog.Info("restoran o'chirildi", "restaurant", id, "by", claimsFrom(r).Subject)
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
-		}))
+		})))
 
 	// POST /admin/restaurants/{id} — restoran ma'lumotlarini tahrirlash
 	// (nomi, manzili, joylashuvi, logo, cover). Superadmin panelidagi

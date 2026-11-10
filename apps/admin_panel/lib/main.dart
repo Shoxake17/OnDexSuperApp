@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
+import 'widgets/admin_action_dialog.dart';
+
+/// Ilova navigatori — api qatlamidan tasdiq oynasini ochish uchun (CC-0.4).
+final adminNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +21,13 @@ void main() async {
   // Markaziy sessiya (A6): access + refresh shu omborda; 401 da ApiClient
   // o'zi BIR MARTA refresh qiladi. Eski (bitta token) format ham o'qiladi.
   api.attachStore(adminTokenStore);
+  // CC-0.4: server xavfli amalda sabab/Authenticator kodini so'rasa — oyna.
+  api.actionPrompt = ({required needReason, required needCode, error}) async {
+    final ctx = adminNavigatorKey.currentContext;
+    if (ctx == null) return null;
+    return showAdminActionDialog(ctx,
+        needReason: needReason, needCode: needCode, error: error);
+  };
 
   runApp(const AdminApp());
 }
@@ -27,6 +38,7 @@ class AdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: adminNavigatorKey,
       title: 'OnDex Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

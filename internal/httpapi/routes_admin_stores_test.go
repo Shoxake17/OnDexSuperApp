@@ -66,14 +66,14 @@ func TestAdminCreatesStoreAndOwnerLogsInWithPassword(t *testing.T) {
 	}
 
 	// O'chirish
-	w = do(t, h, "DELETE", "/admin/stores/"+out.Store.ID, jwt, "")
+	w = doAdminAction(t, h, "DELETE", "/admin/stores/"+out.Store.ID, jwt, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("o'chirish: %d %s", w.Code, w.Body.String())
 	}
 	if _, err := repo.GetByRoleEntity(context.Background(), users.RoleStore, out.Store.ID); err == nil {
 		t.Error("akkaunt o'chirilmadi")
 	}
-	if w = do(t, h, "DELETE", "/admin/stores/"+out.Store.ID, jwt, ""); w.Code != http.StatusNotFound {
+	if w = doAdminAction(t, h, "DELETE", "/admin/stores/"+out.Store.ID, jwt, ""); w.Code != http.StatusNotFound {
 		t.Errorf("ikkinchi o'chirish: %d", w.Code)
 	}
 }

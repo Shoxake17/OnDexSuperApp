@@ -108,6 +108,18 @@ func (m *MerchantAuth) DecideOrganization(ctx context.Context, adminID, orgID, d
 	return m.d.Authz.Store().GetOrganization(ctx, org.ID)
 }
 
+// RecordAdminAction — xavfli admin amali auditi (CC-0.4): kim, nima, nimaga,
+// qaysi sabab bilan, qaysi IP/qurilmadan. Natija (ok/denied) bilan.
+func (m *MerchantAuth) RecordAdminAction(ctx context.Context, adminID, action, target, reason string, ok bool, meta Meta) {
+	res := ResultOK
+	if !ok {
+		res = ResultDenied
+	}
+	m.svc.audit.Record(ctx, Event{Action: "admin." + action, Result: res, ActorUserID: adminID,
+		Realm: string(users.RealmPlatform), Target: clip(target, 200), IPHash: m.svc.ipHash(meta.IP),
+		UserAgent: clip(meta.UserAgent, 300), Details: map[string]any{"reason": clip(reason, 500)}})
+}
+
 // adminSecondFactor — admin uchun parol HAR DOIM so'raladi (kod yetarli
 // emas), keyin TOTP. `secondFactor` TOTP ulangan akkauntda parolni
 // so'ramaydi — admin uchun bu yetarli emas.

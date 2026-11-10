@@ -54,8 +54,8 @@ func TestAdminFlow(t *testing.T) {
 		w.Do(t, w.Admin, "POST", "/admin/stores/"+id, map[string]any{"category": "store", "name": "Baraka yangi"}).Expect(t, 200)
 		w.Do(t, w.Admin, "POST", "/admin/stores/"+id, map[string]any{"category": "supermarket"}).Expect(t, 400)
 		w.Do(t, w.Admin, "POST", "/admin/stores/yoq", map[string]any{"category": "qurt"}).Expect(t, 404)
-		w.Do(t, w.Admin, "DELETE", "/admin/stores/"+id, nil).Expect(t, 200)
-		w.Do(t, w.Admin, "DELETE", "/admin/stores/"+id, nil).Expect(t, 404)
+		w.Do(t, w.Admin.WithReason("e2e: tozalash"), "DELETE", "/admin/stores/"+id, nil).Expect(t, 200)
+		w.Do(t, w.Admin.WithReason("e2e: tozalash"), "DELETE", "/admin/stores/"+id, nil).Expect(t, 404)
 	})
 
 	w.Step(t, "restoran yaratish (akkaunt bilan) va tahrirlash", func(t *testing.T) {
@@ -119,9 +119,9 @@ func TestAdminFlow(t *testing.T) {
 	})
 
 	w.Step(t, "akkauntni o'chirish va restoranni o'chirish", func(t *testing.T) {
-		w.Do(t, w.Admin, "DELETE", "/admin/users/"+w.Other.UserID, nil).Expect(t, 200)
+		w.Do(t, w.Admin.WithReason("e2e: tozalash"), "DELETE", "/admin/users/"+w.Other.UserID, nil).Expect(t, 200)
 		w.ExpectDenied(t, w.Customer, "DELETE", "/admin/users/"+w.Customer.UserID, nil)
-		w.Do(t, w.Admin, "DELETE", "/admin/restaurants/"+newRest, nil).Expect(t, 200)
+		w.Do(t, w.Admin.WithReason("e2e: tozalash"), "DELETE", "/admin/restaurants/"+newRest, nil).Expect(t, 200)
 		w.Do(t, w.Customer, "GET", "/restaurants/"+newRest, nil).Expect(t, 404)
 	})
 }

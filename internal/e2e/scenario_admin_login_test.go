@@ -2,6 +2,9 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -115,7 +118,7 @@ func TestAdminLoginV2(t *testing.T) {
 			t.Fatalf("KYC navbati: %+v", q)
 		}
 		path := "/v2/admin/organizations/" + org.ID + "/verify"
-		r := w.Do(t, adm, "POST", path, map[string]any{"decision": "approve"}).Expect(t, 403).Map(t)
+		r := w.Do(t, adm, "POST", path, map[string]any{"decision": "approve"}).Expect(t, 428).Map(t)
 		if r["step_up_required"] != true {
 			t.Fatalf("kodsiz tasdiq: %v", r)
 		}
@@ -152,6 +155,45 @@ func TestAdminLoginV2(t *testing.T) {
 		if got.VerifiedBy != "e2e-a6-admin" || got.VerifiedAt == nil {
 			t.Fatalf("kim tasdiqlagani yozilmadi: %+v", got)
 		}
+	})
+
+	w.Step(t, "CC-0.4: xavfli amal - sabab + Authenticator kodi; noto'g'ri kod 403 (sessiya tirik)", func(t *testing.T) {
+		adm := &Actor{Name: "admin", Token: adminTok}
+		path := "/admin/stores/yoq-dokon"
+		send := func(reason, code string, want int) map[string]any {
+			t.Helper()
+			req, _ := http.NewRequest("DELETE", w.Srv.URL+path, nil)
+			req.Header.Set("Authorization", "Bearer "+adm.Token)
+			if reason != "" {
+				req.Header.Set("X-OnDex-Reason", url.QueryEscape(reason))
+			}
+			if code != "" {
+				req.Header.Set("X-OnDex-StepUp", code)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			var out map[string]any
+			_ = json.NewDecoder(res.Body).Decode(&out)
+			if res.StatusCode != want {
+				t.Fatalf("%q/%q: %d, kutilgan %d: %v", reason, code, res.StatusCode, want, out)
+			}
+			return out
+		}
+		if o := send("", "", 428); o["reason_required"] != true {
+			t.Fatalf("sababsiz: %v", o)
+		}
+		if o := send("dublikat do'kon", "", 428); o["step_up_required"] != true {
+			t.Fatalf("kodsiz (TOTP ulangan admin): %v", o)
+		}
+		if o := send("dublikat do'kon", "000000", 403); o["step_up_invalid"] != true {
+			t.Fatalf("noto'g'ri kod: %v", o)
+		}
+		w.Do(t, adm, "GET", "/admin/couriers", nil).Expect(t, 200)
+		// To'g'ri (tiklash) kodi — siyosatdan o'tadi; do'kon yo'q -> 404.
+		send("dublikat do'kon", recovery[1], 404)
 	})
 
 	w.Step(t, "XAVFSIZLIK: TOTP'siz (faqat kod) admin sessiyasi eski marshrutlarda o'tmaydi", func(t *testing.T) {

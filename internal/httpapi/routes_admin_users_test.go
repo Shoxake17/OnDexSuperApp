@@ -202,7 +202,7 @@ func TestAdminDeleteUserRevokesSession(t *testing.T) {
 		t.Fatal("test boshida token yaroqli bo'lishi kerak edi")
 	}
 
-	w := do(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, "")
+	w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("kutilgan 200, olindi %d: %s", w.Code, w.Body)
 	}
@@ -232,7 +232,7 @@ func TestAdminDeleteUserRevokesSession(t *testing.T) {
 func TestAdminDeleteCourierRemovesCourierRecord(t *testing.T) {
 	f := adminServer(t)
 
-	w := do(t, f.h, "DELETE", "/admin/users/"+f.courierID, f.adminJWT, "")
+	w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.courierID, f.adminJWT, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("kutilgan 200, olindi %d: %s", w.Code, w.Body)
 	}
@@ -251,7 +251,7 @@ func TestAdminDeleteCourierRemovesCourierRecord(t *testing.T) {
 func TestAdminCannotDeleteAdmins(t *testing.T) {
 	f := adminServer(t)
 
-	if w := do(t, f.h, "DELETE", "/admin/users/"+f.adminID, f.adminJWT, ""); w.Code != http.StatusBadRequest {
+	if w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.adminID, f.adminJWT, ""); w.Code != http.StatusBadRequest {
 		t.Errorf("o'zini o'chirishda 400 kutilgandi, olindi %d", w.Code)
 	}
 	// Ikkinchi superadmin — panel orqali o'chirilmaydi.
@@ -260,7 +260,7 @@ func TestAdminCannotDeleteAdmins(t *testing.T) {
 	if err := f.userRepo.Create(context.Background(), other); err != nil {
 		t.Fatal(err)
 	}
-	if w := do(t, f.h, "DELETE", "/admin/users/admin-2", f.adminJWT, ""); w.Code != http.StatusForbidden {
+	if w := doAdminAction(t, f.h, "DELETE", "/admin/users/admin-2", f.adminJWT, ""); w.Code != http.StatusForbidden {
 		t.Errorf("boshqa superadmin uchun 403 kutilgandi, olindi %d", w.Code)
 	}
 }
@@ -269,10 +269,10 @@ func TestAdminCannotDeleteAdmins(t *testing.T) {
 func TestAdminDeleteAuthorization(t *testing.T) {
 	f := adminServer(t)
 
-	if w := do(t, f.h, "DELETE", "/admin/users/"+f.waiterID, f.customerJWT, ""); w.Code != http.StatusForbidden {
+	if w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.waiterID, f.customerJWT, ""); w.Code != http.StatusForbidden {
 		t.Errorf("mijoz o'chira olmasligi kerak edi, olindi %d", w.Code)
 	}
-	if w := do(t, f.h, "DELETE", "/admin/users/yo-q-akkaunt", f.adminJWT, ""); w.Code != http.StatusNotFound {
+	if w := doAdminAction(t, f.h, "DELETE", "/admin/users/yo-q-akkaunt", f.adminJWT, ""); w.Code != http.StatusNotFound {
 		t.Errorf("mavjud bo'lmagan akkaunt uchun 404 kutilgandi, olindi %d", w.Code)
 	}
 }
@@ -331,7 +331,7 @@ func TestAdminDeleteBlockedByActiveOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := do(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, "")
+	w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, "")
 	if w.Code != http.StatusConflict {
 		t.Fatalf("409 kutilgandi, olindi %d: %s", w.Code, w.Body)
 	}
@@ -345,7 +345,7 @@ func TestAdminDeleteBlockedByActiveOrder(t *testing.T) {
 	if err := f.orderRepo.Save(ctx, active); err != nil {
 		t.Fatal(err)
 	}
-	if w := do(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, ""); w.Code != http.StatusOK {
+	if w := doAdminAction(t, f.h, "DELETE", "/admin/users/"+f.customerID, f.adminJWT, ""); w.Code != http.StatusOK {
 		t.Errorf("yakunlangan buyurtmadan keyin o'chirish ishlashi kerak edi, olindi %d: %s", w.Code, w.Body)
 	}
 }

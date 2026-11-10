@@ -466,19 +466,35 @@ class ApiClient {
     String method,
     String path, [
     Map<String, dynamic>? body,
-  ]) async {
+  ]) => _send(method, path, body, null);
+
+  /// [send] + qo'shimcha sarlavhalar (masalan xavfli admin amalida sabab va
+  /// Authenticator kodi — CC-0.4). Sarlavhalar faqat SHU so'rovga.
+  Future<dynamic> sendWithHeaders(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+    Map<String, String> headers,
+  ) => _send(method, path, body, headers);
+
+  Future<dynamic> _send(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+    Map<String, String>? extra,
+  ) async {
     final used = token;
-    var r = await _raw(method, path, body);
+    var r = await _raw(method, path, body, extra);
     if (r.statusCode == 401 &&
         refreshToken != null &&
         !_noRefresh.contains(path)) {
       if (token != null && token != used) {
         // Shu orada boshqa so'rov allaqachon yangilagan — refresh'siz qayta.
-        r = await _raw(method, path, body);
+        r = await _raw(method, path, body, extra);
       } else {
         switch (await _refresh()) {
           case _RefreshResult.ok:
-            r = await _raw(method, path, body);
+            r = await _raw(method, path, body, extra);
           case _RefreshResult.network:
             throw ApiException(
               'Serverga ulanib bo\'lmadi — internetni tekshiring',
@@ -495,32 +511,34 @@ class ApiClient {
   Future<http.Response> _raw(
     String method,
     String path,
-    Map<String, dynamic>? body,
-  ) async {
+    Map<String, dynamic>? body, [
+    Map<String, String>? extra,
+  ]) async {
     final uri = Uri.parse('$baseUrl$path');
+    final hdrs = extra == null ? _headers : {..._headers, ...extra};
     http.Response r;
     try {
       switch (method) {
         case 'GET':
-          r = await http.get(uri, headers: _headers).timeout(timeout);
+          r = await http.get(uri, headers: hdrs).timeout(timeout);
         case 'DELETE':
-          r = await http.delete(uri, headers: _headers).timeout(timeout);
+          r = await http.delete(uri, headers: hdrs).timeout(timeout);
         case 'PATCH':
           // Qisman yangilash (masalan `PATCH /tables/{id}`). Busiz
           // restoran paneli o'z klientini saqlashga majbur edi.
           r = await http
-              .patch(uri, headers: _headers, body: jsonEncode(body ?? {}))
+              .patch(uri, headers: hdrs, body: jsonEncode(body ?? {}))
               .timeout(timeout);
         case 'PUT':
           // To'liq almashtirish (masalan `PUT /admin/support/contacts`).
           // Avval bu shox yo'q edi va PUT jimgina POST bo'lib ketardi
           // (server 405 qaytarardi).
           r = await http
-              .put(uri, headers: _headers, body: jsonEncode(body ?? {}))
+              .put(uri, headers: hdrs, body: jsonEncode(body ?? {}))
               .timeout(timeout);
         default:
           r = await http
-              .post(uri, headers: _headers, body: jsonEncode(body ?? {}))
+              .post(uri, headers: hdrs, body: jsonEncode(body ?? {}))
               .timeout(timeout);
       }
     } catch (_) {

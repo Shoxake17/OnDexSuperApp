@@ -45,7 +45,7 @@ func partnerPasswordHash(ctx context.Context, password string) (string, error) {
 // OnDex esa FAQAT kimlikni beradi (`internal/sso`).
 func (s *Server) registerAdminStoreRoutes(mux *http.ServeMux) {
 	// POST /admin/stores — do'kon + unga kirish akkaunti bir amalda.
-	mux.HandleFunc("POST /admin/stores", s.auth([]users.Role{users.RoleAdmin},
+	mux.HandleFunc("POST /admin/stores", s.auth([]users.Role{users.RoleAdmin}, s.adminAction("store.create", false,
 		func(w http.ResponseWriter, r *http.Request) {
 			var req struct {
 				Name     string `json:"name"`     // do'kon nomi (majburiy)
@@ -103,7 +103,7 @@ func (s *Server) registerAdminStoreRoutes(mux *http.ServeMux) {
 					"category": string(category)},
 				"account": account,
 			})
-		}))
+		})))
 
 	// POST /admin/stores/{id} — do'kon nomi va/yoki kategoriyasini o'zgartirish.
 	//
@@ -154,7 +154,7 @@ func (s *Server) registerAdminStoreRoutes(mux *http.ServeMux) {
 
 	// DELETE /admin/stores/{id} — do'kon akkauntini o'chiradi va tokenlarini
 	// bekor qiladi (restoranni o'chirishdagi kabi).
-	mux.HandleFunc("DELETE /admin/stores/{id}", s.auth([]users.Role{users.RoleAdmin},
+	mux.HandleFunc("DELETE /admin/stores/{id}", s.auth([]users.Role{users.RoleAdmin}, s.adminAction("store.delete", true,
 		func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")
 			if _, err := s.UserRepo.GetByRoleEntity(r.Context(), users.RoleStore, id); err != nil {
@@ -177,5 +177,5 @@ func (s *Server) registerAdminStoreRoutes(mux *http.ServeMux) {
 			}
 			slog.Info("do'kon o'chirildi", "store", id, "by", claimsFrom(r).Subject)
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
-		}))
+		})))
 }

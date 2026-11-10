@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -666,7 +667,20 @@ func (w *World) Eventually(t *testing.T, what string, timeout time.Duration, con
 	t.Fatalf("%s: %v ichida bajarilmadi", what, timeout)
 }
 
-// LoginAs — telefon bo'yicha mavjud akkaunt uchun token (xodim akkauntlari).
+// WithReason — xavfli admin amali uchun sabab sarlavhasi bilan aktyor
+// nusxasi (CC-0.4: o'chirish va hamkor yaratish sababsiz 428).
+func (a *Actor) WithReason(reason string) *Actor {
+	c := *a
+	c.Headers = map[string]string{"X-OnDex-Reason": url.QueryEscape(reason)}
+	for k, v := range a.Headers {
+		if _, ok := c.Headers[k]; !ok {
+			c.Headers[k] = v
+		}
+	}
+	return &c
+}
+
+// LoginAs —telefon bo'yicha mavjud akkaunt uchun token (xodim akkauntlari).
 func (w *World) LoginAs(t *testing.T, name, phone string) *Actor {
 	t.Helper()
 	u, err := w.Users.GetByPhone(context.Background(), phone)

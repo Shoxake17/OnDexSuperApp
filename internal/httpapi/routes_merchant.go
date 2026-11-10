@@ -46,7 +46,7 @@ func respondDirectoryError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "Authenticator kodi noto'g'ri", "step_up_invalid": true})
 	case errors.Is(err, identity.ErrStepUpRequired):
 		// Ilova Authenticator kodini so'rab, so'rovni `stepup_code` bilan takrorlaydi.
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error(), "step_up_required": true})
+		writeJSON(w, http.StatusPreconditionRequired, map[string]any{"error": err.Error(), "step_up_required": true})
 	case errors.Is(err, authz.ErrConflict), errors.Is(err, identity.ErrAccountExists):
 		httpError(w, http.StatusConflict, err)
 	default:
