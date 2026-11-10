@@ -120,6 +120,11 @@ func TestAdminLoginV2(t *testing.T) {
 			t.Fatalf("kodsiz tasdiq: %v", r)
 		}
 		w.Do(t, adm, "POST", path, map[string]any{"decision": "reject"}).Expect(t, 400)
+		// Noto'g'ri kod — 403 (401 EMAS: klient sessiyani yopib yubormasin), sessiya tirik.
+		if r := w.Do(t, adm, "POST", path, map[string]any{"decision": "approve", "stepup_code": "000000"}).Expect(t, 403).Map(t); r["step_up_invalid"] != true {
+			t.Fatalf("noto'g'ri kod javobi: %v", r)
+		}
+		w.Do(t, adm, "GET", "/v2/admin/organizations", nil).Expect(t, 200)
 		w.Do(t, w.Owner, "POST", path, map[string]any{"decision": "approve"}).Expect(t, 401)
 		w.Do(t, w.Admin, "GET", "/v2/admin/organizations", nil).Expect(t, 401) // eski HS256 admin tokeni
 		w.Do(t, adm, "POST", "/v2/admin/organizations/yoq/verify", map[string]any{"decision": "approve", "stepup_code": "000000"}).Expect(t, 404)

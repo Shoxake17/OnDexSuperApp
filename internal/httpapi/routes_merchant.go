@@ -40,6 +40,10 @@ func respondDirectoryError(w http.ResponseWriter, err error) {
 		httpError(w, http.StatusForbidden, err)
 	case errors.Is(err, authz.ErrInvalid):
 		httpError(w, http.StatusBadRequest, err)
+	case errors.Is(err, identity.ErrMFAInvalid):
+		// Step-up kodi noto'g'ri — 401 EMAS: klientlar 401 ni "sessiya
+		// tugadi" deb tushunib foydalanuvchini tizimdan chiqarib yuborardi.
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "Authenticator kodi noto'g'ri", "step_up_invalid": true})
 	case errors.Is(err, identity.ErrStepUpRequired):
 		// Ilova Authenticator kodini so'rab, so'rovni `stepup_code` bilan takrorlaydi.
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error(), "step_up_required": true})

@@ -4,6 +4,7 @@ import '../api.dart';
 import '../live.dart';
 import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
+import '../pages/kyc_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
 import '../pages/qurt_stats_page.dart';
@@ -100,6 +101,13 @@ const _navTop = <_NavSpec>[
     icon: Icons.settings_outlined,
     selectedIcon: Icons.settings,
   ),
+  (
+    key: 'nav-kyc',
+    label: 'Tashkilotlar (KYC)',
+    screen: 'Kyc',
+    icon: Icons.verified_user_outlined,
+    selectedIcon: Icons.verified_user,
+  ),
 ];
 
 const _navBottom = <_NavSpec>[
@@ -169,6 +177,8 @@ class _AdminShellState extends State<AdminShell> {
         5 => const CouriersPage(onlyPlatform: true),
         6 => const BannersPage(),
         7 => const SettingsPage(),
+        // KYC (A6): faqat OnDex ID admin sessiyasida.
+        8 => const KycPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),

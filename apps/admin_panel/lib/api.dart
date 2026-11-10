@@ -431,6 +431,30 @@ class AdminApi extends ApiClient {
   /// Chatdagi rasm manzili — faqat admin tokeni bilan ochiladi.
   String supportAttachmentUrl(String restaurantId, String attachmentId) =>
       '$baseUrl/admin/support/threads/${Uri.encodeComponent(restaurantId)}/attachments/${Uri.encodeComponent(attachmentId)}';
+
+  // ── KYC (A6): tashkilotlarni tasdiqlash — faqat OnDex ID admin sessiyasi ──
+
+  /// Tashkilotlar. [status]: pending | active | rejected | suspended | ''.
+  Future<List<Map<String, dynamic>>> organizations({String status = ''}) async {
+    final q =
+        status.isEmpty ? '' : '?status=${Uri.encodeQueryComponent(status)}';
+    final d = await send('GET', '/v2/admin/organizations$q');
+    return [
+      for (final o in ((d as Map)['organizations'] as List? ?? const []))
+        Map<String, dynamic>.from(o as Map),
+    ];
+  }
+
+  /// KYC qarori: [decision] approve | reject | suspend. [stepUpCode] —
+  /// Authenticator yoki tiklash kodi (server HAR qarorda talab qiladi).
+  Future<Map<String, dynamic>> decideOrganization(String id, String decision,
+          {String reason = '', required String stepUpCode}) async =>
+      Map<String, dynamic>.from(await send(
+          'POST', '/v2/admin/organizations/${Uri.encodeComponent(id)}/verify', {
+        'decision': decision,
+        'reason': reason,
+        'stepup_code': stepUpCode,
+      }) as Map);
 }
 
 final api = AdminApi();

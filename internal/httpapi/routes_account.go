@@ -252,6 +252,9 @@ func (s *Server) registerAccountRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, map[string]bool{"signed_out": true})
 		case errors.Is(err, identity.ErrStepUpRequired):
 			httpError(w, http.StatusBadRequest, err)
+		case errors.Is(err, identity.ErrMFAInvalid):
+			// 401 EMAS: sahifa 401 ni "sessiya tugadi" deb kirishga qaytaradi.
+			httpError(w, http.StatusBadRequest, errors.New("Authenticator kodi noto'g'ri"))
 		case errors.Is(err, users.ErrCurrentPasswordWrong), errors.Is(err, users.ErrInvalidCredentials):
 			httpError(w, http.StatusBadRequest, errors.New("joriy parol noto'g'ri"))
 		case users.IsUserFacing(err):

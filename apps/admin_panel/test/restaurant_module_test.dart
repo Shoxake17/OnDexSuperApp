@@ -315,7 +315,7 @@ void main() {
     });
   });
 
-  testWidgets('Sidebar: Restoran, Do\'kon, Qurt statistikasi, Statistika, Mijozlar, OnDex kuryerlari, Bannerlar, Sozlamalar; pastda OnDexMap', (tester) async {
+  testWidgets('Sidebar: Restoran, Do\'kon, Qurt statistikasi, Statistika, Mijozlar, OnDex kuryerlari, Bannerlar, Sozlamalar, KYC; pastda OnDexMap', (tester) async {
     await _run(tester, const AdminShell(), (requests) async {
       expect(tester.takeException(), isNull);
       int count(String path) => requests.where((r) => r.url.path == path).length;
@@ -324,15 +324,15 @@ void main() {
       // Sidebar'da AYNAN to'qqizta band; boshqa (yuqori tablar kabi) navigatsiya yo'q.
       final navItems = find.byWidgetPredicate((w) =>
           w.key is ValueKey<String> && (w.key as ValueKey<String>).value.startsWith('nav-'));
-      expect(navItems, findsNWidgets(9));
+      expect(navItems, findsNWidgets(10));
       for (final label in const [
-        'Restoran', 'Do\'kon', 'Qurt statistikasi', 'Statistika', 'Mijozlar', 'OnDex kuryerlari', 'Bannerlar', 'Sozlamalar', 'OnDexMap'
+        'Restoran', 'Do\'kon', 'Qurt statistikasi', 'Statistika', 'Mijozlar', 'OnDex kuryerlari', 'Bannerlar', 'Sozlamalar', 'Tashkilotlar (KYC)', 'OnDexMap'
       ]) {
         expect(find.text(label), findsOneWidget, reason: '"$label" sidebar\'da bo\'lishi kerak');
       }
 
       // Tartib: yuqoridan pastga; OnDexMap eng pastda.
-      final order = ['restaurants', 'stores', 'qurt-stats', 'stats', 'customers', 'couriers', 'banners', 'settings', 'ondexmap'];
+      final order = ['restaurants', 'stores', 'qurt-stats', 'stats', 'customers', 'couriers', 'banners', 'settings', 'kyc', 'ondexmap'];
       for (var i = 1; i < order.length; i++) {
         expect(tester.getTopLeft(nav(order[i])).dy, greaterThan(tester.getTopLeft(nav(order[i - 1])).dy),
             reason: '${order[i]} ${order[i - 1]} dan pastda bo\'lishi kerak');
