@@ -49,6 +49,22 @@
       </div>
     </section>
 
+    <!-- Passkey (AUD-4) -->
+    <section class="box" id="pk-box" aria-labelledby="h-pk" hidden>
+      <h2 id="h-pk">Passkey'lar</h2>
+      <p class="hint">Fishingga chidamli kirish: Windows Hello, Touch ID, telefon ekran qulfi yoki xavfsizlik kaliti.
+        Soxta saytda ishlamaydi. Authenticator kodi zaxira sifatida qoladi.</p>
+      <ul class="list" id="pk-list"></ul>
+      <div id="pk-form" hidden>
+        <section>
+          <label class="field"><input id="pk-name" maxlength="64" placeholder="Nomi (masalan: Noutbuk)" aria-label="Passkey nomi"></label>
+          <label class="field"><input id="pk-code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="Authenticator kodi" aria-label="Authenticator kodi"></label>
+          <button type="button" id="btn-pk-add" class="primary">Passkey qo'shish</button>
+        </section>
+      </div>
+      <button type="button" id="btn-pk-open" class="small">Passkey qo'shish</button>
+    </section>
+
     <!-- Ulangan xizmatlar -->
     <section class="box" aria-labelledby="h-apps">
       <h2 id="h-apps">OnDex xizmatlari</h2>

@@ -65,7 +65,10 @@
       case 'otp': return startFactorCode();
       case 'password': show('s-fpwd'); return;
       case 'password_set': show('s-setpwd'); return;
-      case 'totp': show('s-totp'); return;
+      case 'totp':
+        // Passkey (AUD-4): akkauntda bo'lsa va brauzer qo'llasa — muqobil.
+        $('btn-passkey').hidden = !(d.passkey && window.PublicKeyCredential && navigator.credentials);
+        show('s-totp'); return;
       case 'totp_enroll': return startEnroll();
       default: throw new Error("Noma'lum tekshiruv usuli");
     }
@@ -181,6 +184,46 @@
       var c = $('totp').value.replace(/\s/g, '');
       if (!c) { throw new Error('Kodni kiriting'); }
       return api('/v2/auth/mfa/verify', { mfa_token: mfaToken, code: c, device_name: DEVICE }).then(outcome);
+    });
+  });
+
+  // ── passkey (WebAuthn) ─────────────────────────────────────────────────
+  // Imzoni brauzer SHU sayt manziliga bog'laydi — soxta domenda yaratilgan
+  // javob serverda rad etiladi (fishingga chidamli).
+  function b64uToBuf(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) { s += '='; }
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { out[i] = bin.charCodeAt(i); }
+    return out.buffer;
+  }
+  function bufToB64u(buf) {
+    var b = new Uint8Array(buf), s = '';
+    for (var i = 0; i < b.length; i++) { s += String.fromCharCode(b[i]); }
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  $('btn-passkey').addEventListener('click', function () {
+    run(this, function () {
+      return api('/v2/auth/mfa/passkey/options', { mfa_token: mfaToken }).then(function (o) {
+        var pk = o.public_key || {};
+        pk.challenge = b64uToBuf(pk.challenge);
+        (pk.allowCredentials || []).forEach(function (c) { c.id = b64uToBuf(c.id); });
+        return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
+          if (!cred) { throw new Error('Passkey tanlanmadi'); }
+          var r = cred.response;
+          var body = {
+            id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+            authenticatorAttachment: cred.authenticatorAttachment || undefined,
+            clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+            response: { clientDataJSON: bufToB64u(r.clientDataJSON), authenticatorData: bufToB64u(r.authenticatorData),
+              signature: bufToB64u(r.signature), userHandle: r.userHandle ? bufToB64u(r.userHandle) : undefined }
+          };
+          return api('/v2/auth/mfa/passkey', { mfa_token: mfaToken, state: o.state, credential: body, device_name: DEVICE });
+        }, function (e) {
+          if (e && e.name === 'NotAllowedError') { throw new Error('Passkey tasdiqlanmadi yoki bekor qilindi'); }
+          throw new Error('Passkey ishlamadi — Authenticator kodidan foydalaning');
+        }).then(outcome);
+      });
     });
   });
 

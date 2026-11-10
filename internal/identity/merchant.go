@@ -13,8 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
+
 	"chustapp/internal/identity/authz"
 	"chustapp/internal/identity/mfa"
+	"chustapp/internal/identity/passkey"
 	"chustapp/internal/users"
 )
 
@@ -77,6 +80,10 @@ type MerchantDeps struct {
 	Box   Sealer
 	// TOTPIssuer — autentifikator ilovasida ko'rinadigan nom.
 	TOTPIssuer string
+	// Passkeys — passkey (WebAuthn) ombori; nil = passkey o'chiq (AUD-4).
+	Passkeys passkey.Store
+	// Passkey — RP sozlamasi (bo'sh = issuer'dan).
+	Passkey PasskeyConfig
 }
 
 // MerchantAuth — merchant realmiga kirish.
@@ -87,6 +94,9 @@ type MerchantAuth struct {
 	guard    *failGuard
 	// inviteHook — `OnInvite` (xodimga "sizni taklif qilishdi" xabari).
 	inviteHook func(ctx context.Context, inv Invite)
+	// wa, pkKey — passkey (`initPasskeys`); wa nil = o'chiq.
+	wa    *webauthn.WebAuthn
+	pkKey []byte
 }
 
 // Invite — xodim taklifi (yangi yoki qayta) xabari uchun.
@@ -125,13 +135,17 @@ func NewMerchantAuth(svc *Service, d MerchantDeps) (*MerchantAuth, error) {
 	if d.TOTPIssuer == "" {
 		d.TOTPIssuer = "OnDex Merchant"
 	}
-	return &MerchantAuth{
+	m := &MerchantAuth{
 		svc: svc, d: d,
 		tokenKey: svc.issuer.keys.derivedSecret("mfa-token"),
 		// akkaunt bo'yicha: 15 daqiqada 5 ta XATO -> 15 daqiqa blok (10^6 kod
 		// maydonini taxmin qilish amalda imkonsiz). Muvaffaqiyat sanalmaydi.
 		guard: newFailGuard(mfaMaxFailures, mfaFailWindow, func() time.Time { return svc.now() }),
-	}, nil
+	}
+	if err := m.initPasskeys(); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // Challenge — ikkinchi bosqich talabi.
@@ -139,6 +153,8 @@ type Challenge struct {
 	Token     string    `json:"mfa_token"`
 	Method    string    `json:"method"` // "totp" | "totp_enroll" | "otp" | "password"
 	ExpiresAt time.Time `json:"expires_at"`
+	// Passkey — method=totp bosqichida passkey ham ishlatsa bo'ladi (AUD-4).
+	Passkey bool `json:"passkey,omitempty"`
 }
 
 // Outcome — birinchi bosqich natijasi: sessiya YOKI ikkinchi bosqich.
@@ -316,7 +332,8 @@ func (m *MerchantAuth) secondFactor(ctx context.Context, u *users.User, clientID
 	if err != nil {
 		return nil, err
 	}
-	return &Outcome{MFA: &Challenge{Token: tok, Method: method, ExpiresAt: exp}}, nil
+	return &Outcome{MFA: &Challenge{Token: tok, Method: method, ExpiresAt: exp,
+		Passkey: purpose == mfaPurposeVerify && m.hasPasskey(ctx, u.ID)}}, nil
 }
 
 // AddFactor — TOTP ulashdan oldingi YETISHMAYOTGAN dalil: telefon kodi

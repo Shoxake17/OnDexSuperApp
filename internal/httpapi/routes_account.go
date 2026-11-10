@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -178,6 +179,7 @@ func (s *Server) registerAccountRoutes(mux *http.ServeMux) {
 		out := map[string]any{
 			"user": me.User, "businesses": me.Businesses, "totp_enabled": totp,
 			"password_set": u.PasswordHash != "", "sessions": sessions, "connected_apps": connected,
+			"passkeys_enabled": s.MerchantAuth.PasskeysEnabled(),
 		}
 		if s.Avatars != nil {
 			if pic, err := s.Avatars.Get(r.Context(), u.ID); err == nil && pic != "" {
@@ -227,6 +229,83 @@ func (s *Server) registerAccountRoutes(mux *http.ServeMux) {
 		}
 		clearSSOCookie(w)
 		writeJSON(w, http.StatusOK, map[string]any{"signed_out": true, "sessions": n})
+	}))
+
+	// Passkey (AUD-4): ro'yxat; ulash (Authenticator kodi bilan, 2 qadam);
+	// o'chirish (kod bilan). Step-up xatolari 400 (401 sahifani chiqarib yuboradi).
+	respondAccountPasskey := func(w http.ResponseWriter, err error) {
+		switch {
+		case errors.Is(err, identity.ErrStepUpRequired):
+			httpError(w, http.StatusBadRequest, err)
+		case errors.Is(err, identity.ErrMFAInvalid):
+			httpError(w, http.StatusBadRequest, errors.New("Authenticator kodi noto'g'ri"))
+		default:
+			respondPasskeyError(w, err)
+		}
+	}
+	mux.HandleFunc("GET /v2/oauth/account/api/passkeys", guard(false, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {
+		list, err := s.MerchantAuth.ListPasskeys(r.Context(), sso.UserID)
+		if err != nil {
+			respondAccountPasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"passkeys": list})
+	}))
+	mux.HandleFunc("POST /v2/oauth/account/api/passkeys/options", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if len(body.Code) > 32 {
+			httpError(w, http.StatusBadRequest, errors.New("maydon juda uzun"))
+			return
+		}
+		opts, state, err := s.MerchantAuth.PasskeyRegisterOptions(r.Context(), sso.UserID, body.Code, merchantMeta(r, ""))
+		if err != nil {
+			respondAccountPasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"public_key": opts.Response, "state": state})
+	}))
+	mux.HandleFunc("POST /v2/oauth/account/api/passkeys", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {
+		var body struct {
+			State      string          `json:"state"`
+			Credential json.RawMessage `json:"credential"`
+			Name       string          `json:"name"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if len(body.State) > 16<<10 || len(body.Name) > 256 || len(body.Credential) == 0 {
+			httpError(w, http.StatusBadRequest, identity.ErrPasskeyState)
+			return
+		}
+		v, err := s.MerchantAuth.PasskeyRegister(r.Context(), sso.UserID, body.State, body.Credential, body.Name, merchantMeta(r, ""))
+		if err != nil {
+			respondAccountPasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, v)
+	}))
+	mux.HandleFunc("POST /v2/oauth/account/api/passkeys/delete", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {
+		var body struct {
+			ID   string `json:"id"`
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if body.ID == "" || len(body.ID) > 1400 || len(body.Code) > 32 {
+			httpError(w, http.StatusBadRequest, errors.New("passkey ko'rsatilmagan"))
+			return
+		}
+		if err := s.MerchantAuth.DeletePasskey(r.Context(), sso.UserID, body.ID, body.Code, merchantMeta(r, "")); err != nil {
+			respondAccountPasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 	}))
 
 	mux.HandleFunc("POST /v2/oauth/account/api/password", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {

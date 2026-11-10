@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
 
 	"chustapp/internal/identity"
+	"chustapp/internal/identity/passkey"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/users"
 )
@@ -65,7 +67,23 @@ func writeOutcome(w http.ResponseWriter, out *identity.Outcome) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"mfa_required": true, "mfa_token": out.MFA.Token, "method": out.MFA.Method, "expires_at": out.MFA.ExpiresAt,
+		"passkey": out.MFA.Passkey,
 	})
+}
+
+// respondPasskeyError — passkey xatolari (qolgani respondMerchantAuthError).
+func respondPasskeyError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, identity.ErrPasskeyDisabled):
+		httpError(w, http.StatusServiceUnavailable, err)
+	case errors.Is(err, identity.ErrPasskeyState), errors.Is(err, identity.ErrPasskeyNone),
+		errors.Is(err, identity.ErrPasskeyNeedsTOTP), errors.Is(err, passkey.ErrTooMany), errors.Is(err, passkey.ErrExists):
+		httpError(w, http.StatusBadRequest, err)
+	case errors.Is(err, passkey.ErrNotFound):
+		httpError(w, http.StatusNotFound, err)
+	default:
+		respondMerchantAuthError(w, err)
+	}
 }
 
 func merchantMeta(r *http.Request, device string) identity.Meta {
@@ -75,6 +93,10 @@ func merchantMeta(r *http.Request, device string) identity.Meta {
 // mfaIPLimiter — ikkinchi bosqich endpointlari (akkaunt bo'yicha blok
 // `identity.MerchantAuth` ichida). Kod kiritish limiteridan alohida.
 var mfaIPLimiter = ratelimit.New(0.2, 30)
+
+// passkeyIPLimiter — passkey endpointlari (alohida oila: TOTP kiritish
+// limitini sarflamaydi). Akkaunt bo'yicha xato hisobi — TOTP bilan umumiy.
+var passkeyIPLimiter = ratelimit.New(0.2, 30)
 
 // maxSecretLen — mfa_token uchun yuqori chegara.
 const maxSecretLen = 1024
@@ -241,6 +263,60 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		tok, err := s.MerchantAuth.VerifyMFA(r.Context(), req.MFAToken, req.Code, merchantMeta(r, req.DeviceName))
 		if err != nil {
 			respondMerchantAuthError(w, err)
+			return
+		}
+		noStore(w)
+		writeJSON(w, http.StatusOK, tok)
+	})
+
+	// Passkey (AUD-4) — method=totp bosqichida muqobil: avval so'rov
+	// parametrlari (navigator.credentials.get), keyin imzolangan javob.
+	// Faqat kirish sahifasi manzilida (origin) ishlaydi — fishing domenida
+	// yaratilgan imzo rad etiladi.
+	mux.HandleFunc("POST /v2/auth/mfa/passkey/options", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, passkeyIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			MFAToken string `json:"mfa_token"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if len(req.MFAToken) > maxSecretLen {
+			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
+			return
+		}
+		opts, state, err := s.MerchantAuth.PasskeyLoginOptions(r.Context(), req.MFAToken)
+		if err != nil {
+			respondPasskeyError(w, err)
+			return
+		}
+		noStore(w)
+		writeJSON(w, http.StatusOK, map[string]any{"public_key": opts.Response, "state": state})
+	})
+
+	mux.HandleFunc("POST /v2/auth/mfa/passkey", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, passkeyIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			MFAToken   string          `json:"mfa_token"`
+			State      string          `json:"state"`
+			Credential json.RawMessage `json:"credential"`
+			DeviceName string          `json:"device_name"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if len(req.MFAToken) > maxSecretLen || len(req.State) > 16<<10 || len(req.Credential) == 0 {
+			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
+			return
+		}
+		tok, err := s.MerchantAuth.VerifyPasskey(r.Context(), req.MFAToken, req.State, req.Credential,
+			merchantMeta(r, req.DeviceName))
+		if err != nil {
+			respondPasskeyError(w, err)
 			return
 		}
 		noStore(w)

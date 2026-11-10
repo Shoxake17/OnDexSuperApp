@@ -24,6 +24,7 @@ import (
 	"chustapp/internal/identity"
 	"chustapp/internal/identity/authz"
 	"chustapp/internal/identity/mfa"
+	"chustapp/internal/identity/passkey"
 	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
@@ -401,7 +402,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Repo: w.Users,
-		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox})
+		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox, Passkeys: passkey.NewMemStore()})
 	if err != nil {
 		t.Fatal(err)
 	}

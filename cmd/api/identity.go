@@ -16,6 +16,7 @@ import (
 	"chustapp/internal/identity"
 	"chustapp/internal/identity/authz"
 	"chustapp/internal/identity/mfa"
+	"chustapp/internal/identity/passkey"
 	"chustapp/internal/secretstore"
 	"chustapp/internal/storage"
 	"chustapp/internal/telegram"
@@ -355,12 +356,24 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 		slog.Warn("merchant kirishi: SECRETS_ENC_KEY yo'q — DEV uchun VAQTINCHALIK kalit (restartdan keyin TOTP qayta ulanadi)")
 	}
 	var store mfa.Store
+	var pks passkey.Store
 	if pool != nil {
 		store = storage.NewPgMFAStore(pool)
+		pks = storage.NewPgPasskeyStore(pool)
 	} else {
 		store = mfa.NewMemStore()
+		pks = passkey.NewMemStore()
 	}
-	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box})
+	// Passkey RP (AUD-4): bo'sh bo'lsa issuer host/origin. Kirish sahifasi
+	// boshqa domendan berilsa (masalan passport.*) — shu yerda ko'rsatiladi.
+	pkCfg := identity.PasskeyConfig{RPID: strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ID"))}
+	for _, o := range strings.Split(os.Getenv("WEBAUTHN_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			pkCfg.Origins = append(pkCfg.Origins, o)
+		}
+	}
+	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box,
+		Passkeys: pks, Passkey: pkCfg})
 	if err != nil {
 		slog.Error("merchant kirishi O'CHIQ", "err", err)
 		return nil

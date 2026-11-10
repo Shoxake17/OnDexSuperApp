@@ -115,9 +115,82 @@
     });
   }
 
+  // ── passkey (AUD-4) ────────────────────────────────────────────────────
+  var pkSupported = !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
+  function b64uToBuf(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) { s += '='; }
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { out[i] = bin.charCodeAt(i); }
+    return out.buffer;
+  }
+  function bufToB64u(buf) {
+    var b = new Uint8Array(buf), s = '';
+    for (var i = 0; i < b.length; i++) { s += String.fromCharCode(b[i]); }
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function loadPasskeys() {
+    return call('GET', '/v2/oauth/account/api/passkeys').then(function (d) {
+      var list = $('pk-list'); list.textContent = '';
+      (d.passkeys || []).forEach(function (p) {
+        var meta = "qo'shilgan: " + fmt(p.created_at) + (p.last_used_at ? ' · oxirgi kirish: ' + fmt(p.last_used_at) : '') +
+          (p.synced ? ' · bulutda sinxron' : '');
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'small danger'; b.textContent = "O'chirish";
+        b.addEventListener('click', function () {
+          clearMsg();
+          var code = $('pk-code').value.replace(/\s/g, '');
+          if (!code) { $('pk-form').hidden = false; showErr("O'chirish uchun Authenticator kodini kiriting, keyin yana bosing"); $('pk-code').focus(); return; }
+          b.disabled = true;
+          call('POST', '/v2/oauth/account/api/passkeys/delete', { id: p.id, code: code }).then(function () {
+            $('pk-code').value = ''; showOk("Passkey o'chirildi."); loadPasskeys();
+          }).catch(function (e) { showErr(e.message); b.disabled = false; });
+        });
+        list.appendChild(li(p.name, meta, b));
+      });
+      if (!list.children.length) { list.appendChild(li("Hozircha passkey yo'q")); }
+    }).catch(function (e) { showErr(e.message); });
+  }
+  $('btn-pk-open').addEventListener('click', function () {
+    $('pk-form').hidden = !$('pk-form').hidden;
+    if (!$('pk-form').hidden) { $('pk-name').focus(); }
+  });
+  $('btn-pk-add').addEventListener('click', function () {
+    var btn = this; clearMsg();
+    var code = $('pk-code').value.replace(/\s/g, ''), name = $('pk-name').value.trim();
+    if (!code) { showErr('Authenticator kodini kiriting'); return; }
+    btn.disabled = true;
+    call('POST', '/v2/oauth/account/api/passkeys/options', { code: code }).then(function (o) {
+      var pk = o.public_key || {};
+      pk.challenge = b64uToBuf(pk.challenge);
+      pk.user.id = b64uToBuf(pk.user.id);
+      (pk.excludeCredentials || []).forEach(function (c) { c.id = b64uToBuf(c.id); });
+      return navigator.credentials.create({ publicKey: pk }).then(function (cred) {
+        var r = cred.response;
+        var body = {
+          id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+          authenticatorAttachment: cred.authenticatorAttachment || undefined,
+          clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+          response: { clientDataJSON: bufToB64u(r.clientDataJSON), attestationObject: bufToB64u(r.attestationObject),
+            transports: r.getTransports ? r.getTransports() : undefined }
+        };
+        return call('POST', '/v2/oauth/account/api/passkeys', { state: o.state, credential: body, name: name });
+      }, function (e) {
+        if (e && e.name === 'InvalidStateError') { throw new Error('Bu qurilmadagi passkey allaqachon ulangan'); }
+        throw new Error('Passkey yaratilmadi yoki bekor qilindi');
+      });
+    }).then(function () {
+      $('pk-code').value = ''; $('pk-name').value = ''; $('pk-form').hidden = true;
+      showOk("Passkey qo'shildi. Keyingi kirishda Authenticator kodi o'rniga ishlatishingiz mumkin."); loadPasskeys();
+    }).catch(function (e) { showErr(e.message); }).then(function () { btn.disabled = false; });
+  });
+
   function load() {
     return call('GET', '/v2/oauth/account/api/me').then(function (d) {
       $('loading').hidden = true; $('content').hidden = false; render(d);
+      // Passkey faqat Authenticator ulangan akkauntda (zaxira + step-up).
+      $('pk-box').hidden = !(d.passkeys_enabled && totp && pkSupported);
+      if (!$('pk-box').hidden) { loadPasskeys(); }
     }).catch(function (e) { $('loading').hidden = true; showErr(e.message); });
   }
 
