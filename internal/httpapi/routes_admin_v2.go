@@ -22,6 +22,10 @@ func (s *Server) adminV2(next http.HandlerFunc) http.HandlerFunc {
 		if !s.merchantAuthReady(w) {
 			return
 		}
+		if !s.adminIPAllowed(r) {
+			httpError(w, http.StatusForbidden, errAdminIPDenied)
+			return
+		}
 		s.authV2([]users.Realm{users.RealmPlatform}, func(w http.ResponseWriter, r *http.Request) {
 			c := claimsV2From(r)
 			if !slices.Contains(c.AMR, "totp") && !slices.Contains(c.AMR, "recovery") {

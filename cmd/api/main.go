@@ -1099,6 +1099,16 @@ func main() {
 	}
 
 	// Markaziy sessiya va token xizmati (A2): Ed25519 + JWKS + refresh rotatsiyasi.
+	// CC-0.2: admin faqat ruxsat etilgan tarmoqlardan (ixtiyoriy). Noto'g'ri qiymat —
+	// server ishga TUSHMAYDI: cheklov jimgina "hammaga ochiq" bo'lib qolmasin.
+	adminNets, err := httpapi.ParseAdminNets(os.Getenv("ADMIN_ALLOWED_CIDRS"))
+	if err != nil {
+		slog.Error("admin IP cheklovi noto'g'ri — server to'xtatildi", "err", err)
+		os.Exit(1)
+	}
+	if len(adminNets) > 0 {
+		slog.Info("rejim: admin faqat ruxsat etilgan tarmoqlardan", "tarmoqlar", len(adminNets))
+	}
 	identitySvc := buildIdentity(devMode, pgPool, userRepo)
 	// Yangi qurilmadan kirish — egasining Telegram'iga xabar (135).
 	wireNewDeviceAlerts(identitySvc, tgClient, userRepo, os.Getenv("AUTH_ISSUER"))
@@ -1553,6 +1563,7 @@ func main() {
 		WalletSvc:          walletSvc,
 		SSO:                ssoSvc,
 		Identity:           identitySvc,
+		AdminAllowedNets:   adminNets,
 		Authz:              authzSvc,
 		MerchantAuth:       merchantAuth,
 		OIDC:               oidcProvider,

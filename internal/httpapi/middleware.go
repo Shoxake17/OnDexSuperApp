@@ -494,6 +494,11 @@ func (s *Server) auth(roles []users.Role, next http.HandlerFunc) http.HandlerFun
 			httpError(w, http.StatusForbidden, errors.New("bu amal sizning rolingizga ochiq emas"))
 			return
 		}
+		// CC-0.2: admin tokeni faqat ruxsat etilgan tarmoqdan (sozlangan bo'lsa).
+		if claims.Role == users.RoleAdmin && !s.adminIPAllowed(r) {
+			httpError(w, http.StatusForbidden, errAdminIPDenied)
+			return
+		}
 		s.recordDevice(r, claims.Subject)
 		next(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))
 	}

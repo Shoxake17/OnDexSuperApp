@@ -21,6 +21,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -200,6 +201,10 @@ type Deps struct {
 	// Ed25519 tokenlar, JWKS, refresh rotatsiyasi. `nil` bo'lsa `/v2/auth/*`
 	// va `/.well-known/jwks.json` 503 qaytaradi; eski `/auth/*` ishlayveradi.
 	Identity *identity.Service
+
+	// AdminAllowedNets — admin kirishi va admin API faqat shu tarmoqlardan
+	// (CC-0.2, `ADMIN_ALLOWED_CIDRS`). Bo'sh — cheklov yo'q.
+	AdminAllowedNets []netip.Prefix
 
 	// Authz — merchant ruxsatlari (`internal/identity/authz`, A3): tashkilot,
 	// biznes, rol, a'zolik. `nil` bo'lsa `/v2/merchant/*` 503 qaytaradi.

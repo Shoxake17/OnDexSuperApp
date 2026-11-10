@@ -142,6 +142,10 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		if !s.merchantAuthReady(w) || rateLimited(w, verifyIPLimiter, clientIP(r)) {
 			return
 		}
+		if !s.adminIPAllowed(r) {
+			httpError(w, http.StatusForbidden, errAdminIPDenied)
+			return
+		}
 		var req struct {
 			Phone      string `json:"phone"`
 			Code       string `json:"code"`
