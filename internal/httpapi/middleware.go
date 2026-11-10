@@ -433,8 +433,17 @@ func withCORS(next http.Handler, allowedOrigins []string, devMode bool) http.Han
 //	  ketgan holatda ham XSS'ni o'ldiradi (ikkinchi qatlam).
 //	  DIQQAT: bu API javoblariga tegishli; mini-app'larning O'Z
 //	  sahifalari Next.js tomonidan beriladi va o'z siyosatiga ega.
+//
+//	Strict-Transport-Security (AUD-8)
+//	  api.ondex.uz va passport.ondex.uz (SSO cookie shu yerda) faqat
+//	  HTTPS orqali: birinchi tashrifdan keyin brauzer http:// ga umuman
+//	  bormaydi (SSL-strip / ochiq Wi-Fi hujumi). Proksi (Caddy)
+//	  sozlamasiga bog'liq emas — origin o'zi yuboradi. HTTP orqali
+//	  kelgan javobdagi bu sarlavhani brauzer e'tiborsiz qoldiradi
+//	  (RFC 6797 8.1), shuning uchun lokal dev buzilmaydi.
 func writeSecurityHeaders(w http.ResponseWriter) {
 	h := w.Header()
+	h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "no-referrer")
