@@ -43,6 +43,9 @@ func (f *fakeAPI) handler() http.Handler {
 		}
 		js(w, 200, map[string]any{"keys": []any{k}})
 	})
+	mux.HandleFunc("GET /.well-known/security.txt", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("Contact: mailto:security@ondex.test\nExpires: " + time.Now().Add(180*24*time.Hour).UTC().Format(time.RFC3339) + "\n"))
+	})
 	mux.HandleFunc("POST /auth/request-code", func(w http.ResponseWriter, _ *http.Request) { js(w, 200, map[string]any{"sent": true}) })
 	mux.HandleFunc("POST /v2/auth/merchant/otp/verify", func(w http.ResponseWriter, r *http.Request) {
 		var b map[string]string
@@ -129,7 +132,7 @@ func run(t *testing.T, f *fakeAPI) map[string]Result {
 
 func TestSmoke_AllGreen(t *testing.T) {
 	res := run(t, &fakeAPI{})
-	want := []string{"catalog", "jwks", "web", "pos", "pro.login", "pro.bridge", "pro.refresh", "pro.logout",
+	want := []string{"catalog", "jwks", "web", "security_txt", "pos", "pro.login", "pro.bridge", "pro.refresh", "pro.logout",
 		"go.login", "go.bridge", "go.refresh", "go.logout"}
 	if len(res) != len(want) {
 		t.Fatalf("tekshiruvlar %d, kutilgan %d: %v", len(res), len(want), res)
@@ -184,6 +187,25 @@ func TestMetricsFormat(t *testing.T) {
 	} {
 		if !strings.Contains(m, want) {
 			t.Errorf("metrikada yo'q: %s\n%s", want, m)
+		}
+	}
+}
+
+// VDP (198): security.txt — Contact va Expires majburiy; 30 kun qolsa ogohlantirish.
+func TestCheckSecurityTxt(t *testing.T) {
+	now := time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
+	ok := "# izoh\nContact: mailto:security@ondex.uz\nExpires: 2027-05-10T00:00:00.000Z\n" // haqiqiy fayldagi format
+	if err := checkSecurityTxt(ok, now); err != nil {
+		t.Fatalf("to'g'ri fayl: %v", err)
+	}
+	for name, body := range map[string]string{
+		"Contact yo'q":     "Expires: 2027-05-10T00:00:00Z\n",
+		"Expires yo'q":     "Contact: mailto:a@b.c\n",
+		"format noto'g'ri": "Contact: mailto:a@b.c\nExpires: 2027-05-10\n",
+		"30 kundan kam":    "Contact: mailto:a@b.c\nExpires: 2026-11-30T00:00:00Z\n",
+	} {
+		if err := checkSecurityTxt(body, now); err == nil {
+			t.Errorf("%s: xato kutilgan edi", name)
 		}
 	}
 }

@@ -98,6 +98,9 @@ export function LegalPage({
           <Link href="/oferta" className="hover:text-neutral-900">
             Ommaviy oferta
           </Link>
+          <Link href="/security" className="hover:text-neutral-900">
+            Xavfsizlik
+          </Link>
           <a href={`mailto:${OPERATOR.email}`} className="hover:text-neutral-900">
             {OPERATOR.email}
           </a>

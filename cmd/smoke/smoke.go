@@ -155,6 +155,15 @@ func (r *runner) Run() []Result {
 	})
 	if r.cfg.Web != "" {
 		r.check("web", func() error { _, err := r.call("GET", r.cfg.Web, "", nil, 200); return err })
+		// VDP (Plane 198): security.txt bor va muddati 30 kundan ko'proq qolgan
+		// — eskirgan fayl tadqiqotchilar uchun "ishonchsiz" hisoblanadi (RFC 9116).
+		r.check("security_txt", func() error {
+			rs, err := r.call("GET", strings.TrimRight(r.cfg.Web, "/")+"/.well-known/security.txt", "", nil, 200)
+			if err != nil {
+				return err
+			}
+			return checkSecurityTxt(string(rs.Body), time.Now())
+		})
 	}
 	if r.cfg.POS != "" {
 		r.check("pos", func() error { _, err := r.call("GET", r.cfg.POS, "", nil, 200); return err })
@@ -166,6 +175,38 @@ func (r *runner) Run() []Result {
 		r.staff("go", r.cfg.CourierPhone, "ondex-go", "courier", func(entity string) string { return "/couriers/" + entity })
 	}
 	return r.results
+}
+
+// checkSecurityTxt — RFC 9116: `Contact` va `Expires` majburiy; muddat
+// 30 kundan kam qolsa — xato (yangilash eslatmasi oldindan kelsin).
+func checkSecurityTxt(body string, now time.Time) error {
+	var contact bool
+	var expires time.Time
+	for _, line := range strings.Split(body, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if !ok || strings.HasPrefix(k, "#") {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(k)) {
+		case "contact":
+			contact = strings.TrimSpace(v) != ""
+		case "expires":
+			t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
+			if err != nil {
+				return permanent{fmt.Errorf("security.txt: Expires formati noto'g'ri: %q", strings.TrimSpace(v))}
+			}
+			expires = t
+		}
+	}
+	switch {
+	case !contact:
+		return permanent{fmt.Errorf("security.txt: Contact yo'q")}
+	case expires.IsZero():
+		return permanent{fmt.Errorf("security.txt: Expires yo'q")}
+	case expires.Before(now.Add(30 * 24 * time.Hour)):
+		return permanent{fmt.Errorf("security.txt muddati %s da tugaydi — yangilang", expires.Format("2006-01-02"))}
+	}
+	return nil
 }
 
 // staff — xodim to'liq hayot sikli: kod -> markaziy sessiya -> eski

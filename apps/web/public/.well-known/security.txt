@@ -1,0 +1,10 @@
+# OnDex — zaiflik haqida xabar berish (RFC 9116).
+# Vulnerability disclosure for the OnDex ecosystem (ondex.uz and subdomains, mobile apps).
+# Siyosat / Policy: https://ondex.uz/security
+
+Contact: mailto:security@ondex.uz
+Expires: 2027-05-10T00:00:00.000Z
+Preferred-Languages: uz, ru, en
+Canonical: https://ondex.uz/.well-known/security.txt
+Policy: https://ondex.uz/security
+Acknowledgments: https://ondex.uz/security#hall-of-fame
