@@ -27,7 +27,7 @@ func authStatus(err error, def int) int {
 		return http.StatusInternalServerError
 	}
 	switch {
-	case errors.Is(err, users.ErrTooSoon), errors.Is(err, users.ErrTooManyAttempts):
+	case errors.Is(err, users.ErrTooSoon), errors.Is(err, users.ErrTooManyAttempts), errors.Is(err, users.ErrTooManyCodes):
 		return http.StatusTooManyRequests
 	case errors.Is(err, users.ErrPhoneNotVerified):
 		return http.StatusForbidden

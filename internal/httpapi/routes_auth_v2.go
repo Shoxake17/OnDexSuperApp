@@ -118,7 +118,7 @@ func (s *Server) registerAuthV2Routes(mux *http.ServeMux) {
 			return
 		}
 		noStore(w)
-		tok, err := s.Identity.Refresh(r.Context(), req.RefreshToken,
+		tok, err := s.Identity.RefreshPublic(r.Context(), req.RefreshToken,
 			identity.Meta{IP: clientIP(r), UserAgent: r.UserAgent()})
 		switch {
 		case err == nil:

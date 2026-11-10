@@ -50,7 +50,7 @@ func TestCentralSessionsV2(t *testing.T) {
 		}
 	})
 
-	webOwner, webTok := open(t, w.Owner, "merchant-web")
+	webOwner, webTok := open(t, w.Owner, "ondex-pro")
 	deskOwner, _ := open(t, w.Owner, "merchant-desktop")
 	ownerB, _ := open(t, w.OwnerB, "merchant-web")
 
@@ -108,8 +108,16 @@ func TestCentralSessionsV2(t *testing.T) {
 		w.Do(t, nil, "POST", "/v2/auth/token/refresh", map[string]string{"refresh_token": "ort_soxta"}).Expect(t, 401)
 	})
 
-	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {
-		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
+	w.Step(t, "RFC 9700: konfidensial klient (merchant-web) refresh'i umumiy yo'ldan - rad, sessiya yopiladi", func(t *testing.T) {
+		bff, bffTok := open(t, w.Owner, "merchant-web")
+		w.Do(t, nil, "POST", "/v2/auth/token/refresh", map[string]string{"refresh_token": bffTok.RefreshToken}).Expect(t, 401)
+		w.Do(t, bff, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
+		sso, ssoTok := open(t, w.Owner, identity.SSOClientID)
+		w.Do(t, nil, "POST", "/v2/auth/token/refresh", map[string]string{"refresh_token": ssoTok.RefreshToken}).Expect(t, 401)
+		w.Do(t, sso, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
+	})
+
+	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
 		if len(list) != 1 {
 			t.Fatal("B egasining sessiyasi yo'q")
 		}

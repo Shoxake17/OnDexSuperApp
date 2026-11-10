@@ -22,13 +22,19 @@ type ClientPolicy struct {
 	Realm users.Realm
 	Idle  time.Duration // harakatsiz turish chegarasi
 	Abs   time.Duration // mutlaq umr
+	// NoPublicRefresh — refresh FAQAT o'z yo'li orqali: konfidensial OIDC
+	// klienti (klient siri bilan, /v2/oauth/token) yoki umuman yo'q (SSO cookie
+	// sessiyasi). Umumiy /v2/auth/token/refresh bunday tokenni rad etadi va
+	// sessiyani yopadi (RFC 9700 4.14: konfidensial klient refresh'i klient
+	// autentifikatsiyasiga bog'langan bo'lishi SHART).
+	NoPublicRefresh bool
 }
 
 // DefaultClients — egasi tasdiqlagan muddatlar (AUTH-PHASE-A.md 4-bo'lim).
 // Yangi klient faqat shu ro'yxatga qo'shib e'lon qilinadi — noma'lum
 // `client_id` bilan sessiya ochilmaydi.
 var DefaultClients = map[string]ClientPolicy{
-	"merchant-web":     {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 30 * 24 * time.Hour},
+	"merchant-web":     {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 30 * 24 * time.Hour, NoPublicRefresh: true},
 	"merchant-desktop": {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 30 * 24 * time.Hour},
 	"ondex-pro":        {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"ondex-go":         {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
@@ -41,7 +47,7 @@ var DefaultClients = map[string]ClientPolicy{
 	// ondex-sso — OnDex kirish sahifasining brauzer sessiyasi (OIDC SSO
 	// cookie). Refresh ishlatilmaydi (cookie faqat sid ko'rsatkichi), shuning
 	// uchun idle = abs: 7 kundan keyin qayta kirish.
-	SSOClientID: {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 7 * 24 * time.Hour},
+	SSOClientID: {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 7 * 24 * time.Hour, NoPublicRefresh: true},
 }
 
 // refreshRaceGrace — HALOL poyga: klient bir refresh tokenni tarmoq xatosi
@@ -420,6 +426,25 @@ func (s *Service) RefreshForClient(ctx context.Context, refresh, clientID string
 	return tok, nil
 }
 
+// RefreshPublic — umumiy `/v2/auth/token/refresh` (mobil/desktop ilovalar,
+// mijoz BFF). `NoPublicRefresh` klient sessiyasining tokeni bu yo'ldan kelsa
+// — o'g'irlik belgisi (halol klient uni hech qachon bu yerga yubormaydi):
+// sessiya yopiladi.
+func (s *Service) RefreshPublic(ctx context.Context, refresh string, meta Meta) (*Tokens, error) {
+	tok, err := s.Refresh(ctx, refresh, meta)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := s.store.Get(ctx, tok.SessionID)
+	if err != nil {
+		return nil, ErrRefreshInvalid
+	}
+	if s.clients[sess.ClientID].NoPublicRefresh {
+		_, _ = s.revokeTree(ctx, sess, "refresh_public_forbidden")
+		return nil, ErrRefreshInvalid
+	}
+	return tok, nil
+}
 // idleFor — klientning harakatsizlik chegarasi; noma'lum klient — 0
 // (Store sessiyani yopadi).
 func (s *Service) idleFor(clientID string) time.Duration {

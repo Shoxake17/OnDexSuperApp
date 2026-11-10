@@ -36,6 +36,8 @@ type Service struct {
 	// oqimlari ANIQ xato bilan rad etiladi (`ErrEmailSendUnavailable`),
 	// jimgina "yuborildi" deyilmaydi.
 	emailConfigured bool
+	// guard — kod maqsadi bo'yicha sutkalik chegara (code_guard.go).
+	guard *codeGuard
 	// smsDisabled — SMS kanali ATAYLAB o'chirilgan (`ESKIZ_ENABLED=false`).
 	//
 	// Nomi ataylab INKOR shaklida: nolinchi qiymat (`false`) "yoqilgan"
@@ -51,7 +53,7 @@ type Service struct {
 }
 
 func NewService(users Repository, codes CodeStore, sms SmsSender, tokens *TokenIssuer, idgen func() string) *Service {
-	return &Service{users: users, codes: codes, sms: sms, tokens: tokens, idgen: idgen, now: time.Now}
+	return &Service{users: users, codes: codes, sms: sms, tokens: tokens, idgen: idgen, now: time.Now, guard: newCodeGuard()}
 }
 
 // WithEmail — email yuboruvchini ulaydi. `configured=false` bo'lsa
@@ -113,6 +115,9 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 		if elapsed := s.now().Sub(existing.CreatedAt); elapsed < resendCooldown {
 			return "", "", TooSoonError{Wait: resendCooldown - elapsed}
 		}
+	}
+	if !s.guard.allowIssue(phone, s.now()) {
+		return "", "", ErrTooManyCodes
 	}
 	code, err = randomCode()
 	if err != nil {
@@ -212,6 +217,9 @@ func (s *Service) checkPhoneCode(ctx context.Context, rawPhone, code string) (ph
 	if err != nil {
 		return "", false, err
 	}
+	if s.guard.blocked(phone, s.now()) {
+		return "", false, ErrTooManyAttempts
+	}
 	c, err := s.codes.Get(ctx, phone)
 	if err != nil {
 		return "", false, ErrInvalidCode
@@ -232,6 +240,7 @@ func (s *Service) checkPhoneCode(ctx context.Context, rawPhone, code string) (ph
 		return "", false, ErrTooManyAttempts
 	}
 	if !s.sameCode(phone, code, c.CodeHash) {
+		s.guard.fail(phone, s.now())
 		return "", false, ErrInvalidCode
 	}
 	// Test raqami: sobit kod faqat shu raqamga biriktirilgan rolni
@@ -675,6 +684,9 @@ func (s *Service) RequestEmailCode(ctx context.Context, rawEmail string) (email,
 			return "", "", TooSoonError{Wait: resendCooldown - elapsed}
 		}
 	}
+	if !s.guard.allowIssue(email, s.now()) {
+		return "", "", ErrTooManyCodes
+	}
 	code, err = randomCode()
 	if err != nil {
 		return "", "", err
@@ -709,6 +721,9 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 	if err != nil {
 		return "", nil, err
 	}
+	if s.guard.blocked(email, s.now()) {
+		return "", nil, ErrTooManyAttempts
+	}
 	c, err := s.codes.Get(ctx, email)
 	if err != nil {
 		return "", nil, ErrInvalidCode
@@ -726,6 +741,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		return "", nil, ErrTooManyAttempts
 	}
 	if !s.sameCode(email, code, c.CodeHash) {
+		s.guard.fail(email, s.now())
 		return "", nil, ErrInvalidCode
 	}
 	if err := s.consumeCode(ctx, email); err != nil {

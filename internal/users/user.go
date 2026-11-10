@@ -258,7 +258,7 @@ func invalidInput(msg string) error { return ValidationError{Msg: msg} }
 // xatolar. Ro'yxatda yo'q xato — kutilmagan ichki nosozlik (pgx/mongo
 // drayveri, tarmoq) va uning matni MIJOZGA CHIQMAYDI.
 var userFacing = []error{
-	ErrInvalidPhone, ErrInvalidCode, ErrTooManyAttempts, ErrTooSoon,
+	ErrInvalidPhone, ErrInvalidCode, ErrTooManyAttempts, ErrTooManyCodes, ErrTooSoon,
 	ErrPhoneTaken, ErrEmailTaken, ErrInvalidCredentials,
 	ErrPhoneNotVerified, ErrInvalidEmail, ErrCurrentPasswordWrong,
 	ErrPasswordTooShort, ErrPasswordTooLong, ErrPasswordTooCommon,
