@@ -306,8 +306,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, users.ErrInvalidCredentials)
 			return
 		}
-		if rateLimited(w, loginAccountLimiter,
-			strings.ToLower(strings.TrimSpace(req.Login))) {
+		if rateLimited(w, loginAccountLimiter, loginKey(req.Login)) {
 			return
 		}
 		token, u, err := s.AuthSvc.LoginWithPassword(r.Context(), req.Login, req.Password)

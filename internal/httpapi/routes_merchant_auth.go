@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"chustapp/internal/identity"
@@ -102,7 +101,7 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, users.ErrInvalidCredentials)
 			return
 		}
-		if rateLimited(w, loginAccountLimiter, strings.TrimSpace(req.Phone)) {
+		if rateLimited(w, loginAccountLimiter, loginKey(req.Phone)) {
 			return
 		}
 		out, err := s.MerchantAuth.LoginPassword(r.Context(), req.Phone, req.Password, req.ClientID,
