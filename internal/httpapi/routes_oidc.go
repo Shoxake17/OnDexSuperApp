@@ -337,23 +337,24 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 		if raw := q.Get("id_token_hint"); raw != "" {
 			hint, _ = s.OIDC.ParseIDTokenHint(raw)
 		}
-		// Logout CSRF: begona sahifa <img src=".../logout"> bilan foydalanuvchini
-		// chiqarib yubormasin. Imzolangan id_token_hint'siz GET — faqat
-		// tasdiqlash sahifasi; POST'ni SameSite=Lax cookie himoya qiladi
-		// (begona saytdan kelgan POST'ga SSO cookie qo'shilmaydi).
-		if r.Method == http.MethodGet && hint == nil {
-			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-				`<title>OnDex — chiqish</title><body style="font-family:system-ui;max-width:480px;margin:15vh auto;padding:0 16px">` +
-				`<h1 style="font-size:20px">OnDex'dan chiqasizmi?</h1><p>Bu brauzerdagi barcha OnDex ilovalari sessiyasi yopiladi.</p>` +
-				`<form method="post" action="/v2/oauth/logout"><button style="padding:10px 18px;font:inherit">Chiqish</button></form></body>`))
+		var sso *identity.Session
+		if c, err := r.Cookie(ssoCookieName); err == nil {
+			sso, _ = s.OIDC.SSOSession(r.Context(), c.Value)
+		}
+		// Logout CSRF: begona sahifa foydalanuvchini chiqarib yubormasin.
+		// GET (havola, <img>) — faqat imzolangan id_token_hint SHU brauzer
+		// sessiyasi egasiniki bo'lsa darhol; aks holda tasdiqlash sahifasi.
+		// Hint egasi tekshirilmasa, hujumchi O'ZINING (muddati o'tgan ham)
+		// id_token'i bilan qurbonni chiqarib yuborardi (OIDC RP-Initiated
+		// Logout 2: hint joriy foydalanuvchiga mos kelmasa — so'rash).
+		// POST'ni SameSite=Lax cookie himoya qiladi (begona saytdan kelgan
+		// POST'ga SSO cookie qo'shilmaydi).
+		if r.Method == http.MethodGet && (hint == nil || (sso != nil && sso.UserID != hint.UserID)) {
+			logoutConfirmPage(w, q)
 			return
 		}
-		if c, err := r.Cookie(ssoCookieName); err == nil {
-			if sso, err := s.OIDC.SSOSession(r.Context(), c.Value); err == nil {
-				_ = s.OIDC.EndSSO(r.Context(), sso, "logout")
-			}
+		if sso != nil {
+			_ = s.OIDC.EndSSO(r.Context(), sso, "logout")
 		}
 		s.OIDC.EndClientSession(r.Context(), hint)
 		clearSSOCookie(w)
@@ -466,6 +467,25 @@ func writeOAuthJSONError(w http.ResponseWriter, err error) {
 		st = 400
 	}
 	writeJSON(w, st, map[string]string{"error": oe.Code, "error_description": oe.Description})
+}
+
+// logoutConfirmPage — chiqishni foydalanuvchi o'zi tasdiqlaydi (POST, SSO
+// cookie SameSite=Lax). Klient parametrlari forma ichida saqlanadi: tasdiqdan
+// keyin ilova sessiyasi ham yopiladi va ro'yxatdagi manzilga qaytiladi.
+func logoutConfirmPage(w http.ResponseWriter, q url.Values) {
+	var hidden strings.Builder
+	for _, k := range []string{"id_token_hint", "client_id", "post_logout_redirect_uri", "state"} {
+		if v := q.Get(k); v != "" && len(v) <= 4096 {
+			hidden.WriteString(`<input type="hidden" name="` + k + `" value="` + html.EscapeString(v) + `">`)
+		}
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+		`<title>OnDex — chiqish</title><body style="font-family:system-ui;max-width:480px;margin:15vh auto;padding:0 16px">` +
+		`<h1 style="font-size:20px">OnDex'dan chiqasizmi?</h1><p>Bu brauzerdagi barcha OnDex ilovalari sessiyasi yopiladi.</p>` +
+		`<form method="post" action="/v2/oauth/logout">` + hidden.String() +
+		`<button style="padding:10px 18px;font:inherit">Chiqish</button></form></body>`))
 }
 
 // oidcErrorPage — klientga qaytarib bo'lmaydigan xato (noma'lum ilova yoki

@@ -292,6 +292,33 @@ func TestOIDCMerchantWeb(t *testing.T) {
 		}
 	})
 
+	w.Step(t, "chiqish CSRF: hujumchining O'Z id_token'i bilan GET qurbonni chiqarmaydi", func(t *testing.T) {
+		// Hujumchi o'z akkaunti bilan to'liq kirib, haqiqiy id_token oladi.
+		const atkID = "e2e-oidc-attacker"
+		if err := w.Users.Create(ctx, &users.User{ID: atkID, Phone: "+998900000062", Name: "Hujumchi",
+			Role: users.RoleRestaurant, EntityID: RestB, PhoneVerified: true, CreatedAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		u, _ := url.Parse(send(t, "GET", authQ(nil), nil, "").Expect(t, 302).Header.Get("Location"))
+		atkSSO, err := w.Identity.Create(ctx, identity.CreateInput{UserID: atkID, ClientID: identity.SSOClientID, AMR: []string{"pwd", "totp"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]string
+		send(t, "POST", "/v2/oauth/login/complete", map[string]string{"Content-Type": "application/json",
+			"Authorization": "Bearer " + atkSSO.AccessToken}, `{"req":"`+u.Query().Get("req")+`"}`).Expect(t, 200).JSON(t, &out)
+		atk := exchange(t, codeFrom(t, out["redirect_to"]), OIDCClientSecret, verifier, 200)
+
+		// Qurbon brauzeri (cookie) hujumchi havolasini ochadi.
+		q := url.Values{"id_token_hint": {atk.IDToken}, "post_logout_redirect_uri": {"https://merchant.ondex.uz/"}}
+		page := send(t, "GET", "/v2/oauth/logout?"+q.Encode(), map[string]string{"Cookie": cookie}, "").Expect(t, 200)
+		if !strings.Contains(string(page.Body), `method="post"`) || page.Header.Get("Location") != "" {
+			t.Fatal("XAVFSIZLIK: begona hint bilan GET tasdiqsiz chiqardi")
+		}
+		r := send(t, "GET", authQ(nil), map[string]string{"Cookie": cookie}, "").Expect(t, 302)
+		codeFrom(t, r.Header.Get("Location")) // qurbon SSO sessiyasi tirik
+	})
+
 	w.Step(t, "chiqish: hint'siz GET faqat tasdiq (CSRF), hint bilan -> SSO va ilova sessiyasi yopiladi", func(t *testing.T) {
 		r := send(t, "GET", authQ(nil), map[string]string{"Cookie": cookie}, "").Expect(t, 302)
 		tr := exchange(t, codeFrom(t, r.Header.Get("Location")), OIDCClientSecret, verifier, 200)
