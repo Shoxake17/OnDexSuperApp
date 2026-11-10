@@ -43,6 +43,9 @@ func (c *Claims) HasFreshPhoneProof(now time.Time) bool {
 type TokenIssuer struct {
 	secret []byte
 	ttl    time.Duration
+	// disabled — eski HS256 token QABUL QILINMAYDIGAN realmlar (AUD-5,
+	// `LEGACY_TOKENS_DISABLED`). Bo'sh — hammasi avvalgidek.
+	disabled map[Realm]bool
 }
 
 func NewTokenIssuer(secret string, ttl time.Duration) *TokenIssuer {
@@ -91,7 +94,41 @@ func (t *TokenIssuer) issue(u *User, phoneProven bool) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(t.secret)
 }
 
+// ErrLegacyTokenDisabled — bu realm uchun eski token o'chirilgan: faqat
+// markaziy sessiya (ilovaning yangi versiyasi).
+var ErrLegacyTokenDisabled = errors.New("eski kirish o'chirilgan — ilovaning yangi versiyasini o'rnating")
+
+// DisableRealms — shu realmlar uchun eski HS256 token endi QABUL
+// QILINMAYDI (A5 va davomi, AUD-5). Ishga tushishda bir marta chaqiriladi.
+func (t *TokenIssuer) DisableRealms(realms ...Realm) {
+	if t.disabled == nil {
+		t.disabled = map[Realm]bool{}
+	}
+	for _, r := range realms {
+		t.disabled[r] = true
+	}
+}
+
+// RealmDisabled — bu realm uchun eski token o'chirilganmi.
+func (t *TokenIssuer) RealmDisabled(r Realm) bool { return t.disabled[r] }
+
+// Parse — eski token; o'chirilgan realm tokeni (imzosi to'g'ri bo'lsa ham)
+// rad etiladi.
 func (t *TokenIssuer) Parse(tokenStr string) (*Claims, error) {
+	c, err := t.ParseAny(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if t.disabled[RealmForRole(c.Role)] {
+		return nil, ErrLegacyTokenDisabled
+	}
+	return c, nil
+}
+
+// ParseAny — imzo va muddat; realm cheklovisiz. FAQAT server ichida, o'zi
+// endigina bergan tokenni o'qish uchun (masalan kirishda "kod bilan kirdi"
+// belgisini markaziy sessiyaga o'tkazish) — HECH QACHON so'rov tokeniga emas.
+func (t *TokenIssuer) ParseAny(tokenStr string) (*Claims, error) {
 	var claims Claims
 	token, err := jwt.ParseWithClaims(tokenStr, &claims, func(tok *jwt.Token) (any, error) {
 		if _, ok := tok.Method.(*jwt.SigningMethodHMAC); !ok {

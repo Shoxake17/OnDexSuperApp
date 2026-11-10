@@ -338,7 +338,7 @@ func (s *Service) LinkTelegramPhone(ctx context.Context, telegramID int64, verif
 	if err != nil {
 		return nil, err
 	}
-	u, err := s.users.GetByPhone(ctx, phone)
+	u, err := s.legacyByPhone(ctx, phone) // AUD-5: o'chirilgan realm akkauntiga bog'lanmaydi
 	if errors.Is(err, ErrUserNotFound) {
 		u = &User{
 			ID:            s.idgen(),
@@ -415,7 +415,7 @@ func (s *Service) LoginWithTelegramID(ctx context.Context, telegramID int64) (st
 // shu yerda birlashadi — ikkalasi ham "raqam egaligi isbotlandi"
 // degan bir xil holatga keladi, shuning uchun mantiq BITTA joyda.
 func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *User, error) {
-	u, err := s.users.GetByPhone(ctx, phone)
+	u, err := s.legacyByPhone(ctx, phone)
 	if errors.Is(err, ErrUserNotFound) {
 		u = &User{
 			ID:            s.idgen(),
@@ -470,6 +470,37 @@ func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *
 		return "", nil, err
 	}
 	return token, u, nil
+}
+
+// legacyByPhone — eski kirish (mijoz ilovasi, admin paneli, BFF) uchun shu
+// raqamdagi akkaunt.
+//
+// AUD-5: eski token o'chirilgan realm (`LEGACY_TOKENS_DISABLED`) akkauntiga
+// eski yo'l TEGMAYDI (tasdiqlash, parolni tozalash, tiklash — hech biri):
+// shu raqamda o'chirilmagan realmdagi akkaunt bo'lsa o'sha olinadi, bo'lmasa
+// "topilmadi" — telefon kodi yo'lida yangi MIJOZ akkaunti ochiladi
+// (realmlar ajratilgan, 0069). Kalit o'chiq bo'lsa — avvalgidek.
+func (s *Service) legacyByPhone(ctx context.Context, phone string) (*User, error) {
+	u, err := s.users.GetByPhone(ctx, phone)
+	if err != nil || s.tokens == nil {
+		return u, err
+	}
+	realm := RealmForRole(u.Role)
+	// Mijoz akkaunti — har doim o'zi (realmi o'chirilgan bo'lsa markaziy
+	// sessiya `writeLogin` da ochiladi). O'chirilmagan realm — avvalgidek.
+	if realm == RealmCustomer || !s.tokens.RealmDisabled(realm) {
+		return u, nil
+	}
+	// Merchant/admin realmi o'chirilgan: eski yo'l unga TEGMAYDI. Avval
+	// o'chirilmagan admin akkaunti, keyin shu raqamdagi mijoz akkaunti.
+	if realm != RealmPlatform && !s.tokens.RealmDisabled(RealmPlatform) {
+		if v, err := s.users.GetByPhoneRealm(ctx, RealmPlatform, phone); err == nil {
+			return v, nil
+		} else if !errors.Is(err, ErrUserNotFound) {
+			return nil, err
+		}
+	}
+	return s.users.GetByPhoneRealm(ctx, RealmCustomer, phone) // yo'q bo'lsa — yangi mijoz yaratiladi
 }
 
 // reactivateIfDeleted — akkaunt yumshoq o'chirilgan bo'lsa tiklaydi

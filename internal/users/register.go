@@ -362,7 +362,7 @@ func (s *Service) authenticatePassword(ctx context.Context, realm Realm, login, 
 			if realm != "" {
 				u, err = s.users.GetByPhoneRealm(ctx, realm, phone)
 			} else {
-				u, err = s.users.GetByPhone(ctx, phone)
+				u, err = s.legacyByPhone(ctx, phone) // AUD-5: o'chirilgan realm akkauntiga tegmaydi
 			}
 		}
 	}

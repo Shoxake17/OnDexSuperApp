@@ -80,6 +80,18 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				"type":       "courier_registered",
 				"courier_id": c.ID,
 			})
+			// AUD-5: merchant realmi uchun eski token o'chirilgan bo'lsa token
+			// berilmaydi (u baribir qabul qilinmasdi) — kuryer OnDexGO'ga
+			// markaziy kirish orqali kiradi.
+			if s.Tokens.RealmDisabled(users.RealmMerchant) {
+				s.Revoked.Revoke(r.Context(), u.ID)
+				writeJSON(w, http.StatusCreated, map[string]any{
+					"courier":          c,
+					"relogin_required": true,
+					"message":          "Ariza qabul qilindi. OnDexGO ilovasiga shu raqam bilan kiring — admin tasdiqlagach ishlay boshlaysiz.",
+				})
+				return
+			}
 			writeJSON(w, http.StatusCreated, map[string]any{
 				"courier": c,
 				"token":   newToken,

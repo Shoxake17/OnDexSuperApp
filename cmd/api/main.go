@@ -665,6 +665,29 @@ func main() {
 	}
 	const tokenTTL = 30 * 24 * time.Hour
 	tokens := users.NewTokenIssuer(jwtSecret, tokenTTL)
+	// AUD-5: eski HS256 tokenni realm bo'yicha o'chirish (relizlardan keyin,
+	// bosqichma-bosqich): "merchant", "platform" (yoki "admin"), "customer".
+	// Noto'g'ri qiymat — server TO'XTAYDI (jimgina ochiq qolmasin). Qaytarish:
+	// o'zgaruvchini olib tashlab qayta ishga tushirish.
+	if raw := strings.TrimSpace(os.Getenv("LEGACY_TOKENS_DISABLED")); raw != "" {
+		var realms []users.Realm
+		for _, p := range strings.Split(raw, ",") {
+			switch strings.ToLower(strings.TrimSpace(p)) {
+			case "":
+			case "merchant":
+				realms = append(realms, users.RealmMerchant)
+			case "platform", "admin":
+				realms = append(realms, users.RealmPlatform)
+			case "customer":
+				realms = append(realms, users.RealmCustomer)
+			default:
+				slog.Error("LEGACY_TOKENS_DISABLED: noma'lum realm — server to'xtatildi", "qiymat", p)
+				os.Exit(1)
+			}
+		}
+		tokens.DisableRealms(realms...)
+		slog.Info("rejim: eski HS256 token o'chirilgan realmlar", "realmlar", realms)
+	}
 	// revoked â€” muddatidan oldin bekor qilingan sessiyalar (chiqish,
 	// akkaunt o'chirilishi, kuryer tasdig'ining bekor qilinishi).
 	// Qarang: internal/revoke.

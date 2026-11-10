@@ -31,12 +31,24 @@ func wantsCentralSession(r *http.Request) bool { return r.Header.Get(sessionHead
 // writeLogin — kirish natijasi: eski token yoki (so'ralsa) markaziy sessiya.
 func (s *Server) writeLogin(w http.ResponseWriter, r *http.Request, legacyToken string, u *users.User) {
 	noStore(w)
-	if u == nil || !wantsCentralSession(r) || s.Identity == nil || users.RealmForRole(u.Role) != users.RealmCustomer {
+	realm := users.RealmCustomer
+	if u != nil {
+		realm = users.RealmForRole(u.Role)
+	}
+	central := u != nil && wantsCentralSession(r) && s.Identity != nil && realm == users.RealmCustomer
+	// AUD-5: bu realm uchun eski token o'chirilgan — markaziy sessiyasiz
+	// kirish yo'q. 426: ilova yangilanishi kerak (eski versiya). Merchant va
+	// admin akkauntlari bu yo'ldan umuman kirmaydi (o'z ilovalari bor).
+	if !central && s.Tokens.RealmDisabled(realm) {
+		writeJSON(w, http.StatusUpgradeRequired, map[string]any{"error": users.ErrLegacyTokenDisabled.Error(), "upgrade_required": true})
+		return
+	}
+	if !central {
 		writeJSON(w, http.StatusOK, map[string]any{"token": legacyToken, "user": u})
 		return
 	}
 	amr := []string{"legacy"}
-	if c, err := s.Tokens.Parse(legacyToken); err == nil && c.PhoneProven {
+	if c, err := s.Tokens.ParseAny(legacyToken); err == nil && c.PhoneProven {
 		amr = []string{"otp"}
 	}
 	tok, err := s.Identity.Create(r.Context(), identity.CreateInput{UserID: u.ID, ClientID: identity.CustomerClientID,
