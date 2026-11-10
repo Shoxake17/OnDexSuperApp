@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../widgets/password_field.dart';
 import 'shell.dart';
 
 const _deviceName = 'OnDex Superadmin';
@@ -284,13 +285,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         );
     Widget passwordField(TextEditingController c, String label,
             {bool autofocus = true}) =>
-        TextField(
+        PasswordField(
           controller: c,
-          obscureText: true,
+          label: label,
           autofocus: autofocus,
+          autofillHints: _stage == _Stage.passwordSet
+              ? const [AutofillHints.newPassword]
+              : const [AutofillHints.password],
           onSubmitted: (_) => _busy ? null : _submit(),
-          decoration: InputDecoration(
-              labelText: label, border: const OutlineInputBorder()),
         );
 
     switch (_stage) {

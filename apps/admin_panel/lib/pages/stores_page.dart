@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/password_field.dart';
 
 /// "Do'kon" bo'limi: do'konlarni ro'yxatdan o'tkazish.
 ///
@@ -110,15 +111,14 @@ class _StoresPageState extends State<StoresPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextField(
+                PasswordField(
                   controller: password,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Boshlang\'ich parol (ixtiyoriy)',
-                    helperText:
-                        'Kamida 8 belgi. Bo\'lsa — telefon + parol bilan kiradi, '
-                        'bo\'lmasa faqat Telegram/SMS kod bilan',
-                  ),
+                  outlined: false,
+                  autofillHints: const [AutofillHints.newPassword],
+                  label: 'Boshlang\'ich parol (ixtiyoriy)',
+                  helperText:
+                      'Kamida 8 belgi. Bo\'lsa — telefon + parol bilan kiradi, '
+                      'bo\'lmasa faqat Telegram/SMS kod bilan',
                 ),
               ],
             ),

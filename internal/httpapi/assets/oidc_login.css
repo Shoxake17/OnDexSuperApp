@@ -30,6 +30,10 @@ section { display: grid; gap: 12px; }
 .field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg);
   font-size: 17px; padding: 15px 0; }
 .field input::placeholder { color: #8a909a; }
+.eye { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  margin-right: -8px; border: 0; border-radius: 12px; background: none; color: var(--muted); padding: 0; }
+.eye:hover, .eye[aria-pressed="true"] { color: var(--fg); }
+.eye:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .otp { letter-spacing: 6px; text-align: center; font-size: 22px !important; }
 button { font: inherit; cursor: pointer; }
 .primary { width: 100%; padding: 15px; border: 0; border-radius: 18px; color: #fff; font-weight: 700; font-size: 17px;

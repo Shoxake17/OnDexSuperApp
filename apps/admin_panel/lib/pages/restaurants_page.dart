@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../support_inbox.dart';
 import '../widgets/map_picker.dart';
+import '../widgets/password_field.dart';
 
 /// "Restoran" bo'limining bosh ekrani: restoranlar cover rasmli kartalar
 /// ro'yxati. Kartani bossangiz [onOpen] chaqiriladi va o'sha restoranning
@@ -317,13 +318,13 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                     decoration:
                         const InputDecoration(labelText: 'Mas\'ul shaxs ismi')),
                 const SizedBox(height: 8),
-                TextField(
+                PasswordField(
                     controller: password,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                        labelText: 'Boshlang\'ich parol (ixtiyoriy)',
-                        helperText:
-                            'Kamida 8 belgi. Bo\'lsa — telefon + parol bilan ham kiradi')),
+                    outlined: false,
+                    autofillHints: const [AutofillHints.newPassword],
+                    label: 'Boshlang\'ich parol (ixtiyoriy)',
+                    helperText:
+                        'Kamida 8 belgi. Bo\'lsa — telefon + parol bilan ham kiradi'),
               ],
             ),
           ),

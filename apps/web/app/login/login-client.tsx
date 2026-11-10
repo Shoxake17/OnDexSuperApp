@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bike, MapPin, Send, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowLeft, Bike, Eye, EyeOff, MapPin, Send, ShieldCheck, Smartphone } from "lucide-react";
 import { getTelegramWebApp } from "@/lib/telegram";
 import {
   AUTH_BORDER as BORDER,
@@ -320,7 +320,6 @@ function PhoneStep({
         onSubmit();
       }}
     >
-      
       <div
         className="mb-4 flex h-[50px] items-center gap-2 rounded-xl border bg-white px-3.5"
         style={{ borderColor: BORDER }}
@@ -378,15 +377,7 @@ function PhoneStep({
           >
             Parol
           </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => onPassword(e.target.value)}
-            className="h-[46px] w-full rounded-[11px] border bg-white px-3 text-[14.5px] outline-none"
-            style={{ borderColor: BORDER, color: TEXT }}
-          />
+          <PasswordInput id="password" value={password} onChange={onPassword} />
         </>
       )}
 
@@ -407,6 +398,65 @@ function PhoneStep({
         {passwordMode ? "Telegram kodi bilan kirish" : "Parol bilan kirish"}
       </button>
     </form>
+  );
+}
+
+// Parol maydoni "ko'z" tugmasi bilan. Ko'rinadigan rejimda imlo tekshiruvi
+// o'chiq (brauzer matnni bulut lug'atiga yubormasin); forma yuborilganda va
+// sahifa yashirilganda parol yana yashiriladi.
+function PasswordInput({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const hide = () => {
+      if (document.hidden) setVisible(false);
+    };
+    const onSubmit = () => setVisible(false);
+    document.addEventListener("visibilitychange", hide);
+    document.addEventListener("submit", onSubmit, true);
+    return () => {
+      document.removeEventListener("visibilitychange", hide);
+      document.removeEventListener("submit", onSubmit, true);
+    };
+  }, []);
+  return (
+    <div
+      className="flex h-[46px] w-full items-center rounded-[11px] border bg-white"
+      style={{ borderColor: BORDER }}
+    >
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        autoComplete="current-password"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-full min-w-0 flex-1 bg-transparent px-3 text-[14.5px] outline-none"
+        style={{ color: TEXT }}
+      />
+      <button
+        type="button"
+        aria-controls={id}
+        aria-pressed={visible}
+        aria-label={visible ? "Parolni yashirish" : "Parolni ko'rsatish"}
+        title={visible ? "Parolni yashirish" : "Parolni ko'rsatish"}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setVisible((v) => !v)}
+        className="flex h-full w-11 shrink-0 items-center justify-center"
+        style={{ color: TEXT }}
+      >
+        {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
   );
 }
 

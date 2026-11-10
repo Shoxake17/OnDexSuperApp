@@ -194,7 +194,10 @@
     }).catch(function (e) { $('loading').hidden = true; showErr(e.message); });
   }
 
+  function hidePasswords() { if (window.OnDexEye) { window.OnDexEye.hideAll(); } }
+
   $('btn-pwd-open').addEventListener('click', function () {
+    hidePasswords();
     $('pwd-form').hidden = !$('pwd-form').hidden;
     if (!$('pwd-form').hidden) { $('cur').focus(); }
   });
@@ -206,6 +209,7 @@
     if (a.length < 8) { showErr("Yangi parol kamida 8 belgi bo'lsin"); return; }
     if (a !== b) { showErr('Yangi parollar mos kelmadi'); return; }
     if (totp && !code) { showErr('Authenticator kodini kiriting'); return; }
+    hidePasswords();
     btn.disabled = true;
     call('POST', '/v2/oauth/account/api/password',
       { current_password: cur, password: a, password_confirm: b, code: code })

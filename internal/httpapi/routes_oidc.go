@@ -29,7 +29,7 @@ import (
 // o'qiy olmaydi, JavaScript ham (HttpOnly).
 // └───────────────────────────────────────────────────────────────────────┘
 
-//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css assets/oidc_bg.jpg assets/oidc_logo.png assets/oidc_account.html assets/oidc_account.js
+//go:embed assets/oidc_login.html assets/oidc_login.js assets/oidc_login.css assets/oidc_bg.jpg assets/oidc_logo.png assets/oidc_account.html assets/oidc_account.js assets/oidc_eye.js
 var oidcLoginFS embed.FS
 
 // ssoCookieName — `__Host-`: faqat Secure, Path=/, Domain'siz (subdomen
@@ -58,6 +58,7 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 	page := mustEmbed("assets/oidc_login.html")
 	js := mustEmbed("assets/oidc_login.js")
 	css := mustEmbed("assets/oidc_login.css")
+	eye := mustEmbed("assets/oidc_eye.js")
 	bg := mustEmbed("assets/oidc_bg.jpg")
 	logo := mustEmbed("assets/oidc_logo.png")
 
@@ -131,6 +132,7 @@ func (s *Server) registerOIDCRoutes(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("GET /v2/oauth/assets/login.js", asset(js, "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /v2/oauth/assets/login.css", asset(css, "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /v2/oauth/assets/eye.js", asset(eye, "text/javascript; charset=utf-8"))
 	// Rasmlar o'zgarmaydi (embed) — uzoq kesh; yangilanganda fayl nomi o'zgartiriladi.
 	image := func(body []byte, ctype string) http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) {

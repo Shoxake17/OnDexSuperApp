@@ -36,6 +36,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   final _passwordCtrl = TextEditingController();
 
   bool _needsPassword = false;
+  bool _showPassword = false;
   bool _busy = false;
   String? _error;
 
@@ -53,6 +54,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     if (!_ready || _busy) return;
     setState(() {
       _busy = true;
+      _showPassword = false;
       _error = null;
     });
     try {
@@ -155,9 +157,23 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               PostHogMaskWidget(
                 child: TextField(
                   controller: _passwordCtrl,
-                  obscureText: true,
-                  decoration:
-                      const InputDecoration(border: OutlineInputBorder()),
+                  obscureText: !_showPassword,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  autofillHints: const [AutofillHints.password],
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: _showPassword
+                          ? 'Parolni yashirish'
+                          : 'Parolni ko\'rsatish',
+                      icon: Icon(_showPassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined),
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
+                    ),
+                  ),
                 ),
               ),
             ],

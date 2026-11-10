@@ -21,7 +21,10 @@
   var sections = ['s-start', 's-code', 's-fpwd', 's-setpwd', 's-totp', 's-enroll', 's-recovery'];
   var codeMode = 'login'; // login | factor
 
+  function hidePasswords() { if (window.OnDexEye) { window.OnDexEye.hideAll(); } }
+
   function show(id) {
+    hidePasswords();
     sections.forEach(function (s) { $(s).hidden = s !== id; });
     hideErr();
     var f = $(id).querySelector('input');
@@ -108,7 +111,7 @@
   }
 
   function run(btn, fn) {
-    hideErr(); busy(btn, true);
+    hideErr(); busy(btn, true); hidePasswords();
     Promise.resolve().then(fn).catch(function (e) { showErr(e.message || 'Xato yuz berdi'); })
       .then(function () { busy(btn, false); });
   }

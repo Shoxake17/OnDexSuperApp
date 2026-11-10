@@ -150,6 +150,14 @@ func TestOIDCMerchantWeb(t *testing.T) {
 		}
 		send(t, "GET", "/v2/oauth/assets/login.js", nil, "").Expect(t, 200)
 		send(t, "GET", "/v2/oauth/assets/login.css", nil, "").Expect(t, 200)
+		// Parol "ko'zi": sahifa uni yuklaydi, tashqi skriptsiz va innerHTML'siz.
+		if r := send(t, "GET", "/v2/oauth/assets/eye.js", nil, "").Expect(t, 200); !strings.HasPrefix(r.Header.Get("Content-Type"), "text/javascript") ||
+			strings.Contains(string(r.Body), ".innerHTML") {
+			t.Fatalf("eye.js: %q", r.Header.Get("Content-Type"))
+		}
+		if !strings.Contains(string(page.Body), `src="/v2/oauth/assets/eye.js"`) {
+			t.Fatal("kirish sahifasi eye.js ni yuklamaydi")
+		}
 		if r := send(t, "GET", "/v2/oauth/assets/bg.jpg", nil, "").Expect(t, 200); r.Header.Get("Content-Type") != "image/jpeg" {
 			t.Fatalf("fon turi: %q", r.Header.Get("Content-Type"))
 		}

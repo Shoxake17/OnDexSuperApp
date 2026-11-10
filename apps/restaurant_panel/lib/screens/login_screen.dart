@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../widgets/password_field.dart';
 import 'shell.dart';
 import 'store_home_screen.dart';
 
@@ -354,13 +355,14 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
           decoration: InputDecoration(
               labelText: label, border: const OutlineInputBorder()),
         );
-    Widget passwordField(String label) => TextField(
+    Widget passwordField(String label) => PasswordField(
           controller: _password,
-          obscureText: true,
+          label: label,
           autofocus: _stage != _Stage.start,
+          autofillHints: _stage == _Stage.passwordSet
+              ? const [AutofillHints.newPassword]
+              : const [AutofillHints.password],
           onSubmitted: (_) => _busy ? null : _submit(),
-          decoration: InputDecoration(
-              labelText: label, border: const OutlineInputBorder()),
         );
     final telegramHint =
         _TelegramHint(deepLink: _deepLink, onRestart: _busy ? null : _restart);
@@ -410,12 +412,11 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
           const SizedBox(height: 12),
           passwordField('Yangi parol'),
           const SizedBox(height: 12),
-          TextField(
+          PasswordField(
             controller: _password2,
-            obscureText: true,
+            label: 'Parolni takrorlang',
+            autofillHints: const [AutofillHints.newPassword],
             onSubmitted: (_) => _busy ? null : _submit(),
-            decoration: const InputDecoration(
-                labelText: 'Parolni takrorlang', border: OutlineInputBorder()),
           ),
         ];
       case _Stage.enroll:
