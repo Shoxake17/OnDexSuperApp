@@ -317,7 +317,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Tokens, error) {
 		ParentID: in.ParentID,
 	}
 	for _, a := range in.AMR {
-		if a == "totp" || a == "recovery" { // tiklash kodi — TOTP o'rnini bosuvchi ikkinchi bosqich
+		// tiklash kodi — TOTP o'rnini bosuvchi; hwk — passkey (AUD-4) ham ikkinchi bosqich.
+		if a == "totp" || a == "recovery" || a == "hwk" {
 			t := now
 			sess.MFAAt = &t
 		}

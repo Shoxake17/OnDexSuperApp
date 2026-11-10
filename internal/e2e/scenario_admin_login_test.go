@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"testing"
 	"time"
@@ -98,6 +99,16 @@ func TestAdminLoginV2(t *testing.T) {
 		}
 		w.Do(t, &Actor{Name: "admin", Token: tok.AccessToken}, "GET", "/admin/couriers", nil).Expect(t, 200)
 		adminTok = tok.AccessToken
+	})
+
+	w.Step(t, "AUD-14: admin parol/TOTP bosqichlari ham IP ro'yxati bilan cheklangan (terib bo'lmaydi)", func(t *testing.T) {
+		o := post(t, "/v2/auth/admin/otp/verify", map[string]any{"phone": phone, "code": code(t, phone)}, 200)
+		w.api.AdminAllowedNets = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")} // test klienti 127.0.0.1
+		defer func() { w.api.AdminAllowedNets = nil }()
+		w.Do(t, nil, "POST", "/v2/auth/mfa/factor", map[string]any{"mfa_token": o.MFAToken, "password": pw}).Expect(t, 403)
+		w.Do(t, nil, "POST", "/v2/auth/mfa/passkey/options", map[string]any{"mfa_token": o.MFAToken}).Expect(t, 403)
+		// Merchant (admin emas) mfa_token'iga cheklov tegmaydi — yaroqsiz token 401.
+		w.Do(t, nil, "POST", "/v2/auth/mfa/verify", map[string]any{"mfa_token": "omfa_soxta.x", "code": "123456"}).Expect(t, 401)
 	})
 
 	w.Step(t, "KYC: navbat, qaror faqat Authenticator kodi bilan, sababsiz rad yo'q; begona tokenlar 401", func(t *testing.T) {

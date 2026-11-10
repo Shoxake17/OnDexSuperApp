@@ -428,6 +428,18 @@ func (s *MemoryCodeStore) IncrementAttempts(_ context.Context, phone string) (in
 	return c.Attempts, nil
 }
 
+// Take — xesh mos bo'lsa yozuvni o'chiradi (bir martalik, users.CodeTaker).
+func (s *MemoryCodeStore) Take(_ context.Context, phone, codeHash string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.data[phone]
+	if !ok || c.CodeHash != codeHash {
+		return false, nil
+	}
+	delete(s.data, phone)
+	return true, nil
+}
+
 func (s *MemoryCodeStore) Delete(_ context.Context, phone string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

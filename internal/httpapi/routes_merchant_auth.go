@@ -86,6 +86,17 @@ func respondPasskeyError(w http.ResponseWriter, err error) {
 	}
 }
 
+// mfaIPAllowed — admin (admin-web) kirishining KEYINGI bosqichlari ham
+// ADMIN_ALLOWED_CIDRS bilan cheklanadi (birinchi bosqich kabi): ruxsatsiz
+// tarmoqdan admin paroli/TOTP'ini terib bo'lmaydi.
+func (s *Server) mfaIPAllowed(w http.ResponseWriter, r *http.Request, mfaToken string) bool {
+	if s.MerchantAuth.MFATokenClient(mfaToken) == identity.AdminClientID && !s.adminIPAllowed(r) {
+		httpError(w, http.StatusForbidden, errAdminIPDenied)
+		return false
+	}
+	return true
+}
+
 func merchantMeta(r *http.Request, device string) identity.Meta {
 	return identity.Meta{IP: clientIP(r), UserAgent: r.UserAgent(), DeviceName: device}
 }
@@ -203,6 +214,9 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
 			return nil, false
 		}
+		if !s.mfaIPAllowed(w, r, req.MFAToken) {
+			return nil, false
+		}
 		return &req, true
 	}
 
@@ -240,6 +254,9 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		if len(req.MFAToken) > maxSecretLen || len(req.Password) > users.MaxPasswordLength ||
 			len(req.PasswordConfirm) > users.MaxPasswordLength {
 			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
+			return
+		}
+		if !s.mfaIPAllowed(w, r, req.MFAToken) {
 			return
 		}
 		out, err := s.MerchantAuth.SetInitialPassword(r.Context(), req.MFAToken, req.Password, req.PasswordConfirm,
@@ -287,6 +304,9 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
 			return
 		}
+		if !s.mfaIPAllowed(w, r, req.MFAToken) {
+			return
+		}
 		opts, state, err := s.MerchantAuth.PasskeyLoginOptions(r.Context(), req.MFAToken)
 		if err != nil {
 			respondPasskeyError(w, err)
@@ -311,6 +331,9 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		}
 		if len(req.MFAToken) > maxSecretLen || len(req.State) > 16<<10 || len(req.Credential) == 0 {
 			httpError(w, http.StatusUnauthorized, identity.ErrMFATokenInvalid)
+			return
+		}
+		if !s.mfaIPAllowed(w, r, req.MFAToken) {
 			return
 		}
 		tok, err := s.MerchantAuth.VerifyPasskey(r.Context(), req.MFAToken, req.State, req.Credential,

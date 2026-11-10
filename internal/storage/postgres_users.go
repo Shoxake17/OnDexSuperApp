@@ -511,6 +511,16 @@ func (s *PgCodeStore) IncrementAttempts(ctx context.Context, phone string) (int,
 	return attempts, err
 }
 
+// Take — xesh mos bo'lsa yozuvni o'chiradi; bitta DELETE — parallel
+// so'rovlardan faqat bittasi qatorni o'chiradi (users.CodeTaker).
+func (s *PgCodeStore) Take(ctx context.Context, phone, codeHash string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM phone_codes WHERE phone = $1 AND code_hash = $2`, phone, codeHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (s *PgCodeStore) Delete(ctx context.Context, phone string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM phone_codes WHERE phone = $1`, phone)
 	return err

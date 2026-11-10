@@ -314,6 +314,77 @@ func (s *fakeCodeStore) Delete(_ context.Context, phone string) error {
 	return nil
 }
 
+// barrierCodeStore — `want` ta so'rov kodni O'QIB bo'lguncha hammasini
+// ushlab turadi: "hammasi tekshiruvdan o'tdi, endi o'chiradi" holati aniq.
+type barrierCodeStore struct {
+	fakeCodeStore
+	want  int32
+	seen  atomic.Int32
+	armed atomic.Bool
+	gate  chan struct{}
+	once  sync.Once
+}
+
+func (s *barrierCodeStore) Get(ctx context.Context, phone string) (*Code, error) {
+	c, err := s.fakeCodeStore.Get(ctx, phone)
+	if s.armed.Load() {
+		if s.seen.Add(1) == s.want {
+			s.once.Do(func() { close(s.gate) })
+		}
+		select {
+		case <-s.gate:
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return c, err
+}
+
+// Take — CodeTaker (ishlab chiqarish omborlari kabi atomik).
+func (s *fakeCodeStore) Take(_ context.Context, phone, codeHash string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.data[phone]
+	if !ok || c.CodeHash != codeHash {
+		return false, nil
+	}
+	delete(s.data, phone)
+	return true, nil
+}
+
+// AUD-14: to'g'ri kod parallel so'rovlarda ham FAQAT BIR MARTA o'tadi.
+func TestVerifyPhoneCodeOnceUnderRace(t *testing.T) {
+	const n = 4 // maxAttempts dan kam: hammasi urinish chegarasidan o'tadi
+	store := &barrierCodeStore{fakeCodeStore: fakeCodeStore{data: make(map[string]*Code)}, want: n,
+		gate: make(chan struct{})}
+	var ids atomic.Int64
+	s := NewService(&fakeUserRepo{data: make(map[string]*User)}, store, noopSms{},
+		NewTokenIssuer("test-secret", time.Hour), func() string { return "id" + string(rune('0'+ids.Add(1))) })
+	ctx := context.Background()
+	phone, code, err := s.IssueCode(ctx, "+998901112233")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.armed.Store(true)
+	var ok atomic.Int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if _, err := s.VerifyPhoneCode(ctx, phone, code); err == nil {
+				ok.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if n := ok.Load(); n != 1 {
+		t.Fatalf("XAVFSIZLIK: bitta kod %d marta qabul qilindi", n)
+	}
+}
+
 type noopSms struct{}
 
 func (noopSms) Send(_, _ string) error { return nil }

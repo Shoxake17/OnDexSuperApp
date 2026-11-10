@@ -447,6 +447,15 @@ type CodeStore interface {
 	Delete(ctx context.Context, target string) error
 }
 
+// CodeTaker — (ixtiyoriy, barcha ishlab chiqarish omborlarida bor) kodni
+// ATOMIK "olib qo'yish": yozuv faqat xeshi hali `codeHash` bo'lsa o'chiriladi
+// va true qaytadi. AUD-14: oddiy `Delete` bilan to'g'ri kodli IKKI parallel
+// so'rov ikkalasi ham "o'chirdim" deb kirib ketardi (kod amalda ikki marta
+// ishlardi); `Take` da faqat bittasi yutadi.
+type CodeTaker interface {
+	Take(ctx context.Context, target, codeHash string) (bool, error)
+}
+
 // SmsSender — SMS yuborish qatlami. Dev'da log, production'da Eskiz.uz bo'ladi.
 type SmsSender interface {
 	Send(phone, text string) error

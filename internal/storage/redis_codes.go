@@ -82,17 +82,32 @@ func (s *RedisCodeStore) Get(ctx context.Context, phone string) (*users.Code, er
 // IncrementAttempts — `HIncrBy` atomik va YANGI qiymatni qaytaradi,
 // shuning uchun chegara tekshiruvi poyga (race) holatiga tushmaydi.
 func (s *RedisCodeStore) IncrementAttempts(ctx context.Context, phone string) (int, error) {
-	key := codeKey(phone)
 	// Muddati o'tib ketgan kalitni HIncrBy TTL'siz qayta yaratib qo'yishi
-	// mumkin (u holda abadiy Redis'da qolib ketardi) — shuning uchun avval
-	// mavjudligini tekshiramiz; yo'q bo'lsa jim o'tkazib yuboramiz (xuddi
+	// mumkin (u holda abadiy Redis'da qolib ketardi) — mavjudlik tekshiruvi
+	// va oshirish BITTA Lua skriptida (AUD-14: Exists va HIncrBy orasida kalit
+	// muddati tugasa, TTL'siz yetim kalit qolardi). Yo'q bo'lsa 0 (xuddi
 	// Postgres'dagi "WHERE phone=$1" 0 qator yangilagani kabi — xato emas).
-	exists, err := s.rdb.Exists(ctx, key).Result()
-	if err != nil || exists == 0 {
-		return 0, err
-	}
-	n, err := s.rdb.HIncrBy(ctx, key, "attempts", 1).Result()
-	return int(n), err
+	n, err := incrIfExists.Run(ctx, s.rdb, []string{codeKey(phone)}).Int()
+	return n, err
+}
+
+var incrIfExists = redis.NewScript(`
+if redis.call('EXISTS', KEYS[1]) == 1 then
+  return redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+end
+return 0`)
+
+// takeIfHash — xesh mos bo'lsa kalitni o'chiradi (atomik, bir martalik).
+var takeIfHash = redis.NewScript(`
+if redis.call('HGET', KEYS[1], 'code_hash') == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`)
+
+// Take — users.CodeTaker: parallel to'g'ri so'rovlardan faqat bittasi yutadi.
+func (s *RedisCodeStore) Take(ctx context.Context, phone, codeHash string) (bool, error) {
+	n, err := takeIfHash.Run(ctx, s.rdb, []string{codeKey(phone)}, codeHash).Int()
+	return n == 1, err
 }
 
 func (s *RedisCodeStore) Delete(ctx context.Context, phone string) error {

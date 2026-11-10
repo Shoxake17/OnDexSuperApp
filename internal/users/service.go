@@ -253,7 +253,7 @@ func (s *Service) checkPhoneCode(ctx context.Context, rawPhone, code string) (ph
 		slog.Warn("test akkaunt: sobit kod rad etildi — akkaunt roli bu raqamga mos emas")
 		return "", false, ErrInvalidCode
 	}
-	if err := s.consumeCode(ctx, phone); err != nil {
+	if err := s.consumeCode(ctx, phone, c.CodeHash); err != nil {
 		return "", false, err
 	}
 	return phone, testLogin, nil
@@ -273,7 +273,20 @@ func (s *Service) VerifyPhoneCode(ctx context.Context, rawPhone, code string) (s
 // (masalan ekrandan yoki SMS'dan ko'rib olingan kod bilan ikkinchi
 // qurilmadan kirish). Shuning uchun o'chirib bo'lmasa kirish RAD etiladi
 // (fail closed): foydalanuvchi qayta urinadi, kod esa baribir o'chadi.
-func (s *Service) consumeCode(ctx context.Context, key string) error {
+//
+// AUD-14: ombor `CodeTaker` bo'lsa kod ATOMIK olinadi — to'g'ri kodli ikki
+// parallel so'rovdan faqat bittasi o'tadi, ikkinchisi "noto'g'ri kod".
+func (s *Service) consumeCode(ctx context.Context, key, codeHash string) error {
+	if t, ok := s.codes.(CodeTaker); ok {
+		took, err := t.Take(ctx, key, codeHash)
+		if err != nil {
+			return fmt.Errorf("tasdiqlash kodini yakunlab bo'lmadi: %w", err)
+		}
+		if !took {
+			return ErrInvalidCode
+		}
+		return nil
+	}
 	if err := s.codes.Delete(ctx, key); err != nil {
 		return fmt.Errorf("tasdiqlash kodini yakunlab bo'lmadi: %w", err)
 	}
@@ -775,7 +788,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 		s.guard.fail(email, s.now())
 		return "", nil, ErrInvalidCode
 	}
-	if err := s.consumeCode(ctx, email); err != nil {
+	if err := s.consumeCode(ctx, email, c.CodeHash); err != nil {
 		return "", nil, err
 	}
 

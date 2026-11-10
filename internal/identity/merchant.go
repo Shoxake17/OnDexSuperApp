@@ -344,17 +344,21 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 	if err != nil {
 		return nil, err
 	}
-	if m.guard.Blocked(c.User) {
+	end, ok := m.guard.Begin(c.User)
+	if !ok {
 		return nil, ErrMFATooMany
 	}
+	res := attemptAbort
+	defer func() { end(res) }()
 	u, err := m.svc.users.GetByID(ctx, c.User)
-	if err != nil || u.Phone == "" {
+	if err != nil || u.Phone == "" || u.IsDeleted() {
 		return nil, ErrMFATokenInvalid
 	}
 	var add string
 	if !slices.Contains(c.AMR, "otp") {
 		if _, err := m.d.Users.VerifyPhoneCode(ctx, u.Phone, secret); err != nil {
-			m.mfaFailed(ctx, c, meta)
+			res = attemptFail
+			m.mfaDenied(ctx, c, meta)
 			return nil, err
 		}
 		add = "otp"
@@ -363,12 +367,13 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 		// shu raqamli akkaunt paroli o'tmasin.
 		pu, err := m.d.Users.AuthenticatePasswordRealm(ctx, users.RealmForRole(u.Role), u.Phone, secret)
 		if err != nil || pu.ID != u.ID {
-			m.mfaFailed(ctx, c, meta)
+			res = attemptFail
+			m.mfaDenied(ctx, c, meta)
 			return nil, users.ErrInvalidCredentials
 		}
 		add = "pwd"
 	}
-	m.guard.Reset(c.User)
+	res = attemptOK
 	return m.secondFactor(ctx, u, c.Client, c.Org, append(slices.Clone(c.AMR), add))
 }
 
@@ -406,20 +411,24 @@ func (m *MerchantAuth) VerifyMFA(ctx context.Context, mfaToken, code string, met
 	if err != nil {
 		return nil, err
 	}
-	if m.guard.Blocked(c.User) {
+	end, ok := m.guard.Begin(c.User)
+	if !ok {
 		return nil, ErrMFATooMany
 	}
+	res := attemptAbort
+	defer func() { end(res) }()
 	factor, err := m.checkFactorCode(ctx, c.User, code)
 	switch {
 	case errors.Is(err, mfa.ErrNotFound):
 		return nil, ErrMFATokenInvalid // faktor shu orada o'chirilgan
 	case errors.Is(err, ErrMFAInvalid):
-		m.mfaFailed(ctx, c, meta)
+		res = attemptFail
+		m.mfaDenied(ctx, c, meta)
 		return nil, ErrMFAInvalid
 	case err != nil:
 		return nil, err
 	}
-	m.guard.Reset(c.User)
+	res = attemptOK
 	return m.svc.Create(ctx, CreateInput{UserID: c.User, ClientID: c.Client, OrgID: c.Org,
 		AMR: append(slices.Clone(c.AMR), factor), Meta: meta})
 }
@@ -463,6 +472,11 @@ func (m *MerchantAuth) checkFactorCode(ctx context.Context, userID, code string)
 
 func (m *MerchantAuth) mfaFailed(ctx context.Context, c *mfaClaims, meta Meta) {
 	m.guard.Fail(c.User)
+	m.mfaDenied(ctx, c, meta)
+}
+
+// mfaDenied — faqat audit (hisob `Begin` urinishida).
+func (m *MerchantAuth) mfaDenied(ctx context.Context, c *mfaClaims, meta Meta) {
 	m.svc.audit.Record(ctx, Event{Action: "mfa.verify", Result: ResultDenied, ActorUserID: c.User,
 		Realm: string(users.RealmMerchant), Target: c.Client, IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 }
@@ -506,9 +520,12 @@ func (m *MerchantAuth) EnrollConfirm(ctx context.Context, mfaToken, code string,
 	if err != nil {
 		return nil, nil, err
 	}
-	if m.guard.Blocked(c.User) {
+	end, ok := m.guard.Begin(c.User)
+	if !ok {
 		return nil, nil, ErrMFATooMany
 	}
+	res := attemptAbort
+	defer func() { end(res) }()
 	f, err := m.d.MFA.Pending(ctx, c.User)
 	if err != nil {
 		if errors.Is(err, mfa.ErrNotFound) {
@@ -520,9 +537,10 @@ func (m *MerchantAuth) EnrollConfirm(ctx context.Context, mfaToken, code string,
 	if err != nil {
 		return nil, nil, err
 	}
-	step, ok := mfa.Validate(secret, code, m.svc.now())
-	if !ok {
-		m.mfaFailed(ctx, c, meta)
+	step, valid := mfa.Validate(secret, code, m.svc.now())
+	if !valid {
+		res = attemptFail
+		m.mfaDenied(ctx, c, meta)
 		return nil, nil, ErrMFAInvalid
 	}
 	plain, hashes, err := mfa.NewRecoveryCodes()
@@ -537,7 +555,7 @@ func (m *MerchantAuth) EnrollConfirm(ctx context.Context, mfaToken, code string,
 	}
 	m.svc.audit.Record(ctx, Event{Action: "mfa.enroll", Result: ResultOK, ActorUserID: c.User,
 		Realm: string(users.RealmMerchant), Target: f.ID, IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
-	m.guard.Reset(c.User)
+	res = attemptOK
 	tok, err := m.svc.Create(ctx, CreateInput{UserID: c.User, ClientID: c.Client, OrgID: c.Org,
 		AMR: append(slices.Clone(c.AMR), "totp"), Meta: meta})
 	if err != nil {
@@ -577,6 +595,19 @@ func (m *MerchantAuth) signMFA(c mfaClaims, ttl time.Duration) (string, time.Tim
 	}
 	payload := base64.RawURLEncoding.EncodeToString(b)
 	return mfaTokenPrefix + payload + "." + m.mac(payload), exp, nil
+}
+
+// MFATokenClient — imzosi to'g'ri va muddati o'tmagan mfa_token qaysi klient
+// uchun ("" — yaroqsiz). HTTP qatlami admin (admin-web) bosqichlarini ham
+// IP ro'yxati bilan cheklashi uchun (CC-0.2: parol/TOTP'ni ruxsatsiz
+// tarmoqdan terib bo'lmasin).
+func (m *MerchantAuth) MFATokenClient(tok string) string {
+	for _, p := range []string{mfaPurposeVerify, mfaPurposeEnroll, mfaPurposeFactor} {
+		if c, err := m.parseMFA(tok, p); err == nil {
+			return c.Client
+		}
+	}
+	return ""
 }
 
 func (m *MerchantAuth) parseMFA(tok, purpose string) (*mfaClaims, error) {

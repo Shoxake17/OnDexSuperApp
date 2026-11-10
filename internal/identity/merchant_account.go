@@ -21,9 +21,12 @@ var ErrStepUpRequired = errors.New("bu amal uchun Authenticator kodi kerak")
 // parol). Urinishlar kirishdagi bilan BIR hisobda: step-up orqali TOTP'ni
 // terib chiqib bo'lmaydi.
 func (m *MerchantAuth) StepUp(ctx context.Context, userID, code, action string, meta Meta) error {
-	if m.guard.Blocked(userID) {
+	end, ok := m.guard.Begin(userID)
+	if !ok {
 		return ErrMFATooMany
 	}
+	res := attemptAbort
+	defer func() { end(res) }()
 	if _, err := m.d.MFA.Confirmed(ctx, userID); errors.Is(err, mfa.ErrNotFound) {
 		return nil
 	} else if err != nil {
@@ -34,13 +37,13 @@ func (m *MerchantAuth) StepUp(ctx context.Context, userID, code, action string, 
 	}
 	if _, err := m.checkFactorCode(ctx, userID, code); err != nil {
 		if errors.Is(err, ErrMFAInvalid) {
-			m.guard.Fail(userID)
+			res = attemptFail
 			m.svc.audit.Record(ctx, Event{Action: "stepup." + action, Result: ResultDenied, ActorUserID: userID,
 				Realm: string(users.RealmMerchant), IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 		}
 		return err
 	}
-	m.guard.Reset(userID)
+	res = attemptOK
 	return nil
 }
 
@@ -58,9 +61,12 @@ func (m *MerchantAuth) HasTOTP(ctx context.Context, userID string) (bool, error)
 // BARCHA sessiyalari yopiladi — parol o'g'irlangan bo'lsa, hujumchi ham
 // chiqariladi; foydalanuvchi yangi parol bilan qayta kiradi.
 func (m *MerchantAuth) ChangePassword(ctx context.Context, userID, current, password, confirm, code string, meta Meta) error {
-	if m.guard.Blocked(userID) {
+	end, ok := m.guard.Begin(userID)
+	if !ok {
 		return ErrMFATooMany
 	}
+	res := attemptAbort
+	defer func() { end(res) }()
 	u, err := m.svc.users.GetByID(ctx, userID)
 	if err != nil || u.IsDeleted() || users.RealmForRole(u.Role) != users.RealmMerchant {
 		return users.ErrInvalidCredentials
@@ -74,11 +80,11 @@ func (m *MerchantAuth) ChangePassword(ctx context.Context, userID, current, pass
 	// Joriy parol `SetPassword` ichida tekshiriladi (vaqtga chidamli taqqoslash).
 	if err := m.d.Users.SetPassword(ctx, u.ID, current, password, confirm, false); err != nil {
 		if errors.Is(err, users.ErrCurrentPasswordWrong) {
-			m.guard.Fail(userID)
+			res = attemptFail
 		}
 		return err
 	}
-	m.guard.Reset(userID)
+	res = attemptOK
 	m.svc.audit.Record(ctx, Event{Action: "account.password_changed", Result: ResultOK, ActorUserID: u.ID,
 		Realm: string(users.RealmMerchant), IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 	if _, err := m.svc.RevokeAllForUser(ctx, u.ID, "password_changed"); err != nil {
