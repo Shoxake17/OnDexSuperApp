@@ -1,7 +1,7 @@
 name: chust_customer
 description: OnDex — mijoz ilovasi
 publish_to: "none"
-version: 0.2.12+24
+version: 0.2.13+25
 
 environment:
   # 3.3.0 dan ko'tarildi: `maplibre_gl` (OnDexMap xaritasi) 3.7+ talab

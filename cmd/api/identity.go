@@ -444,7 +444,11 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 	// PK-1: native ilovalar (assetlinks.json + Android origin'lari; AASA).
 	// Noto'g'ri qiymat — passkey O'CHIQ (jimgina noto'g'ri ilovaga ruxsat
 	// berishdan ko'ra), qolgan kirish usullari ishlaydi.
-	apps, errA := identity.ParseAndroidApps(os.Getenv("PASSKEY_ANDROID_APPS"))
+	rawApps := strings.TrimSpace(os.Getenv("PASSKEY_ANDROID_APPS"))
+	if rawApps == "" && !devMode {
+		rawApps = defaultAndroidApps
+	}
+	apps, errA := identity.ParseAndroidApps(rawApps)
 	ids, errI := identity.ParseAppleAppIDs(os.Getenv("PASSKEY_APPLE_APP_IDS"))
 	if errA != nil || errI != nil {
 		slog.Error("passkey O'CHIQ: native ilova sozlamasi noto'g'ri", "android", errA, "apple", errI)
@@ -469,3 +473,12 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 	}
 	return m
 }
+
+// defaultAndroidApps — OnDex Android ilovalari va RELEASE imzo sertifikati
+// SHA-256 (F:\OndexProd\build_mobile.ps1 chiqishi, CN=OnDex). Sir EMAS: aynan
+// shu qiymat https://ondex.uz/.well-known/assetlinks.json da ochiq turadi.
+// Ilovalar saytdan (R2) tarqatiladi, Play App Signing yo'q — kalit bitta.
+// PASSKEY_ANDROID_APPS berilsa u ustun (masalan Play'ga o'tilganda).
+const defaultAndroidApps = "com.ondex.waiter=FD:2A:48:5D:85:06:CA:27:C8:7C:19:4D:8D:81:69:F8:25:F1:80:6A:3B:EA:7F:9D:68:CE:CE:CE:11:E5:88:55," +
+	"com.ondex.courier=FD:2A:48:5D:85:06:CA:27:C8:7C:19:4D:8D:81:69:F8:25:F1:80:6A:3B:EA:7F:9D:68:CE:CE:CE:11:E5:88:55," +
+	"com.ondex.customer=FD:2A:48:5D:85:06:CA:27:C8:7C:19:4D:8D:81:69:F8:25:F1:80:6A:3B:EA:7F:9D:68:CE:CE:CE:11:E5:88:55"
