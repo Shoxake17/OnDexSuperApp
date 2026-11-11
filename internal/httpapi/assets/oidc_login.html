@@ -20,8 +20,17 @@
 
   <div id="err" class="err" role="alert" hidden></div>
 
-  <!-- 1. Telefon -> Davom etish (Telegram kodi). Parol — ixtiyoriy havola. -->
+  <!-- 1. Passkey (asosiy, telefon raqamisiz) -> yoki telefon -> Telegram kodi.
+       Parol — ixtiyoriy havola (akkaunt sozlamasida yoqilgan bo'lsa). -->
   <section id="s-start">
+    <div id="pk-start" hidden>
+      <button type="button" id="btn-pk-login" class="primary">
+        <span class="btn-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M9 2a5 5 0 0 1 3.9 8.1l.9.9H16v2h1.6l.7.7V16h2v2.6l1.7 1.7V22h-3.2l-6.2-6.2A5 5 0 1 1 9 2Zm-1 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg></span>
+        Passkey bilan kirish
+      </button>
+      <p class="hint">Windows Hello, Touch ID yoki telefon ekran qulfi — parol va kodsiz.</p>
+      <div class="divider" role="separator"><span>yoki telefon raqami bilan</span></div>
+    </div>
     <label class="field">
       <span class="ico" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h10V4H7Zm5 13a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/></svg>

@@ -44,6 +44,13 @@ button { font: inherit; cursor: pointer; }
 .ghost { display: block; text-align: center; padding: 12px; border: 1.5px solid var(--line); border-radius: 18px;
   color: var(--fg); text-decoration: none; font-weight: 600; }
 .hint { color: var(--muted); font-size: 14px; margin: 0; text-align: center; }
+.btn-ico { display: inline-flex; vertical-align: -4px; margin-right: 6px; }
+#pk-start { display: grid; gap: 10px; }
+#pk-start[hidden] { display: none !important; }
+/* Passkey asosiy bo'lganda telefon tugmasi ikkinchi darajali. */
+.primary.alt { background: none; border: 1.5px solid var(--line); box-shadow: none; color: var(--fg); }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 4px 0; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .err { background: var(--err-bg); color: var(--err-fg); border-radius: 14px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
 .mono { font-family: ui-monospace, Consolas, monospace; word-break: break-all; font-size: 14px; text-align: center; margin: 0; }
 pre.mono { background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 12px; white-space: pre-wrap; text-align: left; }

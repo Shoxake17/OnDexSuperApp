@@ -36,6 +36,10 @@ func TestMerchantLoginV2(t *testing.T) {
 		if err := w.Users.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
+		// Mavjud parolli akkaunt — migratsiya 0075 kabi parol bilan kirish YOQIQ.
+		if password != "" {
+			_ = w.LoginPrefs.SetPasswordLogin(ctx, id, true, time.Now())
+		}
 	}
 	// Kod yetkazish kanallari (`/auth/telegram/start`, `/auth/request-code`)
 	// o'z ssenariylarida; bu yerda kod to'g'ridan-to'g'ri yaratiladi.
@@ -81,27 +85,31 @@ func TestMerchantLoginV2(t *testing.T) {
 	var secret, enrollToken, confirmCode string
 	var recovery []string
 
-	w.Step(t, "parolsiz egasi: kod -> parol O'RNATISH -> TOTP ulash (boshi berk ko'cha emas)", func(t *testing.T) {
+	w.Step(t, "parolsiz egasi (Plane 317): kod -> TOTP ulash, parol SO'RALMAYDI", func(t *testing.T) {
 		const np = "+998900000049"
 		mkUser(t, "e2e-m-nopass", np, users.RoleRestaurant, "")
 		post(t, "/v2/auth/merchant/password", map[string]any{"phone": np, "password": "har-qanday-parol",
 			"client_id": "merchant-web"}, 401)
 		o := post(t, "/v2/auth/merchant/otp/verify", map[string]any{"phone": np, "code": code(t, np),
 			"client_id": "merchant-web"}, 200)
-		if o.Method != "password_set" {
-			t.Fatalf("parolsiz egasiga parol o'rnatish taklif qilinmadi: %+v", o)
-		}
-		post(t, "/v2/auth/mfa/password", map[string]any{"mfa_token": o.MFAToken, "password": "12345678",
-			"password_confirm": "12345678"}, 400)
-		o = post(t, "/v2/auth/mfa/password", map[string]any{"mfa_token": o.MFAToken, "password": "Yangi-Parol-2026!",
-			"password_confirm": "Yangi-Parol-2026!"}, 200)
 		if o.Method != "totp_enroll" {
-			t.Fatalf("parol o'rnatilgach: %+v", o)
+			t.Fatalf("parolsiz egasi TOTP ulashga o'tmadi: %+v", o)
 		}
-		// Endi parol bilan kirish ishlaydi.
-		if o = post(t, "/v2/auth/merchant/password", map[string]any{"phone": np, "password": "Yangi-Parol-2026!",
-			"client_id": "merchant-web"}, 200); o.Method != "otp" {
-			t.Fatalf("o'rnatilgan parol bilan: %+v", o)
+	})
+
+	w.Step(t, "parol bilan kirish O'CHIQ akkaunt: to'g'ri parol ham 403, noto'g'ri parol 401 (oshkor emas)", func(t *testing.T) {
+		const dp = "+998900000048"
+		mkUser(t, "e2e-m-pwdoff", dp, users.RoleRestaurant, "Ochiq-Parol-2026!")
+		_ = w.LoginPrefs.SetPasswordLogin(ctx, "e2e-m-pwdoff", false, time.Now())
+		post(t, "/v2/auth/merchant/password", map[string]any{"phone": dp, "password": "notogri-parol-1",
+			"client_id": "merchant-web"}, 401)
+		post(t, "/v2/auth/merchant/password", map[string]any{"phone": dp, "password": "Ochiq-Parol-2026!",
+			"client_id": "merchant-web"}, 403)
+		// Kod bilan esa kiradi; parol so'ralmaydi (o'chiq).
+		o := post(t, "/v2/auth/merchant/otp/verify", map[string]any{"phone": dp, "code": code(t, dp),
+			"client_id": "merchant-web"}, 200)
+		if o.Method != "totp_enroll" {
+			t.Fatalf("parol o'chiq egasi: %+v", o)
 		}
 	})
 

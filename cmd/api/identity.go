@@ -427,6 +427,12 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 		}
 	}
 	deps := identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box, Passkeys: pks, Passkey: pkCfg}
+	// Plane 317: parol ixtiyoriy — sozlama bazada (xotirada: dev).
+	if pool != nil {
+		deps.Prefs = storage.NewPgLoginPrefs(pool)
+	} else {
+		deps.Prefs = identity.NewMemoryLoginPrefs()
+	}
 	if rdb != nil {
 		// Xato urinishlar hisobi barcha nusxalar uchun umumiy (SSO-Redis).
 		deps.Guard = storage.NewRedisGuardStore(rdb)

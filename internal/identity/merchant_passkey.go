@@ -84,6 +84,7 @@ type passkeyState struct {
 	Purpose string               `json:"p"`
 	User    string               `json:"u"`
 	Nonce   string               `json:"n,omitempty"` // kirish: mfa_token nonce'i
+	Client  string               `json:"c,omitempty"` // parolsiz kirish: klient
 	Exp     int64                `json:"e"`
 	Session webauthn.SessionData `json:"s"`
 }
@@ -109,7 +110,10 @@ func (m *MerchantAuth) initPasskeys() error {
 	wa, err := webauthn.New(&webauthn.Config{
 		RPID: cfg.RPID, RPDisplayName: "OnDex", RPOrigins: cfg.Origins,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
-			ResidentKey: protocol.ResidentKeyRequirementPreferred, UserVerification: protocol.VerificationRequired,
+			// Required: kalit qurilmada SAQLANADI (discoverable) — telefon
+			// raqamisiz kirish (Plane 317) shunga tayanadi.
+			ResidentKey: protocol.ResidentKeyRequirementRequired, RequireResidentKey: protocol.ResidentKeyRequired(),
+			UserVerification: protocol.VerificationRequired,
 		},
 		AttestationPreference: protocol.PreferNoAttestation,
 	})

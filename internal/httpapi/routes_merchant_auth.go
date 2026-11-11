@@ -50,7 +50,8 @@ func respondMerchantAuthError(w http.ResponseWriter, err error) {
 		httpError(w, http.StatusUnauthorized, err)
 	case errors.Is(err, identity.ErrMFATooMany):
 		tooManyRequests(w, mfaRetryAfter)
-	case errors.Is(err, identity.ErrAppNotAllowed), errors.Is(err, identity.ErrRealmMismatch):
+	case errors.Is(err, identity.ErrAppNotAllowed), errors.Is(err, identity.ErrRealmMismatch),
+		errors.Is(err, identity.ErrPasswordLoginDisabled):
 		httpError(w, http.StatusForbidden, err)
 	case errors.Is(err, identity.ErrUnknownClient):
 		httpError(w, http.StatusBadRequest, err)
@@ -344,6 +345,54 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		}
 		noStore(w)
 		writeJSON(w, http.StatusOK, tok)
+	})
+
+	// Parolsiz kirish (Plane 317): passkey — BIRINCHI va yagona bosqich.
+	// allowCredentials bo'sh (brauzer qurilmadagi kalitni o'zi taklif qiladi),
+	// ya'ni telefon raqami so'ralmaydi va akkaunt mavjudligi oshkor bo'lmaydi.
+	mux.HandleFunc("POST /v2/auth/passkey/options", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, passkeyIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			ClientID string `json:"client_id"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		opts, state, err := s.MerchantAuth.PasskeyDiscoverOptions(r.Context(), req.ClientID)
+		if err != nil {
+			respondPasskeyError(w, err)
+			return
+		}
+		noStore(w)
+		writeJSON(w, http.StatusOK, map[string]any{"public_key": opts.Response, "state": state})
+	})
+
+	mux.HandleFunc("POST /v2/auth/passkey/login", func(w http.ResponseWriter, r *http.Request) {
+		if !s.merchantAuthReady(w) || rateLimited(w, passkeyIPLimiter, clientIP(r)) {
+			return
+		}
+		var req struct {
+			ClientID   string          `json:"client_id"`
+			State      string          `json:"state"`
+			Credential json.RawMessage `json:"credential"`
+			DeviceName string          `json:"device_name"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if len(req.State) > 16<<10 || len(req.Credential) == 0 {
+			httpError(w, http.StatusBadRequest, identity.ErrPasskeyState)
+			return
+		}
+		out, err := s.MerchantAuth.PasskeyDiscoverLogin(r.Context(), req.ClientID, req.State, req.Credential,
+			merchantMeta(r, req.DeviceName))
+		if err != nil {
+			respondPasskeyError(w, err)
+			return
+		}
+		writeOutcome(w, out)
 	})
 
 	mux.HandleFunc("POST /v2/auth/mfa/totp/enroll", func(w http.ResponseWriter, r *http.Request) {

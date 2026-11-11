@@ -36,6 +36,21 @@
       <h2 id="h-sec">Xavfsizlik</h2>
       <div class="row"><span>Parol</span><span id="pwd-badge" class="badge"></span></div>
       <div class="row"><span>Ikki bosqichli himoya (Authenticator)</span><span id="totp-badge" class="badge"></span></div>
+      <div class="row"><span>Parol bilan kirish</span><span id="pl-badge" class="badge"></span></div>
+      <button type="button" id="btn-pl-open" class="small" hidden></button>
+      <div id="pl-form" hidden>
+        <section>
+          <p class="hint" id="pl-hint"></p>
+          <div id="pl-new" hidden>
+            <section>
+              <label class="field"><input id="pl-np1" type="password" autocomplete="new-password" placeholder="Yangi parol (kamida 8 belgi)" aria-label="Yangi parol"></label>
+              <label class="field"><input id="pl-np2" type="password" autocomplete="new-password" placeholder="Yangi parolni takrorlang" aria-label="Yangi parolni takrorlang"></label>
+            </section>
+          </div>
+          <label class="field"><input id="pl-code" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="Authenticator kodi" aria-label="Authenticator kodi"></label>
+          <button type="button" id="btn-pl" class="primary">Saqlash</button>
+        </section>
+      </div>
       <button type="button" id="btn-pwd-open" class="small">Parolni almashtirish</button>
       <div id="pwd-form" hidden>
         <section>
@@ -52,8 +67,9 @@
     <!-- Passkey (AUD-4) -->
     <section class="box" id="pk-box" aria-labelledby="h-pk" hidden>
       <h2 id="h-pk">Passkey'lar</h2>
-      <p class="hint">Fishingga chidamli kirish: Windows Hello, Touch ID, telefon ekran qulfi yoki xavfsizlik kaliti.
-        Soxta saytda ishlamaydi. Authenticator kodi zaxira sifatida qoladi.</p>
+      <p class="hint">Asosiy kirish usuli: telefon raqami, parol va kodsiz — Windows Hello, Touch ID, telefon ekran
+        qulfi yoki xavfsizlik kaliti. Soxta saytda ishlamaydi. Passkey yo'qolsa — telefon kodi + Authenticator
+        (yoki tiklash kodi) bilan kirib, yangisini qo'shasiz. Kamida ikkita qurilmada passkey bo'lgani yaxshi.</p>
       <ul class="list" id="pk-list"></ul>
       <div id="pk-form" hidden>
         <section>

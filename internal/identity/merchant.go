@@ -84,6 +84,9 @@ type MerchantDeps struct {
 	Passkeys passkey.Store
 	// Passkey — RP sozlamasi (bo'sh = issuer'dan).
 	Passkey PasskeyConfig
+	// Prefs — kirish sozlamalari (parol ixtiyoriy, Plane 317). nil = eski
+	// xatti-harakat: parol bilan kirish har doim ruxsat.
+	Prefs LoginPrefs
 	// Guard — xato urinishlar hisobi Redis'da (nil = jarayon xotirasida).
 	// Bir nechta API nusxasi va restartlar bitta hisobni ko'radi.
 	Guard GuardStore
@@ -276,6 +279,13 @@ func (m *MerchantAuth) LoginPassword(ctx context.Context, phone, password, clien
 		m.deny(ctx, u.ID, clientID, "password_not_owner", meta)
 		return nil, users.ErrInvalidCredentials
 	}
+	// Plane 317: parol IXTIYORIY — egasi akkaunt sahifasida yoqmagan bo'lsa
+	// rad. Tekshiruv TO'G'RI paroldan keyin: javob faqat parolni biladiganga
+	// ko'rinadi (akkaunt mavjudligi oshkor bo'lmaydi).
+	if !m.passwordLoginAllowed(ctx, u.ID) {
+		m.deny(ctx, u.ID, clientID, "password_login_disabled", meta)
+		return nil, ErrPasswordLoginDisabled
+	}
 	return m.secondFactor(ctx, u, clientID, org, []string{"pwd"})
 }
 
@@ -330,15 +340,16 @@ func (m *MerchantAuth) secondFactor(ctx context.Context, u *users.User, clientID
 		switch {
 		case !slices.Contains(amr, "otp"):
 			purpose, method = mfaPurposeFactor, "otp"
-		case !slices.Contains(amr, "pwd") && u.PasswordHash == "":
-			// Parolsiz egasi (A3'gacha admin parolsiz yaratgan, faqat kod bilan
-			// kirgan akkaunt): parol SO'RALSA boshi berk ko'cha edi (2026-11-08,
-			// Book Cafe). Telefon egaligi hozirgina kod bilan isbotlangan —
-			// `/me/password` qoidasi bilan bir xil: shu yerda parol O'RNATILADI.
+		case !slices.Contains(amr, "pwd") && m.d.Prefs == nil && u.PasswordHash == "":
+			// Eski joylashuv (Prefs yo'q): parolsiz egasi parol O'RNATADI
+			// (2026-11-08, Book Cafe).
 			purpose, method = mfaPurposeFactor, "password_set"
-		case !slices.Contains(amr, "pwd"):
+		case !slices.Contains(amr, "pwd") && u.PasswordHash != "" && m.passwordLoginAllowed(ctx, u.ID):
+			// Parol YOQIQ akkaunt: ulashdan oldin ikkala dalil (parol + kod).
 			purpose, method = mfaPurposeFactor, "password"
 		default:
+			// Plane 317: parol o'chiq/yo'q egasi — telefon kodi bilan to'g'ridan-
+			// to'g'ri TOTP ulashga (keyin akkaunt sahifasida passkey).
 			purpose, method, ttl = mfaPurposeEnroll, "totp_enroll", mfaEnrollTTL
 		}
 	} else if err != nil {

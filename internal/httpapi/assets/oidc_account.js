@@ -68,7 +68,7 @@
     });
   }
 
-  var totp = false;
+  var totp = false, pwdLogin = false, pwdSet = false;
 
   function render(d) {
     var u = d.user || {};
@@ -84,8 +84,15 @@
       av.textContent = (u.name || '?').trim().charAt(0).toUpperCase() || '?';
     }
     totp = !!d.totp_enabled;
+    pwdLogin = !!d.password_login;
+    pwdSet = !!d.password_set;
     badge($('pwd-badge'), d.password_set, "O'rnatilgan", "O'rnatilmagan");
     badge($('totp-badge'), totp, 'Yoqilgan', "O'chiq");
+    // Parol o'chiq — bu XAVFSIZROQ holat, shuning uchun "ok" rangida.
+    badge($('pl-badge'), !pwdLogin, "O'chiq (passkey)", 'Yoqilgan');
+    $('btn-pl-open').hidden = !totp;
+    $('btn-pl-open').textContent = pwdLogin ? "Parol bilan kirishni o'chirish" : 'Parol bilan kirishni yoqish';
+    $('pl-form').hidden = true;
     $('code-box').hidden = !totp;
     $('btn-pwd-open').hidden = !d.password_set;
 
@@ -216,6 +223,38 @@
       .then(function () { toLogin(); })
       .catch(function (e) { showErr(e.message); })
       .then(function () { btn.disabled = false; });
+  });
+
+  // ── parol bilan kirish (Plane 317): ixtiyoriy, Authenticator kodi bilan ──
+  $('btn-pl-open').addEventListener('click', function () {
+    hidePasswords(); clearMsg();
+    var f = $('pl-form');
+    f.hidden = !f.hidden;
+    if (f.hidden) { return; }
+    $('pl-hint').textContent = pwdLogin
+      ? "O'chirilgach parol bilan kira olmaysiz: passkey yoki Telegram kodi + Authenticator bilan kirasiz."
+      : "Parol passkey'dan zaifroq (soxta saytda o'g'irlanishi mumkin). Faqat kerak bo'lsa yoqing — masalan, passkey'ni qo'llamaydigan ilova uchun.";
+    $('pl-new').hidden = pwdLogin || pwdSet;
+    $('pl-code').focus();
+  });
+  $('btn-pl').addEventListener('click', function () {
+    var btn = this; clearMsg();
+    var code = $('pl-code').value.replace(/\s/g, '');
+    var body = { enabled: !pwdLogin, code: code };
+    if (!code) { showErr('Authenticator kodini kiriting'); return; }
+    if (!$('pl-new').hidden) {
+      var a = $('pl-np1').value, b = $('pl-np2').value;
+      if (a.length < 8) { showErr("Yangi parol kamida 8 belgi bo'lsin"); return; }
+      if (a !== b) { showErr('Yangi parollar mos kelmadi'); return; }
+      body.password = a; body.password_confirm = b;
+    }
+    hidePasswords();
+    btn.disabled = true;
+    call('POST', '/v2/oauth/account/api/password-login', body).then(function (d) {
+      $('pl-code').value = ''; $('pl-np1').value = ''; $('pl-np2').value = '';
+      showOk(d.password_login ? 'Parol bilan kirish yoqildi.' : "Parol bilan kirish o'chirildi. Endi passkey yoki Telegram kodi bilan kirasiz.");
+      load();
+    }).catch(function (e) { showErr(e.message); }).then(function () { btn.disabled = false; });
   });
 
   confirmBtn($('btn-all'), 'Hamma qurilmalardan chiqish', function () {

@@ -176,9 +176,15 @@ func (s *Server) registerAccountRoutes(mux *http.ServeMux) {
 			connected = append(connected, a)
 		}
 		sort.Strings(connected)
+		pwdLogin, err := s.MerchantAuth.PasswordLoginEnabled(r.Context(), sso.UserID)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, err)
+			return
+		}
 		out := map[string]any{
 			"user": me.User, "businesses": me.Businesses, "totp_enabled": totp,
-			"password_set": u.PasswordHash != "", "sessions": sessions, "connected_apps": connected,
+			"password_set": u.PasswordHash != "", "password_login": pwdLogin && u.PasswordHash != "",
+			"sessions": sessions, "connected_apps": connected,
 			"passkeys_enabled": s.MerchantAuth.PasskeysEnabled(),
 		}
 		if s.Avatars != nil {
@@ -306,6 +312,40 @@ func (s *Server) registerAccountRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	}))
+
+	// Parol bilan kirish — IXTIYORIY (Plane 317): yoqish/o'chirish Authenticator
+	// kodi bilan; parol hali yo'q bo'lsa yoqishda yangi parol o'rnatiladi.
+	mux.HandleFunc("POST /v2/oauth/account/api/password-login", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {
+		var body struct {
+			Enabled  bool   `json:"enabled"`
+			Code     string `json:"code"`
+			Password string `json:"password"`
+			Confirm  string `json:"password_confirm"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if len(body.Code) > 32 || len(body.Password) > users.MaxPasswordLength || len(body.Confirm) > users.MaxPasswordLength {
+			httpError(w, http.StatusBadRequest, errors.New("maydon juda uzun"))
+			return
+		}
+		err := s.MerchantAuth.SetPasswordLogin(r.Context(), sso.UserID, body.Enabled, body.Code, body.Password, body.Confirm,
+			merchantMeta(r, ""))
+		switch {
+		case err == nil:
+			writeJSON(w, http.StatusOK, map[string]bool{"password_login": body.Enabled})
+		case errors.Is(err, identity.ErrStepUpRequired), errors.Is(err, identity.ErrPasswordNeeded),
+			errors.Is(err, identity.ErrPasskeyNeedsTOTP):
+			httpError(w, http.StatusBadRequest, err)
+		case errors.Is(err, identity.ErrMFAInvalid):
+			// 401 EMAS: sahifa 401 ni "sessiya tugadi" deb kirishga qaytaradi.
+			httpError(w, http.StatusBadRequest, errors.New("Authenticator kodi noto'g'ri"))
+		case users.IsUserFacing(err):
+			httpError(w, http.StatusBadRequest, err) // zaif parol, mos kelmaydi
+		default:
+			respondMerchantAuthError(w, err)
+		}
 	}))
 
 	mux.HandleFunc("POST /v2/oauth/account/api/password", guard(true, func(w http.ResponseWriter, r *http.Request, sso *identity.Session) {

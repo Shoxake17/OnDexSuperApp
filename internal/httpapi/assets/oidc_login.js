@@ -205,6 +205,39 @@
     for (var i = 0; i < b.length; i++) { s += String.fromCharCode(b[i]); }
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
+  function assertionBody(cred) {
+    var r = cred.response;
+    return {
+      id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+      authenticatorAttachment: cred.authenticatorAttachment || undefined,
+      clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      response: { clientDataJSON: bufToB64u(r.clientDataJSON), authenticatorData: bufToB64u(r.authenticatorData),
+        signature: bufToB64u(r.signature), userHandle: r.userHandle ? bufToB64u(r.userHandle) : undefined }
+    };
+  }
+
+  // Parolsiz kirish (Plane 317): telefon raqamisiz — brauzer qurilmadagi
+  // OnDex passkey'ini o'zi taklif qiladi; tasdiqlansa darhol sessiya.
+  var pkSupported = !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get);
+  $('btn-pk-login').addEventListener('click', function () {
+    run(this, function () {
+      return api('/v2/auth/passkey/options', { client_id: CLIENT }).then(function (o) {
+        var pk = o.public_key || {};
+        pk.challenge = b64uToBuf(pk.challenge);
+        (pk.allowCredentials || []).forEach(function (c) { c.id = b64uToBuf(c.id); });
+        return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
+          if (!cred) { throw new Error('Passkey tanlanmadi'); }
+          return api('/v2/auth/passkey/login', { client_id: CLIENT, state: o.state, credential: assertionBody(cred), device_name: DEVICE });
+        }, function (e) {
+          if (e && e.name === 'NotAllowedError') {
+            throw new Error("Passkey tanlanmadi yoki bekor qilindi. Passkey yo'q bo'lsa — telefon raqami bilan kiring.");
+          }
+          throw new Error('Passkey ishlamadi — telefon raqami bilan kiring');
+        }).then(outcome);
+      });
+    });
+  });
+
   $('btn-passkey').addEventListener('click', function () {
     run(this, function () {
       return api('/v2/auth/mfa/passkey/options', { mfa_token: mfaToken }).then(function (o) {
@@ -213,15 +246,7 @@
         (pk.allowCredentials || []).forEach(function (c) { c.id = b64uToBuf(c.id); });
         return navigator.credentials.get({ publicKey: pk }).then(function (cred) {
           if (!cred) { throw new Error('Passkey tanlanmadi'); }
-          var r = cred.response;
-          var body = {
-            id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
-            authenticatorAttachment: cred.authenticatorAttachment || undefined,
-            clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
-            response: { clientDataJSON: bufToB64u(r.clientDataJSON), authenticatorData: bufToB64u(r.authenticatorData),
-              signature: bufToB64u(r.signature), userHandle: r.userHandle ? bufToB64u(r.userHandle) : undefined }
-          };
-          return api('/v2/auth/mfa/passkey', { mfa_token: mfaToken, state: o.state, credential: body, device_name: DEVICE });
+          return api('/v2/auth/mfa/passkey', { mfa_token: mfaToken, state: o.state, credential: assertionBody(cred), device_name: DEVICE });
         }, function (e) {
           if (e && e.name === 'NotAllowedError') { throw new Error('Passkey tasdiqlanmadi yoki bekor qilindi'); }
           throw new Error('Passkey ishlamadi — Authenticator kodidan foydalaning');
@@ -253,8 +278,10 @@
     if (e.key !== 'Enter') { return; }
     var sec = sections.map($).filter(function (s) { return !s.hidden; })[0];
     if (!sec) { return; }
+    // Passkey tugmasi Enter bilan bosilmaydi: telefon/parol maydonida Enter —
+    // "Davom etish" (aks holda brauzer passkey oynasi kutilmaganda chiqardi).
     var btn = Array.prototype.filter.call(sec.querySelectorAll('button.primary'),
-      function (b) { return b.offsetParent !== null && !b.disabled; })[0];
+      function (b) { return b.offsetParent !== null && !b.disabled && b.id !== 'btn-pk-login'; })[0];
     if (btn) { e.preventDefault(); btn.click(); }
   });
 
@@ -267,6 +294,12 @@
       sessionStorage.setItem('ondexRestart', JSON.stringify(hits));
       return true;
     } catch (e) { return false; }
+  }
+
+  // Passkey qo'llansa — u asosiy yo'l, telefon tugmasi ikkinchi darajali.
+  if (pkSupported) {
+    $('pk-start').hidden = false;
+    $('btn-next').classList.add('alt');
   }
 
   // ── so'rovni tekshirish ───────────────────────────────────────────────

@@ -156,6 +156,8 @@ type World struct {
 	// AuthSvc — kod/parol xizmati (merchant ssenariylari dev_code oladi).
 	AuthSvc      *users.Service
 	MerchantAuth *identity.MerchantAuth
+	// LoginPrefs — parol bilan kirish sozlamasi (Plane 317; yozuv yo'q = o'chiq).
+	LoginPrefs *identity.MemoryLoginPrefs
 	// OIDC — OnDex OIDC provayderi (A4c), klient `merchant-web`.
 	OIDC *identity.Provider
 
@@ -402,12 +404,13 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	w.Authz = authz.New(authzStore)
 	w.AuthSvc = users.NewService(w.Users, storage.NewMemoryCodeStore(), smsLog{}, w.Tokens, httpapi.NewID)
+	w.LoginPrefs = identity.NewMemoryLoginPrefs()
 	mfaBox, err := secretstore.New(strings.Repeat("ab", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
 	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Repo: w.Users,
-		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox, Passkeys: passkey.NewMemStore()})
+		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox, Passkeys: passkey.NewMemStore(), Prefs: w.LoginPrefs})
 	if err != nil {
 		t.Fatal(err)
 	}

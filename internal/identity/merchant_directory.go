@@ -118,6 +118,12 @@ func (m *MerchantAuth) Signup(ctx context.Context, in SignupInput, meta Meta) (*
 	}
 	m.d.Authz.Invalidate()
 	m.audit(ctx, u.ID, org.ID, biz.ID, "merchant.signup", org.ID, meta, map[string]any{"business_type": string(in.BusinessType)})
+	// Ro'yxatdan o'tish formasi parolni hozircha so'raydi — egasi uni O'ZI
+	// tanlagan, shuning uchun parol bilan kirish yoqiq (akkaunt sahifasida
+	// o'chirsa bo'ladi).
+	if err := m.EnablePasswordAtSignup(ctx, u.ID); err != nil {
+		return nil, err
+	}
 	return m.secondFactor(ctx, u, in.ClientID, org.ID, []string{"otp", "pwd"})
 }
 
