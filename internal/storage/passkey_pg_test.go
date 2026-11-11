@@ -79,3 +79,26 @@ func TestPgPasskeyStore(t *testing.T) {
 		t.Fatal("akkaunt o'chganda passkey qoldi")
 	}
 }
+
+// PK-1: eskirgan challenge'lar so'rov yo'lida emas, Purge bilan tozalanadi;
+// yangisi qoladi va qayta ishlatilmaydi.
+func TestPgPasskeyPurgeExpired(t *testing.T) {
+	pool := realmTestPool(t)
+	ctx := context.Background()
+	s := NewPgPasskeyStore(pool)
+	old := sha256.Sum256([]byte("eski-challenge-purge"))
+	fresh := sha256.Sum256([]byte("yangi-challenge-purge"))
+	_, _ = pool.Exec(ctx, `DELETE FROM webauthn_used_challenges WHERE hash = ANY($1)`, [][]byte{old[:], fresh[:]})
+	if ok, err := s.UseChallenge(ctx, old[:], time.Now().Add(-time.Minute)); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	if ok, err := s.UseChallenge(ctx, fresh[:], time.Now().Add(time.Minute)); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	if n, err := s.PurgeExpiredChallenges(ctx); err != nil || n < 1 {
+		t.Fatalf("purge: %d %v", n, err)
+	}
+	if ok, _ := s.UseChallenge(ctx, fresh[:], time.Now().Add(time.Minute)); ok {
+		t.Fatal("XAVFSIZLIK: yangi challenge purge'dan keyin qayta ishlatildi")
+	}
+}

@@ -426,6 +426,31 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 			pkCfg.Origins = append(pkCfg.Origins, o)
 		}
 	}
+	// PK-1: bir martalik challenge/mfa nonce'lar 5 daqiqada bir tozalanadi
+	// (so'rov yo'lida emas). Bir nechta nusxada parallel DELETE zararsiz.
+	if pg, ok := pks.(*storage.PgPasskeyStore); ok {
+		go func() {
+			t := time.NewTicker(5 * time.Minute)
+			defer t.Stop()
+			for range t.C {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if _, err := pg.PurgeExpiredChallenges(ctx); err != nil {
+					slog.Warn("passkey: eskirgan challenge'lar tozalanmadi", "err", err)
+				}
+				cancel()
+			}
+		}()
+	}
+	// PK-1: native ilovalar (assetlinks.json + Android origin'lari; AASA).
+	// Noto'g'ri qiymat — passkey O'CHIQ (jimgina noto'g'ri ilovaga ruxsat
+	// berishdan ko'ra), qolgan kirish usullari ishlaydi.
+	apps, errA := identity.ParseAndroidApps(os.Getenv("PASSKEY_ANDROID_APPS"))
+	ids, errI := identity.ParseAppleAppIDs(os.Getenv("PASSKEY_APPLE_APP_IDS"))
+	if errA != nil || errI != nil {
+		slog.Error("passkey O'CHIQ: native ilova sozlamasi noto'g'ri", "android", errA, "apple", errI)
+		pks = nil
+	}
+	pkCfg.AndroidApps, pkCfg.AppleAppIDs = apps, ids
 	deps := identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box, Passkeys: pks, Passkey: pkCfg}
 	// Plane 317: parol ixtiyoriy — sozlama bazada (xotirada: dev).
 	if pool != nil {

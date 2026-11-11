@@ -147,7 +147,7 @@ func (m *MerchantAuth) PasskeyDiscoverOptions(ctx context.Context, clientID stri
 	if m.wa == nil {
 		return nil, "", ErrPasskeyDisabled
 	}
-	if _, err := m.appFor(clientID); err != nil {
+	if _, _, err := m.passkeyClient(clientID); err != nil {
 		return nil, "", err
 	}
 	opts, sess, err := m.wa.BeginDiscoverableLogin(webauthn.WithUserVerification(protocol.VerificationRequired))
@@ -165,7 +165,7 @@ func (m *MerchantAuth) PasskeyDiscoverLogin(ctx context.Context, clientID, state
 	if m.wa == nil {
 		return nil, ErrPasskeyDisabled
 	}
-	app, err := m.appFor(clientID)
+	realm, app, err := m.passkeyClient(clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,16 +221,9 @@ func (m *MerchantAuth) PasskeyDiscoverLogin(ctx context.Context, clientID, state
 		m.guard.Fail(u.ID)
 		return nil, ErrMFAInvalid
 	}
-	kind, org, err := m.classify(ctx, u, app)
-	switch {
-	case errors.Is(err, ErrAppNotAllowed):
-		m.deny(ctx, u.ID, clientID, "app_not_allowed", meta)
-		return nil, ErrAppNotAllowed
-	case err != nil:
+	org, err := m.passkeySessionOrg(ctx, u, clientID, realm, app, meta)
+	if err != nil {
 		return nil, err
-	case kind == kindNone:
-		m.deny(ctx, u.ID, clientID, "not_merchant", meta)
-		return nil, ErrMFAInvalid
 	}
 	if data, err := json.Marshal(cred); err == nil {
 		if err := m.d.Passkeys.Touch(ctx, u.ID, base64.RawURLEncoding.EncodeToString(cred.ID), data, m.svc.now()); err != nil {

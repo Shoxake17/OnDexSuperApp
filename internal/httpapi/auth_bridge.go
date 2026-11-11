@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"chustapp/internal/identity"
 	"chustapp/internal/users"
 )
 
@@ -47,7 +48,8 @@ func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, er
 	}
 	// A6: admin tokeni faqat TOTP (yoki tiklash kodi) bilan ochilgan
 	// sessiyadan — ikkinchi omilsiz admin sessiyasi hech qachon o'tmaydi.
-	if c.Realm == users.RealmPlatform && !slices.Contains(c.AMR, "totp") && !slices.Contains(c.AMR, "recovery") {
+	// PK-2: TOTP, tiklash kodi YOKI UV bilan passkey (identity.StrongAMR).
+	if c.Realm == users.RealmPlatform && !identity.StrongAMR(c.AMR) {
 		return nil, errSessionGone
 	}
 	u, uerr := s.UserRepo.GetByID(ctx, c.Subject)
@@ -65,7 +67,7 @@ func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, er
 		iat = jwt.NewNumericDate(time.Unix(c.AuthTime, 0))
 	}
 	return &users.Claims{Role: u.Role, EntityID: u.EntityID,
-		PhoneProven: c.Realm == users.RealmCustomer && (slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "email")),
+		PhoneProven:      c.Realm == users.RealmCustomer && (slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "email")),
 		RegisteredClaims: jwt.RegisteredClaims{Subject: u.ID, IssuedAt: iat, ExpiresAt: c.ExpiresAt, ID: c.ID},
 	}, nil
 }

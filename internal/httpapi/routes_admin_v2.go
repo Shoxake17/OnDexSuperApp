@@ -3,8 +3,8 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"slices"
 
+	"chustapp/internal/identity"
 	"chustapp/internal/users"
 )
 
@@ -28,7 +28,7 @@ func (s *Server) adminV2(next http.HandlerFunc) http.HandlerFunc {
 		}
 		s.authV2([]users.Realm{users.RealmPlatform}, func(w http.ResponseWriter, r *http.Request) {
 			c := claimsV2From(r)
-			if !slices.Contains(c.AMR, "totp") && !slices.Contains(c.AMR, "recovery") {
+			if !identity.StrongAMR(c.AMR) {
 				httpError(w, http.StatusUnauthorized, errors.New("admin sessiyasi ikki bosqichli tasdiqsiz — qaytadan kiring"))
 				return
 			}

@@ -89,13 +89,19 @@ func (r *PgPasskeyStore) Delete(ctx context.Context, userID, id string) error {
 }
 
 func (r *PgPasskeyStore) UseChallenge(ctx context.Context, hash []byte, expires time.Time) (bool, error) {
-	if _, err := r.pool.Exec(ctx, `DELETE FROM webauthn_used_challenges WHERE expires_at < now()`); err != nil {
-		return false, err
-	}
 	tag, err := r.pool.Exec(ctx, `INSERT INTO webauthn_used_challenges (hash, expires_at) VALUES ($1, $2)
 		ON CONFLICT (hash) DO NOTHING`, hash, expires)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// PurgeExpiredChallenges — muddati o'tgan bir martalik challenge/nonce'larni
+// o'chiradi. Fon vazifasidan (5 daqiqada bir) chaqiriladi: ilgari HAR passkey/
+// mfa so'rovida DELETE bajarilardi — yuklama ostida ortiqcha yozish va qulf.
+// Eskirgan yozuv xavfsizlikka ta'sir qilmaydi (holat muddati alohida tekshiriladi).
+func (r *PgPasskeyStore) PurgeExpiredChallenges(ctx context.Context) (int64, error) {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM webauthn_used_challenges WHERE expires_at < now()`)
+	return tag.RowsAffected(), err
 }

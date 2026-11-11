@@ -61,6 +61,9 @@ type MemStore struct {
 	mu    sync.Mutex
 	creds map[string]Credential // ID ->
 	used  map[string]time.Time
+	// lastSweep — eskirganlar ko'pi bilan 30 soniyada bir tozalanadi (har
+	// chaqiruvda butun xaritani aylanish yuklama ostida kvadratik edi).
+	lastSweep time.Time
 }
 
 func NewMemStore() *MemStore {
@@ -128,9 +131,12 @@ func (s *MemStore) UseChallenge(_ context.Context, hash []byte, expires time.Tim
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
-	for k, exp := range s.used {
-		if exp.Before(now) {
-			delete(s.used, k)
+	if now.Sub(s.lastSweep) >= 30*time.Second {
+		s.lastSweep = now
+		for k, exp := range s.used {
+			if exp.Before(now) {
+				delete(s.used, k)
+			}
 		}
 	}
 	k := string(hash)

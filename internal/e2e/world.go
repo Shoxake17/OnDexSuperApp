@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,6 +212,18 @@ type Options struct {
 	Live *LiveMulticard
 }
 
+// E2EAndroidApp / E2EAppleAppID — PK-1: native ilova passkey sinovi uchun
+// (imzo — soxta, faqat test; assetlinks.json va Android origin shundan).
+var (
+	E2EAndroidApp = identity.AndroidApp{Package: "com.ondex.waiter", Fingerprint: e2eFingerprint()}
+	E2EAppleAppID = "ABCDE12345.com.ondex.waiter"
+)
+
+func e2eFingerprint() []byte {
+	s := sha256.Sum256([]byte("e2e-waiter-signing-cert"))
+	return s[:]
+}
+
 // NewWorldWith — NewWorld, sozlamalar bilan.
 func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	t.Helper()
@@ -410,7 +423,8 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 	w.MerchantAuth, err = identity.NewMerchantAuth(w.Identity, identity.MerchantDeps{Users: w.AuthSvc, Repo: w.Users,
-		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox, Passkeys: passkey.NewMemStore(), Prefs: w.LoginPrefs})
+		Authz: w.Authz, MFA: mfa.NewMemStore(), Box: mfaBox, Passkeys: passkey.NewMemStore(), Prefs: w.LoginPrefs,
+		Passkey: identity.PasskeyConfig{AndroidApps: []identity.AndroidApp{E2EAndroidApp}, AppleAppIDs: []string{E2EAppleAppID}}})
 	if err != nil {
 		t.Fatal(err)
 	}

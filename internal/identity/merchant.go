@@ -108,6 +108,8 @@ type MerchantAuth struct {
 	// wa, pkKey — passkey (`initPasskeys`); wa nil = o'chiq.
 	wa    *webauthn.WebAuthn
 	pkKey []byte
+	rpID  string // passkey RP ID (PasskeyRPID; .well-known fayllari uchun)
+	pkCfg PasskeyConfig
 }
 
 // Invite — xodim taklifi (yangi yoki qayta) xabari uchun.
@@ -162,7 +164,10 @@ func NewMerchantAuth(svc *Service, d MerchantDeps) (*MerchantAuth, error) {
 		m.nonces = d.Passkeys
 	}
 	if err := m.initPasskeys(); err != nil {
-		return nil, err
+		// Passkey sozlamasi xatosi BUTUN kirishni o'chirmasin: passkey o'chiq,
+		// parol/kod/TOTP ishlaydi; xato logda aniq ko'rinadi.
+		slog.Error("passkey O'CHIQ: sozlama xatosi", "err", err)
+		m.wa = nil
 	}
 	return m, nil
 }

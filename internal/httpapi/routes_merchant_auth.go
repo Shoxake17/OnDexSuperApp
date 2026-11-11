@@ -78,12 +78,28 @@ func respondPasskeyError(w http.ResponseWriter, err error) {
 	case errors.Is(err, identity.ErrPasskeyDisabled):
 		httpError(w, http.StatusServiceUnavailable, err)
 	case errors.Is(err, identity.ErrPasskeyState), errors.Is(err, identity.ErrPasskeyNone),
+		errors.Is(err, identity.ErrStepUpRequired), errors.Is(err, identity.ErrPhoneStepUpRequired),
 		errors.Is(err, identity.ErrPasskeyNeedsTOTP), errors.Is(err, passkey.ErrTooMany), errors.Is(err, passkey.ErrExists):
 		httpError(w, http.StatusBadRequest, err)
 	case errors.Is(err, passkey.ErrNotFound):
 		httpError(w, http.StatusNotFound, err)
 	default:
 		respondMerchantAuthError(w, err)
+	}
+}
+
+// respondMePasskey — ilova ichidagi passkey boshqaruvi: noto'g'ri kod 400
+// (401 EMAS — ilova 401 ni "sessiya tugadi" deb foydalanuvchini chiqaradi).
+func respondMePasskey(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, identity.ErrMFAInvalid):
+		httpError(w, http.StatusBadRequest, errors.New("kod noto'g'ri"))
+	case errors.Is(err, identity.ErrPasskeyNeedsTOTP):
+		httpError(w, http.StatusBadRequest, err)
+	case errors.Is(err, users.ErrInvalidCredentials):
+		httpError(w, http.StatusForbidden, errors.New("bu akkauntda passkey qo'shib bo'lmaydi"))
+	default:
+		respondPasskeyError(w, err)
 	}
 }
 
@@ -347,6 +363,115 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, tok)
 	})
 
+	// PK-1/PK-2: ilova ICHIDAN passkey boshqarish (Windows, Android, iOS) —
+	// markaziy sessiya tokeni (Bearer) bilan, barcha realmlar. Qo'shish va
+	// o'chirish egalikni HOZIR isbotlash bilan (TOTP yoki Telegram kodi).
+	// Admin: IP ro'yxati + kuchli ikkinchi omil bilan ochilgan sessiya.
+	me := func(next func(w http.ResponseWriter, r *http.Request, c *identity.AccessClaims)) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !s.merchantAuthReady(w) || rateLimited(w, passkeyIPLimiter, clientIP(r)) {
+				return
+			}
+			s.authV2([]users.Realm{users.RealmMerchant, users.RealmCustomer, users.RealmPlatform},
+				func(w http.ResponseWriter, r *http.Request) {
+					c := claimsV2From(r)
+					if c.Realm == users.RealmPlatform && (!s.adminIPAllowed(r) || !identity.StrongAMR(c.AMR)) {
+						httpError(w, http.StatusForbidden, errAdminIPDenied)
+						return
+					}
+					noStore(w)
+					next(w, r, c)
+				})(w, r)
+		}
+	}
+	mux.HandleFunc("GET /v2/me/passkeys", me(func(w http.ResponseWriter, r *http.Request, c *identity.AccessClaims) {
+		list, err := s.MerchantAuth.ListPasskeys(r.Context(), c.Subject)
+		if err != nil {
+			respondPasskeyError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"passkeys": list, "rp_id": s.MerchantAuth.PasskeyRPID()})
+	}))
+	mux.HandleFunc("POST /v2/me/passkeys/options", me(func(w http.ResponseWriter, r *http.Request, c *identity.AccessClaims) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if len(body.Code) > 32 {
+			httpError(w, http.StatusBadRequest, errors.New("maydon juda uzun"))
+			return
+		}
+		opts, state, err := s.MerchantAuth.PasskeyRegisterOptions(r.Context(), c.Subject, body.Code, merchantMeta(r, ""))
+		if err != nil {
+			respondMePasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"public_key": opts.Response, "state": state})
+	}))
+	mux.HandleFunc("POST /v2/me/passkeys", me(func(w http.ResponseWriter, r *http.Request, c *identity.AccessClaims) {
+		var body struct {
+			State      string          `json:"state"`
+			Credential json.RawMessage `json:"credential"`
+			Name       string          `json:"name"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if len(body.State) > 16<<10 || len(body.Name) > 256 || len(body.Credential) == 0 {
+			httpError(w, http.StatusBadRequest, identity.ErrPasskeyState)
+			return
+		}
+		v, err := s.MerchantAuth.PasskeyRegister(r.Context(), c.Subject, body.State, body.Credential, body.Name, merchantMeta(r, ""))
+		if err != nil {
+			respondMePasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, v)
+	}))
+	mux.HandleFunc("POST /v2/me/passkeys/delete", me(func(w http.ResponseWriter, r *http.Request, c *identity.AccessClaims) {
+		var body struct {
+			ID   string `json:"id"`
+			Code string `json:"code"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if body.ID == "" || len(body.ID) > 1400 || len(body.Code) > 32 {
+			httpError(w, http.StatusBadRequest, errors.New("passkey ko'rsatilmagan"))
+			return
+		}
+		if err := s.MerchantAuth.DeletePasskey(r.Context(), c.Subject, body.ID, body.Code, merchantMeta(r, "")); err != nil {
+			respondMePasskey(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	}))
+
+	// PK-1: native ilovalarni RP domeniga bog'lash. ondex.uz (Next.js)
+	// bularni shu yerdan uzatadi. Sozlanmagan bo'lsa 404 (bo'sh ro'yxat
+	// "hech qaysi ilova" degani — bu ham to'g'ri, lekin 404 aniqroq).
+	wellKnown := func(get func() ([]byte, bool)) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if s.MerchantAuth == nil {
+				http.NotFound(w, r)
+				return
+			}
+			b, ok := get()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			_, _ = w.Write(b)
+		}
+	}
+	mux.HandleFunc("GET /.well-known/assetlinks.json", wellKnown(func() ([]byte, bool) { return s.MerchantAuth.PasskeyAssetLinks() }))
+	mux.HandleFunc("GET /.well-known/apple-app-site-association", wellKnown(func() ([]byte, bool) { return s.MerchantAuth.PasskeyAppleAssociation() }))
+
 	// Parolsiz kirish (Plane 317): passkey — BIRINCHI va yagona bosqich.
 	// allowCredentials bo'sh (brauzer qurilmadagi kalitni o'zi taklif qiladi),
 	// ya'ni telefon raqami so'ralmaydi va akkaunt mavjudligi oshkor bo'lmaydi.
@@ -358,6 +483,11 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			ClientID string `json:"client_id"`
 		}
 		if !decodeJSON(w, r, &req) {
+			return
+		}
+		// PK-2: admin passkey kirishi ham ADMIN_ALLOWED_CIDRS bilan cheklangan.
+		if req.ClientID == identity.AdminClientID && !s.adminIPAllowed(r) {
+			httpError(w, http.StatusForbidden, errAdminIPDenied)
 			return
 		}
 		opts, state, err := s.MerchantAuth.PasskeyDiscoverOptions(r.Context(), req.ClientID)
@@ -384,6 +514,10 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 		}
 		if len(req.State) > 16<<10 || len(req.Credential) == 0 {
 			httpError(w, http.StatusBadRequest, identity.ErrPasskeyState)
+			return
+		}
+		if req.ClientID == identity.AdminClientID && !s.adminIPAllowed(r) {
+			httpError(w, http.StatusForbidden, errAdminIPDenied)
 			return
 		}
 		out, err := s.MerchantAuth.PasskeyDiscoverLogin(r.Context(), req.ClientID, req.State, req.Credential,

@@ -115,7 +115,7 @@ func (k *softKey) get(t *testing.T, opts map[string]any, origin string) json.Raw
 func TestPasskeySecondFactor(t *testing.T) {
 	w := NewWorld(t, "Passkey (WebAuthn) — fishingga chidamli ikkinchi bosqich (AUD-4)")
 	ctx := context.Background()
-	const origin, rpID = "https://api.e2e.ondex", "api.e2e.ondex"
+	const origin, rpID = "https://api.e2e.ondex", "e2e.ondex" // RP ID = eTLD+1 (PK-1)
 	const phone, pwd = "+998900000091", "Passkey-Egasi-2026x"
 
 	noRedirect := &http.Client{Timeout: 15 * time.Second,

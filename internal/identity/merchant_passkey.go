@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -57,6 +56,13 @@ const (
 type PasskeyConfig struct {
 	RPID    string
 	Origins []string
+	// OpaqueOrigins — Android ilova imzolari (android:apk-key-hash:...);
+	// ResolvePasskeyConfig Origins'dan ajratadi.
+	OpaqueOrigins []string
+	// AndroidApps — PASSKEY_ANDROID_APPS: origin'lari OpaqueOrigins'ga,
+	// o'zi assetlinks.json'ga. AppleAppIDs — apple-app-site-association.
+	AndroidApps []AndroidApp
+	AppleAppIDs []string
 }
 
 // passkeyUser — webauthn.User adapteri.
@@ -72,11 +78,21 @@ func (p passkeyUser) WebAuthnName() string {
 	}
 	return p.u.ID
 }
+
+// WebAuthnDisplayName — passkey ro'yxatida ko'rinadi. Bitta raqamda bir
+// nechta akkaunt (mijoz, biznes, admin) bo'lishi mumkin — realm yoziladi.
 func (p passkeyUser) WebAuthnDisplayName() string {
-	if n := strings.TrimSpace(p.u.Name); n != "" {
-		return n
+	name := strings.TrimSpace(p.u.Name)
+	if name == "" {
+		name = p.WebAuthnName()
 	}
-	return p.WebAuthnName()
+	switch users.RealmForRole(p.u.Role) {
+	case users.RealmMerchant:
+		return name + " (OnDex Biznes)"
+	case users.RealmPlatform:
+		return name + " (OnDex Admin)"
+	}
+	return name + " (OnDex)"
 }
 func (p passkeyUser) WebAuthnCredentials() []webauthn.Credential { return p.creds }
 
@@ -94,21 +110,14 @@ func (m *MerchantAuth) initPasskeys() error {
 	if m.d.Passkeys == nil {
 		return nil
 	}
-	cfg := m.d.Passkey
-	if cfg.RPID == "" || len(cfg.Origins) == 0 {
-		iu, err := url.Parse(m.svc.issuer.issuer)
-		if err != nil || iu.Hostname() == "" {
-			return errors.New("passkey: issuer manzilidan RP aniqlanmadi")
-		}
-		if cfg.RPID == "" {
-			cfg.RPID = iu.Hostname()
-		}
-		if len(cfg.Origins) == 0 {
-			cfg.Origins = []string{iu.Scheme + "://" + iu.Host}
-		}
+	cfg, err := ResolvePasskeyConfig(m.d.Passkey, m.svc.issuer.issuer)
+	if err != nil {
+		return err
 	}
+	m.rpID = cfg.RPID
+	m.pkCfg = cfg
 	wa, err := webauthn.New(&webauthn.Config{
-		RPID: cfg.RPID, RPDisplayName: "OnDex", RPOrigins: cfg.Origins,
+		RPID: cfg.RPID, RPDisplayName: "OnDex", RPOrigins: cfg.Origins, RPOpaqueOrigins: cfg.OpaqueOrigins,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			// Required: kalit qurilmada SAQLANADI (discoverable) — telefon
 			// raqamisiz kirish (Plane 317) shunga tayanadi.
@@ -332,12 +341,8 @@ func (m *MerchantAuth) PasskeyRegisterOptions(ctx context.Context, userID, code 
 	if m.wa == nil {
 		return nil, "", ErrPasskeyDisabled
 	}
-	if ok, err := m.HasTOTP(ctx, userID); err != nil {
-		return nil, "", err
-	} else if !ok {
-		return nil, "", ErrPasskeyNeedsTOTP
-	}
-	if err := m.StepUp(ctx, userID, code, "passkey_add", meta); err != nil {
+	// PK-2: TOTP ulangan — Authenticator kodi; xodim/mijoz — Telegram kodi.
+	if err := m.passkeyStepUp(ctx, userID, code, "passkey_add", meta); err != nil {
 		return nil, "", err
 	}
 	pu, list, err := m.passkeyUserOf(ctx, userID)
@@ -416,7 +421,7 @@ func (m *MerchantAuth) DeletePasskey(ctx context.Context, userID, id, code strin
 	if m.wa == nil {
 		return ErrPasskeyDisabled
 	}
-	if err := m.StepUp(ctx, userID, code, "passkey_remove", meta); err != nil {
+	if err := m.passkeyStepUp(ctx, userID, code, "passkey_remove", meta); err != nil {
 		return err
 	}
 	if err := m.d.Passkeys.Delete(ctx, userID, id); err != nil {
@@ -426,3 +431,6 @@ func (m *MerchantAuth) DeletePasskey(ctx context.Context, userID, id, code strin
 		Realm: string(users.RealmMerchant), IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 	return nil
 }
+
+// PasskeyRPID — passkey RP ID (bo'sh — passkey o'chiq).
+func (m *MerchantAuth) PasskeyRPID() string { return m.rpID }
