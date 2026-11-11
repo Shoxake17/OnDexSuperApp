@@ -32,11 +32,11 @@ dependencies:
   # speech_to_text va flutter_tts OLIB TASHLANDI: ular o'zbek tilini
   # qo'llamaydi - telefonda tanish ru-RU ga tushardi, javob esa o'zbek
   # matnini rus ovozi bilan o'qirdi (lib/data/ai_live.dart izohiga qarang).
-  record: ^7.1.1
+  record: ^7.1.2
   flutter_pcm_sound: ^3.3.3
-  shared_preferences: ^2.2.0
-  geolocator: ^13.0.1
-  google_maps_flutter: ^2.10.0
+  shared_preferences: ^2.5.6
+  geolocator: ^14.1.2
+  google_maps_flutter: ^2.19.0
   # OnDexMap xaritasi (`lib/map/`). Google Maps'ning O'RNIGA emas,
   # YONIDA: qaysi biri ishlashini serverdagi `GOOGLE_MAP` bayrog'i hal qiladi
   # (`lib/map/map_backend.dart` izohiga qarang).
@@ -46,19 +46,19 @@ dependencies:
   # vektor-tile paketlari kerak emas — ularning flutter_map 8 bilan
   # ishlaydigan versiyalari hali beta (2026-09-27 da tekshirilgan).
   maplibre_gl: ^0.27.1
-  web: ^1.1.0
+  web: ^1.1.2
   webview_flutter: ^4.9.0
   webview_flutter_android: ^4.0.0
   flutter_secure_storage: ^10.3.1
   firebase_core: ^4.13.0
-  firebase_auth: ^6.5.7
-  url_launcher: ^6.3.2
+  firebase_auth: ^6.7.1
+  url_launcher: ^6.3.3
   google_sign_in: ^7.2.0
-  app_links: ^7.2.1
+  app_links: ^7.2.2
   local_auth: ^3.0.2
-  local_auth_android: ^2.0.9
-  crypto: ^3.0.7
-  firebase_messaging: ^16.5.0
+  local_auth_android: ^2.3.0
+  crypto: ^3.0.8
+  firebase_messaging: ^16.7.1
   # Stol QR kodini ILOVA ICHIDA skanerlash uchun (`qr_scan_screen.dart`).
   #
   # NEGA KERAK: Telegram Mini App'da kamerani Telegram beradi
@@ -66,17 +66,17 @@ dependencies:
   # yerda QR tugmasi faqat "telefon kamerasi bilan skanerlang" degan
   # tushuntirishni ko'rsatardi, ya'ni stol oqimi ilovada amalda
   # ishlamasdi.
-  mobile_scanner: ^7.4.0
+  mobile_scanner: ^7.5.0
   # Taomni kamera tasviri ustida ko'rsatish (`ar/ar_camera_screen.dart`).
   #
   # `mobile_scanner` ham kamera oynasini bera olardi, lekin u HAR
   # KADRDA QR qidiradi — bu yerda esa skanerlash umuman kerak emas va
   # u faqat batareyani yeydi. Kamera oynasi uchun to'g'ri vosita —
   # rasmiy `camera` plagini.
-  camera: ^0.11.0
+  camera: ^0.12.2
   posthog_flutter: ^5.39.0
   lucide_icons_flutter: ^3.1.20
-  image_picker: ^1.2.3
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:
