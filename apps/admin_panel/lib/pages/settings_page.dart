@@ -173,6 +173,9 @@ class _SettingsPageState extends State<SettingsPage> {
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          // PK-3: admin passkey'i (qo'shish/o'chirish — Authenticator kodi bilan).
+          PasskeySettingsCard(passkeys: OnDexPasskeys(api)),
+          const SizedBox(height: 16),
           const _MapModeCard(),
           const SizedBox(height: 16),
           if (_loadError != null)

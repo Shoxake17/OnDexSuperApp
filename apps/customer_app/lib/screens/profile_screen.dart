@@ -546,6 +546,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
+                // ── Passkey (PK-4): ixtiyoriy, bir tegishda kirish ──
+                const SizedBox(height: 16),
+                PasskeySettingsCard(
+                  passkeys: OnDexPasskeys(api),
+                  codeLabel: 'Telegram kodi',
+                  requestCode: () => sendTelegramStepUpCode(api),
+                ),
+
                 // ── Chiqish ────────────────────────────────────────
                 const SizedBox(height: 28),
                 SizedBox(

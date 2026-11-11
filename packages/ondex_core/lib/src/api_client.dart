@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'analytics.dart';
 import 'config.dart';
@@ -20,12 +21,19 @@ const _noRefresh = {
   '/v2/auth/mfa/verify',
   '/v2/auth/mfa/totp/enroll',
   '/v2/auth/mfa/totp/confirm',
+  '/v2/auth/passkey/options',
+  '/v2/auth/passkey/login',
 };
 
 /// Biznes egasi kirishining bir bosqichi natijasi.
 class MerchantStep {
   MerchantStep._done(this.data) : done = true, mfaToken = null, method = null;
   MerchantStep._challenge(this.mfaToken, this.method, this.data) : done = false;
+
+  /// Faqat testlar uchun (sessiya o'rnatilgan natija).
+  @visibleForTesting
+  factory MerchantStep.doneForTest(Map<String, dynamic> data) =
+      MerchantStep._done;
 
   /// Sessiya o'rnatildi (token omborda).
   final bool done;
@@ -45,6 +53,17 @@ class TotpEnrollment {
   const TotpEnrollment({required this.secret, required this.uri});
   final String secret;
   final String uri;
+}
+
+/// Passkey so'rovi: [publicKey] — standart WebAuthn options JSON, [state] —
+/// server imzolagan holat (o'zgartirmasdan qaytariladi).
+class PasskeyOptions {
+  /// Server javobidan (`public_key` + `state`).
+  PasskeyOptions.fromJson(dynamic d)
+    : publicKey = Map<String, dynamic>.from((d as Map)['public_key'] as Map),
+      state = d['state'] as String;
+  final Map<String, dynamic> publicKey;
+  final String state;
 }
 
 /// Serverdan kelgan xato — barcha ilovalar shu bitta turdan foydalanadi.
@@ -348,6 +367,55 @@ class ApiClient {
     await _setCentral(Map<String, dynamic>.from(d['tokens'] as Map));
     return List<String>.from(d['recovery_codes'] as List);
   }
+
+  // ---------- Passkey (PK-3/PK-4) — `OnDexPasskeys` orqali ishlating ----------
+
+  /// Parolsiz kirish so'rovi (telefon raqamisiz; brauzer/OS kalitni o'zi tanlaydi).
+  Future<PasskeyOptions> passkeyOptions(String clientId) async =>
+      PasskeyOptions.fromJson(
+        await send('POST', '/v2/auth/passkey/options', {'client_id': clientId}),
+      );
+
+  /// Imzolangan javob -> sessiya (token + refresh omborga).
+  Future<MerchantStep> passkeyLogin({
+    required String clientId,
+    required String state,
+    required Map<String, dynamic> credential,
+    String? deviceName,
+  }) => _merchantStep('/v2/auth/passkey/login', {
+    'client_id': clientId,
+    'state': state,
+    'credential': credential,
+    if (deviceName != null) 'device_name': deviceName,
+  });
+
+  /// Akkauntdagi passkey'lar (kalit ma'lumotisiz: id, name, created_at, ...).
+  Future<List<Map<String, dynamic>>> myPasskeys() async {
+    final d = await send('GET', '/v2/me/passkeys');
+    return [
+      for (final p in ((d as Map)['passkeys'] as List? ?? const []))
+        Map<String, dynamic>.from(p as Map),
+    ];
+  }
+
+  /// Yangi passkey: [code] — Authenticator (TOTP) yoki Telegram kodi.
+  Future<PasskeyOptions> passkeyRegisterOptions(String code) async =>
+      PasskeyOptions.fromJson(
+        await send('POST', '/v2/me/passkeys/options', {'code': code}),
+      );
+
+  Future<void> passkeyRegister({
+    required String state,
+    required Map<String, dynamic> credential,
+    String? name,
+  }) => send('POST', '/v2/me/passkeys', {
+    'state': state,
+    'credential': credential,
+    if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+  });
+
+  Future<void> passkeyDelete(String id, String code) =>
+      send('POST', '/v2/me/passkeys/delete', {'id': id, 'code': code});
 
   Future<MerchantStep> _merchantStep(
     String path,

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ondex_core/ondex_core.dart' show LegalSection, appVersionLabel;
+import 'package:ondex_core/ondex_core.dart'
+    show LegalSection, OnDexPasskeys, PasskeySettingsCard, appVersionLabel, sendTelegramStepUpCode;
+
+import '../api.dart' show api;
 
 import '../state/waiter_store.dart';
 import '../theme.dart';
@@ -113,6 +116,14 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
 
+        // PK-4: passkey — keyingi kirish telefon raqamisiz, bir tegishda.
+        // Xodimda Authenticator yo'q — qo'shish Telegram kodi bilan.
+        const SizedBox(height: 12),
+        PasskeySettingsCard(
+          passkeys: OnDexPasskeys(api),
+          codeLabel: 'Telegram kodi',
+          requestCode: () => sendTelegramStepUpCode(api),
+        ),
         const SizedBox(height: 12),
         _Section(
           children: [

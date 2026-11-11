@@ -836,6 +836,13 @@ class ProfileTab extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
+            // PK-4: passkey — keyingi kirish bir tegishda (qo'shish Telegram kodi bilan).
+            PasskeySettingsCard(
+              passkeys: OnDexPasskeys(api),
+              codeLabel: 'Telegram kodi',
+              requestCode: () => sendTelegramStepUpCode(api),
+            ),
+            const SizedBox(height: 16),
             const Divider(height: 1, color: kLine),
             // Huquqiy hujjatlar — maxfiylik siyosatiga havola MAJBURIY
             // (bug.md 70-band).

@@ -96,6 +96,8 @@ class _LoginScreenState extends State<LoginScreen>
       : _email.text.trim();
 
 
+  final _passkeys = OnDexPasskeys(api);
+
   Future<void> _goHome() async {
     await api.saveSession();
     // ┌─ POSTHOG IDENTIFY: BARCHA LOGIN USULLARI UCHUN ──────────┐
@@ -381,6 +383,17 @@ class _LoginScreenState extends State<LoginScreen>
               //       keyboardType: TextInputType.emailAddress,
               //     ),
               //   ),
+              // PK-4: passkey — ixtiyoriy, telefon raqamisiz bir tegishda
+              // (akkauntda passkey bo'lsa; Profil -> Passkey'lar).
+              if (!_smsMode)
+                PasskeyLoginButton(
+                  passkeys: _passkeys,
+                  clientId: 'ondex-customer',
+                  deviceName: 'OnDex (mijoz)',
+                  enabled: !_busy,
+                  onSignedIn: (_) => _goHome(),
+                  onError: (m) => snack(m, error: true),
+                ),
               AuthLabelled(
                 label: 'Telefon raqami',
                 child: AuthPhoneField(controller: _phone),

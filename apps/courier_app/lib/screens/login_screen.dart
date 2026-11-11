@@ -123,18 +123,41 @@ class _LoginScreenState extends State<LoginScreen> {
       // Markaziy sessiya (A4a): access + refresh, ombor ApiClient'da.
       await api.merchantVerify(_phone.text.trim(), _code.text.trim(),
           clientId: 'ondex-go', deviceName: 'OnDexGO');
-      final user = await api.me();
-      final role = user['role'] as String? ?? '';
-      final entityId = user['entity_id'] as String? ?? '';
-      final home = (role == 'courier' && entityId.isNotEmpty)
-          ? await courierHome(entityId)
-          : const RegisterScreen();
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => home));
+      await _afterLogin();
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {
       setState(() => _error = 'Serverga ulanib bo\'lmadi');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  final _passkeys = OnDexPasskeys(api);
+
+  /// Sessiya ochildi (kod YOKI passkey): kuryer -> bosh ekran, aks holda ro'yxatdan o'tish.
+  Future<void> _afterLogin() async {
+    final user = await api.me();
+    final role = user['role'] as String? ?? '';
+    final entityId = user['entity_id'] as String? ?? '';
+    final home = (role == 'courier' && entityId.isNotEmpty)
+        ? await courierHome(entityId)
+        : const RegisterScreen();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => home));
+  }
+
+  Future<void> _afterPasskey() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await _afterLogin();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Serverga ulanib bo\'lmadi');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -182,6 +205,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   const SizedBox(height: 32),
+                  // PK-4: passkey — telefon raqamisiz, bir tegishda.
+                  if (!_codeSent)
+                    PasskeyLoginButton(
+                      passkeys: _passkeys,
+                      clientId: 'ondex-go',
+                      deviceName: 'OnDexGO',
+                      enabled: !_busy,
+                      onSignedIn: (_) => _afterPasskey(),
+                      onError: (m) => setState(() => _error = m),
+                    ),
                   // Telefon raqami — PostHog seans yozuvida niqoblanadi.
                   PostHogMaskWidget(
                     child: TextField(

@@ -28,6 +28,7 @@ class AdminLoginScreen extends StatefulWidget {
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
+  final _passkeys = OnDexPasskeys(api);
   final _phone = TextEditingController(text: '+998');
   final _code = TextEditingController();
   final _password = TextEditingController();
@@ -298,6 +299,15 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     switch (_stage) {
       case _Stage.start:
         return [
+          // PK-3: admin passkey (server: faqat admin roli + IP ro'yxati).
+          PasskeyLoginButton(
+            passkeys: _passkeys,
+            clientId: 'admin-web',
+            deviceName: _deviceName,
+            enabled: !_busy,
+            onSignedIn: (s) => _run(() => _handle(s)),
+            onError: (m) => setState(() => _error = m),
+          ),
           TextField(
             controller: _phone,
             onSubmitted: (_) => _busy ? null : _submit(),

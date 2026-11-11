@@ -593,6 +593,9 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
                   const SizedBox(height: 16),
                   const _NotificationsCard(),
                   const SizedBox(height: 16),
+                  // PK-3: egasi passkey'ni shu yerdan qo'shadi (Authenticator kodi bilan).
+                  PasskeySettingsCard(passkeys: OnDexPasskeys(api)),
+                  const SizedBox(height: 16),
                   _DangerZone(onDelete: _showDeleteInfo),
                 ];
                 if (box.maxWidth >= 1100) {

@@ -20,6 +20,7 @@ dependencies:
   # Google Maps JS skriptini yuklash uchun (faqat veb build'da
   # kompilyatsiya qilinadi — `src/maps/` dagi shartli eksportga qarang).
   web: ^1.1.0
+  passkeys: 2.24.1
 
 dev_dependencies:
   flutter_test:

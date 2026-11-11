@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- PK-4: passkey (WebAuthn) — RP ondex.uz. Server
+	     https://ondex.uz/.well-known/apple-app-site-association da
+	     webcredentials.apps = ["<TEAMID>.com.ondex.waiter"] beradi
+	     (PASSKEY_APPLE_APP_IDS). Apple Developer'da App ID uchun
+	     "Associated Domains" yoqilishi SHART. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:ondex.uz</string>
+	</array>
+</dict>
+</plist>

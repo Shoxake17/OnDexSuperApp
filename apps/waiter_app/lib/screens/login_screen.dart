@@ -134,59 +134,80 @@ class _LoginScreenState extends State<LoginScreen> {
       // Markaziy sessiya (A4a): access + refresh, ombor ApiClient'da.
       await api.merchantVerify(_phone.text.trim(), _code.text.trim(),
           clientId: 'ondex-pro', deviceName: 'OnDexPro');
-      final user = await api.me();
-      final role = user['role'] as String? ?? '';
-      final entityId = user['entity_id'] as String? ?? '';
-
-      // ┌─ ROL TEKSHIRUVI ─────────────────────────────────────────┐
-      // Token muvaffaqiyatli olindi, lekin bu odam affitsiant
-      // bo'lmasligi mumkin (masalan oddiy mijoz o'z raqami bilan
-      // kirdi). Server baribir `/waiter/*` endpointlariga 403
-      // beradi, lekin foydalanuvchi buni tushunarsiz xato sifatida
-      // ko'rardi. Shuning uchun sabab SHU YERDA aytiladi.
-      //
-      // Tokenni SAQLAMAYMIZ ham — aks holda ilova keyingi ochilishda
-      // shu yaroqsiz sessiya bilan urinaverardi.
-      // └───────────────────────────────────────────────────────────┘
-      if (role != 'waiter' || entityId.isEmpty) {
-        // markazda ochilgan sessiya ham yopiladi (ochiq qolmasin)
-        await api.logout();
-        await api.clearSession();
-        if (mounted) {
-          setState(() => _error =
-              'Bu raqam affitsiant sifatida ro\'yxatdan o\'tmagan.\n'
-              'Restoran ma\'muriyatiga murojaat qiling.');
-        }
-        return;
-      }
-
-
-      // ┌─ POSTHOG IDENTIFY — ILK KIRISHDA HAM ISHLASHI SHART ──┐
-      // `main.dart` dagi tokenni tiklashda `api.me()` orqali
-      // identify() chaqiriladi. Lekin YANGI login (birinchi marta
-      // kirish) da keyingi ochilishgacha kutmaslik, darhol PostHog
-      // person yaratish uchun bu yerda ham identify() chaqiriladi.
-      // Aks holda admin panelda "Person not found" chiqadi.
-      // └────────────────────────────────────────────────────────┘
-      final userId = (user['id'] as String?) ?? '';
-      if (userId.isNotEmpty) {
-        Analytics.instance.identify(
-          userId: userId,
-          phone: user['phone'] as String?,
-          name: user['name'] as String?,
-          role: role,
-        );
-      }
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const WaiterHome()),
-      );
+      await _afterLogin();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  final _passkeys = OnDexPasskeys(api);
+
+  Future<void> _afterPasskey() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await _afterLogin();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Sessiya ochildi (kod YOKI passkey): rol tekshiruvi, identify, bosh ekran.
+  Future<void> _afterLogin() async {
+    final user = await api.me();
+    final role = user['role'] as String? ?? '';
+    final entityId = user['entity_id'] as String? ?? '';
+
+    // ┌─ ROL TEKSHIRUVI ─────────────────────────────────────────┐
+    // Token muvaffaqiyatli olindi, lekin bu odam affitsiant
+    // bo'lmasligi mumkin (masalan oddiy mijoz o'z raqami bilan
+    // kirdi). Server baribir `/waiter/*` endpointlariga 403
+    // beradi, lekin foydalanuvchi buni tushunarsiz xato sifatida
+    // ko'rardi. Shuning uchun sabab SHU YERDA aytiladi.
+    //
+    // Tokenni SAQLAMAYMIZ ham — aks holda ilova keyingi ochilishda
+    // shu yaroqsiz sessiya bilan urinaverardi.
+    // └───────────────────────────────────────────────────────────┘
+    if (role != 'waiter' || entityId.isEmpty) {
+      // markazda ochilgan sessiya ham yopiladi (ochiq qolmasin)
+      await api.logout();
+      await api.clearSession();
+      if (mounted) {
+        setState(() => _error =
+            'Bu raqam affitsiant sifatida ro\'yxatdan o\'tmagan.\n'
+            'Restoran ma\'muriyatiga murojaat qiling.');
+      }
+      return;
+    }
+
+
+    // ┌─ POSTHOG IDENTIFY — ILK KIRISHDA HAM ISHLASHI SHART ──┐
+    // `main.dart` dagi tokenni tiklashda `api.me()` orqali
+    // identify() chaqiriladi. Lekin YANGI login (birinchi marta
+    // kirish) da keyingi ochilishgacha kutmaslik, darhol PostHog
+    // person yaratish uchun bu yerda ham identify() chaqiriladi.
+    // Aks holda admin panelda "Person not found" chiqadi.
+    // └────────────────────────────────────────────────────────┘
+    final userId = (user['id'] as String?) ?? '';
+    if (userId.isNotEmpty) {
+      Analytics.instance.identify(
+        userId: userId,
+        phone: user['phone'] as String?,
+        name: user['name'] as String?,
+        role: role,
+      );
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const WaiterHome()),
+    );
   }
 
   @override
@@ -229,6 +250,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(fontSize: 13, color: kInkFaint),
                 ),
                 const SizedBox(height: 32),
+                // PK-4: passkey — telefon raqamisiz, bir tegishda (qurilma
+                // qo'llasa va akkauntda passkey bo'lsa).
+                if (!_codeSent)
+                  PasskeyLoginButton(
+                    passkeys: _passkeys,
+                    clientId: 'ondex-pro',
+                    deviceName: 'OnDexPro',
+                    enabled: !_busy,
+                    onSignedIn: (_) => _afterPasskey(),
+                    onError: (m) => setState(() => _error = m),
+                  ),
                 // Telefon raqami — PostHog seans yozuvida niqoblanadi.
                 PostHogMaskWidget(
                   child: TextField(

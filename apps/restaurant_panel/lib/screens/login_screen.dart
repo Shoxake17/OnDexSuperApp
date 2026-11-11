@@ -48,7 +48,9 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   final _code = TextEditingController();
   final _password = TextEditingController();
   final _password2 = TextEditingController();
-  bool _passwordMode = true;
+  // Plane 317: parol ixtiyoriy — standart yo'l Telegram kodi (passkey'dan keyin).
+  bool _passwordMode = false;
+  final _passkeys = OnDexPasskeys(api);
   bool _busy = false;
   String? _error;
   _Stage _stage = _Stage.start;
@@ -370,6 +372,15 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
     switch (_stage) {
       case _Stage.start:
         return [
+          // PK-3: passkey — asosiy yo'l (qurilma qo'llasa ko'rinadi).
+          PasskeyLoginButton(
+            passkeys: _passkeys,
+            clientId: _clientId,
+            deviceName: _deviceName,
+            enabled: !_busy,
+            onSignedIn: (s) => _run(() => _handle(s)),
+            onError: (m) => setState(() => _error = m),
+          ),
           TextField(
             controller: _phone,
             decoration: const InputDecoration(
