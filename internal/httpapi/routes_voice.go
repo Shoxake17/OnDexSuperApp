@@ -18,7 +18,7 @@ import (
 // voiceLimiter — kuryer bo'yicha: 6 ta bir zumda, keyin 5 soniyada bitta.
 // Ilova bitta buyurtmaga bir marta so'raydi; chegara pullik TTS'ga
 // sikl bilan urilishni to'xtatadi.
-var voiceLimiter = ratelimit.New(0.2, 6)
+var voiceLimiter = ratelimit.New(0.2, 6).Shared("voiceLimiter")
 
 func (s *Server) registerVoiceRoutes(mux *http.ServeMux) {
 	// GET /couriers/{id}/voice/arrival?order_id=... — "Siz <restoran>

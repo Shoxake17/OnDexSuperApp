@@ -26,7 +26,7 @@ import (
 // BARCHA sessiyalar yopiladi.
 // └───────────────────────────────────────────────────────────────────────┘
 
-var accountLimiter = ratelimit.New(1, 40) // akkaunt API: IP bo'yicha
+var accountLimiter = ratelimit.New(1, 40).Shared("accountLimiter") // akkaunt API: IP bo'yicha
 
 // clientDisplayName — sessiya ro'yxatida ilova nomi.
 var clientDisplayName = map[string]string{

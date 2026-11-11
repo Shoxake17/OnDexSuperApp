@@ -11,7 +11,7 @@ import (
 
 // ssoTokenLimiter — `/sso/identity`: chaqiruvchi klient SERVERI (bitta IP),
 // chegara kirish tezligidan yuqori, lekin sirni tanlashga yo'l qo'ymaydi.
-var ssoTokenLimiter = ratelimit.New(2, 30)
+var ssoTokenLimiter = ratelimit.New(2, 30).Shared("ssoTokenLimiter")
 
 // ssoReady — SSO sozlanganmi. Sozlanmagan bo'lsa javobni o'zi yozadi.
 func (s *Server) ssoReady(w http.ResponseWriter) bool {
@@ -48,7 +48,7 @@ func ssoStatus(err error) int {
 // `/sso/identity` — klient SERVERI siri bilan kimlikni qayta o'qish
 // (ShoxPos `merchantAccount.resolveUser`).
 // └───────────────────────────────────────────────────────────────────────┘
-func (s *Server) registerSSORoutes(mux *http.ServeMux) {	// POST /sso/identity {"client_id","client_secret","user_id"} — klient SERVERI
+func (s *Server) registerSSORoutes(mux *http.ServeMux) { // POST /sso/identity {"client_id","client_secret","user_id"} — klient SERVERI
 	// foydalanuvchi kimligini KODSIZ qayta o'qiydi (kategoriya o'zgarishi
 	// sessiya davomida ham yetib borishi uchun). Klient SIRI bilan tasdiqlanadi.
 	// Brauzerdan chaqirilmaydi.

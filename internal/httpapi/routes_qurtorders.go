@@ -17,7 +17,7 @@ import (
 )
 
 // Qurt buyurtma yaratish limiti (mijoz tokeni bo'yicha).
-var qurtOrderCreateLimiter = ratelimit.New(1, 20)
+var qurtOrderCreateLimiter = ratelimit.New(1, 20).Shared("qurtOrderCreateLimiter")
 
 // qurtOrderError — domen xatosini HTTP javobiga aylantiradi. Ichki xato matni
 // mijozga CHIQMAYDI (500 da umumiy xabar).

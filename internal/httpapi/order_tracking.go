@@ -52,7 +52,7 @@ const (
 
 // trackingLimiter — foydalanuvchi bo'yicha: ekran har joylashuv hodisasida
 // (≈10 s) so'raydi; 30 ta bir zumda, keyin soniyasiga bitta.
-var trackingLimiter = ratelimit.New(1, 30)
+var trackingLimiter = ratelimit.New(1, 30).Shared("trackingLimiter")
 
 type trackingRoute struct {
 	Points          []tracking.Point `json:"points"`

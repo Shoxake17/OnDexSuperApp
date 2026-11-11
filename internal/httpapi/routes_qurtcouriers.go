@@ -19,7 +19,7 @@ import (
 )
 
 // Qurt kuryeri amallari: kuryer bo'yicha cheklov (bosib yuborish, suiiste'mol).
-var qurtCourierLimiter = ratelimit.New(2, 30)
+var qurtCourierLimiter = ratelimit.New(2, 30).Shared("qurtCourierLimiter")
 
 // qurtCourierID — Qurt kuryeri yozuvining barqaror ID'si (akkaunt ID'sidan): qayta
 // qo'shilganda xuddi o'sha yozuv qaytadi va yetkazmalar/pul tarixi uzilmaydi.

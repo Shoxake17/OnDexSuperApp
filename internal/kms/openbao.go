@@ -78,8 +78,8 @@ func FromEnv() (Config, error) {
 		RoleID:     strings.TrimSpace(os.Getenv("VAULT_ROLE_ID")),
 		CACertFile: strings.TrimSpace(os.Getenv("VAULT_CACERT")),
 	}
-	read := func(env string) (string, error) {
-		p := strings.TrimSpace(os.Getenv(env))
+	read := func(env, p string) (string, error) {
+		p = strings.TrimSpace(p)
 		if p == "" {
 			return "", nil
 		}
@@ -90,10 +90,10 @@ func FromEnv() (Config, error) {
 		return strings.TrimSpace(string(b)), nil
 	}
 	var err error
-	if cfg.SecretID, err = read("VAULT_SECRET_ID_FILE"); err != nil {
+	if cfg.SecretID, err = read("VAULT_SECRET_ID_FILE", os.Getenv("VAULT_SECRET_ID_FILE")); err != nil {
 		return cfg, err
 	}
-	if cfg.Token, err = read("VAULT_TOKEN_FILE"); err != nil {
+	if cfg.Token, err = read("VAULT_TOKEN_FILE", os.Getenv("VAULT_TOKEN_FILE")); err != nil {
 		return cfg, err
 	}
 	return cfg, nil

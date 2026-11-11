@@ -32,6 +32,7 @@ import (
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicardpay"
 	"chustapp/internal/qurtorders"
+	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/secretstore"
 	"chustapp/internal/sso"
@@ -213,6 +214,10 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	t.Helper()
 	ctx := context.Background()
 	w := &World{scenario: scenario, client: &http.Client{Timeout: 15 * time.Second}}
+	// Paket darajasidagi limiterlar (verifyIPLimiter va h.k.) butun e2e
+	// paketida BITTA IP'ni ko'radi: oldingi ssenariy budjetni tugatib,
+	// keyingisi tasodifiy 429 olardi. Har dunyo toza hisob bilan boshlanadi.
+	ratelimit.ResetAll()
 
 	t.Cleanup(func() {
 		w.mu.Lock()

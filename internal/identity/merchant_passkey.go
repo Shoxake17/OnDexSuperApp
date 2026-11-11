@@ -285,6 +285,9 @@ func (m *MerchantAuth) VerifyPasskey(ctx context.Context, mfaToken, state string
 		}
 	}
 	m.guard.Reset(c.User)
+	if err := m.consumeMFA(ctx, c); err != nil {
+		return nil, err
+	}
 	// RFC 8176: hwk — apparat kaliti egaligi; user — foydalanuvchi tekshirildi.
 	return m.svc.Create(ctx, CreateInput{UserID: c.User, ClientID: c.Client, OrgID: c.Org,
 		AMR: append(slices.Clone(c.AMR), "hwk", "user"), Meta: meta})

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"chustapp/internal/httpapi"
 	"chustapp/internal/identity"
@@ -50,7 +51,7 @@ func mainKeySet(devMode bool) (*identity.KeySet, bool) {
 		if os.Getenv("AUTH_SIGNING_KEY_FILE") != "" {
 			slog.Error("AUTH_KMS=openbao bilan AUTH_SIGNING_KEY_FILE ham berilgan — fayl E'TIBORSIZ; uni serverdan o'chiring")
 		}
-		ks, err := remoteKeySet(envOr("AUTH_KMS_SIGNING_KEY", "ondex-identity"))
+		ks, err := remoteKeySet(envOr(os.Getenv("AUTH_KMS_SIGNING_KEY"), "ondex-identity"))
 		if err != nil {
 			slog.Error("markaziy sessiya O'CHIQ: KMS kalitlari", "err", err)
 			return nil, false
@@ -244,7 +245,7 @@ func wireInviteAlerts(m *identity.MerchantAuth, tg *telegram.Client, ur users.Re
 // `AUTH_PLATFORM_PREVIOUS_KEY_FILES`. Dev'da yo'q bo'lsa vaqtinchalik kalit.
 func loadPlatformKeys(devMode bool) *identity.KeySet {
 	if kmsEnabled() {
-		ks, err := remoteKeySet(envOr("AUTH_KMS_PLATFORM_KEY", "ondex-platform"))
+		ks, err := remoteKeySet(envOr(os.Getenv("AUTH_KMS_PLATFORM_KEY"), "ondex-platform"))
 		if err != nil {
 			slog.Error("admin markaziy kirishi O'CHIQ: KMS platform kaliti", "err", err)
 			return nil
@@ -387,7 +388,7 @@ func initiateLoginFrom(csv string) string {
 // bo'lsa production'da xizmat o'chiq (TOTP kalitini ochiq saqlashdan ko'ra
 // kirishni bermaslik to'g'ri); dev'da vaqtinchalik kalit.
 func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer, pool *pgxpool.Pool,
-	box *secretstore.Box, us *users.Service, ur users.Repository) *identity.MerchantAuth {
+	box *secretstore.Box, us *users.Service, ur users.Repository, rdb *redis.Client) *identity.MerchantAuth {
 	if svc == nil || az == nil {
 		slog.Warn("merchant kirishi O'CHIQ: markaziy sessiya yoki ruxsatlar xizmati yo'q")
 		return nil
@@ -425,8 +426,12 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 			pkCfg.Origins = append(pkCfg.Origins, o)
 		}
 	}
-	m, err := identity.NewMerchantAuth(svc, identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box,
-		Passkeys: pks, Passkey: pkCfg})
+	deps := identity.MerchantDeps{Users: us, Repo: ur, Authz: az, MFA: store, Box: box, Passkeys: pks, Passkey: pkCfg}
+	if rdb != nil {
+		// Xato urinishlar hisobi barcha nusxalar uchun umumiy (SSO-Redis).
+		deps.Guard = storage.NewRedisGuardStore(rdb)
+	}
+	m, err := identity.NewMerchantAuth(svc, deps)
 	if err != nil {
 		slog.Error("merchant kirishi O'CHIQ", "err", err)
 		return nil

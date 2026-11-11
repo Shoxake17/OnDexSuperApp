@@ -28,7 +28,7 @@ import (
 
 // refreshIPLimiter — refresh endpointi: halol klient 10 daqiqada ~1 marta
 // chaqiradi; o'g'irlangan tokenlarni ko'r-ko'rona sinashga qarshi.
-var refreshIPLimiter = ratelimit.New(0.5, 30)
+var refreshIPLimiter = ratelimit.New(0.5, 30).Shared("refreshIPLimiter")
 
 const claimsV2Key ctxKey = 1
 

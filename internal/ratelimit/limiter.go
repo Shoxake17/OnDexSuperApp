@@ -3,17 +3,20 @@
 //
 // NEGA KERAK: kod bazasida hech qanday tezlik cheklovi yo'q edi.
 // Natijada:
-//   • `/geocode/*` — har chaqiruv PULLIK (Google/Yandex/2GIS). Bitta
+//   - `/geocode/*` — har chaqiruv PULLIK (Google/Yandex/2GIS). Bitta
 //     oddiy mijoz akkaunti cheksiz sikllab, hisobni ko'tarishi mumkin
 //     edi (moliyaviy DoS).
-//   • `/auth/request-code` — faqat per-telefon 60s pauza bor edi;
+//   - `/auth/request-code` — faqat per-telefon 60s pauza bor edi;
 //     skript turli raqamlarni aylanib cheksiz HAQIQIY SMS jo'natardi.
-//   • dispatch — qabul qilinmagan buyurtma pullik Distance Matrix'ni
+//   - dispatch — qabul qilinmagan buyurtma pullik Distance Matrix'ni
 //     abadiy urardi.
 //
-// Amalga oshirish ATAYLAB oddiy: bitta jarayon uchun xotiradagi
-// token-bucket. Bir nechta server nusxasi bo'lganda taqsimlangan
-// (Redis) cheklov kerak bo'ladi — hozircha bitta nusxa ishlaydi.
+// Ikki qatlam (SSO-Redis):
+//   - har limiter xotirada token-bucket (har doim ishlaydi);
+//   - `Shared(name)` bilan nomlangan limiter `UseBackend` berilganda
+//     TAQSIMLANGAN (Redis): bir nechta API nusxasi bitta hisobni bo'lishadi.
+//     Backend xato bersa (Redis o'chgan) — xotiradagi chelak ishlatiladi
+//     (fail-open EMAS: lokal cheklov baribir bor).
 package ratelimit
 
 import (
@@ -83,6 +86,8 @@ type Limiter struct {
 	ttl      time.Duration
 	// lastSweep — oxirgi tozalash vaqti (yuqoridagi izohga qarang).
 	lastSweep time.Time
+	// name — `Shared` bilan berilgan barqaror nom (taqsimlangan kalit).
+	name string
 }
 
 // New — `capacity` ta so'rovga bir zumda ruxsat beradi, keyin
@@ -116,6 +121,14 @@ func (l *Limiter) Allow(key string) bool {
 // Qaytariladigan muddat — chelakda BUTUN bitta token paydo bo'lishi
 // uchun kerak bo'lgan vaqt.
 func (l *Limiter) AllowWithWait(key string) (bool, time.Duration) {
+	if ok, wait, done := l.distributed(key); done {
+		return ok, wait
+	}
+	return l.allowLocal(key)
+}
+
+// allowLocal — xotiradagi token-bucket.
+func (l *Limiter) allowLocal(key string) (bool, time.Duration) {
 	key = clampKey(key)
 	now := time.Now()
 	l.mu.Lock()

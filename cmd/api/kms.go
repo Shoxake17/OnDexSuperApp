@@ -56,8 +56,8 @@ func kmsClient() (*kms.Client, error) {
 	return kmsShared, kmsErr
 }
 
-func envOr(key, def string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+func envOr(v, def string) string {
+	if v = strings.TrimSpace(v); v != "" {
 		return v
 	}
 	return def
@@ -73,7 +73,7 @@ func remoteKeySet(keyName string) (*identity.KeySet, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	root, err := kc.HMAC(ctx, envOr("AUTH_KMS_DERIVE_KEY", "ondex-derive"), 1, []byte("ondex-identity-root-v1:"+keyName))
+	root, err := kc.HMAC(ctx, envOr(os.Getenv("AUTH_KMS_DERIVE_KEY"), "ondex-derive"), 1, []byte("ondex-identity-root-v1:"+keyName))
 	if err != nil {
 		return nil, fmt.Errorf("yordamchi sir ildizi: %w", err)
 	}
@@ -112,7 +112,7 @@ func secretsEncKey() string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	plain, err := kc.Decrypt(ctx, envOr("SECRETS_KMS_KEY", "ondex-secrets"), wrapped)
+	plain, err := kc.Decrypt(ctx, envOr(os.Getenv("SECRETS_KMS_KEY"), "ondex-secrets"), wrapped)
 	if err != nil {
 		slog.Error("SECRETS_ENC_KEY_WRAPPED ochilmadi — sirlar shifrlash O'CHIQ", "err", err)
 		return ""

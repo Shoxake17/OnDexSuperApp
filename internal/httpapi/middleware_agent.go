@@ -35,19 +35,19 @@ import (
 //	  odamning nomidan yuzlab so'rov yuborishi mumkin (LLM'larda bu
 //	  odatiy nosozlik).
 var (
-	agentPartnerLimiter = ratelimit.New(20, 200)
-	agentGrantLimiter   = ratelimit.New(2, 30)
+	agentPartnerLimiter = ratelimit.New(20, 200).Shared("agentPartnerLimiter")
+	agentGrantLimiter   = ratelimit.New(2, 30).Shared("agentGrantLimiter")
 
 	// agentWriteLimiter — buyurtma yaratish/tasdiqlash. Qattiqroq:
 	// har bir muvaffaqiyatli amal HAQIQIY PUL va restoranda ish.
 	// Grant bo'yicha soatiga ~12 (portlash 5) — halol foydalanuvchi
 	// bunga yetib bormaydi, sikldagi model esa darhol to'xtaydi.
-	agentWriteLimiter = ratelimit.New(0.0033, 5)
+	agentWriteLimiter = ratelimit.New(0.0033, 5).Shared("agentWriteLimiter")
 
 	// agentLinkLimiter — ulanish kodini TERISH urinishlari (IP
 	// bo'yicha). Kod 8 belgi (32^8) va 10 daqiqa yashaydi; bu
 	// chegara bilan taxmin qilish amalda imkonsiz bo'ladi.
-	agentLinkLimiter = ratelimit.New(0.1, 10)
+	agentLinkLimiter = ratelimit.New(0.1, 10).Shared("agentLinkLimiter")
 )
 
 type agentCtxKey int

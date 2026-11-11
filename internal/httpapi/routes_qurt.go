@@ -19,8 +19,8 @@ import (
 // Qurt mahsulotlari uchun limitlar. Ochiq ro'yxat IP bo'yicha; POS (server-server)
 // chaqiruvlari klient serveri bo'yicha — u bitta IP, shuning uchun yuqoriroq.
 var (
-	qurtListLimiter     = ratelimit.New(5, 30)
-	qurtMerchantLimiter = ratelimit.New(100, 400)
+	qurtListLimiter     = ratelimit.New(5, 30).Shared("qurtListLimiter")
+	qurtMerchantLimiter = ratelimit.New(100, 400).Shared("qurtMerchantLimiter")
 )
 
 // qurtStores — hozir Qurt kategoriyasidagi FAOL do'konlar: ID -> nomi.

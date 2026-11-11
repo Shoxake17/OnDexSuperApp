@@ -623,7 +623,7 @@ func main() {
 		model3DSvc = model3d.NewService(gen, imageStore, catalogRepo, model3d.DefaultConfig(), nil)
 		// Restoran uchun: soatiga ~20 ta generatsiya, qisqa muddatda
 		// 5 tagacha ketma-ket. Har biri tashqi xizmatda pul sarflaydi.
-		model3DLimiter = ratelimit.New(20.0/3600.0, 5)
+		model3DLimiter = ratelimit.New(20.0/3600.0, 5).Shared("model3DLimiter")
 		slog.Info("3D model generatsiyasi yoqilgan", "provayder", gen.Name())
 	} else {
 		slog.Info("3D model generatsiyasi o'chiq â€” TRIPO_API_KEY berilmagan")
@@ -640,7 +640,12 @@ func main() {
 	redisCache := cache.New(redisClient)
 	if redisClient != nil {
 		codeStore = storage.NewRedisCodeStore(redisClient)
-		slog.Info("rejim: Redis (OTP kodlar)")
+		// SSO-Redis: nomlangan rate limiterlar barcha API nusxalarida umumiy
+		// (Redis xato bersa har biri o'z xotirasidagi cheklovga o'tadi).
+		ratelimit.UseBackend(storage.NewRedisRateBackend(redisClient))
+		slog.Info("rejim: Redis (OTP kodlar, rate limit, urinishlar hisobi)")
+	} else if !devMode {
+		slog.Warn("XAVFSIZLIK: Redis yo'q — rate limit va urinishlar hisobi faqat jarayon xotirasida (bir nechta nusxada bo'linmaydi)")
 	}
 
 	// JWT_SECRET â€” production'da MAJBURIY va yetarlicha uzun bo'lishi
@@ -1140,7 +1145,7 @@ func main() {
 	authzSvc := buildAuthz(authzCtx, pgPool)
 	authzCancel()
 	// Merchant kirishi (A3b): parol/kod + egasi uchun majburiy TOTP.
-	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo)
+	merchantAuth := buildMerchantAuth(devMode, identitySvc, authzSvc, pgPool, secrets, authSvc, userRepo, redisClient)
 	wireInviteAlerts(merchantAuth, tgClient, userRepo)
 	// OnDex OIDC provayderi (A4c): Merchant web (ShoxPos BFF) shu orqali kiradi.
 	oidcProvider := buildOIDC(identitySvc, pgPool)
@@ -1620,7 +1625,7 @@ func main() {
 		// tagacha ketma-ket. Menyuni to'ldirish (bir necha o'nlab rasm)
 		// bemalol sig'adi, 25 MB li PDF larni ketma-ket haydash esa
 		// yo'q â€” R2 da joy ham, PDF tahlili ham pul turadi.
-		UploadLimiter: ratelimit.New(6.0/60.0, 12),
+		UploadLimiter: ratelimit.New(6.0/60.0, 12).Shared("UploadLimiter"),
 	})
 
 	// Tugallanmagan 3D vazifalarni davom ettiramiz. Server qayta ishga

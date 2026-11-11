@@ -35,9 +35,9 @@ var (
 	// Geokodlash: har akkauntga daqiqasiga ~30 (portlash 30) —
 	// manzil tanlashda xarita surilganda bir necha so'rov normal,
 	// lekin sikl bilan minglab chaqirish to'xtatiladi.
-	geoUserLimiter = ratelimit.New(0.5, 30)
+	geoUserLimiter = ratelimit.New(0.5, 30).Shared("geoUserLimiter")
 	// Qo'shimcha IP cheklovi — bitta hujumchi ko'p akkaunt yaratsa ham.
-	geoIPLimiter = ratelimit.New(1, 60)
+	geoIPLimiter = ratelimit.New(1, 60).Shared("geoIPLimiter")
 
 	// ┌─ OCHIQ QIDIRUV (bug.md 12-band) ──────────────────────────────┐
 	// `GET /products/search` — autentifikatsiyasiz endpoint va u
@@ -50,19 +50,19 @@ var (
 	// Sekundiga ~3, portlash 60 — odam bunga hech qachon yetmaydi,
 	// sikl esa darhol to'xtaydi.
 	// └───────────────────────────────────────────────────────────────┘
-	searchIPLimiter = ratelimit.New(3, 60)
+	searchIPLimiter = ratelimit.New(3, 60).Shared("searchIPLimiter")
 
 	// OTP/SMS: IP bo'yicha soatiga ~12 (portlash 5), global esa
 	// daqiqasiga ~30 — bitta skript butun SMS byudjetini yoqa olmaydi.
-	otpIPLimiter     = ratelimit.New(0.0033, 5)
-	otpGlobalLimiter = ratelimit.New(0.5, 30)
+	otpIPLimiter     = ratelimit.New(0.0033, 5).Shared("otpIPLimiter")
+	otpGlobalLimiter = ratelimit.New(0.5, 30).Shared("otpGlobalLimiter")
 
 	// Kuryer joylashuvi: sekundiga ~2 (portlash 10). Ilova odatda
 	// 5-10 sekundda bir marta yuboradi, shuning uchun bu chegara halol
 	// foydalanuvchiga umuman sezilmaydi, lekin sikl bilan yuborilgan
 	// minglab yangilanish (har biri WS broadcast keltirib chiqaradi)
 	// to'xtatiladi.
-	courierLocLimiter = ratelimit.New(2, 10)
+	courierLocLimiter = ratelimit.New(2, 10).Shared("courierLocLimiter")
 
 	// Parol bilan kirish — brute-force va credential-stuffing ning
 	// asosiy nishoni. IKKI o'lchov bo'yicha cheklanadi:
@@ -83,8 +83,8 @@ var (
 	// imkonsiz qiladi (Argon2id + 8 belgili minimal parol + ommaviy
 	// parollar ro'yxati bilan birga), lekin halol foydalanuvchini
 	// hech qachon bloklamaydi.
-	loginIPLimiter      = ratelimit.New(0.5, 30)
-	loginAccountLimiter = ratelimit.New(0.05, 10)
+	loginIPLimiter      = ratelimit.New(0.5, 30).Shared("loginIPLimiter")
+	loginAccountLimiter = ratelimit.New(0.05, 10).Shared("loginAccountLimiter")
 
 	// SMS kodni tasdiqlash. Kodning o'zida per-telefon 5 urinish
 	// chegarasi bor, lekin uni QURBONGA QARSHI ishlatish mumkin edi:
@@ -92,28 +92,28 @@ var (
 	// raqamning HAQIQIY kodi o'chib ketardi. Portlash 20 — halol
 	// foydalanuvchi (bir necha marta xato terish + qayta yuborish)
 	// bunga hech qachon yetmaydi.
-	verifyIPLimiter = ratelimit.New(0.2, 20)
+	verifyIPLimiter = ratelimit.New(0.2, 20).Shared("verifyIPLimiter")
 
 	// Email kodlari. SMS'dan ARZONROQ (pul ketmaydi), shuning uchun
 	// chegara biroz yumshoqroq — lekin baribir qattiq: cheklovsiz
 	// email yuborish domenimizni spam ro'yxatiga tushiradi va bu
 	// tiklab bo'lmaydigan zarar. IP bo'yicha soatiga ~36 (portlash
 	// 10), global daqiqasiga ~60.
-	emailIPLimiter     = ratelimit.New(0.01, 10)
-	emailGlobalLimiter = ratelimit.New(1, 60)
+	emailIPLimiter     = ratelimit.New(0.01, 10).Shared("emailIPLimiter")
+	emailGlobalLimiter = ratelimit.New(1, 60).Shared("emailGlobalLimiter")
 
 	// Telegram deep-link so'rovi. Pul ketmaydi (xabarni Telegram
 	// bepul yetkazadi), lekin cheklovsiz qoldirilsa bot begona
 	// odamlarga so'rov yuborish vositasiga aylanardi. Portlash 10,
 	// tiklanish daqiqasiga ~6.
-	telegramIPLimiter = ratelimit.New(0.1, 10)
+	telegramIPLimiter = ratelimit.New(0.1, 10).Shared("telegramIPLimiter")
 
 	// Telegram kirish holatini so'rab turish (polling). Ilova har
 	// 2 soniyada so'raydi va ~2 daqiqa kutadi, ya'ni bitta oqimda
 	// ~60 so'rov. Chegara shundan kelib chiqib qo'yilgan: halol
 	// foydalanuvchi yetib bormaydi, sikl bilan token qidirish esa
 	// to'xtatiladi.
-	telegramPollLimiter = ratelimit.New(2, 120)
+	telegramPollLimiter = ratelimit.New(2, 120).Shared("telegramPollLimiter")
 )
 
 // courierSpeedGate — kuryer koordinatasining "teleport" qilishini

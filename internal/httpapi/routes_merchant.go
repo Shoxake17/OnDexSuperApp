@@ -30,7 +30,7 @@ import (
 
 // signupIPLimiter — ro'yxatdan o'tish: Argon2 (64 MB) + kod tekshiruvi; halol
 // foydalanuvchi bir necha marta chaqiradi.
-var signupIPLimiter = ratelimit.New(0.05, 10)
+var signupIPLimiter = ratelimit.New(0.05, 10).Shared("signupIPLimiter")
 
 func respondDirectoryError(w http.ResponseWriter, err error) {
 	switch {

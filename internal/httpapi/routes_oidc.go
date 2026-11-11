@@ -37,9 +37,9 @@ var oidcLoginFS embed.FS
 const ssoCookieName = "__Host-ondex_sso"
 
 var (
-	oidcTokenLimiter     = ratelimit.New(1, 30)  // /token: IP bo'yicha
-	oidcAuthorizeLimiter = ratelimit.New(2, 60)  // /authorize va /login/complete
-	oidcUserinfoLimiter  = ratelimit.New(5, 100) // /userinfo
+	oidcTokenLimiter     = ratelimit.New(1, 30).Shared("oidcTokenLimiter")     // /token: IP bo'yicha
+	oidcAuthorizeLimiter = ratelimit.New(2, 60).Shared("oidcAuthorizeLimiter") // /authorize va /login/complete
+	oidcUserinfoLimiter  = ratelimit.New(5, 100).Shared("oidcUserinfoLimiter") // /userinfo
 )
 
 func (s *Server) oidcReady(w http.ResponseWriter) bool {

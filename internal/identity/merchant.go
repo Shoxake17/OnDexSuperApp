@@ -84,6 +84,9 @@ type MerchantDeps struct {
 	Passkeys passkey.Store
 	// Passkey — RP sozlamasi (bo'sh = issuer'dan).
 	Passkey PasskeyConfig
+	// Guard — xato urinishlar hisobi Redis'da (nil = jarayon xotirasida).
+	// Bir nechta API nusxasi va restartlar bitta hisobni ko'radi.
+	Guard GuardStore
 }
 
 // MerchantAuth — merchant realmiga kirish.
@@ -91,7 +94,12 @@ type MerchantAuth struct {
 	svc      *Service
 	d        MerchantDeps
 	tokenKey []byte
-	guard    *failGuard
+	guard    attemptGuard
+	// nonces — ishlatilgan mfa_token'lar (bir martalik; bazada — barcha
+	// nusxalar uchun umumiy). Passkeys ombori bo'lmasa xotirada.
+	nonces interface {
+		UseChallenge(ctx context.Context, hash []byte, expires time.Time) (bool, error)
+	}
 	// inviteHook — `OnInvite` (xodimga "sizni taklif qilishdi" xabari).
 	inviteHook func(ctx context.Context, inv Invite)
 	// wa, pkKey — passkey (`initPasskeys`); wa nil = o'chiq.
@@ -140,7 +148,15 @@ func NewMerchantAuth(svc *Service, d MerchantDeps) (*MerchantAuth, error) {
 		tokenKey: svc.issuer.keys.derivedSecret("mfa-token"),
 		// akkaunt bo'yicha: 15 daqiqada 5 ta XATO -> 15 daqiqa blok (10^6 kod
 		// maydonini taxmin qilish amalda imkonsiz). Muvaffaqiyat sanalmaydi.
-		guard: newFailGuard(mfaMaxFailures, mfaFailWindow, func() time.Time { return svc.now() }),
+	}
+	local := newFailGuard(mfaMaxFailures, mfaFailWindow, func() time.Time { return svc.now() })
+	m.guard = local
+	if d.Guard != nil {
+		m.guard = newDistGuard(d.Guard, local)
+	}
+	m.nonces = passkey.NewMemStore()
+	if d.Passkeys != nil {
+		m.nonces = d.Passkeys
 	}
 	if err := m.initPasskeys(); err != nil {
 		return nil, err
@@ -374,6 +390,9 @@ func (m *MerchantAuth) AddFactor(ctx context.Context, mfaToken, secret string, m
 		add = "pwd"
 	}
 	res = attemptOK
+	if err := m.consumeMFA(ctx, c); err != nil {
+		return nil, err
+	}
 	return m.secondFactor(ctx, u, c.Client, c.Org, append(slices.Clone(c.AMR), add))
 }
 
@@ -402,6 +421,9 @@ func (m *MerchantAuth) SetInitialPassword(ctx context.Context, mfaToken, passwor
 	m.svc.audit.Record(ctx, Event{Action: "merchant.password_set", Result: ResultOK, ActorUserID: u.ID,
 		Realm: string(users.RealmMerchant), Target: c.Client, IPHash: m.svc.ipHash(meta.IP), UserAgent: clip(meta.UserAgent, 300)})
 	m.guard.Reset(c.User)
+	if err := m.consumeMFA(ctx, c); err != nil {
+		return nil, err
+	}
 	return m.secondFactor(ctx, u, c.Client, c.Org, append(slices.Clone(c.AMR), "pwd"))
 }
 
@@ -429,6 +451,9 @@ func (m *MerchantAuth) VerifyMFA(ctx context.Context, mfaToken, code string, met
 		return nil, err
 	}
 	res = attemptOK
+	if err := m.consumeMFA(ctx, c); err != nil {
+		return nil, err
+	}
 	return m.svc.Create(ctx, CreateInput{UserID: c.User, ClientID: c.Client, OrgID: c.Org,
 		AMR: append(slices.Clone(c.AMR), factor), Meta: meta})
 }
@@ -543,6 +568,9 @@ func (m *MerchantAuth) EnrollConfirm(ctx context.Context, mfaToken, code string,
 		m.mfaDenied(ctx, c, meta)
 		return nil, nil, ErrMFAInvalid
 	}
+	if err := m.consumeMFA(ctx, c); err != nil {
+		return nil, nil, err
+	}
 	plain, hashes, err := mfa.NewRecoveryCodes()
 	if err != nil {
 		return nil, nil, err
@@ -565,6 +593,23 @@ func (m *MerchantAuth) EnrollConfirm(ctx context.Context, mfaToken, code string,
 }
 
 // ── mfa_token ────────────────────────────────────────────────────────
+
+// consumeMFA — mfa_token BIR MARTALIK: bosqich muvaffaqiyatli o'tgach token
+// "ishlatildi" deb bazaga yoziladi. Ilgari 5 daqiqa ichida (har safar yangi
+// TOTP qadami bilan) qayta ishlatib, bitta kirishdan bir nechta sessiya
+// olish mumkin edi. Faqat MUVAFFAQIYATDA chaqiriladi: noto'g'ri kod
+// terilsa token yonmaydi (foydalanuvchi qaytadan boshlamaydi).
+func (m *MerchantAuth) consumeMFA(ctx context.Context, c *mfaClaims) error {
+	sum := sha256.Sum256([]byte("mfa-token:" + c.Nonce))
+	ok, err := m.nonces.UseChallenge(ctx, sum[:], time.Unix(c.Exp, 0).Add(time.Minute))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrMFATokenInvalid
+	}
+	return nil
+}
 
 type mfaClaims struct {
 	User    string   `json:"u"`

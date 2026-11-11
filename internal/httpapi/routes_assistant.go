@@ -28,7 +28,7 @@ import (
 //
 // Daqiqasiga ~12 (portlash 6): odam yozib yoki gapirib bunga yetib
 // bormaydi, sikldagi skript esa darhol to'xtaydi.
-var aiChatLimiter = ratelimit.New(0.2, 6)
+var aiChatLimiter = ratelimit.New(0.2, 6).Shared("aiChatLimiter")
 
 func (s *Server) registerAssistantRoutes(mux *http.ServeMux) {
 	// GET /ai/status — ilova yordamchi tugmasini ko'rsatsinmi.

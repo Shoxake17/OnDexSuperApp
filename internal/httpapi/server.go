@@ -403,9 +403,9 @@ func New(d Deps) *Server {
 	s := &Server{
 		Deps:           d,
 		speedGate:      delivery.NewSpeedGate(),
-		statsLimiter:   ratelimit.New(0.5, 30),
-		historyLimiter: ratelimit.New(2, 60),
-		supportLimiter: ratelimit.New(0.5, 10),
+		statsLimiter:   ratelimit.New(0.5, 30).Shared("statsLimiter"),
+		historyLimiter: ratelimit.New(2, 60).Shared("historyLimiter"),
+		supportLimiter: ratelimit.New(0.5, 10).Shared("supportLimiter"),
 		liveRoutes:     newLiveRouteCache(),
 	}
 	// Admin oldin o'zgartirgan xarita rejimini tiklaydi (server qayta

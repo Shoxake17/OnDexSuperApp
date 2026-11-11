@@ -103,11 +103,11 @@ func merchantMeta(r *http.Request, device string) identity.Meta {
 
 // mfaIPLimiter — ikkinchi bosqich endpointlari (akkaunt bo'yicha blok
 // `identity.MerchantAuth` ichida). Kod kiritish limiteridan alohida.
-var mfaIPLimiter = ratelimit.New(0.2, 30)
+var mfaIPLimiter = ratelimit.New(0.2, 30).Shared("mfaIPLimiter")
 
 // passkeyIPLimiter — passkey endpointlari (alohida oila: TOTP kiritish
 // limitini sarflamaydi). Akkaunt bo'yicha xato hisobi — TOTP bilan umumiy.
-var passkeyIPLimiter = ratelimit.New(0.2, 30)
+var passkeyIPLimiter = ratelimit.New(0.2, 30).Shared("passkeyIPLimiter")
 
 // maxSecretLen — mfa_token uchun yuqori chegara.
 const maxSecretLen = 1024
