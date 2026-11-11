@@ -101,6 +101,10 @@ void main() {
       await t.enterText(
           find.widgetWithText(TextField, 'Telefon raqami'), '+998901234567');
 
+      // Plane 317: standart yo'l — Telegram kodi; parol ixtiyoriy havola.
+      await t.tap(find.text('Parol bilan kirish'));
+      await t.pump();
+
       // noto'g'ri parol — xato ko'rsatiladi, bosqich o'zgarmaydi
       await t.enterText(find.widgetWithText(TextField, 'Parol'), 'xato');
       await t.tap(find.widgetWithText(FilledButton, 'Kirish'));
@@ -152,8 +156,7 @@ void main() {
       await t.pumpWidget(const MaterialApp(home: RestaurantLoginScreen()));
       await t.enterText(
           find.widgetWithText(TextField, 'Telefon raqami'), '+998901234567');
-      await t.tap(find.text('Telegram kodi bilan kirish'));
-      await t.pump();
+      // Telegram kodi — standart rejim (Plane 317), almashtirish shart emas.
       await t
           .tap(find.widgetWithText(FilledButton, 'Telegram orqali kod olish'));
       await settle(t);
