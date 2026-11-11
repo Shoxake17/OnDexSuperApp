@@ -107,9 +107,10 @@ func (p *Provider) logoutToken(clientID string, sess *Session) (string, error) {
 			Audience: jwt.ClaimStrings{clientID}, IssuedAt: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(2 * time.Minute)), ID: newJTI()}}
 	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	t.Header["kid"] = p.svc.issuer.keys.active.KID
+	active := p.svc.issuer.keys.Active()
+	t.Header["kid"] = active.KID
 	t.Header["typ"] = "logout+jwt"
-	return t.SignedString(p.svc.issuer.keys.active.Private)
+	return t.SignedString(active.Signer())
 }
 
 // Hint — id_token_hint dan olingan ma'lumot.

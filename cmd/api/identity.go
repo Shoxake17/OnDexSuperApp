@@ -37,25 +37,61 @@ const identityAudience = "ondex-api"
 // `AUTH_PREVIOUS_KEY_FILES` (vergul bilan) ga o'tkaziladi va access token umri
 // (10 daqiqa) + zaxira o'tgach olib tashlanadi.
 func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *identity.Service {
+	keys, ok := mainKeySet(devMode)
+	if !ok {
+		return nil
+	}
+	return buildIdentityWith(devMode, keys, pool, ur)
+}
+
+// mainKeySet — asosiy (merchant/mijoz) kalitlar: KMS yoki fayl.
+func mainKeySet(devMode bool) (*identity.KeySet, bool) {
+	if kmsEnabled() {
+		if os.Getenv("AUTH_SIGNING_KEY_FILE") != "" {
+			slog.Error("AUTH_KMS=openbao bilan AUTH_SIGNING_KEY_FILE ham berilgan — fayl E'TIBORSIZ; uni serverdan o'chiring")
+		}
+		ks, err := remoteKeySet(envOr("AUTH_KMS_SIGNING_KEY", "ondex-identity"))
+		if err != nil {
+			slog.Error("markaziy sessiya O'CHIQ: KMS kalitlari", "err", err)
+			return nil, false
+		}
+		// Fayldan KMS'ga o'tish: eski kalit(lar) FAQAT tekshirish uchun —
+		// o'tish paytidagi access tokenlar (10 daqiqa) uzilmasin. Bir kundan
+		// keyin AUTH_PREVIOUS_KEY_FILES va fayllarni serverdan o'chiring.
+		for _, p := range strings.Split(os.Getenv("AUTH_PREVIOUS_KEY_FILES"), ",") {
+			if p = strings.TrimSpace(p); p == "" {
+				continue
+			}
+			if k, err := identity.LoadPrivateKeyFile(p); err == nil {
+				ks.AddVerifyOnly(&identity.SigningKey{KID: k.KID, Public: k.Public})
+			} else {
+				slog.Error("eski imzolash kalitini o'qib bo'lmadi", "file", p, "err", err)
+			}
+		}
+		return ks, true
+	}
+	if !devMode {
+		slog.Warn("XAVFSIZLIK: imzolash kaliti DISKDAGI faylda — AUTH_KMS=openbao ga o'ting (deploy/openbao/README.md)")
+	}
 	var active *identity.SigningKey
 	if path := strings.TrimSpace(os.Getenv("AUTH_SIGNING_KEY_FILE")); path != "" {
 		k, err := identity.LoadPrivateKeyFile(path)
 		if err != nil {
 			slog.Error("markaziy sessiya O'CHIQ: imzolash kalitini o'qib bo'lmadi", "err", err)
-			return nil
+			return nil, false
 		}
 		active = k
 	} else if devMode {
 		k, err := identity.GenerateKey()
 		if err != nil {
 			slog.Error("markaziy sessiya O'CHIQ: kalit yaratilmadi", "err", err)
-			return nil
+			return nil, false
 		}
 		active = k
 		slog.Warn("markaziy sessiya: AUTH_SIGNING_KEY_FILE yo'q — DEV uchun VAQTINCHALIK kalit (restartda barcha yangi sessiyalar yaroqsiz)")
 	} else {
 		slog.Warn("markaziy sessiya O'CHIQ (AUTH_SIGNING_KEY_FILE yo'q) — /v2/auth/* 503 qaytaradi")
-		return nil
+		return nil, false
 	}
 
 	var previous []*identity.SigningKey
@@ -73,9 +109,13 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 	keys, err := identity.NewKeySet(active, previous...)
 	if err != nil {
 		slog.Error("markaziy sessiya O'CHIQ", "err", err)
-		return nil
+		return nil, false
 	}
+	return keys, true
+}
 
+// buildIdentityWith — tayyor kalitlar bilan xizmat.
+func buildIdentityWith(devMode bool, keys *identity.KeySet, pool *pgxpool.Pool, ur users.Repository) *identity.Service {
 	issuerURL := strings.TrimRight(strings.TrimSpace(os.Getenv("AUTH_ISSUER")), "/")
 	if issuerURL == "" {
 		issuerURL = strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_API_URL")), "/")
@@ -95,7 +135,11 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 	// A6: admin (platform) tokenlari ALOHIDA kalit bilan. Yo'q bo'lsa admin
 	// markaziy kirishi o'chiq (eski admin kirishi o'zgarmaydi).
 	if ps := loadPlatformKeys(devMode); ps != nil {
-		issuer.WithPlatformKeys(ps)
+		if ps.SharesKeyWith(keys) {
+			slog.Error("admin markaziy kirishi O'CHIQ: platform kaliti asosiy kalit bilan BIR XIL — alohida kalit yarating")
+		} else {
+			issuer.WithPlatformKeys(ps)
+		}
 	}
 
 	var store identity.Store
@@ -111,7 +155,7 @@ func buildIdentity(devMode bool, pool *pgxpool.Pool, ur users.Repository) *ident
 		slog.Error("markaziy sessiya O'CHIQ", "err", err)
 		return nil
 	}
-	slog.Info("rejim: markaziy sessiya yoqilgan", "issuer", issuerURL, "kid", active.KID, "eski_kalitlar", len(previous))
+	slog.Info("rejim: markaziy sessiya yoqilgan", "issuer", issuerURL, "kid", keys.Active().KID, "kms", keys.Remote())
 	return svc
 }
 
@@ -199,6 +243,15 @@ func wireInviteAlerts(m *identity.MerchantAuth, tg *telegram.Client, ur users.Re
 // ./cmd/authkey`, ASOSIY kalitdan BOSHQA fayl) va rotatsiya uchun
 // `AUTH_PLATFORM_PREVIOUS_KEY_FILES`. Dev'da yo'q bo'lsa vaqtinchalik kalit.
 func loadPlatformKeys(devMode bool) *identity.KeySet {
+	if kmsEnabled() {
+		ks, err := remoteKeySet(envOr("AUTH_KMS_PLATFORM_KEY", "ondex-platform"))
+		if err != nil {
+			slog.Error("admin markaziy kirishi O'CHIQ: KMS platform kaliti", "err", err)
+			return nil
+		}
+		slog.Info("rejim: admin (platform) kaliti KMS'da", "kid", ks.Active().KID)
+		return ks
+	}
 	var active *identity.SigningKey
 	if path := strings.TrimSpace(os.Getenv("AUTH_PLATFORM_KEY_FILE")); path != "" {
 		k, err := identity.LoadPrivateKeyFile(path)

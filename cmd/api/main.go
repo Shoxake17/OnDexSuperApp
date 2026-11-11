@@ -1042,7 +1042,7 @@ func main() {
 	// Kalit bo'lmasa imkoniyat O'CHIQ bo'ladi: `secret` ni bazaga ochiq
 	// matnda yozishdan ko'ra, ulash tugmasini umuman bermaslik to'g'ri.
 	var secrets *secretstore.Box
-	if b, err := secretstore.New(os.Getenv("SECRETS_ENC_KEY")); err == nil {
+	if b, err := secretstore.New(secretsEncKey()); err == nil {
 		secrets = b
 	} else if errors.Is(err, secretstore.ErrNoKey) {
 		slog.Warn("SECRETS_ENC_KEY yo'q — restoran o'z to'lov kalitlarini ulay olmaydi")

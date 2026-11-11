@@ -123,8 +123,9 @@ func (i *Issuer) issue(s *Session, notAfter time.Time) (string, time.Time, error
 		return "", time.Time{}, ErrPlatformKeyMissing
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	tok.Header["kid"] = ks.active.KID
-	signed, err := tok.SignedString(ks.active.Private)
+	active := ks.Active()
+	tok.Header["kid"] = active.KID
+	signed, err := tok.SignedString(active.Signer())
 	if err != nil {
 		return "", time.Time{}, err
 	}

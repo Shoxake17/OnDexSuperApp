@@ -601,8 +601,9 @@ func (p *Provider) idToken(clientID, userID, sid, nonce string, authTime time.Ti
 			Audience: jwt.ClaimStrings{clientID}, IssuedAt: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(IDTokenTTL)), ID: newJTI()}}
 	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	t.Header["kid"] = p.svc.issuer.keys.active.KID
-	return t.SignedString(p.svc.issuer.keys.active.Private)
+	active := p.svc.issuer.keys.Active()
+	t.Header["kid"] = active.KID
+	return t.SignedString(active.Signer())
 }
 
 // EndSSO — SSO sessiyasini va undan ochilgan barcha ilova sessiyalarini
