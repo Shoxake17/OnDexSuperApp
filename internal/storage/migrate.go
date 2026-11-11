@@ -13,14 +13,32 @@ import (
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
+// migrateLockKey — migratsiya advisory lock kaliti (o'zgarmas, "ondexmig").
+const migrateLockKey int64 = 0x6f6e6465786d6967
+
 // Migrate — migrations/ papkadagi .sql fayllarni nom tartibida, har birini bir marta
 // qo'llaydi. Qo'llanganlar schema_migrations jadvalida qayd etiladi.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx,
-		`CREATE TABLE IF NOT EXISTS schema_migrations (
-			version    TEXT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-		)`); err != nil {
+	// `CREATE TABLE IF NOT EXISTS` ham parallel chaqiruvda poygaga tushadi
+	// (pg_type unique xatosi) — u ham qulf ostida.
+	if err := func() error {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrateLockKey); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`CREATE TABLE IF NOT EXISTS schema_migrations (
+				version    TEXT PRIMARY KEY,
+				applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+			)`); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}(); err != nil {
 		return fmt.Errorf("schema_migrations yaratishda xato: %w", err)
 	}
 
@@ -51,6 +69,27 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			return err
+		}
+		// ┌─ BIR NECHTA NUSXA BIR VAQTDA ISHGA TUSHSA ──────────────────────┐
+		// Ikki API nusxasi (yoki rolling deploy) bitta migratsiyani parallel
+		// qo'llab, ikkinchisi "already exists" bilan yiqilardi. Tranzaksiya
+		// darajasidagi advisory lock: PgBouncer transaction rejimida ham
+		// ishlaydi (sessiya darajasidagi `pg_advisory_lock` ishlamaydi).
+		// Qulfdan keyin holat QAYTA tekshiriladi.
+		// └─────────────────────────────────────────────────────────────────┘
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrateLockKey); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("migratsiya qulfi: %w", err)
+		}
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, name,
+		).Scan(&exists); err != nil {
+			_ = tx.Rollback(ctx)
+			return err
+		}
+		if exists {
+			_ = tx.Rollback(ctx)
+			continue
 		}
 		// Argumentsiz Exec simple protocol ishlatadi — bitta faylda bir nechta
 		// SQL statement bo'lishi mumkin.
