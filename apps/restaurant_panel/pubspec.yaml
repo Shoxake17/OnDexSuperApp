@@ -1,7 +1,7 @@
 name: chust_restaurant
 description: OnDex — Restoran paneli
 publish_to: "none"
-version: 0.1.7+7
+version: 0.1.8+8
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
