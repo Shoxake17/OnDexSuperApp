@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"chustapp/internal/catalog"
-	"chustapp/internal/orders"
 	"chustapp/internal/scenes"
 )
 
@@ -82,19 +81,13 @@ func (s *Server) withDeliveryFee(ctx context.Context, v catalog.Restaurant) cata
 // bilan bir xil naqsh (`withRating`): bu maydonlar endi
 // tahrirlanadigan ro'yxatda yo'q, shu funksiya ularning YAGONA
 // haqiqiy manbai.
+//
+// 2026-11-12: hisob `derivedFor` keshi orqali (`restaurant_derived.go`) —
+// har so'rovda buyurtmalar tarixini o'qish yuklama testida eng sekin yo'l edi.
 func (s *Server) withETA(ctx context.Context, v catalog.Restaurant) catalog.Restaurant {
-	v.ETAMinMinutes = 0
-	v.ETAMaxMinutes = 0
-	if s.OrderRepo == nil {
-		return v
-	}
-	list, err := s.OrderRepo.ListByRestaurant(ctx, v.ID, orders.ETASampleSize)
-	if err != nil {
-		return v
-	}
-	lo, hi := orders.ComputeETARange(list)
-	v.ETAMinMinutes = lo
-	v.ETAMaxMinutes = hi
+	d := s.derivedFor(ctx, v.ID)
+	v.ETAMinMinutes = d.etaMin
+	v.ETAMaxMinutes = d.etaMax
 	return v
 }
 
@@ -107,18 +100,12 @@ func (s *Server) withETA(ctx context.Context, v catalog.Restaurant) catalog.Rest
 // Xizmat ulanmagan yoki xato bo'lsa maydonlar 0 qoladi — "ma'lumot
 // yo'q" holati, mijoz tomonida chip chizilmaydi (`catalog.go`dagi 0
 // qoidasi), soxta eski qiymat ko'rsatilmaydi.
+//
+// 2026-11-12: `derivedFor` keshi orqali; yangi baho kalitni darhol bekor qiladi.
 func (s *Server) withRating(ctx context.Context, v catalog.Restaurant) catalog.Restaurant {
-	v.Rating = 0
-	v.RatingCount = 0
-	if s.RatingsRepo == nil {
-		return v
-	}
-	avg, count, err := s.RatingsRepo.Summary(ctx, v.ID)
-	if err != nil {
-		return v
-	}
-	v.Rating = avg
-	v.RatingCount = count
+	d := s.derivedFor(ctx, v.ID)
+	v.Rating = d.rating
+	v.RatingCount = d.ratingCount
 	return v
 }
 

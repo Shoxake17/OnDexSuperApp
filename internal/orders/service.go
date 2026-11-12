@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"chustapp/internal/payments"
@@ -165,6 +166,24 @@ type Service struct {
 	payments       PaymentGateway        // nil = karta to'lovi ulanmagan
 	wallet         WalletGateway         // nil = OnDex Wallet ulanmagan
 	delivery       DeliveryPricer        // nil = yetkazish haqi hisoblanmaydi
+
+	// listeners — holat muvaffaqiyatli o'zgargach chaqiriladi (masalan HTTP
+	// qatlamining hosilaviy keshi: restoranning yetkazish vaqti oralig'i).
+	// Ro'yxat faqat ishga tushishda to'ldiriladi; mutex — testlarda parallel
+	// ro'yxatdan o'tish ham xavfsiz bo'lsin.
+	listenersMu sync.RWMutex
+	listeners   []func(o *Order, from Status)
+}
+
+// OnStatusChanged — holat o'zgarishi tinglovchisini qo'shadi. Tinglovchi
+// TEZ bo'lishi va bloklamasligi kerak (u so'rov oqimida chaqiriladi).
+func (s *Service) OnStatusChanged(fn func(o *Order, from Status)) {
+	if s == nil || fn == nil {
+		return
+	}
+	s.listenersMu.Lock()
+	s.listeners = append(s.listeners, fn)
+	s.listenersMu.Unlock()
 }
 
 // WithPayments — karta to'lovini ulaydi. Alohida setter: mavjud
@@ -791,6 +810,12 @@ func (s *Service) ChangeStatus(ctx context.Context, orderID string, to Status, b
 		s.creditCashback(ctx, o, to)
 		if s.notifier != nil {
 			s.notifier.OrderStatusChanged(o, from)
+		}
+		s.listenersMu.RLock()
+		ls := s.listeners
+		s.listenersMu.RUnlock()
+		for _, fn := range ls {
+			fn(o, from)
 		}
 		return o, nil
 	}

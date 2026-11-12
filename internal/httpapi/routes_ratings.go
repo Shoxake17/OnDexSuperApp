@@ -76,6 +76,8 @@ func (s *Server) registerRatingRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
+			// Restoran reytingi o'zgardi — ro'yxat/sahifa keshi darhol yangilansin.
+			s.invalidateRestaurantDerived(o.RestaurantID)
 			writeJSON(w, http.StatusCreated, rt)
 		}))
 

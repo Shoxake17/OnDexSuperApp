@@ -107,7 +107,8 @@ var Registry = []Var{
 	// PK-1: native ilovalar (assetlinks.json / apple-app-site-association).
 	{Name: "PASSKEY_ANDROID_APPS", Effect: "Android ilovalarda (OnDexPro, OnDexGO, mijoz) passkey ishlamaydi — 'paket=SHA256,...'"},
 	{Name: "PASSKEY_APPLE_APP_IDS", Effect: "iOS ilovalarda passkey ishlamaydi — 'TEAMID.bundle.id,...'"},
-	{Name: "LEGACY_TOKENS_DISABLED", Effect: "eski 30 kunlik HS256 token barcha realmlarda qabul qilinadi (relizlardan keyin merchant,platform,customer)"},
+	{Name: "PPROF_ADDR", Effect: "profiler o'chiq (faqat loopback, masalan 127.0.0.1:6060; yuklama testida yoqiladi)"},
+	{Name: "LEGACY_TOKENS_DISABLED", Effect:"eski 30 kunlik HS256 token barcha realmlarda qabul qilinadi (relizlardan keyin merchant,platform,customer)"},
 	{Name: "ADMIN_ALLOWED_CIDRS", Effect: "admin kirishi va admin API har qanday tarmoqdan ochiq (TOTP + parol + kod baribir talab qilinadi)"},
 	{Name: "AUTH_ISSUER", Effect: "token `iss` qiymati PUBLIC_API_URL dan olinadi"},
 	// Faqat DEV: `ondex run` API logini faylga ham yozadi (o'lchov/tahlil).

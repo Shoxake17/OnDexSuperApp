@@ -58,6 +58,7 @@ import (
 	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
+	"chustapp/internal/ttlcache"
 	"chustapp/internal/tracking"
 	"chustapp/internal/users"
 	"chustapp/internal/voice"
@@ -361,6 +362,11 @@ type Server struct {
 	// aniqlaydi (GPS soxtalashtirishga qarshi).
 	speedGate *delivery.SpeedGate
 
+	// restDerived — restoranning HISOBLANADIGAN ko'rsatkichlari (reyting,
+	// yetkazish vaqti oralig'i) keshi. Sabab va ziddiyatsizlik qoidalari:
+	// `restaurant_derived.go`.
+	restDerived *ttlcache.Cache[restaurantDerived]
+
 	// statsLimiter — statistika uchun xodim bo'yicha chegara (faqat kesh
 	// o'tkazib yuborilganda, ya'ni haqiqiy baza ishi bo'lganda sanaladi).
 	// 30 ta so'rovga bir zumda ruxsat, keyin daqiqasiga 30 ta.
@@ -403,11 +409,23 @@ func New(d Deps) *Server {
 	s := &Server{
 		Deps:           d,
 		speedGate:      delivery.NewSpeedGate(),
+		restDerived:    newRestaurantDerivedCache(),
 		statsLimiter:   ratelimit.New(0.5, 30).Shared("statsLimiter"),
 		historyLimiter: ratelimit.New(2, 60).Shared("historyLimiter"),
 		supportLimiter: ratelimit.New(0.5, 10).Shared("supportLimiter"),
 		liveRoutes:     newLiveRouteCache(),
 	}
+	// Buyurtma yakunlandi (yetkazildi / stolga olib borildi) — restoranning
+	// yetkazish vaqti oralig'i o'zgaradi: hosilaviy kesh kaliti darhol
+	// bekor qilinadi (`restaurant_derived.go`).
+	if s.OrderSvc != nil {
+		s.OrderSvc.OnStatusChanged(func(o *orders.Order, _ orders.Status) {
+			if o.Status == orders.StatusDelivered || o.Status == orders.StatusServed {
+				s.invalidateRestaurantDerived(o.RestaurantID)
+			}
+		})
+	}
+
 	// Admin oldin o'zgartirgan xarita rejimini tiklaydi (server qayta
 	// ishga tushgan bo'lsa) — topilmasa `Deps.MapMode` standart qoladi.
 	s.loadMapModeOverride(context.Background())
