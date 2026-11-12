@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -54,6 +55,14 @@ func (s *Server) writeLogin(w http.ResponseWriter, r *http.Request, legacyToken 
 	tok, err := s.Identity.Create(r.Context(), identity.CreateInput{UserID: u.ID, ClientID: identity.CustomerClientID,
 		AMR: amr, Meta: identity.Meta{IP: clientIP(r), UserAgent: r.UserAgent(), DeviceName: r.Header.Get("X-Ondex-Client")}})
 	if err != nil {
+		// AUD-5 (2026-11-12): realm uchun eski token o'chirilgan bo'lsa,
+		// markaziy sessiya xatosi eski tokenga "orqa eshik" bo'lmasin —
+		// vaqtinchalik xato (503), mijoz qayta urinadi.
+		if s.Tokens.RealmDisabled(realm) {
+			slog.Error("mijoz markaziy sessiyasi ochilmadi (eski token o'chirilgan)", "user", u.ID, "err", err)
+			httpError(w, http.StatusServiceUnavailable, errors.New("sessiya ochilmadi, birozdan so'ng qayta urining"))
+			return
+		}
 		// Markaziy sessiya ochilmasa — eski token (kirish buzilmasin).
 		slog.Warn("mijoz markaziy sessiyasi ochilmadi — eski token berildi", "user", u.ID, "err", err)
 		writeJSON(w, http.StatusOK, map[string]any{"token": legacyToken, "user": u})
