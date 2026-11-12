@@ -61,6 +61,12 @@ jobs:
     name: ${{ inputs.action == 'release' && 'Release (Play Store)' || 'Patch (OTA)' }}
     runs-on: ubuntu-latest
 
+    # Google Maps Android kaliti (SEC-12, Plane 459): repoda YO'Q, Gradle uni
+    # `MAPS_API_KEY` muhit o'zgaruvchisidan manifestPlaceholders'ga beradi.
+    # Release build kalitsiz yiqiladi (build.gradle.kts).
+    env:
+      MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+
     defaults:
       run:
         working-directory: apps/customer_app
@@ -100,6 +106,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
+          if [ -z "${MAPS_API_KEY}" ]; then
+            echo "::error::MAPS_API_KEY sirini sozlang - usiz ilovadagi Google xarita ishlamaydi."
+            exit 1
+          fi
 
           if [ -z "${KEYSTORE_B64}" ]; then
             echo "::error::ANDROID_KEYSTORE_BASE64 sozlanmagan."

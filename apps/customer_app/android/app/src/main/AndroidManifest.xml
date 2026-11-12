@@ -34,7 +34,7 @@
         android:networkSecurityConfig="@xml/network_security_config">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyDGPUoZy8185Gi5csIdeIfiJZaPnDhqM0k"/>
+            android:value="${mapsApiKey}"/>
         <!-- Push bildirishnomalari uchun STANDART kanal.
 
              Serverdan kelgan xabarda `channel_id` ko'rsatilgan

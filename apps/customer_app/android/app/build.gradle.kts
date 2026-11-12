@@ -33,6 +33,24 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
 
+// ┌─ GOOGLE MAPS KALITI GIT'DA EMAS (SEC-12, Plane 459, 2026-11-12) ────┐
+// Maps SDK kalitni APK manifestidan o'qiydi, shuning uchun u APK ichida
+// bo'lishi SHART — lekin PUBLIC repoda turmasligi kerak (GitHub secret
+// scanning topgan edi). Manba tartibi:
+//   1) `MAPS_API_KEY` muhit o'zgaruvchisi — CI (shorebird.yml, GitHub siri);
+//   2) `android/local.properties` dagi `MAPS_API_KEY=` — lokal build
+//      (fayl `.gitignore` da).
+// Release build kalitsiz YIQILADI: xaritasi ishlamaydigan APK tarqalmasin.
+// Kalit Google Cloud'da paket nomi + SHA-1 va faqat "Maps SDK for Android"
+// bilan cheklangan bo'lishi kerak.
+// └─────────────────────────────────────────────────────────────────────┘
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val mapsApiKey: String = System.getenv("MAPS_API_KEY")?.takeIf { it.isNotBlank() }
+    ?: localProperties.getProperty("MAPS_API_KEY", "")
+
 // ┌─ EMULYATOR UCHUN x86_64 ───────────────────────────────────────────┐
 // Ilova odatda FAQAT arm64 uchun quriladi (sabab pastdagi `packaging`
 // izohida — Godot dvigateli har bir arxitektura uchun ~70 MB).
@@ -79,6 +97,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
 
         // Godot dvigateli faqat arm64 uchun olinadi - sabab
         // yuqoridagi izohda.
@@ -216,4 +235,17 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+// Release manifesti kalitsiz yig'ilmasin (SEC-12): aks holda xarita
+// ilovada jimgina bo'sh qolardi.
+tasks.matching { it.name.startsWith("process") && it.name.endsWith("ReleaseManifest") }.configureEach {
+    doFirst {
+        if (mapsApiKey.isBlank()) {
+            throw GradleException(
+                "MAPS_API_KEY yo'q: android/local.properties ga MAPS_API_KEY=... yozing " +
+                    "yoki CI'da MAPS_API_KEY muhit o'zgaruvchisini bering."
+            )
+        }
+    }
 }

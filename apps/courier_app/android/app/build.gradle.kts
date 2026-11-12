@@ -38,6 +38,16 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
 
+// GOOGLE MAPS KALITI GIT'DA EMAS (SEC-12, Plane 459) — to'liq izoh
+// customer_app/android/app/build.gradle.kts da. Manba: MAPS_API_KEY
+// muhit o'zgaruvchisi (CI) yoki android/local.properties (lokal).
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val mapsApiKey: String = System.getenv("MAPS_API_KEY")?.takeIf { it.isNotBlank() }
+    ?: localProperties.getProperty("MAPS_API_KEY", "")
+
 android {
     namespace = "com.ondex.courier"
     // `flutter.compileSdkVersion` shu muhitda 33ga tushib qolgan —
@@ -64,6 +74,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
 
     // Kalit bo'lsa reliz konfiguratsiyasi yaratiladi; bo'lmasa
@@ -117,6 +128,19 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Release manifesti kalitsiz yig'ilmasin (SEC-12): aks holda xarita
+// ilovada jimgina bo'sh qolardi.
+tasks.matching { it.name.startsWith("process") && it.name.endsWith("ReleaseManifest") }.configureEach {
+    doFirst {
+        if (mapsApiKey.isBlank()) {
+            throw GradleException(
+                "MAPS_API_KEY yo'q: android/local.properties ga MAPS_API_KEY=... yozing " +
+                    "yoki CI'da MAPS_API_KEY muhit o'zgaruvchisini bering."
+            )
+        }
+    }
 }
 
 dependencies {
