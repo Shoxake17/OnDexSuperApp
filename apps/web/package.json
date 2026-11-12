@@ -24,7 +24,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/google.maps": "^3.66.4",
-    "@types/node": "^22.10.7",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.1",
