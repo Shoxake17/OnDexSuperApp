@@ -161,9 +161,10 @@ func TestMapPickerPageHasNoSecret(t *testing.T) {
 func TestMapPickerLibsServed(t *testing.T) {
 	h := mapPickerTestServer(t)
 	for name, wantCT := range map[string]string{
-		"maplibre-gl.js":  "text/javascript",
-		"maplibre-gl.css": "text/css",
-		"pmtiles.js":      "text/javascript",
+		"maplibre-gl.mjs":        "text/javascript",
+		"maplibre-gl-worker.mjs": "text/javascript",
+		"maplibre-gl.css":        "text/css",
+		"pmtiles.js":             "text/javascript",
 	} {
 		req := httptest.NewRequest(http.MethodGet, "/map-picker/lib/"+name, nil)
 		rec := httptest.NewRecorder()
@@ -201,7 +202,8 @@ func TestMapPickerLibRejectsOtherNames(t *testing.T) {
 		"..%2Fmap_picker.html",
 		"%2e%2e%2fmap_picker.html",
 		"THIRD_PARTY_LICENSES.txt", // embed qilinmagan, ro'yxatda yo'q
-		"MAPLIBRE-GL.JS",           // registr farqi
+		"MAPLIBRE-GL.MJS",          // registr farqi
+		"maplibre-gl.js",           // eski 4.7.1 (zaif) nomi endi YO'Q
 	} {
 		req := httptest.NewRequest(http.MethodGet, "/map-picker/lib/"+name, nil)
 		rec := httptest.NewRecorder()
@@ -236,9 +238,13 @@ func TestMapPickerCSPAllowsOndexMap(t *testing.T) {
 	if c := directive("style-src"); !strings.Contains(c, "'self'") {
 		t.Errorf("style-src 'self' siz maplibre-gl.css bloklanadi: %q", c)
 	}
-	// MapLibre ishchisi blob: dan ishga tushadi.
-	if c := directive("worker-src"); !strings.Contains(c, "blob:") {
-		t.Errorf("worker-src blob: siz MapLibre ishlamaydi: %q", c)
+	// MapLibre v6 ishchisi shu serverdagi ES modul (`'self'`).
+	if c := directive("worker-src"); !strings.Contains(c, "'self'") {
+		t.Errorf("worker-src 'self' siz MapLibre v6 ishchisi bloklanadi: %q", c)
+	}
+	// Zaif 4.7.1 (GHSA-jrc7-96c5-q579) qaytib kelmasin: sahifa ES modulni yuklaydi.
+	if b := rec.Body.String(); !strings.Contains(b, "maplibre-gl.mjs") || strings.Contains(b, "'maplibre-gl.js'") {
+		t.Errorf("sahifa maplibre-gl.mjs (v6) ni yuklashi kerak")
 	}
 	// Skriptlar uchun CDN ruxsati YO'Q: kutubxonalar shu serverdan.
 	if c := directive("script-src"); strings.Contains(c, "unpkg") || strings.Contains(c, "jsdelivr") {

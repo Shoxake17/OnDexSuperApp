@@ -1,7 +1,8 @@
-Bu papkadagi kutubxonalar OnDexMap veb-saytining bog'liqliklaridan (F:\OnDexMap\web\node_modules) AYNAN ko'chirilgan, o'zgartirilmagan:
-  maplibre-gl 4.7.1  (BSD-3-Clause)
-  pmtiles     3.2.1  (BSD-3-Clause)
-Yangilash: ikkala sayt ham bir xil versiyada bo'lishi kerak.
+Bu papkadagi kutubxonalar npm paketlaridan (F:\ChustApp\apps\web\node_modules) AYNAN ko'chirilgan, o'zgartirilmagan:
+  maplibre-gl 6.18.0 (BSD-3-Clause) - dist/maplibre-gl.mjs, dist/maplibre-gl-worker.mjs, dist/maplibre-gl.css
+  pmtiles     4.5.0  (BSD-3-Clause) - dist/pmtiles.js
+2026-11-12 (SEC-ZERO): 4.7.1 (GHSA-jrc7-96c5-q579, CRITICAL XSS) dan ko'tarildi.
+Yangilash: apps/web bilan bir xil versiyada bo'lishi kerak (OnDexMap sayti ham).
 
 ===== maplibre-gl =====
 Copyright (c) 2023, MapLibre contributors

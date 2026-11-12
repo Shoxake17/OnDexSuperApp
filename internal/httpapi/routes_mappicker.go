@@ -20,16 +20,22 @@ var mapPickerFS embed.FS
 // uchinchi tomon skriptiga tayanmaymiz. Manba va litsenziya —
 // `assets/map_picker_lib/THIRD_PARTY_LICENSES.txt`.
 //
-//go:embed assets/map_picker_lib/maplibre-gl.js assets/map_picker_lib/maplibre-gl.css assets/map_picker_lib/pmtiles.js
+// 2026-11-12 (SEC-ZERO, Plane 450): maplibre-gl 4.7.1 (GHSA-jrc7-96c5-q579,
+// CRITICAL XSS) -> 6.18.0. v6 faqat ES modul: sahifa `import()` bilan yuklaydi,
+// worker (`maplibre-gl-worker.mjs`) esa kutubxona o'z manzilidan topadi —
+// shuning uchun ikkalasi bir papkada va CSP `worker-src 'self'`.
+//
+//go:embed assets/map_picker_lib/maplibre-gl.mjs assets/map_picker_lib/maplibre-gl-worker.mjs assets/map_picker_lib/maplibre-gl.css assets/map_picker_lib/pmtiles.js
 var mapPickerLibFS embed.FS
 
 // mapPickerLibTypes — `/map-picker/lib/{name}` ruxsat etilgan fayllar. Ro'yxatdan
 // tashqari nom 404 oladi (yo'l bilan o'ynash ham, boshqa embed fayllarni
 // o'qish ham mumkin emas).
 var mapPickerLibTypes = map[string]string{
-	"maplibre-gl.js":  "text/javascript; charset=utf-8",
-	"maplibre-gl.css": "text/css; charset=utf-8",
-	"pmtiles.js":      "text/javascript; charset=utf-8",
+	"maplibre-gl.mjs":        "text/javascript; charset=utf-8",
+	"maplibre-gl-worker.mjs": "text/javascript; charset=utf-8",
+	"maplibre-gl.css":        "text/css; charset=utf-8",
+	"pmtiles.js":             "text/javascript; charset=utf-8",
 }
 
 // originOf — "https://maps.ondex.uz/x" -> "https://maps.ondex.uz" (CSP uchun).
@@ -160,7 +166,9 @@ func (s *Server) registerMapPickerRoutes(mux *http.ServeMux) {
 				"img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.ondex.uz; "+
 				"connect-src 'self' https://*.googleapis.com "+ondexConnect+"; "+
 				"font-src https://fonts.gstatic.com; "+
-				"worker-src blob:; child-src blob:; "+
+				// MapLibre v6 ishchisi — shu serverdagi ES modul
+				// (`/map-picker/lib/maplibre-gl-worker.mjs`), blob: — eski yo'l.
+				"worker-src 'self' blob:; child-src blob:; "+
 				"frame-ancestors 'none'; base-uri 'none'")
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

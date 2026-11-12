@@ -150,8 +150,13 @@
     }
     timer = setTimeout(function () { fail('uslub 10 s ichida yuklanmadi'); }, 10000);
 
+    // MapLibre v6 faqat ES modul (2026-11-12, SEC-ZERO): `import()` nonce'li
+    // skriptdan chaqiriladi — CSP nonce modul yuklanishiga ham o'tadi.
+    // Worker'ni kutubxona o'z manzilidan (`/map-picker/lib/`) o'zi topadi.
     loadCss(LIB + 'maplibre-gl.css').then(function () {
-      return loadScript(LIB + 'maplibre-gl.js');
+      return import(LIB + 'maplibre-gl.mjs');
+    }).then(function (mod) {
+      window.maplibregl = mod;
     }).then(function () {
       return loadScript(LIB + 'pmtiles.js');
     }).then(function () {
