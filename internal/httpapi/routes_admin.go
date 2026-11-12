@@ -114,7 +114,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 			account := users.User{
 				ID: NewID(), Phone: phone, Name: req.StaffName,
 				Role: users.RoleRestaurant, EntityID: rest.ID, CreatedAt: time.Now(),
@@ -142,7 +142,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 					slog.Warn("akkaunt yaratilmadi — restoran orqaga o'chirildi",
 						"restaurant", rest.ID, "err", err)
 				}
-				s.Cache.Del(r.Context(), restaurantsCacheKey)
+				s.dropRestaurantsCache(r.Context())
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
@@ -185,7 +185,8 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey, menuCacheKey(id))
+			s.dropRestaurantsCache(r.Context())
+			s.dropMenuCache(r.Context(), id)
 			deletedUsers, err := s.UserRepo.DeleteByRoleEntity(r.Context(), users.RoleRestaurant, id)
 			if err != nil {
 				slog.Error("restoran akkauntini o'chirishda xato", "restaurant", id, "err", err)
@@ -353,7 +354,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 			writeJSON(w, http.StatusOK, rest)
 		}))
 
@@ -377,7 +378,7 @@ func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 			writeJSON(w, http.StatusOK, rest)
 		}))
 

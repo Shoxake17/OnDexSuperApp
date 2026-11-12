@@ -42,20 +42,13 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	// shunda kesh kaliti shaharlarga bo'linib ketmaydi.
 	// └────────────────────────────────────────────────────────────────┘
 	mux.HandleFunc("GET /restaurants", publicCache(5, 30, s.optionalAuth(func(w http.ResponseWriter, r *http.Request) {
-		var list []*catalog.Restaurant
-		if s.Cache.GetJSON(r.Context(), restaurantsCacheKey, &list) {
-			// Maket havolasi kesh ICHIGA tushmaydi — sabab
-			// `sceneViewMany` izohida.
-			writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
-			return
-		}
-		list, err := s.CatalogRepo.ListRestaurants(r.Context())
+		// L1 -> Redis -> baza (`catalog_l1.go`). Maket havolasi kesh ICHIGA
+		// tushmaydi — sabab `sceneViewMany` izohida.
+		list, err := s.restaurantsList(r.Context())
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err)
 			return
 		}
-		annotatePaymentOptions(list)
-		s.Cache.SetJSON(r.Context(), restaurantsCacheKey, list, 30*time.Second)
 		writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
 	})))
 
@@ -122,7 +115,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 			writeJSON(w, http.StatusOK, rest)
 		}))
 
@@ -133,22 +126,6 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /categories", publicCache(3600, 86400, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, catalog.PredefinedCategories)
 	}))
-
-	// publicProducts â€” OCHIQ javob uchun nusxa: restoranning ichki
-	// maydonlari (`catalog.Product.PublicView`) kesiladi. Ro'yxat
-	// nusxalanadi â€” repo qaytargan obyektlar o'zgartirilmaydi (ular
-	// kesh/xotira ombori bilan bo'lishilgan bo'lishi mumkin).
-	publicProducts := func(list []*catalog.Product) []*catalog.Product {
-		out := make([]*catalog.Product, 0, len(list))
-		for _, p := range list {
-			if p == nil {
-				continue
-			}
-			pub := p.PublicView()
-			out = append(out, &pub)
-		}
-		return out
-	}
 
 	// GET /products/search?q=... â€” ochiq. Restoranga bog'liq bo'lmagan
 	// holda, turkum yoki nom bo'yicha barcha restoranlardagi mos taomlarni
@@ -208,22 +185,14 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusNotFound, err)
 			return
 		}
-		var list []*catalog.Product
-		if s.Cache.GetJSON(r.Context(), menuCacheKey(restaurantID), &list) {
-			writeJSON(w, http.StatusOK, list)
-			return
-		}
-		list, err := s.CatalogRepo.ListProducts(r.Context(), restaurantID)
+		// L1 (tayyor JSON) -> Redis -> baza (`catalog_l1.go`). Ichki
+		// maydonlar (ulgurji narx) keshga yozilishdan OLDIN olib tashlanadi.
+		body, err := s.menuJSON(r.Context(), restaurantID)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, err)
 			return
 		}
-		// Ichki maydonlar (ulgurji narx) KESHGA YOZILISHDAN OLDIN
-		// olib tashlanadi â€” shunda ommaviy kesh ularni umuman
-		// saqlamaydi va keyingi so'rovlarda ham sizib chiqmaydi.
-		list = publicProducts(list)
-		s.Cache.SetJSON(r.Context(), menuCacheKey(restaurantID), list, 30*time.Second)
-		writeJSON(w, http.StatusOK, list)
+		writeRawJSON(w, http.StatusOK, body)
 	}))
 
 	// GET /restaurants/{id}/products â€” restoran panelining TO'LIQ ro'yxati.
@@ -370,7 +339,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), menuCacheKey(restaurantID))
+			s.dropMenuCache(r.Context(), restaurantID)
 			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "menu_updated"})
 			writeJSON(w, http.StatusCreated, p)
 		}))
@@ -403,7 +372,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			s.Cache.Del(r.Context(), menuCacheKey(restaurantID))
+			s.dropMenuCache(r.Context(), restaurantID)
 			s.sendPublicRestaurantEvent(restaurantID, map[string]any{"type": "menu_updated"})
 			writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 		}))

@@ -403,7 +403,7 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 					httpError(w, http.StatusInternalServerError, err)
 					return
 				}
-				s.Cache.Del(r.Context(), restaurantsCacheKey)
+				s.dropRestaurantsCache(r.Context())
 				// Audit: kim, qaysi restoranning, qaysi maydonlarini.
 				// Qiymatlarning o'zi yozilmaydi (tavsif uzun, logda kerak emas).
 				slog.Info("restoran sozlamalari o'zgartirildi",

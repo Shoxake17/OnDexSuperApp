@@ -58,8 +58,8 @@ import (
 	"chustapp/internal/support"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
-	"chustapp/internal/ttlcache"
 	"chustapp/internal/tracking"
+	"chustapp/internal/ttlcache"
 	"chustapp/internal/users"
 	"chustapp/internal/voice"
 	"chustapp/internal/wallet"
@@ -367,6 +367,10 @@ type Server struct {
 	// `restaurant_derived.go`.
 	restDerived *ttlcache.Cache[restaurantDerived]
 
+	// catL1 — ochiq katalog (restoranlar ro'yxati, menyu) uchun Redis oldidagi
+	// qisqa jarayon ichidagi kesh (`catalog_l1.go`).
+	catL1 catalogL1
+
 	// statsLimiter — statistika uchun xodim bo'yicha chegara (faqat kesh
 	// o'tkazib yuborilganda, ya'ni haqiqiy baza ishi bo'lganda sanaladi).
 	// 30 ta so'rovga bir zumda ruxsat, keyin daqiqasiga 30 ta.
@@ -410,6 +414,7 @@ func New(d Deps) *Server {
 		Deps:           d,
 		speedGate:      delivery.NewSpeedGate(),
 		restDerived:    newRestaurantDerivedCache(),
+		catL1:          newCatalogL1(),
 		statsLimiter:   ratelimit.New(0.5, 30).Shared("statsLimiter"),
 		historyLimiter: ratelimit.New(2, 60).Shared("historyLimiter"),
 		supportLimiter: ratelimit.New(0.5, 10).Shared("supportLimiter"),
@@ -442,7 +447,7 @@ func New(d Deps) *Server {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if s.Cache != nil {
-				s.Cache.Del(ctx, menuCacheKey(p.RestaurantID))
+				s.dropMenuCache(ctx, p.RestaurantID)
 			}
 			s.sendPublicRestaurantEvent(p.RestaurantID, map[string]any{
 				"type":       "model3d_updated",

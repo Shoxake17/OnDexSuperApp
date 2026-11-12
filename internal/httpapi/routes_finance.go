@@ -398,7 +398,7 @@ func (s *Server) registerFinanceRoutes(mux *http.ServeMux) {
 			// Eski klient keshda qolib ketmasin: kalit almashgan bo'lsa
 			// keyingi so'rov ESKI sir bilan ketardi.
 			s.MC.Invalidate(appID)
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 
 			writeJSON(w, http.StatusOK, financeConnectResponse{
 				StoreID:       storeID,
@@ -440,7 +440,7 @@ func (s *Server) registerFinanceRoutes(mux *http.ServeMux) {
 			if oldApp != "" {
 				s.MC.Invalidate(oldApp)
 			}
-			s.Cache.Del(r.Context(), restaurantsCacheKey)
+			s.dropRestaurantsCache(r.Context())
 			w.WriteHeader(http.StatusNoContent)
 		}))
 
