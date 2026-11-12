@@ -4,3 +4,5 @@ out/
 .env
 .env.local
 *.log
+# npm paketidan nusxa (scripts/copy-maplibre-worker.mjs, predev/prebuild)
+/public/vendor/maplibre-gl-worker.mjs

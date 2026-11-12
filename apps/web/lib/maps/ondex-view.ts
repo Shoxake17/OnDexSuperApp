@@ -22,6 +22,15 @@ const EMPTY: GeoJSON.FeatureCollection = { type: `FeatureCollection`, features: 
 
 let protocolReady = false;
 
+/**
+ * MapLibre v6 workeri o'z statik manzilimizdan (scripts/copy-maplibre-worker.mjs
+ * predev/prebuild'da `public/vendor/` ga ko'chiradi). Bundle ichidagi
+ * `import.meta.url` Turbopack'da chunk'ga ishora qiladi va worker o'rniga HTML
+ * yuklanadi — shuning uchun manzil aniq beriladi. `?v=` versiya bilan:
+ * paket yangilanganda brauzer eski workerni keshdan olmaydi.
+ */
+export const MAPLIBRE_WORKER_PATH = `/vendor/maplibre-gl-worker.mjs`;
+
 export async function createOndexView(
   container: HTMLElement,
   opts: MapViewOptions,
@@ -29,6 +38,7 @@ export async function createOndexView(
 ): Promise<MapView> {
   const [maplibre, pmtiles] = await Promise.all([import(`maplibre-gl`), import(`pmtiles`)]);
   if (!protocolReady) {
+    maplibre.setWorkerUrl(`${MAPLIBRE_WORKER_PATH}?v=${encodeURIComponent(maplibre.getVersion())}`);
     maplibre.addProtocol(`pmtiles`, new pmtiles.Protocol().tile);
     protocolReady = true;
   }
@@ -64,9 +74,10 @@ export async function createOndexView(
       map.off(`error`, onError);
       resolve();
     };
-    // `maplibre-gl` 4.7.1 `ErrorEvent` turini eksport qilmaydi, shuning uchun
-    // kerakli maydon joyida yoziladi.
-    const onError = (e: { error?: Error }) => fail(e.error ?? new Error(`uslub xatosi`));
+    // Faqat kerakli maydon yoziladi (MapLibre ErrorEvent turiga bog'lanmaslik uchun).
+    // v6 da `error` — `ErrorLike` ({ message }), har doim ham `Error` emas.
+    const onError = (e: { error?: { message?: string } }) =>
+      fail(e.error instanceof Error ? e.error : new Error(e.error?.message || `uslub xatosi`));
     map.once(`load`, onLoad);
     map.on(`error`, onError);
   });
