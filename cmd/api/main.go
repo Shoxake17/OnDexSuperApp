@@ -1662,7 +1662,7 @@ func main() {
 	// mijozga va do'kon paneliga jonli yetkaziladi.
 	safego.Go("qurtorders.expire", func() { runQurtExpiry(context.Background(), qurtOrderSvc) })
 
-	startPprof()
+	startPprof(pgPool)
 
 	addr := listenAddr
 	// ANIQ timeout'lar â€” `http.ListenAndServe` nol-qiymatli serverdan

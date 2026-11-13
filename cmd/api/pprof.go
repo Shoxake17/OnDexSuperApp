@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -10,7 +11,32 @@ import (
 	"time"
 
 	"chustapp/internal/safego"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// pgPoolStat — pool holati; hisoblagichlar jarayon boshidan beri o'sib boradi,
+// shuning uchun ikki o'lchov orasidagi farq olinadi.
+type pgPoolStat struct {
+	MaxConns          int32   `json:"max_conns"`
+	TotalConns        int32   `json:"total_conns"`
+	AcquiredConns     int32   `json:"acquired_conns"`
+	IdleConns         int32   `json:"idle_conns"`
+	AcquireCount      int64   `json:"acquire_count"`
+	EmptyAcquireCount int64   `json:"empty_acquire_count"` // bo'sh ulanish yo'q edi -> kutdi
+	AcquireMs         float64 `json:"acquire_ms_total"`
+	CanceledAcquire   int64   `json:"canceled_acquire_count"`
+	NewConnsCount     int64   `json:"new_conns_count"`
+}
+
+func pgPoolStats(s *pgxpool.Stat) pgPoolStat {
+	return pgPoolStat{
+		MaxConns: s.MaxConns(), TotalConns: s.TotalConns(), AcquiredConns: s.AcquiredConns(), IdleConns: s.IdleConns(),
+		AcquireCount: s.AcquireCount(), EmptyAcquireCount: s.EmptyAcquireCount(),
+		AcquireMs: float64(s.AcquireDuration().Microseconds()) / 1000, CanceledAcquire: s.CanceledAcquireCount(),
+		NewConnsCount: s.NewConnsCount(),
+	}
+}
 
 // startPprof — PPROF_ADDR berilsa profiler'ni ALOHIDA, faqat loopback
 // manzilda ishga tushiradi (2026-11-12, INFRA-8 / yuklama testi).
@@ -23,7 +49,11 @@ import (
 //     Profil faqat konteyner tarmoq nomlar fazosidan olinadi
 //     (`docker run --network container:ondex-api-1 ...`).
 // └────────────────────────────────────────────────────────────────────────┘
-func startPprof() {
+//
+// /debug/pgpool — pgx pool statistikasi (JSON): ulanish olishni kutish soni
+// va jami vaqti. Yuklamada to'siq pool navbatimi yoki Postgres CPU'simi —
+// shu farqlaydi (2026-11-14, INFRA-3 / PgBouncer). pool nil bo'lsa ulanmaydi.
+func startPprof(pool *pgxpool.Pool) {
 	addr := os.Getenv("PPROF_ADDR")
 	if addr == "" {
 		return
@@ -39,6 +69,12 @@ func startPprof() {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	if pool != nil {
+		mux.HandleFunc("/debug/pgpool", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(pgPoolStats(pool.Stat()))
+		})
+	}
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 2 * time.Minute}
 	safego.Go("pprof", func() {
 		slog.Info("profiler (faqat loopback)", "addr", addr)
