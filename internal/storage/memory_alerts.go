@@ -105,7 +105,7 @@ func (r *MemoryAlertStore) UnreadCount(_ context.Context, restaurantID string) (
 			n++
 		}
 	}
-	return n, nil
+	return min(n, alerts.MaxUnreadCount), nil
 }
 
 func (r *MemoryAlertStore) LatestSeq(_ context.Context, restaurantID string) (int64, error) {

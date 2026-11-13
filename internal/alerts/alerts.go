@@ -97,6 +97,11 @@ const (
 	MaxBodyLen   = 600
 	MaxSearchLen = 100
 	MaxLimit     = 100
+	// MaxUnreadCount — o'qilmaganlar sanog'ining yuqori chegarasi. Har yangi
+	// buyurtmada sanaladi; panel bildirishnomalarni o'qimasa cheksiz sanash
+	// buyurtma soniga kvadratik bog'liq bo'lardi (prod yuklama testi
+	// 2026-11-13: bitta so'rov ~4800 qator o'qirdi).
+	MaxUnreadCount = 999
 	// Retention — shundan eski bildirishnomalar avtomatik o'chiriladi.
 	Retention = 90 * 24 * time.Hour
 )

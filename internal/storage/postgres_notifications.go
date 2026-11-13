@@ -66,8 +66,11 @@ func (r *PgNotificationStore) List(ctx context.Context, userID string, limit int
 func (r *PgNotificationStore) UnreadCount(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
-		userID).Scan(&n)
+		`SELECT count(*) FROM (
+			SELECT 1 FROM notifications
+			WHERE user_id = $1 AND read_at IS NULL
+			LIMIT $2) t`,
+		userID, notify.MaxUnreadCount).Scan(&n)
 	return n, err
 }
 

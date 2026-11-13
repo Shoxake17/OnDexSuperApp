@@ -57,6 +57,11 @@ type Notification struct {
 	CreatedAt time.Time         `json:"created_at"`
 }
 
+// MaxUnreadCount — o'qilmaganlar sanog'ining yuqori chegarasi. Belgi uchun
+// aniq son kerak emas ("99+"), cheksiz sanash esa o'qilmagan yozuvlar
+// ko'paygan sari HAR so'rovda qimmatlashadi (prod yuklama testi 2026-11-13).
+const MaxUnreadCount = 999
+
 // Store — bildirishnomalar ombori.
 //
 // ┌─ NEGA SAQLANADI ──────────────────────────────────────────────────┐
@@ -73,6 +78,7 @@ type Store interface {
 	Save(ctx context.Context, n *Notification) error
 	// List — eng yangilaridan boshlab.
 	List(ctx context.Context, userID string, limit int) ([]*Notification, error)
+	// UnreadCount — eng ko'pi MaxUnreadCount gacha sanaydi (belgi uchun).
 	UnreadCount(ctx context.Context, userID string) (int, error)
 	// MarkRead — FAQAT shu foydalanuvchining yozuvini belgilaydi
 	// (begona ID berilsa hech narsa o'zgarmaydi).

@@ -61,7 +61,7 @@ func (r *MemoryNotificationStore) UnreadCount(_ context.Context, userID string) 
 			k++
 		}
 	}
-	return k, nil
+	return min(k, notify.MaxUnreadCount), nil
 }
 
 // MarkRead — `userID` tekshiruvi Postgres'dagi kabi MAJBURIY: begona

@@ -134,8 +134,11 @@ func (r *PgAlertStore) Counts(ctx context.Context, restaurantID string, since ti
 func (r *PgAlertStore) UnreadCount(ctx context.Context, restaurantID string) (int, error) {
 	var n int
 	err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM restaurant_notifications WHERE restaurant_id = $1 AND read_at IS NULL`,
-		restaurantID).Scan(&n)
+		`SELECT count(*) FROM (
+			SELECT 1 FROM restaurant_notifications
+			WHERE restaurant_id = $1 AND read_at IS NULL
+			LIMIT $2) t`,
+		restaurantID, alerts.MaxUnreadCount).Scan(&n)
 	return n, err
 }
 
