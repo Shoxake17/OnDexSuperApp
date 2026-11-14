@@ -50,6 +50,14 @@ func (r *MemoryAlertStore) Insert(_ context.Context, n *alerts.Notification) (bo
 	return true, nil
 }
 
+func (r *MemoryAlertStore) InsertBatch(ctx context.Context, ns []*alerts.Notification) ([]bool, error) {
+	out := make([]bool, len(ns))
+	for i, n := range ns {
+		out[i], _ = r.Insert(ctx, n) // xotirada xato yo'q
+	}
+	return out, nil
+}
+
 func (r *MemoryAlertStore) List(_ context.Context, restaurantID string, q alerts.Query) ([]*alerts.Notification, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

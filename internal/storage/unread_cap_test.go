@@ -65,6 +65,46 @@ func TestAlertUnreadCountCapped_Postgres(t *testing.T) {
 	}
 }
 
+// Paketli yozish: berilgan tartibda seq, mavjud va paket ichidagi takror
+// o'tkazib yuboriladi, natija har yozuvga mos.
+func TestAlertInsertBatch_Postgres(t *testing.T) {
+	pool := realmTestPool(t)
+	ctx := context.Background()
+	rid := fmt.Sprintf("batch-%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM restaurant_notifications WHERE restaurant_id = $1`, rid)
+	})
+	s := NewPgAlertStore(pool)
+	fillAlerts(t, s, rid, 0, 1) // dedupe "id:<rid>-n0" allaqachon bor
+	mk := func(id, key string) *alerts.Notification {
+		return &alerts.Notification{ID: rid + "-" + id, RestaurantID: rid, Kind: "test", Category: alerts.CategoryNew,
+			Title: id, Data: map[string]string{"order_id": id}, DedupeKey: key, CreatedAt: time.Now()}
+	}
+	ns := []*alerts.Notification{
+		mk("a", "k:a"), mk("b", "id:"+rid+"-n0"), mk("c", "k:c"), mk("d", "k:a"), mk("e", "k:e"),
+	}
+	got, err := s.InsertBatch(ctx, ns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []bool{true, false, true, false, true}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("natija %d: %v (kutilgan %v)", i, got, want)
+		}
+	}
+	if !(ns[0].Seq < ns[2].Seq && ns[2].Seq < ns[4].Seq) {
+		t.Fatalf("seq tartibi: %d %d %d", ns[0].Seq, ns[2].Seq, ns[4].Seq)
+	}
+	list, err := s.List(ctx, rid, alerts.Query{Limit: 10})
+	if err != nil || len(list) != 4 {
+		t.Fatalf("ro'yxat: %d %v", len(list), err)
+	}
+	if list[0].Data["order_id"] != "e" {
+		t.Fatalf("data saqlanmadi: %+v", list[0].Data)
+	}
+}
+
 func TestNotificationUnreadCountCapped_Memory(t *testing.T) {
 	s := NewMemoryNotificationStore()
 	ctx := context.Background()

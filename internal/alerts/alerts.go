@@ -175,6 +175,10 @@ type Store interface {
 	// bitta bildirishnoma, qayta urinishlar va takroriy callback'lar
 	// ikkinchisini yaratmaydi).
 	Insert(ctx context.Context, n *Notification) (bool, error)
+	// InsertBatch — bir nechtasini BITTA so'rovda, berilgan tartibda yozadi
+	// (seq shu tartibda o'sadi). Natija har yozuv uchun: true — yozildi,
+	// false — takroriy (DedupeKey). Xato bo'lsa hech biri yozilmagan.
+	InsertBatch(ctx context.Context, ns []*Notification) ([]bool, error)
 	List(ctx context.Context, restaurantID string, q Query) ([]*Notification, error)
 	// Counts — `since` dan beri (nol — hammasi).
 	Counts(ctx context.Context, restaurantID string, since time.Time) (Counts, error)

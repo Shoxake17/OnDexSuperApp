@@ -42,6 +42,64 @@ func (r *PgAlertStore) Insert(ctx context.Context, n *alerts.Notification) (bool
 	return err == nil, err
 }
 
+// InsertBatch — bitta INSERT (unnest). `ORDER BY ord` — seq yozuvlar
+// berilgan tartibda o'sadi (jonli kanal tartibi shunga tayanadi).
+// ON CONFLICT DO NOTHING bir paket ichidagi takrorni ham o'tkazib yuboradi.
+func (r *PgAlertStore) InsertBatch(ctx context.Context, ns []*alerts.Notification) ([]bool, error) {
+	out := make([]bool, len(ns))
+	if len(ns) == 0 {
+		return out, nil
+	}
+	ids := make([]string, len(ns))
+	rids := make([]string, len(ns))
+	kinds := make([]string, len(ns))
+	cats := make([]string, len(ns))
+	titles := make([]string, len(ns))
+	bodies := make([]string, len(ns))
+	datas := make([]string, len(ns))
+	keys := make([]string, len(ns))
+	created := make([]time.Time, len(ns))
+	idx := make(map[string]int, len(ns))
+	for i, n := range ns {
+		data := []byte(`{}`)
+		if n.Data != nil {
+			b, err := json.Marshal(n.Data)
+			if err != nil {
+				return nil, err
+			}
+			data = b
+		}
+		ids[i], rids[i], kinds[i], cats[i] = n.ID, n.RestaurantID, n.Kind, string(n.Category)
+		titles[i], bodies[i], datas[i], keys[i], created[i] = n.Title, n.Body, string(data), n.DedupeKey, n.CreatedAt
+		idx[n.ID] = i
+	}
+	rows, err := r.pool.Query(ctx, `
+		INSERT INTO restaurant_notifications (id, restaurant_id, kind, category, title, body, data, dedupe_key, created_at)
+		SELECT id, rid, kind, cat, title, body, data::jsonb, key, created
+		FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::timestamptz[])
+			WITH ORDINALITY AS t(id, rid, kind, cat, title, body, data, key, created, ord)
+		ORDER BY ord
+		ON CONFLICT (restaurant_id, dedupe_key) DO NOTHING
+		RETURNING id, seq`,
+		ids, rids, kinds, cats, titles, bodies, datas, keys, created)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var seq int64
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, err
+		}
+		if i, ok := idx[id]; ok {
+			ns[i].Seq = seq
+			out[i] = true
+		}
+	}
+	return out, rows.Err()
+}
+
 // likePattern — foydalanuvchi matnidagi `%`, `_`, `\` so'zma-so'z qidiriladi.
 func likePattern(s string) string {
 	s = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)

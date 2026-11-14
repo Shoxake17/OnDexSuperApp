@@ -3,7 +3,10 @@ package storage
 import (
 	"context"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,5 +34,24 @@ func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if !strings.Contains(dsn, "pool_min_conns") {
 		cfg.MinConns = 2 // birinchi so'rovlar ulanish ochishni kutmasin
 	}
+	cfg.ConnConfig.BuildContextWatcherHandler = cancelRequestHandler
 	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
+// cancelDeadlineDelay — Postgres bekor qilish so'roviga javob bermasa,
+// shundan keyin ulanish baribir uziladi (zaxira yo'l).
+const cancelDeadlineDelay = 2 * time.Second
+
+// cancelRequestHandler — so'rov konteksti bekor bo'lganda (mijoz uzildi,
+// timeout) ulanishni YOPMAYDI: Postgres'ga cancel yuboradi, ulanish pool'ga
+// qaytadi.
+//
+// ┌─ NEGA ─────────────────────────────────────────────────────────────┐
+// pgx standarti ulanishga darhol deadline qo'yadi -> ulanish buziladi va
+// yopiladi. Yuklama testida (2026-11-14) to'yinish paytida 1511 marta
+// qayta ulanildi: har biri SCRAM autentifikatsiyasi (API va Postgres
+// CPU'si) -> sekinlik -> yana timeout -> yana qayta ulanish (spiral).
+// └────────────────────────────────────────────────────────────────────┘
+func cancelRequestHandler(pgConn *pgconn.PgConn) ctxwatch.Handler {
+	return &pgconn.CancelRequestContextWatcherHandler{Conn: pgConn, DeadlineDelay: cancelDeadlineDelay}
 }
