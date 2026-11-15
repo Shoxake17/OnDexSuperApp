@@ -19,6 +19,8 @@ type Config struct {
 	// Test akkauntlari (TEST_OTP): kod Play sharhlovchilari uchun ochiq.
 	WaiterPhone, CourierPhone, TestCode string
 	Timeout                             time.Duration
+	// Headers — xavfsizlik sarlavhalari tekshiriladigan domenlar (SEC-8).
+	Headers []HeaderTarget
 }
 
 // Result — bitta tekshiruv natijasi.
@@ -173,6 +175,9 @@ func (r *runner) Run() []Result {
 	}
 	if r.cfg.CourierPhone != "" {
 		r.staff("go", r.cfg.CourierPhone, "ondex-go", "courier", func(entity string) string { return "/couriers/" + entity })
+	}
+	for _, t := range r.cfg.Headers {
+		r.checkHeaders(t)
 	}
 	return r.results
 }

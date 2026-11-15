@@ -11,7 +11,8 @@
 // yoziladi). Alertmanager yiqilgan tekshiruvni Telegram'ga yuboradi.
 //
 //	go run ./cmd/smoke -api https://api.ondex.uz -web https://ondex.uz -pos https://merchant.ondex.uz \
-//	   -waiter +998999999999 -courier +998888888888 -out /var/lib/node_exporter/textfile/ondex_smoke.prom
+//	   -waiter +998999999999 -courier +998888888888 -headers default \
+//	   -out /var/lib/node_exporter/textfile/ondex_smoke.prom
 //
 // Chiqish kodi: 0 — hammasi o'tdi, 1 — kamida bitta yiqildi (CI uchun).
 package main
@@ -34,7 +35,14 @@ func main() {
 	flag.StringVar(&cfg.TestCode, "code", "666666", "TEST_OTP sobit kodi")
 	flag.DurationVar(&cfg.Timeout, "timeout", 15*time.Second, "har so'rov muddati")
 	out := flag.String("out", "", "textfile yo'li (bo'sh — stdout)")
+	headers := flag.String("headers", "", "xavfsizlik sarlavhalari: 'default' yoki 'nom=URL:html|api|static,...' (bo'sh — tekshirilmaydi)")
 	flag.Parse()
+	targets, err := ParseHeaderTargets(*headers)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	cfg.Headers = targets
 
 	results := newRunner(cfg, nil).Run()
 	metrics := Metrics(results, time.Now())
