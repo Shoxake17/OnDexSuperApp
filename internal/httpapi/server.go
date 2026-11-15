@@ -233,6 +233,10 @@ type Deps struct {
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
 	DevMode bool
 
+	// PanelWebOrigin — Flutter web panel manbasi (RS-7 BFF CSRF tekshiruvi,
+	// `PANEL_WEB_ORIGIN`). Bo'sh — https://merchant.ondex.uz.
+	PanelWebOrigin string
+
 	// PlatformCouriers — OnDex platforma kuryerlari (o'zi ro'yxatdan
 	// o'tadigan) YOQILGANMI. Hozircha `false` (2026-09-15, foydalanuvchi
 	// qarori): yetkazishni restoranning O'Z kuryerlari bajaradi va
@@ -407,6 +411,10 @@ type Server struct {
 	// (registerQurtCourierRoutes). `Deps` da EMAS: Deps qiymat sifatida
 	// nusxalanadi, sync.Once nusxalanmasligi kerak (govet copylocks).
 	qurtLiveOnce sync.Once
+
+	// panelWebCache — RS-7 BFF: cookie bo'yicha access token keshi
+	// (`panelweb_bff.go`). Deps'da EMAS — mutex nusxalanmasin.
+	panelWebCache panelWebAccessCache
 }
 
 func New(d Deps) *Server {
@@ -522,5 +530,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAssistantLiveRoutes(mux, allowedOrigins)
 	s.registerMeAIToolRoutes(mux)
 
-	return withBodyLimit(withCORS(mux, allowedOrigins, s.DevMode))
+	// RS-7: /r/api/* — merchant web panel BFF (cookie -> token), qolganlari
+	// o'zgarishsiz (`panelweb_bff.go`).
+	return withBodyLimit(withCORS(s.withPanelWebBFF(mux), allowedOrigins, s.DevMode))
 }

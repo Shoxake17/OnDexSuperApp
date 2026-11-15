@@ -36,6 +36,10 @@ type ClientPolicy struct {
 var DefaultClients = map[string]ClientPolicy{
 	"merchant-web":     {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 30 * 24 * time.Hour, NoPublicRefresh: true},
 	"merchant-desktop": {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 30 * 24 * time.Hour},
+	// merchant-panel-web — Flutter web panel BFF'i (RS-7, `panelweb.go`).
+	// Refresh rotatsiyasi yo'q (BFF sessiya bo'yicha access chiqaradi), idle
+	// uzaytirilmaydi — shuning uchun idle = abs: 7 kundan keyin qayta kirish.
+	PanelWebClientID: {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 7 * 24 * time.Hour, NoPublicRefresh: true},
 	"ondex-pro":        {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"ondex-go":         {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
 	"admin-web":        {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour},

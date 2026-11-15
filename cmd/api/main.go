@@ -1600,6 +1600,8 @@ func main() {
 		QurtOrderSvc: qurtOrderSvc,
 		Dispatcher: dispatcher,
 		DevMode:    devMode,
+		// RS-7 web panel BFF: CSRF uchun panel manbasi (bo'sh — merchant.ondex.uz).
+		PanelWebOrigin: os.Getenv("PANEL_WEB_ORIGIN"),
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
 		// u haqiqatan pochtaga boradi (`Deps.EmailConfigured` izohi).
 		EmailConfigured: emailConfigured,

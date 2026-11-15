@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -10,8 +11,10 @@ import 'shell.dart';
 import 'store_home_screen.dart';
 
 /// OnDex Merchant ilovasining klient identifikatori (server `DefaultClients`).
-const _clientId = 'merchant-desktop';
-const _deviceName = 'Merchant panel (Windows)';
+/// Web'da (merchant.ondex.uz/r/) — BFF klienti: token brauzerga tushmaydi,
+/// sessiya HttpOnly cookie'da (server baribir shu qiymatni majburlaydi).
+const _clientId = kIsWeb ? 'merchant-panel-web' : 'merchant-desktop';
+const _deviceName = kIsWeb ? 'Merchant panel (Web)' : 'Merchant panel (Windows)';
 
 /// Kirish bosqichlari (A4b — markaziy sessiya, egasi uchun TOTP majburiy).
 ///

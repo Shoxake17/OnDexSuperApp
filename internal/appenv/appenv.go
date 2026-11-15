@@ -249,6 +249,9 @@ var Registry = []Var{
 	{Name: "OIDC_MERCHANT_WEB_POST_LOGOUT_URIS", Effect: "chiqishdan keyin ilovaga qaytarilmaydi (OnDex sahifasida qoladi)"},
 	{Name: "OIDC_MERCHANT_WEB_BACKCHANNEL_URI", Effect: "markazda yopilgan sessiya ShoxPos'da darhol emas, keyingi refresh'da (≤10 daqiqa) tugaydi"},
 
+	// ---------- Merchant web panel BFF (RS-7, `httpapi/panelweb_bff.go`) ----------
+	{Name: "PANEL_WEB_ORIGIN", Effect: "web panel manbasi https://merchant.ondex.uz deb olinadi (boshqa domendan ishlatilsa CSRF tekshiruvi 403 beradi)"},
+
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
 	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
 	{Name: "SSO_MERCHANT_REDIRECT_URIS", Effect: "yagona kirish YOQILMAYDI (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},
