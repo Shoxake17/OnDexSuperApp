@@ -116,7 +116,13 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 			return "", "", TooSoonError{Wait: resendCooldown - elapsed}
 		}
 	}
-	if !s.guard.allowIssue(phone, s.now()) {
+	// Test akkaunti (`test_login.go`) SUTKALIK KOD SONI chegarasidan ozod:
+	// chegara kodni terib topishga qarshi, test kodi esa baribir ochiq
+	// (do'kon sharhlovchilari uchun) va SMS ketmaydi. Smoke har 15 daqiqada
+	// (kuniga 96) kod so'raydi — chegara 2026-11-12 dan kuzatuvni o'ldirgan.
+	// Xato taxminlar chegarasi, urinishlar, pauza va IP cheklovi SAQLANADI.
+	testActive := s.isTestPhone(phone) && s.testAccount(ctx, phone)
+	if !testActive && !s.guard.allowIssue(phone, s.now()) {
 		return "", "", ErrTooManyCodes
 	}
 	code, err = randomCode()
@@ -126,7 +132,7 @@ func (s *Service) IssueCode(ctx context.Context, rawPhone string) (phone, code s
 	// Test akkaunti — sobit kod (`test_login.go`). Qolgan hamma narsa
 	// (muddat, urinishlar, bir martalik) oddiy kod bilan bir xil.
 	if s.isTestPhone(phone) {
-		if s.testAccount(ctx, phone) {
+		if testActive {
 			code = s.testCode
 		} else {
 			// Oddiy akkaunt: tasodifiy kod sobit kodga TENG bo'lmasin —

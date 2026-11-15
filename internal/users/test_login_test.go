@@ -254,6 +254,56 @@ func TestTestLoginKeepsAttemptLimit(t *testing.T) {
 	}
 }
 
+// Smoke kuniga 96 marta kod so'raydi: faol test akkaunti sutkalik kod
+// chegarasiga urilmasligi kerak, xuddi shu raqamdagi ODDIY akkaunt
+// (yoki bayroq o'chiq) esa chegarada qoladi.
+func TestTestLoginExemptFromDailyCodeLimitOnly(t *testing.T) {
+	ctx := context.Background()
+	clock := time.Now()
+	request := func(s *Service, n int) error {
+		for i := 0; i < n; i++ {
+			clock = clock.Add(resendCooldown + time.Second)
+			if _, _, err := s.IssueCode(ctx, goPhone); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	s, _, _ := testLoginService(t, goPhone, RoleCourier, true)
+	s.now = func() time.Time { return clock }
+	if err := request(s, codesPerDay*3); err != nil {
+		t.Fatalf("faol test akkaunti sutkalik chegaraga urildi: %v", err)
+	}
+	// Xato taxminlar chegarasi esa saqlanadi.
+	for i := 0; i < failuresPerDay; i++ {
+		s.guard.fail(goPhone, clock)
+	}
+	if !s.guard.blocked(goPhone, clock) {
+		t.Fatal("xato taxminlar chegarasi test akkauntida ham ishlashi kerak")
+	}
+
+	// Raqam test ro'yxatida, lekin akkaunt mijozniki — oddiy chegara.
+	c, _, _ := testLoginService(t, goPhone, RoleCustomer, true)
+	c.now = func() time.Time { return clock }
+	if err := request(c, codesPerDay); err != nil {
+		t.Fatalf("oddiy akkaunt chegaragacha kod olishi kerak: %v", err)
+	}
+	if err := request(c, 1); !errors.Is(err, ErrTooManyCodes) {
+		t.Fatalf("test bo'lmagan akkaunt chegaradan o'tdi: %v", err)
+	}
+
+	// Bayroq o'chiq — oddiy chegara.
+	off, _, _ := testLoginService(t, goPhone, RoleCourier, false)
+	off.now = func() time.Time { return clock }
+	if err := request(off, codesPerDay); err != nil {
+		t.Fatal(err)
+	}
+	if err := request(off, 1); !errors.Is(err, ErrTooManyCodes) {
+		t.Fatalf("bayroq o'chiq bo'lsa chegara ishlashi kerak: %v", err)
+	}
+}
+
 func TestWithTestLoginValidates(t *testing.T) {
 	ok := []TestLogin{{Phone: goPhone, Role: RoleCourier}}
 	bad := map[string]struct {
