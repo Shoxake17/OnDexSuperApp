@@ -170,6 +170,9 @@ jobs:
       # Mavjud versiyalar: `shorebird flutter versions list`.
       # Yangilashda ehtiyot bo'ling — mavjud relizlarga chiqariladigan
       # yamoqlar o'sha relizning versiyasida qurilishi shart.
+      # 2026-11-15: 3.44.9 -> 3.47.9 (Dart 3.13; Dependabot pub
+      # yangilanishlari shuni talab qiladi). 3.44.9 relizlariga yamoq
+      # chiqmaydi — barcha ilovalar 3.47.9 da qayta reliz qilinadi.
       # └──────────────────────────────────────────────────────────────┘
       - name: Shorebird release
         if: inputs.action == 'release'
@@ -177,7 +180,7 @@ jobs:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: |
           shorebird release android \
-            --flutter-version=3.44.9 \
+            --flutter-version=3.47.9 \
             -- --dart-define-from-file=config/prod.json
 
       - name: Reliz artefaktini saqlash
