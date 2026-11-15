@@ -37,6 +37,7 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
+	"chustapp/internal/modules/reservation"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicard"
@@ -1459,6 +1460,9 @@ func main() {
 		orderSvc.WithPayments(paymentSvc)
 		// Pul haqiqatan yechilganda — restoranga "To'lov qabul qilindi".
 		paymentSvc.OnPaid(func(p payments.Payment) {
+			if p.ReservationID != "" {
+				return // zaklad: restoranga bron moduli o'zi xabar beradi
+			}
 			alertsSvc.PaymentReceived(p.RestaurantID, p.ID, p.OrderID, p.AmountTiyin)
 		})
 		slog.Info("rejim: karta orqali to'lov yoqilgan",
@@ -1663,6 +1667,38 @@ func main() {
 	// (aks holda mahsulot "qolmagandek" ko'rinib, mijoz abadiy kutardi). Hodisa odatdagidek
 	// mijozga va do'kon paneliga jonli yetkaziladi.
 	safego.Go("qurtorders.expire", func() { runQurtExpiry(context.Background(), qurtOrderSvc) })
+
+	// ── Stol broni + zaklad (RS-3, modul: internal/modules/reservation) ──
+	{
+		var rsvStore reservation.Store
+		if pgPool != nil {
+			rsvStore = reservation.NewPGStore(pgPool)
+		} else {
+			rsvStore = reservation.NewMemStore()
+			slog.Warn("rejim: in-memory (stol bronlari) — server qayta ishga tushganda yo'qoladi")
+		}
+		tbl, hours, pay, wal, note := api.ReservationDeps()
+		rsvSvc, err := reservation.New(reservation.Deps{Store: rsvStore, Tables: tbl, Hours: hours,
+			Payments: pay, Wallet: wal, Notifier: note, NewID: httpapi.NewID})
+		if err != nil {
+			slog.Error("bron moduli sozlanmadi", "err", err)
+			os.Exit(1)
+		}
+		api.ReservationSvc = rsvSvc
+		if paymentSvc != nil {
+			paymentSvc.SetDepositSink(rsvSvc)
+		}
+		// Muddati o'tgan zaklad, kelmaganlar, eslatmalar — 30 soniyada bir.
+		safego.Go("reservation.sweep", func() {
+			t := time.NewTicker(30 * time.Second)
+			defer t.Stop()
+			for range t.C {
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				rsvSvc.Sweep(ctx)
+				cancel()
+			}
+		})
+	}
 
 	startPprof(pgPool)
 

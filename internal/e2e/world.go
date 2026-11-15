@@ -29,6 +29,7 @@ import (
 	"chustapp/internal/images"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
+	"chustapp/internal/modules/reservation"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicardpay"
@@ -176,6 +177,8 @@ type World struct {
 	api *httpapi.Server
 	// Wallet — OnDex Wallet xizmati (balansni to'g'ridan-to'g'ri to'ldirish uchun).
 	Wallet *wallet.Service
+	// Rsv — bron moduli (SweepReservations uchun).
+	Rsv *reservation.Service
 	skew   time.Duration    // Advance bilan oldinga siljitilgan soat
 	rec    *report.Recorder // nil bo'lsa umumiy Rec (meta-testlar o'zinikini beradi)
 	gated  bool
@@ -466,6 +469,15 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		DevMode:          true,
 		PlatformCouriers: opts.PlatformCouriers,
 	})
+	// Stol broni (RS-3): xotira ombori, xizmat soati w.now (Advance ishlaydi).
+	tbl, hours, pay, wal, note := api.ReservationDeps()
+	w.Rsv, err = reservation.New(reservation.Deps{Store: reservation.NewMemStore(), Tables: tbl, Hours: hours,
+		Payments: pay, Wallet: wal, Notifier: note, NewID: httpapi.NewID, Now: w.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.ReservationSvc = w.Rsv
+	paySvc.SetDepositSink(w.Rsv)
 	w.api = api
 	w.Srv = httptest.NewServer(api.Routes(nil))
 	t.Cleanup(w.Srv.Close)
@@ -487,6 +499,10 @@ func (w *World) Advance(d time.Duration) {
 	w.skew += d
 	w.mu.Unlock()
 }
+
+// SweepReservations — bron nazoratchisining bitta tsikli (muddati o'tgan
+// zaklad, kelmaganlar, eslatmalar).
+func (w *World) SweepReservations() int { return w.Rsv.Sweep(context.Background()) }
 
 // Sweep — kuryer qidiruvi NAZORATCHISINING bitta tsiklini ishga tushiradi
 // (production'da har 15 soniyada; birinchi tsikl darhol ishlaydi).

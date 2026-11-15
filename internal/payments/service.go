@@ -22,6 +22,9 @@ import (
 type Payment struct {
 	ID           string `json:"id"`
 	OrderID      string `json:"order_id"`
+	// ReservationID — stol broni zakladi (RS-3). To'lov buyurtmaga YOKI
+	// bronga tegishli, aynan bittasiga (bazada CHECK payments_one_subject).
+	ReservationID string `json:"reservation_id,omitempty"`
 	CustomerID   string `json:"customer_id"`
 	RestaurantID string `json:"restaurant_id"`
 	Provider     string `json:"provider"`
@@ -62,6 +65,8 @@ type Repository interface {
 	GetByProviderID(ctx context.Context, provider, providerPaymentID string) (*Payment, error)
 	// ListByOrder — buyurtmaning barcha urinishlari (yangisi birinchi).
 	ListByOrder(ctx context.Context, orderID string) ([]*Payment, error)
+	// ListByReservation — bron zakladi urinishlari (yangisi birinchi).
+	ListByReservation(ctx context.Context, reservationID string) ([]*Payment, error)
 	// ListExpired — muddati o'tgan, hali yakunlanmagan to'lovlar
 	// (avtomatik bekor qilish uchun).
 	ListExpired(ctx context.Context, now time.Time, limit int) ([]*Payment, error)
@@ -108,6 +113,9 @@ type Service struct {
 	// Chaqiruvchi uni o'z goroutine'ida bajarishi kerak — to'lov oqimi
 	// kutmaydi.
 	onPaid func(p Payment)
+
+	// deposits — bron zakladi to'lovlari uchun (RS-3, `deposit.go`).
+	deposits DepositSink
 }
 
 // OnPaid — "pul yechildi" kuzatuvchisi (`alerts.Service.PaymentReceived`).
@@ -593,9 +601,9 @@ func (s *Service) applyStatus(ctx context.Context, p *Payment, status Status, ra
 
 	switch status {
 	case StatusHeld, StatusPaid:
-		return s.orders.OnPaymentHeld(ctx, p.OrderID)
+		return s.notifyPaid(ctx, p)
 	case StatusCanceled, StatusFailed:
-		return s.orders.OnPaymentFailed(ctx, p.OrderID)
+		return s.notifyFailed(ctx, p)
 	}
 	return nil
 }
@@ -796,7 +804,7 @@ func (s *Service) ExpireStale(ctx context.Context, limit int) (int, error) {
 		if err := s.repo.Update(ctx, p); err != nil {
 			return n, err
 		}
-		if err := s.orders.OnPaymentFailed(ctx, p.OrderID); err != nil {
+		if err := s.notifyFailed(ctx, p); err != nil {
 			slog.Error("muddati o'tgan to'lov: buyurtmani yangilab bo'lmadi",
 				"order", p.OrderID, "error", err)
 		}

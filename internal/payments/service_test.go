@@ -154,6 +154,18 @@ func (r *memRepo) ListByOrder(_ context.Context, orderID string) ([]*Payment, er
 	}
 	return out, nil
 }
+func (r *memRepo) ListByReservation(_ context.Context, reservationID string) ([]*Payment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []*Payment
+	for _, p := range r.items {
+		if reservationID != "" && p.ReservationID == reservationID {
+			cp := p
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
 func (r *memRepo) ListExpired(_ context.Context, now time.Time, _ int) ([]*Payment, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

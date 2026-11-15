@@ -56,6 +56,7 @@ import (
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/support"
+	"chustapp/internal/modules/reservation"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
 	"chustapp/internal/tracking"
@@ -152,6 +153,10 @@ type Deps struct {
 	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
 	// â€” bu funksiyani bosqichma-bosqich yoqish uchun.
 	TableSvc *tables.Service
+
+	// ReservationSvc — stol broni va zaklad (RS-3, `internal/modules/reservation`).
+	// nil — bron endpointlari 503.
+	ReservationSvc *reservation.Service
 	// TableOrders — joylar holati (band/bo'sh) uchun stol buyurtmalari.
 	// `nil` bo'lsa holatlar buyurtmasiz hisoblanadi (hamma joy "bo'sh").
 	TableOrders tables.OrdersSource
@@ -501,6 +506,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAlertRoutes(mux)
 	s.registerSupportRoutes(mux)
 	s.registerTableRoutes(mux)
+	s.registerReservationRoutes(mux)
 	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)
 	s.registerCourierRoutes(mux)

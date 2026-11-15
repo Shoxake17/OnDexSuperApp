@@ -19,9 +19,15 @@ func NewPostgresPaymentRepo(pool *pgxpool.Pool) *PostgresPaymentRepo {
 	return &PostgresPaymentRepo{pool: pool}
 }
 
+// order_id / reservation_id — aynan bittasi (0076, CHECK payments_one_subject);
+// Go tomonida bo'sh satr = NULL.
 const paymentColumns = `id, order_id, customer_id, restaurant_id, provider,
 	provider_payment_id, amount_tiyin, status, pay_url, needs_review, review_reason,
-	created_at, updated_at, paid_at, expires_at, raw`
+	created_at, updated_at, paid_at, expires_at, raw, reservation_id`
+
+const paymentSelect = `id, COALESCE(order_id, ''), customer_id, restaurant_id, provider,
+	provider_payment_id, amount_tiyin, status, pay_url, needs_review, review_reason,
+	created_at, updated_at, paid_at, expires_at, raw, COALESCE(reservation_id, '')`
 
 func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error) {
 	var p payments.Payment
@@ -29,7 +35,7 @@ func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error)
 	var raw []byte
 	err := row.Scan(&p.ID, &p.OrderID, &p.CustomerID, &p.RestaurantID, &p.Provider,
 		&p.ProviderPaymentID, &p.AmountTiyin, &p.Status, &p.PayURL, &p.NeedsReview,
-		&p.ReviewReason, &p.CreatedAt, &p.UpdatedAt, &paidAt, &p.ExpiresAt, &raw)
+		&p.ReviewReason, &p.CreatedAt, &p.UpdatedAt, &paidAt, &p.ExpiresAt, &raw, &p.ReservationID)
 	if err != nil {
 		return nil, err
 	}
@@ -41,10 +47,10 @@ func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error)
 func (r *PostgresPaymentRepo) Create(ctx context.Context, p *payments.Payment) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO payments (`+paymentColumns+`)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		VALUES ($1,NULLIF($2,''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULLIF($17,''))`,
 		p.ID, p.OrderID, p.CustomerID, p.RestaurantID, p.Provider,
 		p.ProviderPaymentID, p.AmountTiyin, p.Status, p.PayURL, p.NeedsReview,
-		p.ReviewReason, p.CreatedAt, p.UpdatedAt, p.PaidAt, p.ExpiresAt, rawOrNil(p.Raw))
+		p.ReviewReason, p.CreatedAt, p.UpdatedAt, p.PaidAt, p.ExpiresAt, rawOrNil(p.Raw), p.ReservationID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		// Bir xil provayder to'lovi ikkinchi yozuvga bog'lanmaydi
@@ -68,7 +74,7 @@ func (r *PostgresPaymentRepo) Update(ctx context.Context, p *payments.Payment) e
 
 func (r *PostgresPaymentRepo) GetByID(ctx context.Context, id string) (*payments.Payment, error) {
 	p, err := scanPayment(r.pool.QueryRow(ctx,
-		`SELECT `+paymentColumns+` FROM payments WHERE id = $1`, id))
+		`SELECT `+paymentSelect+` FROM payments WHERE id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, payments.ErrNotFound
 	}
@@ -80,7 +86,7 @@ func (r *PostgresPaymentRepo) GetByProviderID(ctx context.Context, provider, pro
 		return nil, payments.ErrNotFound
 	}
 	p, err := scanPayment(r.pool.QueryRow(ctx,
-		`SELECT `+paymentColumns+` FROM payments
+		`SELECT `+paymentSelect+` FROM payments
 		 WHERE provider = $1 AND provider_payment_id = $2`, provider, providerPaymentID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, payments.ErrNotFound
@@ -89,8 +95,15 @@ func (r *PostgresPaymentRepo) GetByProviderID(ctx context.Context, provider, pro
 }
 
 func (r *PostgresPaymentRepo) ListByOrder(ctx context.Context, orderID string) ([]*payments.Payment, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT `+paymentColumns+` FROM payments WHERE order_id = $1 ORDER BY created_at DESC`, orderID)
+	return r.list(ctx, `SELECT `+paymentSelect+` FROM payments WHERE order_id = $1 ORDER BY created_at DESC`, orderID)
+}
+
+func (r *PostgresPaymentRepo) ListByReservation(ctx context.Context, reservationID string) ([]*payments.Payment, error) {
+	return r.list(ctx, `SELECT `+paymentSelect+` FROM payments WHERE reservation_id = $1 ORDER BY created_at DESC`, reservationID)
+}
+
+func (r *PostgresPaymentRepo) list(ctx context.Context, q string, arg any) ([]*payments.Payment, error) {
+	rows, err := r.pool.Query(ctx, q, arg)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +124,7 @@ func (r *PostgresPaymentRepo) ListExpired(ctx context.Context, now time.Time, li
 		limit = 100
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT `+paymentColumns+` FROM payments
+		`SELECT `+paymentSelect+` FROM payments
 		 WHERE status = $1 AND expires_at < $2
 		 ORDER BY expires_at LIMIT $3`, payments.StatusPending, now, limit)
 	if err != nil {
