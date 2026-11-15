@@ -49,8 +49,8 @@ dependencies:
   webview_flutter_android: ^4.0.0
   # Yangi buyurtma taklifi ilova YOPIQ bo'lsa ham yetib borsin (FCM push).
   # Versiyalar affitsiant ilovasi bilan bir xil.
-  firebase_core: ^4.15.2
-  firebase_messaging: ^16.7.1
+  firebase_core: ^5.1.0
+  firebase_messaging: ^17.0.1
   flutter_local_notifications: ^19.4.2
 
 dev_dependencies:
