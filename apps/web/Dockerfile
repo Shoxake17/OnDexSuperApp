@@ -1,6 +1,6 @@
 # OnDex — Next.js mini-app'lari (BFF).
 
-FROM node:20-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 # `npm ci` — `npm install` EMAS: u package-lock.json ga QAT'IY amal
@@ -8,7 +8,7 @@ COPY package.json package-lock.json* ./
 # CI'da va mahalliy mashinada boshqa-boshqa versiyalar yig'ilardi.
 RUN npm ci
 
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -58,7 +58,7 @@ ENV NEXT_PUBLIC_MEDIA_ORIGIN=${NEXT_PUBLIC_MEDIA_ORIGIN}
 RUN npm run build
 
 # ---------- Ishlash bosqichi ----------
-FROM node:20-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
