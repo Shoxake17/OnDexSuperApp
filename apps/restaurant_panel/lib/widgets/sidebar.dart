@@ -24,6 +24,9 @@ const List<_NavEntry> _sidebarNavEntries = [
   // Stollar (QR kod) — buyurtmalar va menyudan keyin, chunki u ham
   // KUNDALIK ish quroli, "tez orada" bo'limlari emas.
   _NavEntry(Icons.table_restaurant_rounded, 'Stollar (QR)'),
+  // RS-4: stol bronlari (zaklad bilan). Undan keyingi indekslar bittaga
+  // surilgan — `shell.dart` konstantalari va pastdagi badge indekslari ham.
+  _NavEntry(Icons.event_seat_rounded, 'Bronlar'),
   _NavEntry(Icons.bar_chart_rounded, 'Statistika'),
   _NavEntry(Icons.account_balance_wallet_rounded, 'Moliya'),
   _NavEntry(Icons.settings_rounded, 'Restoran sozlamalari'),
@@ -80,13 +83,13 @@ class Sidebar extends StatelessWidget {
                 final entry = _sidebarNavEntries[i];
                 // Faqat HAQIQIY hisoblangan rozetkalar: "Buyurtmalar"
                 // (index 1) — yangi ("created") buyurtmalar,
-                // "Bildirishnomalar" (index 9) — o'qilmagan restoran
+                // "Bildirishnomalar" (index 10) — o'qilmagan restoran
                 // bildirishnomalari (jonli). Boshqa bo'limlarga soxta
                 // raqam qo'yilmaydi.
                 final count = switch (i) {
                   1 => newOrdersCount,
-                  9 => notificationsCount,
-                  11 => supportCount,
+                  10 => notificationsCount,
+                  12 => supportCount,
                   _ => 0,
                 };
                 final badge = count > 0 ? count : null;

@@ -20,20 +20,24 @@ import '../pages/support_chat_page.dart';
 import '../pages/tables_page.dart';
 import '../sound.dart';
 import '../support_center.dart';
+import '../pages/reservations_page.dart';
 import '../widgets/main_layout.dart';
 import 'login_screen.dart';
 
 const _iDashboard = 0;
 const _iOrders = 1;
 const _iMenu = 2;
-const _iStatistics = 5;
-const _iFinance = 6;
-const _iSettings = 7;
-const _iStaff = 8;
-const _iNotifications = 9;
+const _iStatistics = 6;
+const _iFinance = 7;
+const _iSettings = 8;
+const _iStaff = 9;
+const _iNotifications = 10;
 const _iTables = 4;
-const _iHelp = 10;
-const _iChat = 11;
+// RS-4: Bronlar — Stollar'dan keyin; keyingi indekslar bittaga surildi
+// (`widgets/sidebar.dart` ro'yxati va badge indekslari bilan BIR XIL).
+const _iReservations = 5;
+const _iHelp = 11;
+const _iChat = 12;
 
 class RestaurantShell extends StatefulWidget {
   const RestaurantShell({super.key});
@@ -233,12 +237,13 @@ class _RestaurantShellState extends State<RestaurantShell> {
     _iOrders: 'Buyurtmalar',
     _iMenu: 'Menyu',
     3: 'Aksiyalar',
-    4: 'Stollar',
+    _iTables: 'Stollar',
+    _iReservations: 'Bronlar',
     _iStatistics: 'Statistika',
     _iFinance: 'Moliya',
     _iSettings: 'Sozlamalar',
-    8: 'Xodimlar',
-    9: 'Bildirishnomalar',
+    _iStaff: 'Xodimlar',
+    _iNotifications: 'Bildirishnomalar',
     _iHelp: 'Yordam',
     _iChat: 'Chat',
   };
@@ -323,6 +328,8 @@ class _RestaurantShellState extends State<RestaurantShell> {
       // bosib "Statistika" ni ochib qo'yardi.
       case _iTables:
         return const TablesPage();
+      case _iReservations:
+        return const ReservationsPage();
       case _iStatistics:
         return StatisticsPage(controller: _stats);
       case _iFinance:
