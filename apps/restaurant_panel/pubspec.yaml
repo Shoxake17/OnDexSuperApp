@@ -69,6 +69,10 @@ flutter:
   uses-material-design: true
   assets:
     - sound/ding.mp3
+    # Chek shrifti (RS-8): Roboto (Apache 2.0, Flutter SDK material_fonts'dan).
+    # Kirill/lotin taom nomlari internetsiz ham to'g'ri chiqsin.
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
     # Brend logotipi — yon menyudagi sarlavhada. Ilgari u kod bilan
     # CHIZILARDI (rangli kvadrat + ikonka + "Ondex" matni), ya'ni
     # haqiqiy logotipga o'xshamasdi.

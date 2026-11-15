@@ -1,16 +1,21 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:printing/printing.dart' show Printing;
 
 import '../api.dart';
 import '../panel_prefs.dart';
+import '../printing/receipt_printer.dart';
 import '../sound.dart';
 import '../theme.dart';
 import '../widgets/date_range_dialog.dart';
 
 part 'settings/settings_cards.dart';
 part 'settings/hours_dialog.dart';
+part 'settings/printer_card.dart';
 
 /// "Restoran sozlamalari" — `image/RestorantSozlamalari.png` bo'yicha
 /// (ichki bo'limlar menyusisiz: hamma bo'lim bitta sahifada ko'rinadi).
@@ -592,6 +597,8 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
                   ),
                   const SizedBox(height: 16),
                   const _NotificationsCard(),
+                  const SizedBox(height: 16),
+                  _PrinterCard(restaurantName: s.name),
                   const SizedBox(height: 16),
                   // PK-3: egasi passkey'ni shu yerdan qo'shadi (Authenticator kodi bilan).
                   PasskeySettingsCard(passkeys: OnDexPasskeys(api)),

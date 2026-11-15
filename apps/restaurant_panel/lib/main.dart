@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'panel_prefs.dart';
+import 'printing/receipt_printer.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
 import 'screens/store_home_screen.dart';
@@ -21,6 +22,8 @@ void main() async {
   // Shu kompyuterdagi bildirishnoma sozlamalari (ovoz, xabarlar) —
   // birinchi buyurtma kelishidan OLDIN o'qilishi kerak.
   await PanelPrefs.load();
+  // Chek printeri sozlamalari (RS-8) — shu kompyuterda.
+  await ReceiptPrefs.load();
 
   // Markaziy sessiya (A4b): access + refresh shifrlangan omborda.
   api.attachStore(restTokenStore);

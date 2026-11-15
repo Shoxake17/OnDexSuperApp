@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../live.dart';
 import '../panel_prefs.dart';
+import '../printing/receipt_menu.dart';
+import '../printing/receipt_printer.dart';
 import '../sound.dart';
 import '../widgets/courier_status_box.dart';
 import '../widgets/order_card_header.dart';
@@ -180,10 +182,21 @@ class _OrdersPageState extends State<OrdersPage> {
         _loading = false;
       });
       _updateRinging();
+      _autoPrint();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  /// RS-8: yangi qabul qilingan buyurtmalar cheki (shu kompyuterda
+  /// yoqilgan bo'lsa). Xato sahifani to'xtatmaydi.
+  Future<void> _autoPrint() async {
+    if (!ReceiptPrefs.autoKitchen.value && !ReceiptPrefs.autoCustomer.value) return;
+    try {
+      final name = await RestaurantNameCache.get();
+      await ReceiptPrinter.autoPrint(_orders, restaurantName: name);
+    } catch (_) {}
   }
 
   /// Buyurtma holatini o'zgartiradigan YAGONA nuqta.
@@ -1061,7 +1074,7 @@ class _YangiCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OrderCardHeader(order: order),
+          OrderCardHeader(order: order, trailing: ReceiptMenuButton(order: order)),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           _PhoneRow(phone: order['customer_phone'] as String?),
@@ -1116,7 +1129,7 @@ class _PreparingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OrderCardHeader(order: order),
+          OrderCardHeader(order: order, trailing: ReceiptMenuButton(order: order)),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           _PhoneRow(phone: order['customer_phone'] as String?),
@@ -1191,7 +1204,7 @@ class _ReadyCard extends StatelessWidget {
         children: [
           // Tartib: raqam → stol (stol buyurtmasida) → taomlar → mijoz
           // raqami → jami summa → kuryer holati.
-          OrderCardHeader(order: order),
+          OrderCardHeader(order: order, trailing: ReceiptMenuButton(order: order)),
           const SizedBox(height: 8),
           _ItemsList(order: order),
           // Raqam bo'lmasa qator umuman chizilmaydi (`_PhoneRow`), bor
@@ -1231,7 +1244,7 @@ class _KuryerdaCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OrderCardHeader(order: order),
+          OrderCardHeader(order: order, trailing: ReceiptMenuButton(order: order)),
           const SizedBox(height: 8),
           Row(
             children: [

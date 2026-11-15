@@ -19,7 +19,10 @@ import '../theme.dart';
 /// └───────────────────────────────────────────────────────────────────┘
 class OrderCardHeader extends StatelessWidget {
   final Map<String, dynamic> order;
-  const OrderCardHeader({super.key, required this.order});
+
+  /// Vaqtdan keyin (o'ng chekkada) — masalan chek tugmasi (RS-8).
+  final Widget? trailing;
+  const OrderCardHeader({super.key, required this.order, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +55,7 @@ class OrderCardHeader extends StatelessWidget {
                 fontSize: 12.5,
                 color: OnDexColors.inkFaint,
                 fontWeight: FontWeight.w600)),
+        if (trailing != null) ...[const SizedBox(width: 2), trailing!],
       ],
     );
     if (!dineIn) return numberRow;
