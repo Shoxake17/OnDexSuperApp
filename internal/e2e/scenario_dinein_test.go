@@ -126,12 +126,35 @@ func TestDineInFlow(t *testing.T) {
 			w.CheckOrder(t, o)
 		}
 		step(w.Owner, "preparing")
+		// RS-2: tayyor bo'lmagan buyurtmani olib bo'lmaydi.
+		w.Do(t, waiter, "POST", "/waiter/orders/"+orderID+"/claim", nil).Expect(t, 409)
 		step(w.Owner, "ready")
 		// Kuryer holatlari stolda yo'q.
 		r := w.Do(t, waiter, "POST", "/orders/"+orderID+"/transition", map[string]any{"to": "picked_up"})
 		if r.Status < 400 || r.Status >= 500 {
 			t.Fatalf("stol buyurtmasi `picked_up` ga o'tdi: %d", r.Status)
 		}
+
+		// RS-2: ikkinchi ofitsiant. Birinchisi "Olaman" — ikkinchisiga 409,
+		// "olib bordim" ham faqat olganga.
+		body := `{"first_name":"Gani","phone":"+998901110004","position":"waiter","app_access":true}`
+		w.Do(t, w.Owner, "POST", "/restaurants/"+RestA+"/staff", body).Expect(t, 201)
+		waiter2 := w.LoginAs(t, "ofitsiant-2", "+998901110004")
+		c := w.Do(t, waiter, "POST", "/waiter/orders/"+orderID+"/claim", nil).Expect(t, 200).Map(t)
+		if c["mine"] != true || c["claimed"] != true || c["waiter_name"] == "" {
+			t.Fatalf("claim: %v", c)
+		}
+		w.Do(t, waiter, "POST", "/waiter/orders/"+orderID+"/claim", nil).Expect(t, 200) // idempotent
+		w.Do(t, waiter2, "POST", "/waiter/orders/"+orderID+"/claim", nil).Expect(t, 409)
+		var list []map[string]any
+		w.Do(t, waiter2, "GET", "/waiter/orders", nil).Expect(t, 200).JSON(t, &list)
+		for _, x := range list {
+			if x["id"] == orderID && (x["mine"] != false || x["claimed"] != true) {
+				t.Fatalf("boshqa ofitsiant ko'rinishi: %v", x)
+			}
+		}
+		w.Do(t, waiter2, "POST", "/orders/"+orderID+"/transition", map[string]any{"to": "served"}).Expect(t, 409)
+		w.ExpectDenied(t, w.OwnerB, "POST", "/waiter/orders/"+orderID+"/claim", nil)
 		step(waiter, "served")
 		final := w.Do(t, w.Customer, "GET", "/orders/"+orderID, nil).Expect(t, 200).Map(t)
 		w.CheckOrder(t, final)

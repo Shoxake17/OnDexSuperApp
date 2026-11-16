@@ -456,6 +456,13 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusNotFound, orders.ErrNotFound)
 				return
 			}
+			// RS-2: stol buyurtmasini boshqa ofitsiant olgan bo'lsa — u
+			// "olib bordim" deya olmaydi (restoran esa har doim mumkin).
+			if claims.Role == users.RoleWaiter && req.To == orders.StatusServed &&
+				o.WaiterID != "" && o.WaiterID != claims.Subject {
+				httpError(w, http.StatusConflict, orders.ErrWaiterTaken)
+				return
+			}
 			o, err = s.OrderSvc.ChangeStatus(r.Context(), o.ID, req.To, roleToActor(claims.Role))
 			if err != nil {
 				var terr *orders.TransitionError

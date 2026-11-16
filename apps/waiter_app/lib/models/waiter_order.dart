@@ -50,6 +50,9 @@ class WaiterOrder {
     required this.createdAt,
     required this.readyAt,
     this.placedByWaiter = false,
+    this.claimed = false,
+    this.mine = false,
+    this.waiterName = '',
   });
 
   final String id;
@@ -68,6 +71,14 @@ class WaiterOrder {
 
   /// Buyurtmani affitsiant kiritgan (mijoz QR orqali emas).
   final bool placedByWaiter;
+
+  /// RS-2: tayyor buyurtmani biror ofitsiant OLGANMI, men olganmanmi va kim.
+  final bool claimed;
+  final bool mine;
+  final String waiterName;
+
+  /// Boshqa ofitsiant olgan — men harakat qila olmayman.
+  bool get takenByOther => claimed && !mine;
 
   /// Affitsiant harakat qilishi kerakmi (yagona harakat — "Yetkazdim").
   bool get isReady => status == 'ready';
@@ -127,6 +138,9 @@ class WaiterOrder {
       createdAt: _time(j['created_at']),
       readyAt: _time(j['ready_at']),
       placedByWaiter: j['placed_by_waiter'] == true,
+      claimed: j['claimed'] == true,
+      mine: j['mine'] == true,
+      waiterName: j['waiter_name'] as String? ?? '',
     );
   }
 }

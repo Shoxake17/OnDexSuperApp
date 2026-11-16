@@ -90,6 +90,8 @@ class _OrdersPageState extends State<OrdersPage> {
         // qidirish boshqa xodim kompyuterida ham DARHOL ko'rinsin.
         'courier_not_found',
         'dispatch_state',
+        // RS-2: ofitsiant tayyor taomni oldi — kartada ismi ko'rinsin.
+        'waiter_claimed',
       },
       offlineInterval: const Duration(seconds: 15),
     )..start();

@@ -1026,6 +1026,48 @@ func (s *Service) SetPreparationTime(ctx context.Context, orderID string, minute
 }
 
 // AssignCourier — dispatcher muvaffaqiyatli yakunlanganda chaqiriladi.
+// ErrWaiterTaken — buyurtmani boshqa ofitsiant allaqachon olgan.
+var ErrWaiterTaken = errors.New("bu buyurtmani boshqa ofitsiant olgan")
+
+// ErrNotClaimable — buyurtma olib bo'linadigan holatda emas (stol
+// buyurtmasi emas, boshqa restoranniki yoki hali tayyor emas).
+var ErrNotClaimable = errors.New("buyurtma hali tayyor emas yoki stol buyurtmasi emas")
+
+// ClaimForWaiter — tayyor stol buyurtmasini ofitsiant O'ZIGA oladi (RS-2).
+// Idempotent (o'zi qayta bossa — o'zgarishsiz). Parallel ikki ofitsiant —
+// versiya qulfi bittasini o'tkazadi, ikkinchisi ErrWaiterTaken oladi.
+func (s *Service) ClaimForWaiter(ctx context.Context, orderID, restaurantID, waiterID, waiterName string) (*Order, error) {
+	for attempt := 0; attempt < maxOptimisticRetries; attempt++ {
+		o, err := s.repo.GetByID(ctx, orderID)
+		if err != nil {
+			return nil, err
+		}
+		if o.RestaurantID != restaurantID {
+			return nil, ErrNotFound
+		}
+		if !o.IsDineIn() || o.Status != StatusReady {
+			return nil, ErrNotClaimable
+		}
+		switch o.WaiterID {
+		case waiterID:
+			return o, nil
+		case "":
+		default:
+			return nil, ErrWaiterTaken
+		}
+		o.WaiterID, o.WaiterName, o.UpdatedAt = waiterID, waiterName, s.now()
+		err = s.repo.Save(ctx, o)
+		if errors.Is(err, ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return o, nil
+	}
+	return nil, ErrConflict
+}
+
 func (s *Service) AssignCourier(ctx context.Context, orderID, courierID string) (*Order, error) {
 	for attempt := 0; attempt < maxOptimisticRetries; attempt++ {
 		o, err := s.repo.GetByID(ctx, orderID)

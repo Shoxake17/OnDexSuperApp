@@ -70,6 +70,9 @@ class WaiterApi extends ApiClient {
   ///
   /// Server tomonda holat mashinasi buni FAQAT `ready` holatidagi
   /// stol buyurtmasi uchun ruxsat beradi.
+  /// RS-2: tayyor buyurtmani o'zimga olaman (boshqasi olgan bo'lsa 409).
+  Future<void> claimOrder(String orderId) => send('POST', '/waiter/orders/$orderId/claim');
+
   Future<void> markServed(String orderId) =>
       send('POST', '/orders/$orderId/transition', {'to': 'served'});
 

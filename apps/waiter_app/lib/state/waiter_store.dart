@@ -387,6 +387,25 @@ class WaiterStore extends ChangeNotifier {
   /// `ready` da ko'rsatiladi, ya'ni odam imkonsiz amalni umuman
   /// ko'rmaydi. Mijozga "Buyurtmangiz keldi" bildirishnomasini server
   /// yuboradi.
+  /// RS-2: "Olaman" — tayyor buyurtmani o'zimga biriktiraman. Boshqa
+  /// ofitsiant ulgurgan bo'lsa server 409 qaytaradi (xabar matni).
+  Future<String?> claim(WaiterOrder order) async {
+    if (_busy.contains(order.id)) return null;
+    _busy.add(order.id);
+    notifyListeners();
+    try {
+      await api.claimOrder(order.id);
+      await refresh();
+      return null;
+    } on ApiException catch (e) {
+      await refresh();
+      return e.message;
+    } finally {
+      _busy.remove(order.id);
+      notifyListeners();
+    }
+  }
+
   Future<String?> markServed(WaiterOrder order) async {
     if (_busy.contains(order.id)) return null;
     _busy.add(order.id);

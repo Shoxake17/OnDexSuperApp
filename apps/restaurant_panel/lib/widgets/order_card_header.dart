@@ -75,6 +75,17 @@ class OrderCardHeader extends StatelessWidget {
         numberRow,
         const SizedBox(height: 8),
         TableChip(tableLabel: tableLabel, partySize: partySize),
+        // RS-2: tayyor taomni olgan ofitsiant.
+        if ('${order['waiter_name'] ?? ''}'.trim().isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${'${order['waiter_name']}'.trim()} olib bormoqda',
+            key: const ValueKey('order-waiter'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, color: OnDexColors.inkDim, fontWeight: FontWeight.w600),
+          ),
+        ],
       ],
     );
   }

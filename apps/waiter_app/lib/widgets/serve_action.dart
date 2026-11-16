@@ -79,7 +79,7 @@ Future<void> confirmServe(
               child: FilledButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
                 style: FilledButton.styleFrom(backgroundColor: kReadyColor),
-                child: const Text('Ha, yetkazdim'),
+                child: const Text('Ha, olib bordim'),
               ),
             ),
             const SizedBox(height: 8),
@@ -144,6 +144,48 @@ class ServeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final busy = store.isBusy(order.id);
+    // ┌─ RS-2: TAYYOR TAOMNI BITTA OFITSIANT OLADI ───────────────────────┐
+    // Avval hamma ofitsiant bir xil "Yetkazdim" ni ko'rardi — ikkitasi bir
+    // taomni olib ketishi yoki hech kim olmasligi mumkin edi. Endi:
+    //   hech kim olmagan  -> "Olaman" (birinchi bosgan oladi, server qulfi);
+    //   men olganman      -> "Olib bordim" (tasdiq bilan);
+    //   boshqasi olgan    -> "<ism> olib bormoqda" (tugma yo'q).
+    // └──────────────────────────────────────────────────────────────────┘
+    if (order.takenByOther) {
+      final who = order.waiterName.trim().isEmpty ? 'Boshqa ofitsiant' : order.waiterName.trim();
+      final chip = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: kBorder.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text('$who olib bormoqda',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: kInkFaint, fontWeight: FontWeight.w600)),
+      );
+      return expanded ? SizedBox(width: double.infinity, child: chip) : chip;
+    }
+    if (!order.claimed) {
+      final claim = FilledButton.icon(
+        key: const ValueKey('claim-order'),
+        onPressed: busy
+            ? null
+            : () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final err = await store.claim(order);
+                if (err != null) messenger.showSnackBar(SnackBar(content: Text(err)));
+              },
+        style: FilledButton.styleFrom(
+          backgroundColor: kReadyColor,
+          padding: EdgeInsets.symmetric(horizontal: expanded ? 20 : 16, vertical: expanded ? 16 : 12),
+        ),
+        icon: busy
+            ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.pan_tool_alt_outlined, size: 18),
+        label: const Text('Olaman'),
+      );
+      return expanded ? SizedBox(width: double.infinity, child: claim) : claim;
+    }
     final button = FilledButton.icon(
       onPressed: busy ? null : () => confirmServe(context, order, store),
       style: FilledButton.styleFrom(
@@ -163,7 +205,7 @@ class ServeButton extends StatelessWidget {
               ),
             )
           : const Icon(Icons.done, size: 18),
-      label: const Text('Yetkazdim'),
+      label: const Text('Olib bordim'),
     );
     return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }

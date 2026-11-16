@@ -217,6 +217,12 @@ type Order struct {
 	// o'zgarmaydi (`PgOrderRepo.Save` — DO UPDATE ro'yxatida yo'q).
 	PlacedBy string `json:"placed_by,omitempty"`
 
+	// WaiterID/WaiterName — tayyor stol buyurtmasini OLGAN ofitsiant (RS-2,
+	// `ClaimForWaiter`). Bo'sh — hali hech kim olmagan. Olgandan keyin
+	// "served" faqat shu ofitsiant yoki restoranga ochiq.
+	WaiterID   string `json:"waiter_id,omitempty"`
+	WaiterName string `json:"waiter_name,omitempty"`
+
 	// PreparationMinutes/ReadyAt — restoran "Qabul qilindi" bosgan payt
 	// kiritadigan taxminiy tayyorlash vaqti. ReadyAt = qabul qilingan payt +
 	// PreparationMinutes — dispatch matching engine kuryerning restoranga

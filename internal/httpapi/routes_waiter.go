@@ -39,7 +39,7 @@ const (
 // `CustomerID`, `DeliveryLat/Lng`, `DeliveryAddress` bor va yangi
 // maydon qo'shilganda u avtomatik ravishda affitsiantga ham
 // ko'rinib ketardi. Aniq ro'yxat esa "sukut bo'yicha yopiq".
-func waiterOrderView(o *orders.Order) map[string]any {
+func waiterOrderView(o *orders.Order, me string) map[string]any {
 	return map[string]any{
 		"id":           o.ID,
 		"order_number": o.OrderNumber,
@@ -55,6 +55,10 @@ func waiterOrderView(o *orders.Order) map[string]any {
 		// Buyurtmani affitsiant kiritganmi (mijoz QR orqali emas). KIM
 		// kiritgani (foydalanuvchi ID'si) ATAYLAB berilmaydi.
 		"placed_by_waiter": o.PlacedBy != "",
+		// RS-2: kim olib boryapti. ID emas — faqat ism va "o'zimmi".
+		"waiter_name": o.WaiterName,
+		"claimed":     o.WaiterID != "",
+		"mine":        o.WaiterID != "" && o.WaiterID == me,
 	}
 }
 
@@ -108,7 +112,7 @@ func (s *Server) registerWaiterRoutes(mux *http.ServeMux) {
 				if !o.IsDineIn() || o.IsTerminal() {
 					continue
 				}
-				out = append(out, waiterOrderView(o))
+				out = append(out, waiterOrderView(o, claims.Subject))
 			}
 			writeJSON(w, http.StatusOK, out)
 		}))
@@ -267,11 +271,49 @@ func (s *Server) registerWaiterRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusConflict, errors.New("bu idempotency_key boshqa buyurtmada ishlatilgan"))
 				return
 			}
-			writeJSON(w, http.StatusCreated, waiterOrderView(created))
+			writeJSON(w, http.StatusCreated, waiterOrderView(created, claimsFrom(r).Subject))
 		}))
 
 	// GET /waiter/me — affitsiant qaysi restoranda ishlashini bilishi
 	// uchun (ilova sarlavhasida restoran nomi ko'rsatiladi).
+	// POST /waiter/orders/{id}/claim — RS-2: tayyor stol buyurtmasini
+	// ofitsiant O'ZIGA oladi ("Olaman"). Boshqasi olgan bo'lsa 409.
+	// Restoran ID'si FAQAT tokendan.
+	mux.HandleFunc("POST /waiter/orders/{id}/claim", s.auth([]users.Role{users.RoleWaiter},
+		func(w http.ResponseWriter, r *http.Request) {
+			claims := claimsFrom(r)
+			if claims.EntityID == "" {
+				httpError(w, http.StatusForbidden, errors.New("akkaunt hech qaysi restoranga biriktirilmagan"))
+				return
+			}
+			name := ""
+			if s.UserRepo != nil {
+				if u, err := s.UserRepo.GetByID(r.Context(), claims.Subject); err == nil {
+					name = u.Name
+				}
+			}
+			o, err := s.OrderSvc.ClaimForWaiter(r.Context(), r.PathValue("id"), claims.EntityID, claims.Subject, name)
+			switch {
+			case errors.Is(err, orders.ErrNotFound):
+				httpError(w, http.StatusNotFound, orders.ErrNotFound)
+				return
+			case errors.Is(err, orders.ErrWaiterTaken), errors.Is(err, orders.ErrNotClaimable), errors.Is(err, orders.ErrConflict):
+				httpError(w, http.StatusConflict, err)
+				return
+			case err != nil:
+				httpError(w, http.StatusInternalServerError, err)
+				return
+			}
+			view := waiterOrderView(o, claims.Subject)
+			// Boshqa ofitsiantlar va restoran paneli "kim olib boryapti"ni darhol ko'rsin.
+			if s.Hub != nil {
+				s.Hub.Send(restaurantTopic(o.RestaurantID), map[string]any{
+					"type": "waiter_claimed", "order_id": o.ID, "waiter_name": o.WaiterName,
+				})
+			}
+			writeJSON(w, http.StatusOK, view)
+		}))
+
 	mux.HandleFunc("GET /waiter/me", s.auth([]users.Role{users.RoleWaiter},
 		func(w http.ResponseWriter, r *http.Request) {
 			claims := claimsFrom(r)
