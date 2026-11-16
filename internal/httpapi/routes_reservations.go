@@ -68,6 +68,15 @@ func (s *Server) reservationView(r *http.Request, x *reservation.Reservation, wi
 	return v
 }
 
+// payLinkView — to'lov havolasi + ilova WebView'i kutadigan qaytish manzili.
+func (s *Server) payLinkView(l *reservation.PayLink) map[string]any {
+	v := map[string]any{"payment_id": l.PaymentID, "pay_url": l.PayURL, "expires_at": l.ExpiresAt}
+	if s.Payments != nil {
+		v["return_url"] = s.Payments.ReturnURL()
+	}
+	return v
+}
+
 func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 	staff := []users.Role{users.RoleRestaurant, users.RoleAdmin}
 	customer := []users.Role{users.RoleCustomer}
@@ -139,8 +148,11 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 				fail(w, err)
 				return
 			}
-			writeJSON(w, http.StatusCreated, map[string]any{
-				"reservation": s.reservationView(r, res.Reservation, false), "pay": res.Pay})
+			out := map[string]any{"reservation": s.reservationView(r, res.Reservation, false)}
+			if res.Pay != nil {
+				out["pay"] = s.payLinkView(res.Pay)
+			}
+			writeJSON(w, http.StatusCreated, out)
 		}))
 
 	mux.HandleFunc("GET /me/reservations", s.auth(customer,
@@ -203,7 +215,7 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 				fail(w, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, reservation.PayLink{PaymentID: p.ID, PayURL: p.PayURL, ExpiresAt: p.ExpiresAt})
+			writeJSON(w, http.StatusOK, s.payLinkView(&reservation.PayLink{PaymentID: p.ID, PayURL: p.PayURL, ExpiresAt: p.ExpiresAt}))
 		}))
 
 	// ── Restoran paneli ──

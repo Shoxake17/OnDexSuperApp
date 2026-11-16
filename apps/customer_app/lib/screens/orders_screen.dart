@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../widgets/common.dart';
 import '../live.dart';
+import '../reservations/my_reservations_screen.dart';
 import '../widgets/order_status.dart';
 import '../widgets/sheet_page.dart';
 import '../widgets/sheet_scaffold.dart';
@@ -77,6 +78,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Widget build(BuildContext context) {
     return SheetScaffold(
       title: 'Buyurtmalarim',
+      actions: [
+        // RS-3: stol bronlari shu yerdan ham ochiladi.
+        TextButton.icon(
+          key: const ValueKey('open-my-reservations'),
+          onPressed: () => Navigator.of(context).push(sheetRoute(const MyReservationsScreen())),
+          icon: const Icon(Icons.event_seat_outlined, size: 18),
+          label: const Text('Bronlarim'),
+        ),
+      ],
       child: SafeArea(
         top: false,
         child: RefreshIndicator(
