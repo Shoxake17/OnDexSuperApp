@@ -8,6 +8,7 @@ import '../api.dart';
 import '../live.dart';
 import '../panel_prefs.dart';
 import '../printing/receipt_menu.dart';
+import 'delivery_map/delivery_map_dialog.dart';
 import '../printing/receipt_printer.dart';
 import '../sound.dart';
 import '../widgets/courier_status_box.dart';
@@ -584,6 +585,19 @@ class _Header extends StatelessWidget {
               icon: const Icon(Icons.history_rounded, size: 17),
               label: const Text('Tarix'),
             ),
+          // RS-1: yo'ldagi kuryerlar xaritada (jonli).
+          OutlinedButton.icon(
+            key: const ValueKey('open-delivery-map'),
+            onPressed: () => showDeliveryMapDialog(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: OnDexColors.primary,
+              side: const BorderSide(color: OnDexColors.primary),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.map_outlined, size: 17),
+            label: const Text('Xarita'),
+          ),
         ],
       );
       if (narrow) {

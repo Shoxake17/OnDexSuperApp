@@ -522,6 +522,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerAdminUserRoutes(mux)
 	s.registerGeoRoutes(mux)
 	s.registerMapPickerRoutes(mux)
+	s.registerDeliveryMapRoutes(mux)
 	s.registerUploadRoutes(mux)
 	s.registerModel3DRoutes(mux)
 	// Tashqi AI agentlar: sherik yuzasi (`/agent/v1/*`) va

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yetkazish xaritasi</title>
+<style>
+  html, body, #map { margin: 0; height: 100%; width: 100%; background: #f7f1e7; font-family: system-ui, sans-serif; }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+         color: #7a6b5c; font-size: 14px; pointer-events: none; }
+  .pin { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+         color: #fff; font: 700 12px system-ui; box-shadow: 0 2px 6px rgba(0,0,0,.35); border: 2px solid #fff; }
+  .pin.courier { background: #f2650f; }
+  .pin.rest { background: #1b140f; }
+  .pin.dest { background: #3b5fa8; width: 22px; height: 22px; }
+  .maplibregl-popup-content { font: 13px system-ui; padding: 8px 10px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="msg">Xarita yuklanmoqda…</div>
+<script nonce="__CSP_NONCE__" type="module">
+  // RS-1: restoran panelidagi yetkazish xaritasi. Sahifada SIR YO'Q va u API
+  // chaqirmaydi — ma'lumotni panel postMessage bilan beradi:
+  //   {type:'data', restaurant:{lat,lng,name}, couriers:[{courier_name, order_number,
+  //    status, location:{lat,lng}, delivery:{lat,lng}}]}
+  // Kutubxonalar shu serverdan (nisbiy yo'l: web'da /r/api/ orqali).
+  const STYLE = '__STYLE_URL__';
+  const LIB = 'map-picker/lib/';
+  const msg = document.getElementById('msg');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const toHost = (o) => {
+    const t = JSON.stringify(o);
+    try { window.chrome.webview.postMessage(t); return; } catch (e) {}
+    try { window.parent.postMessage(t, window.location.origin); } catch (e) {}
+  };
+  const loadScript = (src) => new Promise((ok, bad) => {
+    const s = document.createElement('script'); s.src = src; s.async = true; s.onload = ok;
+    s.onerror = () => bad(new Error(src)); document.head.appendChild(s);
+  });
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = LIB + 'maplibre-gl.css';
+  document.head.appendChild(css);
+
+  let map = null, ready = false, pending = null, fitted = false;
+  const markers = new Map();
+
+  function pinEl(cls, text) {
+    const d = document.createElement('div'); d.className = 'pin ' + cls; d.textContent = text || ''; return d;
+  }
+  function setMarker(key, cls, text, lat, lng, popupHtml) {
+    if (!(lat || lng)) return;
+    let m = markers.get(key);
+    if (!m) {
+      m = new maplibregl.Marker({ element: pinEl(cls, text) }).setLngLat([lng, lat]).addTo(map);
+      if (popupHtml) m.setPopup(new maplibregl.Popup({ offset: 18, closeButton: false }).setHTML(popupHtml));
+      markers.set(key, m);
+    } else {
+      m.setLngLat([lng, lat]);
+      if (popupHtml && m.getPopup()) m.getPopup().setHTML(popupHtml);
+    }
+    m._seen = true;
+  }
+  function render(d) {
+    if (!ready) { pending = d; return; }
+    markers.forEach((m) => { m._seen = false; });
+    const pts = [];
+    const r = d.restaurant;
+    if (r && (r.lat || r.lng)) { setMarker('rest', 'rest', 'R', r.lat, r.lng, esc(r.name)); pts.push([r.lng, r.lat]); }
+    for (const c of d.couriers || []) {
+      const num = String(c.order_number || '').split('-').pop();
+      const pop = `<b>${esc(c.courier_name || 'Kuryer')}</b><br>#${esc(num)} · ${esc(c.status)}`;
+      if (c.location) { setMarker('c:' + c.order_id, 'courier', (c.courier_name || 'K').slice(0, 1).toUpperCase(), c.location.lat, c.location.lng, pop); pts.push([c.location.lng, c.location.lat]); }
+      if (c.delivery) { setMarker('d:' + c.order_id, 'dest', '', c.delivery.lat, c.delivery.lng, `Manzil · #${esc(num)}`); pts.push([c.delivery.lng, c.delivery.lat]); }
+    }
+    markers.forEach((m, k) => { if (!m._seen) { m.remove(); markers.delete(k); } });
+    msg.style.display = (d.couriers || []).length ? 'none' : 'flex';
+    msg.textContent = 'Hozir yo\'lda kuryer yo\'q';
+    if (!fitted && pts.length) {
+      fitted = true;
+      if (pts.length === 1) map.jumpTo({ center: pts[0], zoom: 14 });
+      else {
+        const b = pts.reduce((bb, p) => bb.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
+        map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
+      }
+    }
+  }
+  function onMessage(raw) {
+    try {
+      const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (d && d.type === 'data') render(d);
+    } catch (e) {}
+  }
+  try { window.chrome.webview.addEventListener('message', (e) => onMessage(e.data)); } catch (e) {}
+  window.addEventListener('message', (e) => {
+    if (e.source === window.parent && e.origin === window.location.origin) onMessage(e.data);
+  });
+
+  try {
+    const mod = await import(LIB + 'maplibre-gl.mjs');
+    window.maplibregl = mod;
+    await loadScript(LIB + 'pmtiles.js');
+    maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+    map = new maplibregl.Map({ container: 'map', style: STYLE, center: [71.25, 41.0], zoom: 11, maxPitch: 0, dragRotate: false });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    map.on('load', () => {
+      ready = true; msg.style.display = 'none';
+      toHost({ type: 'ready' });
+      if (pending) { const p = pending; pending = null; render(p); }
+    });
+    map.on('error', (e) => { if (!ready) { msg.textContent = 'Xarita yuklanmadi'; toHost({ type: 'error' }); } });
+  } catch (e) {
+    msg.textContent = 'Xarita yuklanmadi';
+    toHost({ type: 'error', reason: String(e) });
+  }
+</script>
+</body>
+</html>

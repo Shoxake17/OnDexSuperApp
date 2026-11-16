@@ -156,6 +156,20 @@ func TestDeliveryCashFlow(t *testing.T) {
 		step(w.Owner, "ready")
 		step(courier, "picked_up")
 		w.Do(t, w.Customer, "GET", "/orders/"+orderID+"/tracking", nil)
+
+		// RS-1: restoran panelidagi yetkazish xaritasi — o'z kuryeri jonli,
+		// begona restoran/mijoz ko'rmaydi; xarita sahifasi sirsiz va freymlanadi.
+		dm := w.Do(t, w.Owner, "GET", "/restaurants/"+RestA+"/delivery-map", nil).Expect(t, 200).Map(t)
+		cs, _ := dm["couriers"].([]any)
+		if len(cs) != 1 || cs[0].(map[string]any)["order_id"] != orderID || cs[0].(map[string]any)["location"] == nil {
+			t.Fatalf("yetkazish xaritasi: %v", dm)
+		}
+		w.ExpectDenied(t, w.OwnerB, "GET", "/restaurants/"+RestA+"/delivery-map", nil)
+		w.ExpectDenied(t, w.Customer, "GET", "/restaurants/"+RestA+"/delivery-map", nil)
+		page := w.Do(t, nil, "GET", "/courier-map", nil).Expect(t, 200)
+		if contains(page.Body, "Bearer") || !contains(page.Body, "/tiles/style.json") {
+			t.Fatal("xarita sahifasi: sir yoki uslub")
+		}
 		step(courier, "delivered")
 	})
 
