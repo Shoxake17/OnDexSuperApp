@@ -222,4 +222,27 @@ func TestReservationFlow(t *testing.T) {
 			t.Fatalf("kelmadi: %v", ns)
 		}
 	})
+
+	// RS-6: admin jonli holati — restoranlar, faol buyurtmalar, bronlar.
+	w.Step(t, "admin restoranlarning jonli holatini ko'radi", func(t *testing.T) {
+		live := w.Do(t, w.Admin, "GET", "/admin/restaurants/live", nil).Expect(t, 200).Map(t)
+		found := false
+		for _, x := range live["restaurants"].([]any) {
+			r := x.(map[string]any)
+			if r["id"] == RestA {
+				found = true
+				if _, ok := r["reservations"].(map[string]any); !ok {
+					t.Fatalf("bronlar bo'limi yo'q: %v", r)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("RestA yo'q: %v", live)
+		}
+		if contains(mustJSON(live), w.Customer.Phone) {
+			t.Fatal("jonli holatda mijoz telefoni")
+		}
+		w.ExpectDenied(t, w.Owner, "GET", "/admin/restaurants/live", nil)
+		w.ExpectDenied(t, w.Customer, "GET", "/admin/restaurants/live", nil)
+	})
 }

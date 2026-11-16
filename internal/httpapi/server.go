@@ -512,6 +512,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerTableRoutes(mux)
 	s.registerReservationRoutes(mux)
 	s.registerTableBillRoutes(mux)
+	s.registerAdminLiveRoutes(mux)
 	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)
 	s.registerCourierRoutes(mux)

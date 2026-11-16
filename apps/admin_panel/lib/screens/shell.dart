@@ -5,6 +5,7 @@ import '../live.dart';
 import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
 import '../pages/kyc_page.dart';
+import '../pages/live_ops_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
 import '../pages/qurt_stats_page.dart';
@@ -108,6 +109,14 @@ const _navTop = <_NavSpec>[
     icon: Icons.verified_user_outlined,
     selectedIcon: Icons.verified_user,
   ),
+  // RS-6: restoranlar jonli holati (oxirida — oldingi indekslar surilmaydi).
+  (
+    key: 'nav-live',
+    label: 'Jonli holat',
+    screen: 'LiveOps',
+    icon: Icons.monitor_heart_outlined,
+    selectedIcon: Icons.monitor_heart,
+  ),
 ];
 
 const _navBottom = <_NavSpec>[
@@ -179,6 +188,7 @@ class _AdminShellState extends State<AdminShell> {
         7 => const SettingsPage(),
         // KYC (A6): faqat OnDex ID admin sessiyasida.
         8 => const KycPage(),
+        9 => const LiveOpsPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),
