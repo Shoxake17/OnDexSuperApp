@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/payments"
@@ -60,6 +61,25 @@ func (s *Server) registerTableBillRoutes(mux *http.ServeMux) {
 			return
 		}
 		v, err := s.TableBillSvc.Current(r.Context(), t.RestaurantID, t.ID, t.DisplayLabel())
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, v)
+	}))
+
+	// GET /orders/{id}/bill — mehmon o'z stol buyurtmasidan hisobni ochadi
+	// (QR token ilovada saqlanmagan bo'lsa ham). Faqat buyurtma egasi.
+	mux.HandleFunc("GET /orders/{id}/bill", s.auth(customer, func(w http.ResponseWriter, r *http.Request) {
+		o, err := s.OrderRepo.GetByID(r.Context(), r.PathValue("id"))
+		if err != nil || o.CustomerID != claimsFrom(r).Subject || !o.IsDineIn() {
+			fail(w, tablebill.ErrNotFound)
+			return
+		}
+		if !ready(w) {
+			return
+		}
+		v, err := s.TableBillSvc.Current(r.Context(), o.RestaurantID, o.TableID, o.TableLabel)
 		if err != nil {
 			fail(w, err)
 			return
@@ -139,6 +159,31 @@ func (s *Server) registerTableBillRoutes(mux *http.ServeMux) {
 				return
 			}
 			list(w, r, rid)
+		}))
+
+	// GET /restaurants/{id}/tips?from=RFC3339&to=RFC3339 — choy pullari ofitsiant bo'yicha.
+	mux.HandleFunc("GET /restaurants/{id}/tips", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
+		func(w http.ResponseWriter, r *http.Request) {
+			rid, ok := entityIDFor(claimsFrom(r), r.PathValue("id"))
+			if !ok {
+				fail(w, tablebill.ErrNotFound)
+				return
+			}
+			if !ready(w) {
+				return
+			}
+			from, err1 := time.Parse(time.RFC3339, r.URL.Query().Get("from"))
+			to, err2 := time.Parse(time.RFC3339, r.URL.Query().Get("to"))
+			if err1 != nil || err2 != nil {
+				fail(w, tablebill.ErrInvalid)
+				return
+			}
+			tips, err := s.TableBillSvc.Tips(r.Context(), rid, from, to)
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, tips)
 		}))
 
 	mux.HandleFunc("POST /bills/{id}/close", s.auth(staff, func(w http.ResponseWriter, r *http.Request) {

@@ -193,3 +193,29 @@ func (m *MemStore) Close(_ context.Context, billID string, at time.Time) error {
 	m.bills[billID] = b
 	return nil
 }
+
+func (m *MemStore) Tips(_ context.Context, restaurantID string, from, to time.Time) ([]WaiterTips, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agg := map[string]*WaiterTips{}
+	for _, s := range m.shares {
+		b := m.bills[s.BillID]
+		if b.RestaurantID != restaurantID || s.Status != SharePaid || s.TipTiyin <= 0 || s.PaidAt == nil ||
+			s.PaidAt.Before(from) || !s.PaidAt.Before(to) {
+			continue
+		}
+		w := agg[s.WaiterName]
+		if w == nil {
+			w = &WaiterTips{WaiterName: s.WaiterName}
+			agg[s.WaiterName] = w
+		}
+		w.TipsTiyin += s.TipTiyin
+		w.Count++
+	}
+	out := make([]WaiterTips, 0, len(agg))
+	for _, w := range agg {
+		out = append(out, *w)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].TipsTiyin > out[j].TipsTiyin })
+	return out, nil
+}

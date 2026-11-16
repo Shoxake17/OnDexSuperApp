@@ -425,3 +425,15 @@ func (s *Service) OpenBills(ctx context.Context, restaurantID string) ([]*View, 
 	}
 	return out, nil
 }
+
+// Tips — choy pullari ofitsiant bo'yicha (panel). Davr 93 kundan oshmaydi.
+func (s *Service) Tips(ctx context.Context, restaurantID string, from, to time.Time) ([]WaiterTips, error) {
+	if !to.After(from) || to.Sub(from) > 93*24*time.Hour {
+		return nil, fmt.Errorf("%w: davr", ErrInvalid)
+	}
+	out, err := s.d.Store.Tips(ctx, restaurantID, from, to)
+	if out == nil {
+		out = []WaiterTips{}
+	}
+	return out, err
+}

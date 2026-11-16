@@ -2,7 +2,9 @@ package e2e
 
 import (
 	"context"
+	"net/url"
 	"testing"
+	"time"
 
 	"chustapp/internal/payments/multicard"
 )
@@ -58,6 +60,24 @@ func TestTableBillFlow(t *testing.T) {
 			t.Fatal("hisob javobida token yoki to'lovchi ID'si")
 		}
 		w.Do(t, w.Other, "GET", "/bills/"+billID, nil).Expect(t, 200)
+		// Buyurtmadan hisob (ilovadagi "Hisobni to'lash") — o'sha hisob; begonaga yo'q.
+		var mine []map[string]any
+		found := false
+		w.Do(t, w.Customer, "GET", "/me/orders", nil).Expect(t, 200).JSON(t, &mine)
+		for _, o := range mine {
+			if o["type"] == "dine_in" {
+				ob := w.Do(t, w.Customer, "GET", "/orders/"+o["id"].(string)+"/bill", nil).Expect(t, 200).Map(t)
+				if ob["bill"].(map[string]any)["id"] != billID {
+					t.Fatalf("buyurtma hisobi boshqa: %v", ob)
+				}
+				w.ExpectDenied(t, w.Other, "GET", "/orders/"+o["id"].(string)+"/bill", nil)
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("mijozning stol buyurtmasi ro'yxatda yo'q")
+		}
 	})
 
 	w.Step(t, "mehmon o'z 1 oshini 10% choy puli bilan to'laydi", func(t *testing.T) {
@@ -94,6 +114,16 @@ func TestTableBillFlow(t *testing.T) {
 			t.Fatalf("ochiq hisoblar: %v", list)
 		}
 		w.ExpectDenied(t, w.OwnerB, "GET", "/restaurants/"+RestA+"/bills", nil)
+		// Choy pullari ofitsiant bo'yicha (10% x 1 osh).
+		q := "?from=" + url.QueryEscape(time.Now().Add(-24*time.Hour).UTC().Format(time.RFC3339)) +
+			"&to=" + url.QueryEscape(time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
+		var tips []map[string]any
+		w.Do(t, w.Owner, "GET", "/restaurants/"+RestA+"/tips"+q, nil).Expect(t, 200).JSON(t, &tips)
+		if len(tips) != 1 || num(tips[0], "tips_tiyin") != ProdOshPrice/10 {
+			t.Fatalf("choy pullari: %v", tips)
+		}
+		w.ExpectDenied(t, w.OwnerB, "GET", "/restaurants/"+RestA+"/tips"+q, nil)
+		w.Do(t, w.Owner, "GET", "/restaurants/"+RestA+"/tips?from=x&to=y", nil).Expect(t, 400)
 		w.ExpectDenied(t, w.OwnerB, "POST", "/bills/"+billID+"/close", map[string]any{"method": "cash"})
 	})
 

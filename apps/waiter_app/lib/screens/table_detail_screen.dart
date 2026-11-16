@@ -7,6 +7,7 @@ import '../state/waiter_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/order_card.dart';
+import '../widgets/table_bill_card.dart';
 import 'new_order_screen.dart';
 import 'order_detail_screen.dart';
 
@@ -117,7 +118,10 @@ class TableDetailScreen extends StatelessWidget {
               Expanded(
                 child: orders.isEmpty
                     ? ListView(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                         children: [
+                          // RS-5: berilgan buyurtmalar ro'yxatdan chiqsa ham hisob ochiq bo'lishi mumkin.
+                          TableBillCard(tableId: tableId),
                           EmptyState(
                             icon: Icons.event_seat_outlined,
                             title: 'Stolda faol buyurtma yo\'q',
@@ -131,6 +135,7 @@ class TableDetailScreen extends StatelessWidget {
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                         children: [
+                          TableBillCard(tableId: tableId),
                           for (final o in orders)
                             OrderCard(
                               order: o,

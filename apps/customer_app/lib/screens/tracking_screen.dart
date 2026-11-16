@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
 import '../api.dart';
 import '../payment_nav_policy.dart' show isAcceptablePayUrl;
+import '../tablebill/bill_screen.dart';
 import 'ar_table_screen.dart';
 import '../live.dart';
 import '../widgets/common.dart';
@@ -474,6 +475,21 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         order: o,
                         givenStars: (_myRating?['stars'] as num?)?.toInt(),
                       ),
+                      // RS-5: stolda hisobni o'z telefonidan to'lash (teng yoki o'z taomlari).
+                      if ((o['type'] as String?) == 'dine_in' &&
+                          !const {'cancelled', 'rejected'}.contains(o['status'])) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            key: const ValueKey('open-table-bill'),
+                            style: FilledButton.styleFrom(backgroundColor: kBrand, minimumSize: const Size.fromHeight(48)),
+                            onPressed: () => Navigator.of(context).push(sheetRoute(BillScreen(orderId: o['id'] as String))),
+                            icon: const Icon(Icons.receipt_long_outlined),
+                            label: const Text('Hisobni to\'lash'),
+                          ),
+                        ),
+                      ],
                       // Baho qo'yilgach bu karta BUTUNLAY yo'qoladi —
                       // natija endi yuqoridagi "Yetkazildi!" blokida
                       // ko'rinadi, ikki marta ko'rsatish shart emas.

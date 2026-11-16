@@ -160,4 +160,13 @@ type Store interface {
 	// SetShareStatus — faqat joriy holat `from` bo'lsa.
 	SetShareStatus(ctx context.Context, id, from, to string, paidAt *time.Time) error
 	Close(ctx context.Context, billID string, at time.Time) error
+	// Tips — [from,to) da to'langan choy pullari ofitsiant bo'yicha.
+	Tips(ctx context.Context, restaurantID string, from, to time.Time) ([]WaiterTips, error)
+}
+
+// WaiterTips — ofitsiantning choy pullari (RS-5, egasi qarori: ofitsiantga).
+type WaiterTips struct {
+	WaiterName string `json:"waiter_name"`
+	TipsTiyin  int64  `json:"tips_tiyin"`
+	Count      int    `json:"count"`
 }

@@ -198,3 +198,25 @@ func (p *PGStore) Close(ctx context.Context, billID string, at time.Time) error 
 		version = version + 1 WHERE id = $1 AND status = 'open'`, billID, at)
 	return err
 }
+
+func (p *PGStore) Tips(ctx context.Context, restaurantID string, from, to time.Time) ([]WaiterTips, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT s.waiter_name, SUM(s.tip_tiyin), COUNT(*)
+		FROM tablebill.shares s JOIN tablebill.bills b ON b.id = s.bill_id
+		WHERE b.restaurant_id = $1 AND s.status = 'paid' AND s.tip_tiyin > 0
+		  AND s.paid_at >= $2 AND s.paid_at < $3
+		GROUP BY s.waiter_name ORDER BY 2 DESC LIMIT 200`, restaurantID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WaiterTips
+	for rows.Next() {
+		var w WaiterTips
+		if err := rows.Scan(&w.WaiterName, &w.TipsTiyin, &w.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}

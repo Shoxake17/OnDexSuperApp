@@ -8,6 +8,7 @@ import '../api.dart';
 import '../live.dart';
 import '../panel_prefs.dart';
 import '../printing/receipt_menu.dart';
+import 'bills/bills_dialog.dart';
 import 'delivery_map/delivery_map_dialog.dart';
 import '../printing/receipt_printer.dart';
 import '../sound.dart';
@@ -597,6 +598,19 @@ class _Header extends StatelessWidget {
             ),
             icon: const Icon(Icons.map_outlined, size: 17),
             label: const Text('Xarita'),
+          ),
+          // RS-5: stol hisoblari va choy pullari.
+          OutlinedButton.icon(
+            key: const ValueKey('open-bills'),
+            onPressed: () => showBillsDialog(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: OnDexColors.primary,
+              side: const BorderSide(color: OnDexColors.primary),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.receipt_long_outlined, size: 17),
+            label: const Text('Hisoblar'),
           ),
         ],
       );
