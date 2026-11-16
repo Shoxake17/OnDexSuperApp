@@ -43,6 +43,7 @@ import (
 	"chustapp/internal/catalog"
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
+	"chustapp/internal/wallet"
 )
 
 // Manifest — test yaratgan BARCHA asosiy yozuvlar. O'chirish faqat shu ro'yxatga tayanadi.
@@ -178,6 +179,43 @@ func seed(ctx context.Context, pool *pgxpool.Pool, cat catalog.Repository, run s
 	writeManifest(manifestPath, &m)
 	raw, _ := json.Marshal(tokens)
 	if err := os.WriteFile(filepath.Join(dir, "tokens-"+run+".json"), raw, 0o600); err != nil {
+		fail(err.Error())
+	}
+
+	// ┌─ RESTORAN FUNKSIONAL SINOVI (2026-11-16) ─────────────────────────┐
+	// Restoran egasi va ofitsiant — prefiksli ID bilan (cleanup ularni ham
+	// o'chiradi). Birinchi ikki mijozga Wallet test balansi (bron zakladi
+	// uchun; wallet_transactions user_id bo'yicha tozalanadi).
+	// └───────────────────────────────────────────────────────────────────┘
+	staffTok := map[string]string{}
+	for _, s := range []struct {
+		key  string
+		role users.Role
+	}{{"owner", users.RoleRestaurant}, {"waiter", users.RoleWaiter}} {
+		id := prefix + s.key
+		m.UserIDs = append(m.UserIDs, id)
+		writeManifest(manifestPath, &m)
+		u := &users.User{ID: id, Phone: fmt.Sprintf("+99800%07d", 9_000_000+len(staffTok)), Name: "Test " + s.key,
+			FirstName: "Test", Role: s.role, EntityID: r.ID, PhoneVerified: true, CreatedAt: time.Now()}
+		if err := repo.Create(ctx, u); err != nil {
+			fail(s.key + ": " + err.Error())
+		}
+		tok, err := issuer.Issue(u)
+		if err != nil {
+			fail("token: " + err.Error())
+		}
+		staffTok[s.key] = tok
+	}
+	wal := storage.NewPostgresWalletRepo(pool)
+	for i := 0; i < 2 && i < n; i++ {
+		uid := fmt.Sprintf("%su%05d", prefix, i)
+		if _, _, err := wal.Credit(ctx, &wallet.Transaction{ID: fmt.Sprintf("%swal%d", prefix, i), UserID: uid,
+			OrderID: fmt.Sprintf("%sseed-wallet-%d", prefix, i), AmountTiyin: 50_000_000, Type: wallet.TypeAdminAdjust, CreatedAt: time.Now()}); err != nil {
+			fail("wallet: " + err.Error())
+		}
+	}
+	rawStaff, _ := json.Marshal(staffTok)
+	if err := os.WriteFile(filepath.Join(dir, "staff-"+run+".json"), rawStaff, 0o600); err != nil {
 		fail(err.Error())
 	}
 	fmt.Printf("SEED TAYYOR: restoran=%s taom=%d mijoz=%d manifest=%s\n", r.ID, len(m.ProductIDs), len(m.UserIDs), manifestPath)
