@@ -94,6 +94,20 @@ func (r *MemoryPaymentRepo) ListByReservation(ctx context.Context, reservationID
 	return out, nil
 }
 
+func (r *MemoryPaymentRepo) ListByBillShare(ctx context.Context, shareID string) ([]*payments.Payment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []*payments.Payment
+	for _, p := range r.items {
+		if shareID != "" && p.BillShareID == shareID {
+			cp := p
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (r *MemoryPaymentRepo) ListExpired(ctx context.Context, now time.Time, limit int) ([]*payments.Payment, error) {
 	if limit <= 0 {
 		limit = 100

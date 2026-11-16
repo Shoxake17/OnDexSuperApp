@@ -38,6 +38,7 @@ import (
 	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
 	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicard"
@@ -1460,8 +1461,8 @@ func main() {
 		orderSvc.WithPayments(paymentSvc)
 		// Pul haqiqatan yechilganda — restoranga "To'lov qabul qilindi".
 		paymentSvc.OnPaid(func(p payments.Payment) {
-			if p.ReservationID != "" {
-				return // zaklad: restoranga bron moduli o'zi xabar beradi
+			if p.ReservationID != "" || p.BillShareID != "" {
+				return // zaklad / stol hisobi: modulning o'zi jonli xabar beradi
 			}
 			alertsSvc.PaymentReceived(p.RestaurantID, p.ID, p.OrderID, p.AmountTiyin)
 		})
@@ -1687,6 +1688,24 @@ func main() {
 		api.ReservationSvc = rsvSvc
 		if paymentSvc != nil {
 			paymentSvc.SetDepositSink(rsvSvc)
+		}
+		// ── Stolda hisobni bo'lish (RS-5, modul: internal/modules/tablebill) ──
+		var tbStore tablebill.Store
+		if pgPool != nil {
+			tbStore = tablebill.NewPGStore(pgPool)
+		} else {
+			tbStore = tablebill.NewMemStore()
+		}
+		tbOrders, tbDeposits, tbPay, tbNote := api.TableBillDeps()
+		tbSvc, err := tablebill.New(tablebill.Deps{Store: tbStore, Orders: tbOrders, Deposits: tbDeposits,
+			Payments: tbPay, Notifier: tbNote, NewID: httpapi.NewID})
+		if err != nil {
+			slog.Error("stol hisobi moduli sozlanmadi", "err", err)
+			os.Exit(1)
+		}
+		api.TableBillSvc = tbSvc
+		if paymentSvc != nil {
+			paymentSvc.SetBillSink(tbSvc)
 		}
 		// Muddati o'tgan zaklad, kelmaganlar, eslatmalar — 30 soniyada bir.
 		safego.Go("reservation.sweep", func() {

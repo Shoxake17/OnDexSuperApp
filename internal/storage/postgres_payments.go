@@ -23,11 +23,11 @@ func NewPostgresPaymentRepo(pool *pgxpool.Pool) *PostgresPaymentRepo {
 // Go tomonida bo'sh satr = NULL.
 const paymentColumns = `id, order_id, customer_id, restaurant_id, provider,
 	provider_payment_id, amount_tiyin, status, pay_url, needs_review, review_reason,
-	created_at, updated_at, paid_at, expires_at, raw, reservation_id`
+	created_at, updated_at, paid_at, expires_at, raw, reservation_id, bill_share_id`
 
 const paymentSelect = `id, COALESCE(order_id, ''), customer_id, restaurant_id, provider,
 	provider_payment_id, amount_tiyin, status, pay_url, needs_review, review_reason,
-	created_at, updated_at, paid_at, expires_at, raw, COALESCE(reservation_id, '')`
+	created_at, updated_at, paid_at, expires_at, raw, COALESCE(reservation_id, ''), COALESCE(bill_share_id, '')`
 
 func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error) {
 	var p payments.Payment
@@ -35,7 +35,7 @@ func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error)
 	var raw []byte
 	err := row.Scan(&p.ID, &p.OrderID, &p.CustomerID, &p.RestaurantID, &p.Provider,
 		&p.ProviderPaymentID, &p.AmountTiyin, &p.Status, &p.PayURL, &p.NeedsReview,
-		&p.ReviewReason, &p.CreatedAt, &p.UpdatedAt, &paidAt, &p.ExpiresAt, &raw, &p.ReservationID)
+		&p.ReviewReason, &p.CreatedAt, &p.UpdatedAt, &paidAt, &p.ExpiresAt, &raw, &p.ReservationID, &p.BillShareID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +47,10 @@ func scanPayment(row interface{ Scan(...any) error }) (*payments.Payment, error)
 func (r *PostgresPaymentRepo) Create(ctx context.Context, p *payments.Payment) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO payments (`+paymentColumns+`)
-		VALUES ($1,NULLIF($2,''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULLIF($17,''))`,
+		VALUES ($1,NULLIF($2,''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NULLIF($17,''),NULLIF($18,''))`,
 		p.ID, p.OrderID, p.CustomerID, p.RestaurantID, p.Provider,
 		p.ProviderPaymentID, p.AmountTiyin, p.Status, p.PayURL, p.NeedsReview,
-		p.ReviewReason, p.CreatedAt, p.UpdatedAt, p.PaidAt, p.ExpiresAt, rawOrNil(p.Raw), p.ReservationID)
+		p.ReviewReason, p.CreatedAt, p.UpdatedAt, p.PaidAt, p.ExpiresAt, rawOrNil(p.Raw), p.ReservationID, p.BillShareID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		// Bir xil provayder to'lovi ikkinchi yozuvga bog'lanmaydi
@@ -100,6 +100,10 @@ func (r *PostgresPaymentRepo) ListByOrder(ctx context.Context, orderID string) (
 
 func (r *PostgresPaymentRepo) ListByReservation(ctx context.Context, reservationID string) ([]*payments.Payment, error) {
 	return r.list(ctx, `SELECT `+paymentSelect+` FROM payments WHERE reservation_id = $1 ORDER BY created_at DESC`, reservationID)
+}
+
+func (r *PostgresPaymentRepo) ListByBillShare(ctx context.Context, shareID string) ([]*payments.Payment, error) {
+	return r.list(ctx, `SELECT `+paymentSelect+` FROM payments WHERE bill_share_id = $1 ORDER BY created_at DESC`, shareID)
 }
 
 func (r *PostgresPaymentRepo) list(ctx context.Context, q string, arg any) ([]*payments.Payment, error) {

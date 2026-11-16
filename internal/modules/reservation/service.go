@@ -640,6 +640,23 @@ func (s *Service) noShow(ctx context.Context, r *Reservation) error {
 	return nil
 }
 
+// SeatedDeposit — RS-5: shu stolga HOZIR o'tirgan (seated) bronning
+// hisobdan ayriladigan zakladi. tablebill moduli hisob ochilganda bir marta
+// so'raydi; zaklad to'lanmagan/qaytarilgan bo'lsa ok=false.
+func (s *Service) SeatedDeposit(ctx context.Context, restaurantID, tableID string) (string, int64, bool) {
+	now := s.now()
+	list, err := s.d.Store.ListByRestaurant(ctx, restaurantID, now.Add(-12*time.Hour), now.Add(3*time.Hour))
+	if err != nil {
+		return "", 0, false
+	}
+	for _, r := range list {
+		if r.TableID == tableID && r.Status == StatusSeated && r.DepositState == DepositApplied && r.DepositTiyin > 0 {
+			return r.ID, r.DepositTiyin, true
+		}
+	}
+	return "", 0, false
+}
+
 // ── O'qish ──────────────────────────────────────────────────────────────
 
 // Get — bitta bron (egasi tekshiruvi chaqiruvchida).

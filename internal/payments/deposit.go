@@ -38,6 +38,12 @@ func (s *Service) SetDepositSink(d DepositSink) { s.deposits = d }
 var ErrDepositsDisabled = errors.New("bron zakladi to'lovi sozlanmagan")
 
 func (s *Service) notifyPaid(ctx context.Context, p *Payment) error {
+	if p.BillShareID != "" {
+		if s.bills == nil {
+			return ErrBillsDisabled
+		}
+		return s.bills.OnSharePaid(ctx, p.BillShareID)
+	}
 	if p.ReservationID != "" {
 		if s.deposits == nil {
 			return ErrDepositsDisabled
@@ -48,6 +54,12 @@ func (s *Service) notifyPaid(ctx context.Context, p *Payment) error {
 }
 
 func (s *Service) notifyFailed(ctx context.Context, p *Payment) error {
+	if p.BillShareID != "" {
+		if s.bills == nil {
+			return ErrBillsDisabled
+		}
+		return s.bills.OnShareFailed(ctx, p.BillShareID)
+	}
 	if p.ReservationID != "" {
 		if s.deposits == nil {
 			return ErrDepositsDisabled

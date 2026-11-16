@@ -25,6 +25,8 @@ type Payment struct {
 	// ReservationID — stol broni zakladi (RS-3). To'lov buyurtmaga YOKI
 	// bronga tegishli, aynan bittasiga (bazada CHECK payments_one_subject).
 	ReservationID string `json:"reservation_id,omitempty"`
+	// BillShareID — stol hisobi ulushi (RS-5, `billshare.go`).
+	BillShareID string `json:"bill_share_id,omitempty"`
 	CustomerID   string `json:"customer_id"`
 	RestaurantID string `json:"restaurant_id"`
 	Provider     string `json:"provider"`
@@ -67,6 +69,8 @@ type Repository interface {
 	ListByOrder(ctx context.Context, orderID string) ([]*Payment, error)
 	// ListByReservation — bron zakladi urinishlari (yangisi birinchi).
 	ListByReservation(ctx context.Context, reservationID string) ([]*Payment, error)
+	// ListByBillShare — hisob ulushi urinishlari (yangisi birinchi).
+	ListByBillShare(ctx context.Context, shareID string) ([]*Payment, error)
 	// ListExpired — muddati o'tgan, hali yakunlanmagan to'lovlar
 	// (avtomatik bekor qilish uchun).
 	ListExpired(ctx context.Context, now time.Time, limit int) ([]*Payment, error)
@@ -116,6 +120,9 @@ type Service struct {
 
 	// deposits — bron zakladi to'lovlari uchun (RS-3, `deposit.go`).
 	deposits DepositSink
+
+	// bills — stol hisobi ulushlari (RS-5, `billshare.go`).
+	bills BillSink
 }
 
 // OnPaid — "pul yechildi" kuzatuvchisi (`alerts.Service.PaymentReceived`).

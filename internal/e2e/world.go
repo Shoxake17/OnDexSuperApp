@@ -30,6 +30,7 @@ import (
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
 	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicardpay"
@@ -478,6 +479,15 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	api.ReservationSvc = w.Rsv
 	paySvc.SetDepositSink(w.Rsv)
+	// Stol hisobi (RS-5).
+	tbo, tbd, tbp, tbn := api.TableBillDeps()
+	tbSvc, err := tablebill.New(tablebill.Deps{Store: tablebill.NewMemStore(), Orders: tbo, Deposits: tbd,
+		Payments: tbp, Notifier: tbn, NewID: httpapi.NewID, Now: w.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.TableBillSvc = tbSvc
+	paySvc.SetBillSink(tbSvc)
 	w.api = api
 	w.Srv = httptest.NewServer(api.Routes(nil))
 	t.Cleanup(w.Srv.Close)
