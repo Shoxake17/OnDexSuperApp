@@ -32,6 +32,9 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   int _days = 30;
   final Map<String, TextEditingController> _zones = {};
 
+  /// Bronga yaroqli stollar (faol + sig'im kiritilgan). 0 bo'lsa bo'sh vaqt chiqmaydi.
+  int _bookable = 0;
+
   @override
   void initState() {
     super.initState();
@@ -55,10 +58,15 @@ class _SettingsDialogState extends State<_SettingsDialog> {
         for (final t in tables)
           if ('${(t as Map)['zone'] ?? ''}'.trim().isNotEmpty) '${t['zone']}'.trim(),
       };
+      final bookable = tables.where((t) {
+        final m = t as Map;
+        return m['active'] != false && ((m['capacity'] as num?) ?? 0) > 0;
+      }).length;
       final zd = Map<String, dynamic>.from((s['zone_deposits'] as Map?) ?? {});
       zones.addAll(zd.keys);
       if (!mounted) return;
       setState(() {
+        _bookable = bookable;
         _enabled = s['enabled'] == true;
         _deposit.text = '${_som(s['deposit_per_person_tiyin'])}';
         _slot = (s['slot_minutes'] as num?)?.toInt() ?? 120;
@@ -154,6 +162,18 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                     title: const Text('Mijozlar stol bron qila oladi'),
                     subtitle: const Text('Faqat sig\'imi kiritilgan faol stollar bronga beriladi'),
                   ),
+                  if (_enabled && _bookable == 0)
+                    Container(
+                      key: const ValueKey('rsv-no-capacity'),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: OnDexColors.warningBg, borderRadius: BorderRadius.circular(8)),
+                      child: const Text(
+                        "Hech bir stolda sig'im (necha kishilik) kiritilmagan — mijozlarga bo'sh vaqt chiqmaydi. "
+                        "\"Stollar (QR)\" bo'limida stollarga sig'im kiriting.",
+                        style: TextStyle(color: OnDexColors.warning, fontSize: 12.5),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   _sumField(_deposit, 'Zaklad, kishi boshiga', hint: '0 — zakladsiz'),
                   const SizedBox(height: 6),

@@ -95,6 +95,14 @@ func TestReservationFlow(t *testing.T) {
 		if !found {
 			t.Fatalf("19:00 bo'sh vaqtlarda yo'q: %v", av)
 		}
+		if num(av, "bookable_tables") != 2 {
+			t.Fatalf("bronga yaroqli stollar: %v", av["bookable_tables"])
+		}
+		// Ochiq ma'lumot: kirmagan mehmon va admin akkaunti ham ko'radi (tugma
+		// ko'rinishi shunga bog'liq); bron qilish esa faqat mijozga.
+		w.Do(t, nil, "GET", availURL(2), nil).Expect(t, 200)
+		w.Do(t, w.Admin, "GET", availURL(2), nil).Expect(t, 200)
+		w.Do(t, nil, "GET", "/restaurants/yoq-restoran/reservations/availability?date="+day+"&party=2", nil).Expect(t, 404)
 		res := book(t, w.Customer, at(0), 2, "card")
 		pay, _ := res["pay"].(map[string]any)
 		if pay == nil || pay["pay_url"] == "" {

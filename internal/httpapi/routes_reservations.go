@@ -77,6 +77,25 @@ func (s *Server) payLinkView(l *reservation.PayLink) map[string]any {
 	return v
 }
 
+// bookableTables — bronga yaroqli (faol, sig'imi kiritilgan) stollar soni.
+// 0 bo'lsa bron yoqilgan bo'lsa ham bo'sh vaqt chiqmaydi — panel ogohlantiradi.
+func (s *Server) bookableTables(r *http.Request, restaurantID string) int {
+	if s.TableSvc == nil {
+		return 0
+	}
+	list, err := s.TableSvc.List(r.Context(), restaurantID)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, t := range list {
+		if t.Active && t.Capacity != nil && *t.Capacity > 0 {
+			n++
+		}
+	}
+	return n
+}
+
 func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 	staff := []users.Role{users.RoleRestaurant, users.RoleAdmin}
 	customer := []users.Role{users.RoleCustomer}
@@ -92,12 +111,20 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 
 	// ── Mijoz ──
 
-	mux.HandleFunc("GET /restaurants/{id}/reservations/availability", s.auth(customer,
+	// OCHIQ (menyu kabi): bo'sh vaqtlar va zaklad qoidalari — istalgan foydalanuvchi
+	// (mehmon, admin akkauntidagi egasi ham) ko'radi; bron qilishning o'zi mijoz
+	// akkauntini talab qiladi. Avval faqat mijoz roli edi va admin/kirmagan
+	// foydalanuvchida ilova bron tugmasini umuman ko'rsatmasdi (2026-11-17).
+	mux.HandleFunc("GET /restaurants/{id}/reservations/availability", publicCache(0, 0,
 		func(w http.ResponseWriter, r *http.Request) {
 			if !ready(w) {
 				return
 			}
 			rid := r.PathValue("id")
+			if _, err := s.CatalogRepo.GetRestaurant(r.Context(), rid); err != nil {
+				fail(w, reservation.ErrNotFound)
+				return
+			}
 			day, err := time.ParseInLocation("2006-01-02", r.URL.Query().Get("date"), reservation.Tashkent)
 			if err != nil {
 				httpError(w, http.StatusBadRequest, errors.New("date: YYYY-MM-DD"))
@@ -119,7 +146,7 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 				"zone_deposits": st.ZoneDeposits, "slot_minutes": st.SlotMinutes,
 				"free_cancel_hours": int(reservation.FreeCancelBefore.Hours()),
 				"wallet": s.WalletSvc != nil, "card": s.Payments != nil,
-				"slots": slots,
+				"slots": slots, "bookable_tables": s.bookableTables(r, rid),
 			})
 		}))
 

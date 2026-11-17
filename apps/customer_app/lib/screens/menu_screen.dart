@@ -291,6 +291,7 @@ class _MenuScreenState extends State<MenuScreen> {
   double get _headerLine =>
       MediaQuery.of(context).padding.top +
       kToolbarHeight +
+      (_canReserve ? _kReserveBarHeight : 0) +
       (_sections.length > 1 ? _kChipsHeight : 0);
 
   /// Restoranda stol broni yoqilganmi (RS-3) — sarlavhadagi tugma uchun.
@@ -1087,6 +1088,9 @@ class _MenuScreenState extends State<MenuScreen> {
 /// `AppBar` ATAYLAB ishlatilmadi — u faqat `Scaffold.appBar` yoki
 /// `SliverAppBar` sifatida to'g'ri turadi, bizga esa u ustunning oddiy
 /// bo'lagi bo'lishi kerak (izohga qarang).
+/// Sarlavhadagi bron tugmasi qatori balandligi.
+const double _kReserveBarHeight = 48;
+
 class _MenuHeader extends StatelessWidget {
   final String name;
   final String logo;
@@ -1153,13 +1157,6 @@ class _MenuHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (onReserve != null)
-                  IconButton(
-                    key: const ValueKey('menu-reserve'),
-                    onPressed: onReserve,
-                    icon: const Icon(Icons.event_seat_outlined, size: 24),
-                    tooltip: 'Stol bron qilish',
-                  ),
                 IconButton(
                   onPressed: onSearch,
                   icon: const Icon(Icons.search, size: 24),
@@ -1168,6 +1165,25 @@ class _MenuHeader extends StatelessWidget {
               ],
             ),
           ),
+          // RS-3: ko'zga tashlanadigan bron tugmasi (kichik belgi topilmasdi).
+          if (onReserve != null)
+            SizedBox(
+              height: _kReserveBarHeight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+                child: FilledButton.icon(
+                  key: const ValueKey('menu-reserve'),
+                  onPressed: onReserve,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kBrand.withValues(alpha: 0.12),
+                    foregroundColor: kBrand,
+                    minimumSize: const Size.fromHeight(40),
+                  ),
+                  icon: const Icon(Icons.event_seat_outlined, size: 20),
+                  label: const Text('Stol bron qilish', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
           if (chips != null) chips!,
         ],
       ),

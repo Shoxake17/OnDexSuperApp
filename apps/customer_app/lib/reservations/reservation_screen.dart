@@ -196,9 +196,14 @@ class _ReservationScreenState extends State<ReservationScreen> {
           if (_loading)
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
           else if (a != null && _slots.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('Bu kunga bo\'sh joy qolmagan — boshqa kunni tanlang.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                  ((a['bookable_tables'] as num?) ?? 1) == 0
+                      ? 'Restoran hali bron uchun stollarni sozlamagan. Keyinroq urinib ko\'ring yoki restoranga qo\'ng\'iroq qiling.'
+                      : 'Bu kunga bo\'sh joy yo\'q — boshqa kunni tanlang.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey)),
             )
           else if (a != null) ...[
             Text('Vaqt (stol $slotMin daqiqaga band qilinadi)', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
