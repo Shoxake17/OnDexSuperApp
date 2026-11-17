@@ -37,6 +37,7 @@ type restaurantDerived struct {
 	ratingCount int
 	etaMin      int
 	etaMax      int
+	reservable  bool // bron yoqilgan + sig'imli stol bor
 }
 
 func newRestaurantDerivedCache() *ttlcache.Cache[restaurantDerived] {
@@ -66,6 +67,12 @@ func (s *Server) derivedFor(reqCtx context.Context, restaurantID string) restaur
 				return restaurantDerived{}, err
 			}
 			d.etaMin, d.etaMax = orders.ComputeETARange(list)
+		}
+		// Bron belgisi — xato bo'lsa shunchaki "yo'q" (faqat ko'rsatish).
+		if s.ReservationSvc != nil {
+			if st, err := s.ReservationSvc.Settings(ctx, restaurantID); err == nil && st.Enabled {
+				d.reservable = s.bookableTablesCtx(ctx, restaurantID) > 0
+			}
 		}
 		return d, nil
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -80,10 +81,14 @@ func (s *Server) payLinkView(l *reservation.PayLink) map[string]any {
 // bookableTables — bronga yaroqli (faol, sig'imi kiritilgan) stollar soni.
 // 0 bo'lsa bron yoqilgan bo'lsa ham bo'sh vaqt chiqmaydi — panel ogohlantiradi.
 func (s *Server) bookableTables(r *http.Request, restaurantID string) int {
+	return s.bookableTablesCtx(r.Context(), restaurantID)
+}
+
+func (s *Server) bookableTablesCtx(ctx context.Context, restaurantID string) int {
 	if s.TableSvc == nil {
 		return 0
 	}
-	list, err := s.TableSvc.List(r.Context(), restaurantID)
+	list, err := s.TableSvc.List(ctx, restaurantID)
 	if err != nil {
 		return 0
 	}
@@ -145,7 +150,7 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 				"enabled": st.Enabled, "deposit_per_person_tiyin": st.DepositPerPersonTiyin,
 				"zone_deposits": st.ZoneDeposits, "slot_minutes": st.SlotMinutes,
 				"free_cancel_hours": int(reservation.FreeCancelBefore.Hours()),
-				"wallet": s.WalletSvc != nil, "card": s.Payments != nil,
+				"wallet":            s.WalletSvc != nil, "card": s.Payments != nil,
 				"slots": slots, "bookable_tables": s.bookableTables(r, rid),
 			})
 		}))
@@ -313,6 +318,8 @@ func (s *Server) registerReservationRoutes(mux *http.ServeMux) {
 				fail(w, err)
 				return
 			}
+			// Ro'yxatdagi "reservable" belgisi darhol yangilansin.
+			s.invalidateRestaurantDerived(rid)
 			writeJSON(w, http.StatusOK, st)
 		}))
 

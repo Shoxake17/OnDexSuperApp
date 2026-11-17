@@ -93,6 +93,12 @@ type Restaurant struct {
 	// umuman ko'rsatilmaydi, soxta "0 so'm" chiqmaydi.
 	DeliveryFeeTiyin *int64 `json:"delivery_fee_tiyin,omitempty"`
 
+	// Reservable — HISOBLANADIGAN, bazaga yozilmaydi: stol broni yoqilgan
+	// VA kamida bitta faol, sig'imli stol bor (`internal/httpapi`,
+	// `derivedFor`). Mijoz ilovasining "Bron qilish" bo'limi shu bilan
+	// filtrlaydi; bronning o'zi baribir serverda qayta tekshiriladi.
+	Reservable bool `json:"reservable,omitempty"`
+
 	// PaymentOptions — mijozga ko'rinadigan to'lov usullari (HISOBLANADI,
 	// bazaga yozilmaydi): `WithPaymentOptions`.
 	PaymentOptions *PaymentOptions `json:"payment_options,omitempty"`

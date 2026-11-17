@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../category_icons.dart';
@@ -15,6 +17,7 @@ import 'address_screen.dart';
 import 'category_products_screen.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
+import '../reservations/reservation_screen.dart';
 import 'wallet_screen.dart';
 
 /// Bosh sahifa — restoranlar katalogi. NATIVE (maket: image/restarant.png).
@@ -82,6 +85,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
     });
   }
 
+  /// Bosh sahifa bo'limi: Buyurtma berish / Borish / Bron qilish.
+  _Mode _mode = _Mode.order;
+
   /// Ro'yxat joyidan siljiganmi — sarlavhaning dumaloq burchagi va
   /// soyasi shunga qarab paydo bo'ladi.
   bool _scrolled = false;
@@ -132,6 +138,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
           }
 
           final list = (c.value ?? const []).cast<Map<String, dynamic>>();
+          final shown = _shownFor(list);
 
           // ┌─ SARLAVHA QOTIRILGAN ─────────────────────────────────┐
           // Logo, shahar va uchta ikon skroll bilan yuqoriga chiqib
@@ -168,6 +175,12 @@ class _CatalogScreenState extends State<CatalogScreen> {
                           tick: _reloadTick,
                         ),
                       ),
+                      SliverToBoxAdapter(
+                        child: _ModeTabs(
+                          mode: _mode,
+                          onChanged: (m) => setState(() => _mode = m),
+                        ),
+                      ),
 
                       // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
                       // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
@@ -185,14 +198,16 @@ class _CatalogScreenState extends State<CatalogScreen> {
                       // filtrlanadi (`visibleRestaurants`) — bo'sh
                       // ro'yxat "umuman yo'q" emas, "shu shaharda
                       // yo'q" degani bo'lishi mumkin.
-                      if (list.isEmpty)
-                        const SliverFillRemaining(
+                      if (shown.isEmpty)
+                        SliverFillRemaining(
                           hasScrollBody: false,
                           child: Center(
                             child: Padding(
-                              padding: EdgeInsets.all(32),
+                              padding: const EdgeInsets.all(32),
                               child: Text(
-                                'Manzilingiz hududida hali restoran yo\'q',
+                                list.isNotEmpty && _mode == _Mode.reserve
+                                    ? 'Hozircha hududingizda stol bron qilsa bo\'ladigan restoran yo\'q'
+                                    : 'Manzilingiz hududida hali restoran yo\'q',
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -207,10 +222,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                           sliver: SliverList.separated(
-                            itemCount: list.length,
+                            itemCount: shown.length,
                             separatorBuilder:
                                 (_, _) => const SizedBox(height: 20),
-                            itemBuilder: (_, i) => _RestaurantCard(r: list[i]),
+                            itemBuilder: (_, i) => _RestaurantCard(r: shown[i], mode: _mode),
                           ),
                         ),
                       ],
@@ -230,6 +245,106 @@ class _CatalogScreenState extends State<CatalogScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Bo'limga qarab ko'rsatiladigan ro'yxat.
+///   - Buyurtma berish — server tartibi o'zgarmaydi.
+///   - Borish — manzil bor bo'lsa eng yaqini birinchi.
+///   - Bron qilish — faqat `reservable` (server: bron yoqilgan + sig'imli
+///     stol bor). Bronning o'zi baribir serverda qayta tekshiriladi.
+extension on _CatalogScreenState {
+  List<Map<String, dynamic>> _shownFor(List<Map<String, dynamic>> list) {
+    switch (_mode) {
+      case _Mode.order:
+        return list;
+      case _Mode.reserve:
+        return [for (final r in list) if (r['reservable'] == true) r];
+      case _Mode.go:
+        final a = AddressScope.instance;
+        if (!a.bor) return list;
+        final sorted = [...list];
+        sorted.sort((x, y) => (_distanceKm(x) ?? 1e9).compareTo(_distanceKm(y) ?? 1e9));
+        return sorted;
+    }
+  }
+}
+
+/// Bosh sahifadagi uch bo'lim.
+enum _Mode { order, go, reserve }
+
+/// Manzildan restorangacha to'g'ri chiziq masofasi (km); koordinata
+/// yo'q bo'lsa `null` — hech narsa ko'rsatilmaydi.
+double? _distanceKm(Map<String, dynamic> r) {
+  final a = AddressScope.instance;
+  final lat = (r['lat'] as num?)?.toDouble() ?? 0;
+  final lng = (r['lng'] as num?)?.toDouble() ?? 0;
+  if (!a.bor || (lat == 0 && lng == 0)) return null;
+  const rad = math.pi / 180;
+  final dLat = (lat - a.lat) * rad;
+  final dLng = (lng - a.lng) * rad;
+  final h = math.pow(math.sin(dLat / 2), 2) +
+      math.cos(a.lat * rad) * math.cos(lat * rad) * math.pow(math.sin(dLng / 2), 2);
+  return 6371 * 2 * math.asin(math.sqrt(h));
+}
+
+/// Kategoriyalar ostidagi uch bo'lim tugmasi.
+class _ModeTabs extends StatelessWidget {
+  final _Mode mode;
+  final ValueChanged<_Mode> onChanged;
+  const _ModeTabs({required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(_Mode m, IconData icon, String label) {
+      final sel = m == mode;
+      return Expanded(
+        child: GestureDetector(
+          key: ValueKey('mode-${m.name}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(m),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: sel ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: sel
+                  ? const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))]
+                  : null,
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 20, color: sel ? kBrand : const Color(0xFF6B7280)),
+              const SizedBox(height: 3),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                    color: sel ? const Color(0xFF111827) : const Color(0xFF6B7280),
+                  )),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(children: [
+          tab(_Mode.order, Icons.delivery_dining_outlined, 'Buyurtma berish'),
+          tab(_Mode.go, Icons.directions_walk, 'Borish'),
+          tab(_Mode.reserve, Icons.event_seat_outlined, 'Bron qilish'),
+        ]),
       ),
     );
   }
@@ -991,7 +1106,19 @@ class _PromoBannerCard extends StatelessWidget {
 /// └──────────────────────────────────────────────────────────────────┘
 class _RestaurantCard extends StatelessWidget {
   final Map<String, dynamic> r;
-  const _RestaurantCard({required this.r});
+  final _Mode mode;
+  const _RestaurantCard({required this.r, this.mode = _Mode.order});
+
+  /// Xaritada yo'l (Google Maps / tizim xaritasi).
+  Future<void> _route() async {
+    final lat = (r['lat'] as num?)?.toDouble() ?? 0;
+    final lng = (r['lng'] as num?)?.toDouble() ?? 0;
+    final dest = (lat != 0 || lng != 0) ? '$lat,$lng' : Uri.encodeComponent((r['address'] as String?) ?? '');
+    await launchUrl(
+      Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$dest'),
+      mode: LaunchMode.externalApplication,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1020,7 +1147,9 @@ class _RestaurantCard extends StatelessWidget {
     // `null` — hisoblab bo'lmadi (`internal/httpapi/scene_access.go`,
     // `withDeliveryFee`): bunda HECH narsa ko'rsatilmaydi, "bepul" deb
     // FARAZ QILINMAYDI. 0 — haqiqatan ham bepul (oylik maoshli kuryer).
-    final deliveryFeeTiyin = (r['delivery_fee_tiyin'] as num?)?.toInt();
+    // Yetkazish narxi faqat "Buyurtma berish" bo'limida — borish/bronda ma'nosiz.
+    final deliveryFeeTiyin = mode == _Mode.order ? (r['delivery_fee_tiyin'] as num?)?.toInt() : null;
+    final km = mode == _Mode.go ? _distanceKm(r) : null;
 
     final card = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1099,6 +1228,19 @@ class _RestaurantCard extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 5),
                       child: _DeliveryFeeChip(tiyin: deliveryFeeTiyin),
                     ),
+                  if (mode == _Mode.reserve)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: _ModeChip(icon: Icons.event_seat_outlined, label: 'Stol bron qilish mumkin'),
+                    ),
+                  if (km != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: _ModeChip(
+                        icon: Icons.near_me_outlined,
+                        label: km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km',
+                      ),
+                    ),
                   if (address.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -1127,7 +1269,20 @@ class _RestaurantCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (hasRating || hasEta) ...[
+            if (mode == _Mode.go) ...[
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                key: const ValueKey('route-btn'),
+                onPressed: _route,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kBrand,
+                  side: const BorderSide(color: kBrand),
+                  visualDensity: VisualDensity.compact,
+                ),
+                icon: const Icon(Icons.directions, size: 18),
+                label: const Text('Yo\'l'),
+              ),
+            ] else if (hasRating || hasEta) ...[
               const SizedBox(width: 10),
               Padding(
                 // o'ngdan ozgina bo'shliq — chekkaga yopishib qolmasin;
@@ -1182,6 +1337,18 @@ class _RestaurantCard extends StatelessWidget {
       ],
     );
 
+    // Bron — yopiq bo'lsa ham mumkin (keyingi kunga); bosilganda to'g'ridan-
+    // to'g'ri "Stol bron qilish" ekrani ochiladi (menyu sahifasida endi yo'q).
+    if (mode == _Mode.reserve) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => Navigator.of(context).push(sheetRoute(
+          ReservationScreen(restaurantId: (r['id'] as String?) ?? '', restaurantName: name),
+        )),
+        child: card,
+      );
+    }
+
     // Yopiq restoran bosilmaydi — menyusi ochilsa mijoz savat
     // to'ldirib, checkout'da rad javob olardi.
     if (!open) return card;
@@ -1199,6 +1366,27 @@ class _RestaurantCard extends StatelessWidget {
       child: card,
     );
   }
+}
+
+/// Bo'limga xos kichik yorliq (bron / masofa).
+class _ModeChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _ModeChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: kBrand.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: kBrand),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kBrand)),
+        ]),
+      );
 }
 
 /// Ochiq/yopiqlik blokcha — har doim ko'rinadi (faqat yopiqda emas).

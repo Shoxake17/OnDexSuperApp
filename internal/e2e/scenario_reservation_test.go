@@ -103,6 +103,13 @@ func TestReservationFlow(t *testing.T) {
 		w.Do(t, nil, "GET", availURL(2), nil).Expect(t, 200)
 		w.Do(t, w.Admin, "GET", availURL(2), nil).Expect(t, 200)
 		w.Do(t, nil, "GET", "/restaurants/yoq-restoran/reservations/availability?date="+day+"&party=2", nil).Expect(t, 404)
+
+		// Bosh sahifadagi "Bron qilish" bo'limi shu belgi bilan filtrlaydi.
+		var one map[string]any
+		w.Do(t, nil, "GET", "/restaurants/"+RestA, nil).Expect(t, 200).JSON(t, &one)
+		if one["reservable"] != true {
+			t.Fatalf("bron yoqilgan restoran reservable emas: %v", one["reservable"])
+		}
 		res := book(t, w.Customer, at(0), 2, "card")
 		pay, _ := res["pay"].(map[string]any)
 		if pay == nil || pay["pay_url"] == "" {

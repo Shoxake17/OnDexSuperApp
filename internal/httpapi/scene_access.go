@@ -88,6 +88,8 @@ func (s *Server) withETA(ctx context.Context, v catalog.Restaurant) catalog.Rest
 	d := s.derivedFor(ctx, v.ID)
 	v.ETAMinMinutes = d.etaMin
 	v.ETAMaxMinutes = d.etaMax
+	// Bron belgisi ham shu keshdan (alohida bezakchi zanjirni uzaytirmasin).
+	v.Reservable = d.reservable
 	return v
 }
 

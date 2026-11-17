@@ -13,8 +13,6 @@ import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../data/favorites_store.dart';
 import '../data/quote_service.dart';
-import '../reservations/reservation_api.dart';
-import '../reservations/reservation_screen.dart';
 import '../services/book_cafe_game.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
@@ -291,32 +289,11 @@ class _MenuScreenState extends State<MenuScreen> {
   double get _headerLine =>
       MediaQuery.of(context).padding.top +
       kToolbarHeight +
-      (_canReserve ? _kReserveBarHeight : 0) +
       (_sections.length > 1 ? _kChipsHeight : 0);
-
-  /// Restoranda stol broni yoqilganmi (RS-3) — sarlavhadagi tugma uchun.
-  bool _canReserve = false;
-
-  /// Bron yoqilganini fon so'rovi bilan aniqlaydi (bugungi kun, 2 kishi):
-  /// 200 — yoqilgan (bo'sh vaqt bo'lmasa ham), 422/503/xato — tugma yo'q.
-  Future<void> _probeReservation() async {
-    if (_id.isEmpty) return;
-    try {
-      final a = await api.reservationAvailability(_id, toTashkent(DateTime.now()), 2);
-      if (mounted && a['enabled'] == true) setState(() => _canReserve = true);
-    } catch (_) {
-      // Bron yo'q yoki tarmoq — tugma ko'rinmaydi, menyu ishlayveradi.
-    }
-  }
-
-  void _openReservation() => Navigator.of(context).push(
-        sheetRoute(ReservationScreen(restaurantId: _id, restaurantName: _name)),
-      );
 
   @override
   void initState() {
     super.initState();
-    _probeReservation();
     _cart.addListener(_onCart);
     _scroll.addListener(_onScroll);
     // Shaddiy buyurtmani KO'RSATIB berishi uchun ekran o'zini
@@ -939,7 +916,6 @@ class _MenuScreenState extends State<MenuScreen> {
               logo: _logo,
               scrolled: _headerScrolled,
               onSearch: _menu.isEmpty ? null : _openSearch,
-              onReserve: _canReserve ? _openReservation : null,
               chips: showChips
                   ? SizedBox(
                       height: _kChipsHeight,
@@ -1088,9 +1064,6 @@ class _MenuScreenState extends State<MenuScreen> {
 /// `AppBar` ATAYLAB ishlatilmadi — u faqat `Scaffold.appBar` yoki
 /// `SliverAppBar` sifatida to'g'ri turadi, bizga esa u ustunning oddiy
 /// bo'lagi bo'lishi kerak (izohga qarang).
-/// Sarlavhadagi bron tugmasi qatori balandligi.
-const double _kReserveBarHeight = 48;
-
 class _MenuHeader extends StatelessWidget {
   final String name;
   final String logo;
@@ -1098,16 +1071,12 @@ class _MenuHeader extends StatelessWidget {
   final VoidCallback? onSearch;
   final Widget? chips;
 
-  /// Stol bron qilish (RS-3) — restoranda bron yoqilgan bo'lsagina.
-  final VoidCallback? onReserve;
-
   const _MenuHeader({
     required this.name,
     required this.logo,
     required this.scrolled,
     required this.onSearch,
     required this.chips,
-    this.onReserve,
   });
 
   @override
@@ -1165,25 +1134,6 @@ class _MenuHeader extends StatelessWidget {
               ],
             ),
           ),
-          // RS-3: ko'zga tashlanadigan bron tugmasi (kichik belgi topilmasdi).
-          if (onReserve != null)
-            SizedBox(
-              height: _kReserveBarHeight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
-                child: FilledButton.icon(
-                  key: const ValueKey('menu-reserve'),
-                  onPressed: onReserve,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kBrand.withValues(alpha: 0.12),
-                    foregroundColor: kBrand,
-                    minimumSize: const Size.fromHeight(40),
-                  ),
-                  icon: const Icon(Icons.event_seat_outlined, size: 20),
-                  label: const Text('Stol bron qilish', style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
-              ),
-            ),
           if (chips != null) chips!,
         ],
       ),
