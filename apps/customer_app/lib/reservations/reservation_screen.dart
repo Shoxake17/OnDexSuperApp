@@ -5,7 +5,7 @@ import '../payment_nav_policy.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 import '../screens/payment_webview_screen.dart';
 import '../widgets/sheet_page.dart';
-import '../widgets/sheet_scaffold.dart';
+import '../widgets/pushed_sheet.dart';
 import 'my_reservations_screen.dart';
 import 'reservation_api.dart';
 
@@ -136,7 +136,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final hours = (a?['free_cancel_hours'] as num?)?.toInt() ?? 2;
     final slotMin = (a?['slot_minutes'] as num?)?.toInt() ?? 120;
     final deposit = _deposit;
-    return SheetScaffold(
+    return PushedSheet(
       title: 'Stol bron qilish',
       child: SafeArea(
         top: false,

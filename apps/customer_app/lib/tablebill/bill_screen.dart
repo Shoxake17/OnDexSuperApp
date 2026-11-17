@@ -5,7 +5,7 @@ import '../live.dart';
 import '../payment_nav_policy.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 import '../screens/payment_webview_screen.dart';
-import '../widgets/sheet_scaffold.dart';
+import '../widgets/pushed_sheet.dart';
 
 /// RS-5 API.
 extension TableBillApi on CustomerApi {
@@ -138,7 +138,7 @@ class _BillScreenState extends State<BillScreen> {
   @override
   Widget build(BuildContext context) {
     final b = _bill;
-    return SheetScaffold(
+    return PushedSheet(
       title: 'Hisob',
       child: SafeArea(
         top: false,

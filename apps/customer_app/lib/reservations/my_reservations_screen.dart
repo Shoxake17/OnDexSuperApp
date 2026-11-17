@@ -5,7 +5,7 @@ import '../live.dart';
 import '../payment_nav_policy.dart';
 import '../screens/catalog_screen.dart' show kBrand;
 import '../screens/payment_webview_screen.dart';
-import '../widgets/sheet_scaffold.dart';
+import '../widgets/pushed_sheet.dart';
 import 'reservation_api.dart';
 import 'reservation_screen.dart' show hhmm, toTashkent;
 
@@ -139,7 +139,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SheetScaffold(
+    return PushedSheet(
       title: 'Bronlarim',
       child: SafeArea(
         top: false,
