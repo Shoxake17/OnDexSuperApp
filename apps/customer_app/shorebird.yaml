@@ -1,14 +1,20 @@
-# This file is used to configure the Shorebird updater used by your app.
-# Learn more at https://docs.shorebird.dev
-# This file does not contain any sensitive information and should be checked into version control.
-
-# Your app_id is the unique identifier assigned to your app.
-# It is used to identify your app when requesting patches from Shorebird's servers.
-# It is not a secret and can be shared publicly.
+# OnDexFlow — o'z OTA yangilanish tizimimiz (Plane ONDEXECOSY-472).
+#
+# Ilova Shorebird dvigateli bilan yig'iladi (ilova ichidagi yangilagich
+# ochiq kod, Apache-2.0/MIT), lekin yamoqlarni SHOREBIRD BULUTIDAN EMAS,
+# bizning serverimizdan oladi (`base_url`). Fayllar Cloudflare R2 da.
+#
+# Bu faylda sir yo'q. Yamoqni tekshiradigan OCHIQ kalit build vaqtida
+# `SHOREBIRD_PUBLIC_KEY` dan qo'shiladi (`patch_public_key`) — imzosiz
+# yoki boshqa kalitli yamoq qurilmada o'rnatilmaydi.
+#
+# app_id — admin panel -> OnDexFlow -> "Ilova ulash" da shu qiymat bilan
+# ro'yxatga olinadi.
 app_id: 511a3ebc-cff6-4c16-95dc-73ad1e53ccb4
 
-# auto_update controls if Shorebird should automatically update in the background on launch.
-# If auto_update: false, you will need to use package:shorebird_code_push to trigger updates.
-# https://pub.dev/packages/shorebird_code_push
-# Uncomment the following line to disable automatic updates.
-# auto_update: false
+# Yamoq tekshiruvi va yuklash FAQAT shu manzildan.
+base_url: https://api.ondex.uz/flow
+
+# Ilova ochilganda fonda yangi yamoqni tekshiradi va yuklaydi; yamoq
+# KEYINGI ochilishda qo'llanadi.
+auto_update: true

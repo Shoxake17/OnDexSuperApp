@@ -303,6 +303,15 @@ func isUploadsPath(path string) bool {
 	return path == "/uploads" || strings.HasPrefix(path, "/uploads/")
 }
 
+// isFlowPublish — OnDexFlow nashri (POST + multipart, AYNAN ikki yo'l).
+// Umumiy 1 MB o'rniga handler o'z qat'iy chegarasini qo'yadi
+// (`flowPublishMaxBytes`); so'rov baribir imzosiz qabul qilinmaydi.
+func isFlowPublish(r *http.Request) bool {
+	return r.Method == http.MethodPost &&
+		(r.URL.Path == "/flow/publish/releases" || r.URL.Path == "/flow/publish/patches") &&
+		strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data")
+}
+
 // isSupportImageUpload — qo'llab-quvvatlash chatiga RASM yuborish so'rovimi.
 //
 // Faqat POST + multipart + AYNAN ikki yo'l (restoran va admin). Bunday
@@ -343,7 +352,7 @@ func withBodyLimit(next http.Handler) http.Handler {
 		// Endi FAQAT aynan `/uploads` va uning ostidagi yo'llar
 		// istisno (`/uploads/...`).
 		// └────────────────────────────────────────────────────────┘
-		if r.Body != nil && !isUploadsPath(r.URL.Path) && !isSupportImageUpload(r) {
+		if r.Body != nil && !isUploadsPath(r.URL.Path) && !isSupportImageUpload(r) && !isFlowPublish(r) {
 			r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 		}
 		next.ServeHTTP(w, r)

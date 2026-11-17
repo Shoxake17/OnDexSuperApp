@@ -34,11 +34,12 @@ import (
 	"chustapp/internal/images"
 	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
+	"chustapp/internal/modules/flow"
+	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/notify"
 	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
-	"chustapp/internal/modules/reservation"
-	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicard"
@@ -1602,9 +1603,9 @@ func main() {
 		OIDC:               oidcProvider,
 		Avatars:            avatarStore,
 		QurtRepo:           qurtRepo,
-		QurtOrderSvc: qurtOrderSvc,
-		Dispatcher: dispatcher,
-		DevMode:    devMode,
+		QurtOrderSvc:       qurtOrderSvc,
+		Dispatcher:         dispatcher,
+		DevMode:            devMode,
 		// RS-7 web panel BFF: CSRF uchun panel manbasi (bo'sh — merchant.ondex.uz).
 		PanelWebOrigin: os.Getenv("PANEL_WEB_ORIGIN"),
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
@@ -1669,6 +1670,21 @@ func main() {
 	// mijozga va do'kon paneliga jonli yetkaziladi.
 	safego.Go("qurtorders.expire", func() { runQurtExpiry(context.Background(), qurtOrderSvc) })
 
+	// ── OnDexFlow (o'z OTA yangilanishi, modul: internal/modules/flow) ──
+	{
+		var flowStore flow.Store
+		if pgPool != nil {
+			flowStore = flow.NewPGStore(pgPool)
+		} else {
+			flowStore = flow.NewMemStore()
+		}
+		flowSvc, err := flow.New(flow.Deps{Store: flowStore, Blobs: httpapi.FlowBlobs(imageStore), NewID: httpapi.NewID})
+		if err != nil {
+			slog.Error("OnDexFlow sozlanmadi", "err", err)
+			os.Exit(1)
+		}
+		api.FlowSvc = flowSvc
+	}
 	// ── Stol broni + zaklad (RS-3, modul: internal/modules/reservation) ──
 	{
 		var rsvStore reservation.Store

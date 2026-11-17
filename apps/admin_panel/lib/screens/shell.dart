@@ -4,6 +4,7 @@ import '../api.dart';
 import '../live.dart';
 import '../pages/banners_page.dart';
 import '../pages/couriers_page.dart';
+import '../pages/flow_page.dart';
 import '../pages/kyc_page.dart';
 import '../pages/live_ops_page.dart';
 import '../pages/ondexmap_page.dart';
@@ -117,6 +118,14 @@ const _navTop = <_NavSpec>[
     icon: Icons.monitor_heart_outlined,
     selectedIcon: Icons.monitor_heart,
   ),
+  // OnDexFlow: o'z OTA yangilanishi (oxirida — indekslar surilmaydi).
+  (
+    key: 'nav-flow',
+    label: 'OnDexFlow',
+    screen: 'Flow',
+    icon: Icons.system_update_outlined,
+    selectedIcon: Icons.system_update,
+  ),
 ];
 
 const _navBottom = <_NavSpec>[
@@ -189,6 +198,7 @@ class _AdminShellState extends State<AdminShell> {
         // KYC (A6): faqat OnDex ID admin sessiyasida.
         8 => const KycPage(),
         9 => const LiveOpsPage(),
+        10 => const FlowPage(),
         // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
         // ChustApp bazasiga ham, API'siga ham tegmaydi.
         _ => const OndexMapPage(),

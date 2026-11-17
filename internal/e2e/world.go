@@ -27,10 +27,11 @@ import (
 	"chustapp/internal/identity/mfa"
 	"chustapp/internal/identity/passkey"
 	"chustapp/internal/images"
-	"chustapp/internal/notify"
-	"chustapp/internal/orders"
+	"chustapp/internal/modules/flow"
 	"chustapp/internal/modules/reservation"
 	"chustapp/internal/modules/tablebill"
+	"chustapp/internal/notify"
+	"chustapp/internal/orders"
 	"chustapp/internal/payments"
 	"chustapp/internal/payments/mcconnect"
 	"chustapp/internal/payments/multicardpay"
@@ -179,10 +180,10 @@ type World struct {
 	// Wallet — OnDex Wallet xizmati (balansni to'g'ridan-to'g'ri to'ldirish uchun).
 	Wallet *wallet.Service
 	// Rsv — bron moduli (SweepReservations uchun).
-	Rsv *reservation.Service
-	skew   time.Duration    // Advance bilan oldinga siljitilgan soat
-	rec    *report.Recorder // nil bo'lsa umumiy Rec (meta-testlar o'zinikini beradi)
-	gated  bool
+	Rsv   *reservation.Service
+	skew  time.Duration    // Advance bilan oldinga siljitilgan soat
+	rec   *report.Recorder // nil bo'lsa umumiy Rec (meta-testlar o'zinikini beradi)
+	gated bool
 	// polling — `Eventually` ichida: so'rovlar kutish uchun takrorlanadi.
 	polling bool
 	ctype   string // multipart so'rovlar uchun Content-Type
@@ -488,6 +489,12 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	api.TableBillSvc = tbSvc
 	paySvc.SetBillSink(tbSvc)
+	// OnDexFlow (o'z OTA yangilanishi): xotira ombori, fayllar vaqtinchalik papkada.
+	flowSvc, err := flow.New(flow.Deps{Store: flow.NewMemStore(), Blobs: httpapi.FlowBlobs(images.NewLocalStore(t.TempDir())), NewID: httpapi.NewID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.FlowSvc = flowSvc
 	w.api = api
 	w.Srv = httptest.NewServer(api.Routes(nil))
 	t.Cleanup(w.Srv.Close)

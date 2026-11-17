@@ -315,7 +315,7 @@ void main() {
     });
   });
 
-  testWidgets('Sidebar: Restoran, Do\'kon, Qurt statistikasi, Statistika, Mijozlar, OnDex kuryerlari, Bannerlar, Sozlamalar, KYC, Jonli holat; pastda OnDexMap', (tester) async {
+  testWidgets('Sidebar: Restoran, Do\'kon, Qurt statistikasi, Statistika, Mijozlar, OnDex kuryerlari, Bannerlar, Sozlamalar, KYC, Jonli holat, OnDexFlow; pastda OnDexMap', (tester) async {
     await _run(tester, const AdminShell(), (requests) async {
       expect(tester.takeException(), isNull);
       int count(String path) => requests.where((r) => r.url.path == path).length;
@@ -324,9 +324,9 @@ void main() {
       // Sidebar'da AYNAN to'qqizta band; boshqa (yuqori tablar kabi) navigatsiya yo'q.
       final navItems = find.byWidgetPredicate((w) =>
           w.key is ValueKey<String> && (w.key as ValueKey<String>).value.startsWith('nav-'));
-      expect(navItems, findsNWidgets(11));
+      expect(navItems, findsNWidgets(12));
       for (final label in const [
-        'Restoran', 'Do\'kon', 'Qurt statistikasi', 'Statistika', 'Mijozlar', 'OnDex kuryerlari', 'Bannerlar', 'Sozlamalar', 'Tashkilotlar (KYC)', 'Jonli holat', 'OnDexMap'
+        'Restoran', 'Do\'kon', 'Qurt statistikasi', 'Statistika', 'Mijozlar', 'OnDex kuryerlari', 'Bannerlar', 'Sozlamalar', 'Tashkilotlar (KYC)', 'Jonli holat', 'OnDexFlow', 'OnDexMap'
       ]) {
         expect(find.text(label), findsOneWidget, reason: '"$label" sidebar\'da bo\'lishi kerak');
       }

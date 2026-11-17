@@ -56,6 +56,7 @@ import (
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/support"
+	"chustapp/internal/modules/flow"
 	"chustapp/internal/modules/reservation"
 	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/tables"
@@ -158,6 +159,8 @@ type Deps struct {
 	// ReservationSvc — stol broni va zaklad (RS-3, `internal/modules/reservation`).
 	// nil — bron endpointlari 503.
 	ReservationSvc *reservation.Service
+	// FlowSvc — OnDexFlow (o'z OTA yangilanishi, internal/modules/flow).
+	FlowSvc *flow.Service
 
 	// TableBillSvc — stolda hisobni bo'lish (RS-5, `internal/modules/tablebill`).
 	TableBillSvc *tablebill.Service
@@ -511,6 +514,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerSupportRoutes(mux)
 	s.registerTableRoutes(mux)
 	s.registerReservationRoutes(mux)
+	s.registerFlowRoutes(mux)
 	s.registerTableBillRoutes(mux)
 	s.registerAdminLiveRoutes(mux)
 	s.registerBookRoutes(mux)

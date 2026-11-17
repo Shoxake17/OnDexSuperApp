@@ -35,6 +35,8 @@ var computedFields = map[string]bool{
 	// scene_access.go` da har so'rovda qaytadan hisoblanadi
 	// (`catalog.go` dagi "YETKAZIB BERISH NARXI BU YERDA EMAS" izohi).
 	"DeliveryFeeTiyin": true,
+	// Stol broni belgisi — bron sozlamasi + stollardan (estaurant_derived.go).
+	"Reservable": true,
 }
 
 // fillRestaurant — har bir maydonga NOLDAN FARQLI qiymat qo'yadi.

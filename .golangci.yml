@@ -96,10 +96,10 @@ linters:
           - gocognit
           - errcheck
 
-      # `cmd/bookpages`, `cmd/r2upload` — admin o'z kompyuterida ishga
+      # `cmd/bookpages`, `cmd/r2upload`, `cmd/ondexflow` — admin o'z kompyuterida ishga
       # tushiradigan CLI vositalar: fayl yo'li va buyruq argumentlari
       # OPERATORdan keladi, tarmoq foydalanuvchisidan emas.
-      - path: cmd/(bookpages|r2upload)/
+      - path: cmd/(bookpages|r2upload|ondexflow)/
         linters:
           - gosec
         text: 'G(204|304)'
