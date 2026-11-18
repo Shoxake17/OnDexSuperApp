@@ -16,6 +16,7 @@ import '../widgets/page_sheet.dart';
 import '../widgets/sheet_page.dart';
 import '../widgets/product_grid.dart' show discountLineLabel;
 import 'catalog_screen.dart' show kBrand;
+import 'ondex_map_screen.dart';
 import 'payment_webview_screen.dart';
 
 /// Buyurtma kuzatuvi — NATIVE (mobil oqimdagi OXIRGI WebView shu edi).
@@ -475,6 +476,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         order: o,
                         givenStars: (_myRating?['stars'] as num?)?.toInt(),
                       ),
+                      // Olib ketish (Plane 475): olish kodi va restoranga yo'l.
+                      if ((o['type'] as String?) == 'pickup' &&
+                          !const {'delivered', 'cancelled', 'rejected', 'not_picked_up'}.contains(o['status']) &&
+                          !_awaitingPayment(o)) ...[
+                        const SizedBox(height: 12),
+                        _PickupCodeCard(order: o),
+                      ],
                       // RS-5: stolda hisobni o'z telefonidan to'lash (teng yoki o'z taomlari).
                       if ((o['type'] as String?) == 'dine_in' &&
                           !const {'cancelled', 'rejected'}.contains(o['status'])) ...[
@@ -973,9 +981,10 @@ class _StatusHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (order['status'] as String?) ?? '';
     final isDineIn = (order['type'] as String?) == 'dine_in';
+    final isPickup = (order['type'] as String?) == 'pickup';
     // Ikonka endi ishlatilmaydi — maskot surati o'rniga qo'yildi
     // (pastga qarang), shuning uchun `_` bilan e'tiborsiz qoldiriladi.
-    final (label, _, color) = statusStyleOf(status, dineIn: isDineIn);
+    final (label, _, color) = statusStyleOf(status, dineIn: isDineIn, pickup: isPickup);
     final courierId = (order['courier_id'] as String?) ?? '';
     // Ism serverdan (`courier_name`, faqat ismi). Ichki ID (masalan
     // "staff-5f1c…") mijozga HECH QACHON ko'rsatilmaydi.
@@ -990,11 +999,13 @@ class _StatusHeader extends StatelessWidget {
     // baholash `_RatingCard` da, bu yerda faqat NATIJA ko'rsatiladi).
     // └────────────────────────────────────────────────────────────────────┘
     if (status == 'delivered' || status == 'served') {
-      final title = isDineIn ? 'Stolga berildi!' : 'Yetkazildi!';
+      final title = isDineIn ? 'Stolga berildi!' : (isPickup ? 'Berildi!' : 'Yetkazildi!');
       final subtitle =
           isDineIn
               ? 'Taomingiz stolingizga olib kelindi.'
-              : 'Buyurtmangiz muvaffaqiyatli yetkazib berildi.';
+              : (isPickup
+                  ? 'Buyurtmangizni oldingiz. Yoqimli ishtaha!'
+                  : 'Buyurtmangiz muvaffaqiyatli yetkazib berildi.');
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
@@ -1176,7 +1187,7 @@ class _StatusHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _hint(status, isDineIn),
+                      _hint(status, isDineIn, pickup: isPickup),
                       style: const TextStyle(
                         fontSize: 11.5,
                         height: 1.3,
@@ -1222,7 +1233,19 @@ class _StatusHeader extends StatelessWidget {
   /// Har holat uchun mijoz NIMA KUTISHI kerakligi — zamonaviy, qisqa va
   /// tushunarli til bilan (eski versiya quruq edi, masalan "Restoran
   /// buyurtmani ko'rishini kutmoqdamiz").
-  static String _hint(String status, bool dineIn) {
+  static String _hint(String status, bool dineIn, {bool pickup = false}) {
+    if (pickup) {
+      switch (status) {
+        case 'ready':
+          return 'Taomingiz tayyor — restoranga kelib olish kodini ayting';
+        case 'not_picked_up':
+          return 'Buyurtma 2 soat ichida olib ketilmadi va yopildi';
+        case 'created':
+        case 'accepted':
+        case 'preparing':
+          return 'Tayyor bo\'lishi bilan xabar beramiz — keyin restoranga boring';
+      }
+    }
     // Stolda `ready` — taom tayyor va AFFITSIANT olib kelmoqda. Kuryer
     // bu buyurtmaga umuman chaqirilmaydi (backend dispatch'ni ishga
     // tushirmaydi), shuning uchun "kuryer kutilmoqda" yozuvi mijozni
@@ -1254,9 +1277,10 @@ class _Timeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (order['status'] as String?) ?? '';
     final isDineIn = (order['type'] as String?) == 'dine_in';
+    final isPickup = (order['type'] as String?) == 'pickup';
 
     // Bekor qilingan/rad etilgan buyurtmada bosqichlar ma'nosiz.
-    if (status == 'rejected' || status == 'cancelled') {
+    if (status == 'rejected' || status == 'cancelled' || status == 'not_picked_up') {
       return const SizedBox.shrink();
     }
 
@@ -1268,6 +1292,19 @@ class _Timeline extends StatelessWidget {
     // Bu TARIX chizig'i, shuning uchun `dineInTimelineLabels` — oxirgi
     // qadam "Stolga berildi" (vaqti bilan), qisqa chiziqdagi "Tayyor"
     // emas.
+    if (isPickup) {
+      const order4 = ['accepted', 'preparing', 'ready', 'delivered'];
+      final reached = order4.indexOf(status);
+      return Column(children: [
+        for (var i = 0; i < pickupTimelineLabels.length; i++)
+          _Step(
+            label: pickupTimelineLabels[i],
+            done: i <= reached,
+            isLast: i == pickupTimelineLabels.length - 1,
+            at: _timeOfStatus(order4[i]),
+          ),
+      ]);
+    }
     final stages = isDineIn ? dineInTimelineLabels : stageLabels;
     final reached = _reachedIndex(status, isDineIn);
 
@@ -1303,6 +1340,19 @@ class _Timeline extends StatelessWidget {
       'delivered' => 3,
       _ => -1,
     };
+  }
+
+  /// Holatga o'tilgan vaqt (olib ketish chizig'i uchun).
+  String? _timeOfStatus(String target) {
+    for (final h in (order['history'] as List?) ?? const []) {
+      if (h is Map && h['to'] == target) {
+        final at = DateTime.tryParse((h['at'] as String?) ?? '');
+        if (at == null) return null;
+        final l = at.toLocal();
+        return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+      }
+    }
+    return null;
   }
 
   /// Bosqich vaqti — buyurtma tarixidan.
@@ -1689,6 +1739,115 @@ class _Panel extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+/// Olib ketish: 4 xonali OLISH KODI va restoranga yo'l (Plane 475).
+///
+/// Kod serverdan faqat egasiga beriladi (`GET /orders/{id}/pickup-code`) va
+/// restoran xodimiga og'zaki aytiladi — xodim uni panelga kiritadi.
+class _PickupCodeCard extends StatefulWidget {
+  final Map<String, dynamic> order;
+  const _PickupCodeCard({required this.order});
+
+  @override
+  State<_PickupCodeCard> createState() => _PickupCodeCardState();
+}
+
+class _PickupCodeCardState extends State<_PickupCodeCard> {
+  String? _code;
+  Map<String, dynamic>? _rest;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final id = '${widget.order['id'] ?? ''}';
+    final rid = '${widget.order['restaurant_id'] ?? ''}';
+    try {
+      final c = await api.pickupCode(id);
+      if (mounted) setState(() => _code = c);
+    } catch (_) {
+      // Kod olinmasa karta kodsiz chiziladi; sahifa yangilanganda qayta urinadi.
+    }
+    if (rid.isEmpty) return;
+    try {
+      final r = await api.restaurant(rid);
+      if (mounted) setState(() => _rest = r);
+    } catch (_) {}
+  }
+
+  void _route() {
+    final r = _rest;
+    final lat = (r?['lat'] as num?)?.toDouble() ?? 0;
+    final lng = (r?['lng'] as num?)?.toDouble() ?? 0;
+    if (lat == 0 && lng == 0) return;
+    Navigator.of(context).push(sheetRoute(OndexMapScreen(
+      destination: (lat: lat, lng: lng, label: '${r?['name'] ?? 'Restoran'}'),
+    )));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = widget.order['status'] == 'ready';
+    final code = _code;
+    final pickup = _rest?['pickup'] is Map ? _rest!['pickup'] as Map : const {};
+    final note = '${pickup['note'] ?? ''}'.trim();
+    return Container(
+      key: const ValueKey('pickup-code-card'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: ready
+              ? const [Color(0xFFFF7A45), kBrand]
+              : const [Color(0xFFFFF3EE), Color(0xFFFFE8DF)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(
+          ready ? 'Tayyor! Restoranda shu kodni ayting' : 'Olish kodi',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: ready ? Colors.white : const Color(0xFF7C2D12),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: Text(
+            code == null ? '• • • •' : code.split('').join(' '),
+            key: const ValueKey('pickup-code'),
+            style: TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 4,
+              color: ready ? Colors.white : const Color(0xFF111827),
+            ),
+          ),
+        ),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(note,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: ready ? Colors.white70 : const Color(0xFF6B7280))),
+        ],
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          key: const ValueKey('pickup-route'),
+          onPressed: _rest == null ? null : _route,
+          style: FilledButton.styleFrom(
+            backgroundColor: ready ? Colors.white : kBrand,
+            foregroundColor: ready ? kBrand : Colors.white,
+            minimumSize: const Size.fromHeight(46),
+          ),
+          icon: const Icon(Icons.directions),
+          label: Text('Restoranga yo\'l${_rest == null ? '' : ' · ${_rest!['name'] ?? ''}'}'),
+        ),
+      ]),
     );
   }
 }

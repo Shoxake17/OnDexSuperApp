@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 import '../category_icons.dart';
 import '../data/address_scope.dart';
+import '../data/cart_store.dart';
 import '../data/catalog_repository.dart';
 import '../widgets/app_text_field.dart';
 import '../widgets/common.dart';
@@ -88,6 +89,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   /// Bosh sahifa bo'limi: Buyurtma berish / Borish / Bron qilish.
   _Mode _mode = _Mode.order;
+
+  /// B3 filtrlari (faqat "Borish" bo'limida).
+  bool _onlyOpen = false;
+  bool _onlyPickup = false;
 
   /// Ro'yxat joyidan siljiganmi — sarlavhaning dumaloq burchagi va
   /// soyasi shunga qarab paydo bo'ladi.
@@ -182,6 +187,28 @@ class _CatalogScreenState extends State<CatalogScreen> {
                           onChanged: (m) => setState(() => _mode = m),
                         ),
                       ),
+                      if (_mode == _Mode.go)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+                            child: Wrap(spacing: 8, children: [
+                              FilterChip(
+                                key: const ValueKey('go-only-open'),
+                                label: const Text('Hozir ochiq'),
+                                selected: _onlyOpen,
+                                selectedColor: kBrand.withValues(alpha: 0.15),
+                                onSelected: (v) => setState(() => _onlyOpen = v),
+                              ),
+                              FilterChip(
+                                key: const ValueKey('go-only-pickup'),
+                                label: const Text('Olib ketish'),
+                                selected: _onlyPickup,
+                                selectedColor: kBrand.withValues(alpha: 0.15),
+                                onSelected: (v) => setState(() => _onlyPickup = v),
+                              ),
+                            ]),
+                          ),
+                        ),
 
                       // Yangilash tarmoqda yiqilgan bo'lsa — eski ro'yxat
                       // QOLADI, ustiga kichik ogohlantirish chiqadi. Bu
@@ -206,7 +233,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
                             child: Padding(
                               padding: const EdgeInsets.all(32),
                               child: Text(
-                                list.isNotEmpty && _mode == _Mode.reserve
+                                list.isNotEmpty && _mode == _Mode.go
+                                    ? 'Tanlangan filtrga mos restoran yo\'q'
+                                    : list.isNotEmpty && _mode == _Mode.reserve
                                     ? 'Hozircha hududingizda stol bron qilsa bo\'ladigan restoran yo\'q'
                                     : 'Manzilingiz hududida hali restoran yo\'q',
                                 textAlign: TextAlign.center,
@@ -265,8 +294,14 @@ extension on _CatalogScreenState {
         return [for (final r in list) if (r['reservable'] == true) r];
       case _Mode.go:
         final a = AddressScope.instance;
-        if (!a.bor) return list;
-        final sorted = [...list];
+        final filtered = [
+          for (final r in list)
+            if ((!_onlyOpen || RestaurantOpenStatus.fromJson(r).at(DateTime.now()).open) &&
+                (!_onlyPickup || (r['pickup'] is Map && (r['pickup'] as Map)['enabled'] == true)))
+              r
+        ];
+        if (!a.bor) return filtered;
+        final sorted = [...filtered];
         sorted.sort((x, y) => (_distanceKm(x) ?? 1e9).compareTo(_distanceKm(y) ?? 1e9));
         return sorted;
     }
@@ -1192,6 +1227,10 @@ class _RestaurantCard extends StatelessWidget {
     // Yetkazish narxi faqat "Buyurtma berish" bo'limida — borish/bronda ma'nosiz.
     final deliveryFeeTiyin = mode == _Mode.order ? (r['delivery_fee_tiyin'] as num?)?.toInt() : null;
     final km = mode == _Mode.go ? _distanceKm(r) : null;
+    final pickupCfg = r['pickup'] is Map ? r['pickup'] as Map : const {};
+    final pickupOn = pickupCfg['enabled'] == true;
+    final pickupPrep = (pickupCfg['prep_minutes'] as num?)?.toInt() ?? 15;
+    final pickupOff = (pickupCfg['discount_percent'] as num?)?.toInt() ?? 0;
 
     final card = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1275,13 +1314,21 @@ class _RestaurantCard extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 5),
                       child: _ModeChip(icon: Icons.event_seat_outlined, label: 'Stol bron qilish mumkin'),
                     ),
-                  if (km != null)
+                  if (km != null || mode == _Mode.go)
                     Padding(
                       padding: const EdgeInsets.only(top: 5),
-                      child: _ModeChip(
-                        icon: Icons.near_me_outlined,
-                        label: km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km',
-                      ),
+                      child: Wrap(spacing: 6, runSpacing: 4, children: [
+                        if (km != null)
+                          _ModeChip(
+                            icon: Icons.near_me_outlined,
+                            label: km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km',
+                          ),
+                        // B3: olib ketish — tayyor bo'lish vaqti va chegirma.
+                        if (mode == _Mode.go && pickupOn)
+                          _ModeChip(icon: Icons.shopping_bag_outlined, label: '$pickupPrep daqiqada tayyor'),
+                        if (mode == _Mode.go && pickupOn && pickupOff > 0)
+                          _ModeChip(icon: Icons.local_offer_outlined, label: 'Olib ketishga −$pickupOff%'),
+                      ]),
                     ),
                   if (address.isNotEmpty)
                     Padding(
@@ -1400,11 +1447,13 @@ class _RestaurantCard extends StatelessWidget {
       // Menyu endi NATIVE. Restoran `Map`i uzatiladi — menyu ekrani
       // sarlavhani qayta so'ramaydi va internet bo'lmasa ham to'g'ri
       // chizadi (`menu_screen.dart` izohiga qarang).
-      onTap:
-          () => Navigator.of(context).push(
-            // Menyu pastdan suzib chiqadi (`widgets/sheet_page.dart`).
-            sheetRoute(MenuScreen(restaurant: r)),
-          ),
+      onTap: () {
+        // Borish bo'limidan kirilsa savat OLIB KETISH xohishida (checkout
+        // restoran qabul qilsagina qo'llaydi); boshqa bo'limdan — yetkazish.
+        CartStore.instance.setPickup(mode == _Mode.go && pickupOn);
+        // Menyu pastdan suzib chiqadi (`widgets/sheet_page.dart`).
+        Navigator.of(context).push(sheetRoute(MenuScreen(restaurant: r)));
+      },
       child: card,
     );
   }

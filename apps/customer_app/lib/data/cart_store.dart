@@ -48,6 +48,18 @@ class CartStore extends ChangeNotifier {
   String? get tableLabel => _tableLabel;
   bool get isDineIn => _tableToken != null;
 
+  /// Olib ketish (Borish, Plane 475): mijoz restorandan O'ZI oladi. Faqat
+  /// xohish — checkout restoran uni qabul qilsagina qo'llaydi. Saqlanmaydi
+  /// (sessiya davomida); stol buyurtmasida hech qachon.
+  bool _pickup = false;
+  bool get isPickup => _pickup && !isDineIn;
+
+  void setPickup(bool v) {
+    if (_pickup == v) return;
+    _pickup = v;
+    notifyListeners();
+  }
+
   /// O'zgarmas nusxa — tashqaridan tahrirlab bo'lmaydi.
   Map<String, int> get items => Map.unmodifiable(_items);
 
@@ -76,6 +88,7 @@ class CartStore extends ChangeNotifier {
       // Stol seansi ham shu restoranga tegishli edi, u ham ketadi.
       _tableToken = null;
       _tableLabel = null;
+      _pickup = false;
     }
     _restaurantId = restaurantId;
     if (restaurantName != null) _restaurantName = restaurantName;
@@ -146,6 +159,7 @@ class CartStore extends ChangeNotifier {
     _restaurantName = null;
     _tableToken = null;
     _tableLabel = null;
+    _pickup = false;
     _persist();
     notifyListeners();
   }

@@ -179,6 +179,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   bool get _isDineIn => _cart.isDineIn;
 
+  /// Restoran olib ketishni qabul qiladimi ("pickup.enabled").
+  Map<String, dynamic> get _pickupCfg {
+    final p = _restaurant?['pickup'];
+    return p is Map ? Map<String, dynamic>.from(p) : const {};
+  }
+
+  bool get _pickupAllowed => !_isDineIn && _pickupCfg['enabled'] == true;
+
+  /// Olib ketish rejimi: mijoz xohlagan VA restoran qabul qiladi.
+  bool get _isPickup => _cart.isPickup && _pickupAllowed;
+
+  /// Olib ketish vaqti (null = tayyor bo'lishi bilan).
+  DateTime? _pickupAt;
+
   @override
   void initState() {
     super.initState();
@@ -248,6 +262,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _restaurant = {...?_restaurant, ...fresh};
         _ensureSelectedMethodVisible();
       });
+      // Restoran olib ketishni qabul qilmasa xohish bekor — yetkazish.
+      if (_cart.isPickup && !_pickupAllowed) _cart.setPickup(false);
     } catch (_) {
       // Tarmoq xatosi: keshdagi qiymat qoladi, server baribir tekshiradi.
     }
@@ -422,7 +438,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     // Yetkazib berishda manzilsiz yuborilmaydi — server ham rad
     // etardi, lekin mijozga sababni SHU YERDA aytish to'g'ri.
-    if (!_isDineIn && _address == null) {
+    if (!_isDineIn && !_isPickup && _address == null) {
       setState(() => _error = 'Yetkazib berish manzilini tanlang');
       return;
     }
@@ -439,10 +455,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             {'product_id': e.key, 'qty': e.value},
         ],
         idempotencyKey: _idempotencyKey,
-        lat: _isDineIn ? null : (_address!['lat'] as num).toDouble(),
-        lng: _isDineIn ? null : (_address!['lng'] as num).toDouble(),
+        lat: _isDineIn || _isPickup ? null : (_address!['lat'] as num).toDouble(),
+        lng: _isDineIn || _isPickup ? null : (_address!['lng'] as num).toDouble(),
         tableToken: _isDineIn ? _cart.tableToken : null,
         partySize: _isDineIn ? _partySize : null,
+        pickup: _isPickup,
+        pickupAt: _isPickup ? _pickupAt : null,
         // `apiValue` — enum'ning O'ZIDA, to'liq `switch` bilan
         // (bug.md 81-band). Avval bu yerda `== card ? 'card' : 'cash'`
         // turardi va Payme/Click jimgina NAQD ga aylanardi.
@@ -527,7 +545,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
-                    if (_isDineIn) _dineInCard() else _addressCard(),
+                    if (_pickupAllowed) ...[_modeToggle(), const SizedBox(height: 12)],
+                    if (_isDineIn)
+                      _dineInCard()
+                    else if (_isPickup)
+                      _pickupCard()
+                    else
+                      _addressCard(),
                     const SizedBox(height: 12),
                     _orderDetailsCard(),
                     const SizedBox(height: 12),
@@ -549,6 +573,147 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // ── Manzil va yetkazish vaqti ─────────────────────────────────────
 
+  // ── Olib ketish (Borish, Plane 475) ─────────────────────────────────
+
+  /// "Yetkazib berish | Olib ketaman" — faqat restoran olib ketishni qabul
+  /// qilsa. Tanlov savatda saqlanadi, narx darhol qayta hisoblanadi.
+  Widget _modeToggle() {
+    final pickup = _isPickup;
+    final off = (_pickupCfg['discount_percent'] as num?)?.toInt() ?? 0;
+    Widget seg(bool value, String label, String? badge) {
+      final sel = pickup == value;
+      return Expanded(
+        child: GestureDetector(
+          key: ValueKey(value ? 'checkout-mode-pickup' : 'checkout-mode-delivery'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (sel) return;
+            setState(() {
+              _cart.setPickup(value);
+              _ensureSelectedMethodVisible();
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: sel ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: sel
+                  ? const [BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 2))]
+                  : null,
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(label,
+                  style: TextStyle(
+                    fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                    color: sel ? const Color(0xFF111827) : const Color(0xFF6B7280),
+                  )),
+              if (badge != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(999)),
+                  child: Text(badge, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: const Color(0xFFF0F0F0), borderRadius: BorderRadius.circular(999)),
+      child: Row(children: [
+        seg(false, 'Yetkazib berish', null),
+        seg(true, 'Olib ketaman', off > 0 ? '−$off%' : null),
+      ]),
+    );
+  }
+
+  /// Olib ketish kartasi: qayerdan, qachon tayyor, qachon olasiz.
+  Widget _pickupCard() {
+    final r = _restaurant ?? const {};
+    final prep = (_pickupCfg['prep_minutes'] as num?)?.toInt() ?? 15;
+    final note = ('${_pickupCfg['note'] ?? ''}').trim();
+    final addr = ('${r['address'] ?? ''}').trim();
+    final options = <(String, DateTime?)>[
+      ('Tayyor bo\'lishi bilan', null),
+      ('30 daqiqada', DateTime.now().add(const Duration(minutes: 30))),
+      ('1 soatda', DateTime.now().add(const Duration(hours: 1))),
+    ];
+    String hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    bool selected(DateTime? at) {
+      if (at == null) return _pickupAt == null;
+      final cur = _pickupAt;
+      return cur != null && (cur.difference(at).inMinutes).abs() <= 1;
+    }
+
+    return OrderCard(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.storefront_outlined, color: kBrand),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${r['name'] ?? _cart.restaurantName ?? ''}',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5)),
+                if (addr.isNotEmpty)
+                  Text(addr, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12.5)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Text('Taxminan $prep daqiqada tayyor bo\'ladi', style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (note.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(note, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12.5)),
+          ],
+          const SizedBox(height: 14),
+          const Text('Qachon olasiz?', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final (label, at) in options)
+              ChoiceChip(
+                label: Text(at == null ? label : '$label · ${hm(at)}'),
+                selected: selected(at),
+                selectedColor: kBrand.withValues(alpha: 0.15),
+                onSelected: (_) => setState(() => _pickupAt = at),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.schedule, size: 18),
+              label: Text(_pickupAt != null && !options.any((o) => selected(o.$2))
+                  ? 'Vaqt: ${hm(_pickupAt!)}'
+                  : 'Boshqa vaqt'),
+              onPressed: () async {
+                final now = TimeOfDay.now();
+                final t = await showTimePicker(context: context, initialTime: now);
+                if (t == null || !mounted) return;
+                final d = DateTime.now();
+                var at = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+                if (at.isBefore(d)) at = at.add(const Duration(days: 1));
+                if (at.difference(d) > const Duration(hours: 12)) {
+                  setState(() => _error = 'Olib ketish vaqti 12 soat ichida bo\'lishi kerak');
+                  return;
+                }
+                setState(() => _pickupAt = at);
+              },
+            ),
+          ]),
+          const SizedBox(height: 12),
+          const Text(
+            'To\'lov oldindan. Restoranga kelib ilovadagi 4 xonali OLISH KODINI ayting. '
+            '2 soat ichida olinmasa buyurtma yopiladi va pul qaytmaydi.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+        ]),
+      ),
+    );
+  }
   Widget _addressCard() {
     final a = _address;
     final text = ((a?['text'] as String?) ?? '').trim();
@@ -698,6 +863,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// paytida hamma usulni yashirish mijozni chalg'itardi.
   /// └────────────────────────────────────────────────────────────────┘
   bool _methodAvailable(_PayMethod m) =>
+      // Olib ketish: to'lov FAQAT oldindan (egasi qarori) — naqd yo'q.
+      !(_isPickup && m == _PayMethod.cash) &&
       paymentOptionVisible(_restaurant?['payment_options'], m.optionKey);
 
   List<_PayMethod> get _visibleMethods => [
@@ -812,7 +979,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             // yo'q) va HAQIQIY: serverdan keladi, "Jami" ga allaqachon
             // qo'shilgan. Stol buyurtmasida kuryer yo'q — qator umuman
             // chizilmaydi.
-            if (!_isDineIn)
+            if (!_isDineIn && !_isPickup)
               OrderTotalLine(
                 key: const ValueKey('checkout-delivery-line'),
                 label: 'Yetkazish',
@@ -883,6 +1050,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// └────────────────────────────────────────────────────────────────┘
   Future<void> _submitCash() async {
     if (_submitting) return;
+    // Olib ketish naqdsiz — og'zaki tasdiq karta to'lovini boshlamaydi.
+    if (_isPickup) {
+      setState(() => _error = 'Olib ketish faqat oldindan to\'lov bilan — usulni tanlab, tugmani bosing');
+      return;
+    }
     if (_payMethod != _PayMethod.cash) {
       setState(() => _payMethod = _PayMethod.cash);
     }

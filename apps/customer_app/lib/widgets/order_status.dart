@@ -34,6 +34,8 @@ const statusStyles = {
   'served': ('Stolga berildi', Icons.check_circle_rounded, kStatusDelivered),
   'rejected': ('Rad etildi', Icons.cancel_outlined, kStatusCancelled),
   'cancelled': ('Bekor qilindi', Icons.close, kStatusCancelled),
+  // Olib ketish: 2 soat ichida olinmadi (Plane 473).
+  'not_picked_up': ('Olib ketilmadi', Icons.close, kStatusCancelled),
 };
 
 /// STOL (QR) buyurtmasida MA'NOSI boshqacha bo'lgan holatlar.
@@ -64,7 +66,26 @@ const dineInStatusStyles = {
   'ready': ('Tayyor — hozir olib kelishadi', Icons.room_service, kStatusCarrot),
 };
 
-(String, IconData, Color) statusStyleOf(String status, {bool dineIn = false}) {
+/// Olib ketish (Borish): mijoz restoranga O'ZI keladi — matn push bilan bir xil
+/// (internal/notify/live.go → orderStatusText).
+const pickupStatusStyles = {
+  'ready': ('Tayyor — olib ketishingiz mumkin', Icons.shopping_bag_outlined, kStatusCarrot),
+  'delivered': ('Berildi', Icons.check_circle_rounded, kStatusDelivered),
+};
+
+/// Olib ketish tarix chizig'i.
+const pickupTimelineLabels = [
+  'Qabul qilindi',
+  'Tayyorlanmoqda',
+  'Tayyor — olib keting',
+  'Berildi',
+];
+
+(String, IconData, Color) statusStyleOf(String status, {bool dineIn = false, bool pickup = false}) {
+  if (pickup) {
+    final override = pickupStatusStyles[status];
+    if (override != null) return override;
+  }
   if (dineIn) {
     final override = dineInStatusStyles[status];
     if (override != null) return override;

@@ -115,12 +115,20 @@ class CustomerApi extends ApiClient {
   /// Berilmasa server YETKAZISH deb oladi.
   Future<Map<String, dynamic>> quote(
           String restaurantId, List<Map<String, dynamic>> items,
-          {bool dineIn = false}) async =>
+          {bool dineIn = false, bool pickup = false}) async =>
       Map<String, dynamic>.from(await send(
           'POST', '/restaurants/$restaurantId/quote', {
         'items': items,
         if (dineIn) 'dine_in': true,
+        // Olib ketish: yetkazish haqi yo'q, restoran chegirmasi bor.
+        if (pickup) 'pickup': true,
       }));
+
+  /// Olib ketish buyurtmasining 4 xonali olish kodi (faqat egasiga).
+  Future<String> pickupCode(String orderId) async {
+    final d = await send('GET', '/orders/$orderId/pickup-code');
+    return '${(d as Map)['code'] ?? ''}';
+  }
 
   /// Turkum (yoki nom) bo'yicha BARCHA restoranlardagi mos taomlarni
   /// qidiradi — restoranga bog'liq emas. Har bir natijada qaysi
@@ -297,6 +305,11 @@ class CustomerApi extends ApiClient {
     /// Ya'ni mijoz ko'rgan raqamdan boshqa summaga hech qachon rozi
     /// bo'lib qolmaydi (aksiya tugashi, narx tahriri).
     int? expectedTotalTiyin,
+
+    /// Olib ketish (Borish): manzil kerak emas; [pickupAt] — olish vaqti
+    /// (null = tayyor bo'lishi bilan). To'lov faqat oldindan.
+    bool pickup = false,
+    DateTime? pickupAt,
   }) async {
     final body = <String, dynamic>{
       'items': items,
@@ -306,7 +319,10 @@ class CustomerApi extends ApiClient {
     if (expectedTotalTiyin != null && expectedTotalTiyin > 0) {
       body['expected_total_tiyin'] = expectedTotalTiyin;
     }
-    if (tableToken != null && tableToken.isNotEmpty) {
+    if (pickup) {
+      body['fulfillment'] = 'pickup';
+      if (pickupAt != null) body['pickup_at'] = pickupAt.toUtc().toIso8601String();
+    } else if (tableToken != null && tableToken.isNotEmpty) {
       body['table_token'] = tableToken;
       if (partySize != null && partySize > 0) body['party_size'] = partySize;
     } else {

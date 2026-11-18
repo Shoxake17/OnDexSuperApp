@@ -85,4 +85,15 @@ void main() {
         reason: 'stol boshqa restoranniki edi — u bilan ketishi kerak');
     expect(cart.tableToken, isNull);
   });
+
+  test('olib ketish xohishi: boshqa restoran va tozalashda bekor bo''ladi', () {
+    cart.setQty(restaurantId: 'r1', productId: 'p1', qty: 1);
+    cart.setPickup(true);
+    expect(cart.isPickup, isTrue);
+    cart.setQty(restaurantId: 'r2', productId: 'p9', qty: 1);
+    expect(cart.isPickup, isFalse, reason: 'yangi restoranda xohish qayta tanlanadi');
+    cart.setPickup(true);
+    cart.clear();
+    expect(cart.isPickup, isFalse);
+  });
 }

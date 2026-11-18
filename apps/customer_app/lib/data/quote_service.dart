@@ -102,7 +102,7 @@ class QuoteFetcher {
     // 0 deb hisoblashi uchun buni AYTISH shart (aks holda stolda ham haq
     // qo'shilgan summa ko'rinardi).
     final res = await api.quote(restaurantId, itemsPayload(),
-        dineIn: cart.isDineIn);
+        dineIn: cart.isDineIn, pickup: cart.isPickup);
     if (seq != _seq) return null; // eskirgan javob
     return parseQuote(res);
   }
