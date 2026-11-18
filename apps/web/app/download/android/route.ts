@@ -14,6 +14,10 @@ import { NextResponse } from "next/server";
 // ochiq qayta yo'naltirish (open redirect) vositasiga aylanardi.
 // └────────────────────────────────────────────────────────────────────┘
 
+// Har so'rovda manifest o'qiladi: statik/ISR keshda yo'l eski APK'ga
+// yopishib qolardi (2026-11-18: 0.2.16 joylangach sayt 0.2.15 ni berdi).
+export const dynamic = "force-dynamic";
+
 const MANIFEST_PATH = "/releases/android/latest.json";
 const RELEASE_DIR = "/releases/android/";
 
@@ -49,7 +53,7 @@ async function latestApkUrl(): Promise<string | null> {
   if (!origin) return null;
   try {
     // Manifest R2 da 60 soniya keshlanadi — bu yerda ham shuncha.
-    const res = await fetch(origin + MANIFEST_PATH, { next: { revalidate: 60 } });
+    const res = await fetch(origin + MANIFEST_PATH, { cache: "no-store" });
     if (!res.ok) return null;
     const data: unknown = await res.json();
     const url = data && typeof data === "object" ? (data as { url?: unknown }).url : null;
