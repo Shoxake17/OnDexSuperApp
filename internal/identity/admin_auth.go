@@ -13,6 +13,10 @@ import (
 // harakatsiz, 12 soat mutlaq (`DefaultClients`).
 const AdminClientID = "admin-web"
 
+// IsAdminClient — admin panel klientimi (Windows `admin-web` yoki web BFF
+// `admin-panel-web`). IP ro'yxati va admin oqimi ikkalasiga ham qo'llanadi.
+func IsAdminClient(c string) bool { return c == AdminClientID || c == AdminPanelWebClientID }
+
 // CustomerClientID — mijoz mobil ilovasi (customer realmi, 137). Kirish
 // ekranlari eski endpointlarda; ilova `X-Ondex-Session: v2` yuborsa ular
 // shu klient bilan markaziy sessiya ochadi.
@@ -24,7 +28,13 @@ const CustomerClientID = "ondex-customer"
 // TOTP: HAR kirishda (ulanmagan bo'lsa — ulash). Merchant egasidan farqi:
 // "ishonchli qurilma" yo'q, kod + parol + TOTP har safar. Mavjudlik
 // oshkor qilinmaydi: admin bo'lmagan raqam — oddiy "noto'g'ri".
-func (m *MerchantAuth) AdminLoginCode(ctx context.Context, phone, code string, meta Meta) (*Outcome, error) {
+func (m *MerchantAuth) AdminLoginCode(ctx context.Context, phone, code, client string, meta Meta) (*Outcome, error) {
+	if client == "" {
+		client = AdminClientID
+	}
+	if !IsAdminClient(client) {
+		return nil, invalid("client_id noma'lum")
+	}
 	p, err := m.d.Users.VerifyPhoneCode(ctx, phone, code)
 	if err != nil {
 		return nil, err
@@ -39,7 +49,7 @@ func (m *MerchantAuth) AdminLoginCode(ctx context.Context, phone, code string, m
 	if m.guard.Blocked(u.ID) {
 		return nil, ErrMFATooMany
 	}
-	return m.adminSecondFactor(ctx, u, []string{"otp"})
+	return m.adminSecondFactor(ctx, u, []string{"otp"}, client)
 }
 
 // ── KYC: tashkilotni tasdiqlash (A6, AUTH-PHASE-A.md: "tasdiqlashni FAQAT
@@ -123,16 +133,16 @@ func (m *MerchantAuth) RecordAdminAction(ctx context.Context, adminID, action, t
 // adminSecondFactor — admin uchun parol HAR DOIM so'raladi (kod yetarli
 // emas), keyin TOTP. `secondFactor` TOTP ulangan akkauntda parolni
 // so'ramaydi — admin uchun bu yetarli emas.
-func (m *MerchantAuth) adminSecondFactor(ctx context.Context, u *users.User, amr []string) (*Outcome, error) {
+func (m *MerchantAuth) adminSecondFactor(ctx context.Context, u *users.User, amr []string, client string) (*Outcome, error) {
 	if u.PasswordHash == "" {
 		// Parolsiz admin: kod bilan telefon isbotlangan — parol o'rnatiladi.
-		tok, exp, err := m.signMFA(mfaClaims{User: u.ID, Client: AdminClientID, AMR: amr, Purpose: mfaPurposeFactor}, mfaVerifyTTL)
+		tok, exp, err := m.signMFA(mfaClaims{User: u.ID, Client: client, AMR: amr, Purpose: mfaPurposeFactor}, mfaVerifyTTL)
 		if err != nil {
 			return nil, err
 		}
 		return &Outcome{MFA: &Challenge{Token: tok, Method: "password_set", ExpiresAt: exp}}, nil
 	}
-	tok, exp, err := m.signMFA(mfaClaims{User: u.ID, Client: AdminClientID, AMR: amr, Purpose: mfaPurposeFactor}, mfaVerifyTTL)
+	tok, exp, err := m.signMFA(mfaClaims{User: u.ID, Client: client, AMR: amr, Purpose: mfaPurposeFactor}, mfaVerifyTTL)
 	if err != nil {
 		return nil, err
 	}

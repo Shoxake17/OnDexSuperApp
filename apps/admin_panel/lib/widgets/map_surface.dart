@@ -22,4 +22,5 @@
 library;
 
 export 'map_surface_webview.dart'
-    if (dart.library.html) 'map_surface_gmaps.dart';
+    // Web (Plane 479): backend /map-picker iframe'da — kalit HTML'ga chiqmaydi.
+    if (dart.library.js_interop) 'map_surface_iframe.dart';

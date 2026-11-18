@@ -78,8 +78,14 @@
   function hide() { msg.style.display = 'none'; }
 
   // Hostga (Flutter) xabar. `webview_windows` shu kanalni tinglaydi.
+  // Web admin panel (Plane 479): sahifa o'sha origin'dagi IFRAME ichida —
+  // xabar faqat O'Z manbasiga (boshqa domen eshitmaydi).
+  var inFrame = window.parent !== window;
   function toHost(obj) {
-    try { window.chrome.webview.postMessage(JSON.stringify(obj)); } catch (e) {}
+    try { window.chrome.webview.postMessage(JSON.stringify(obj)); return; } catch (e) {}
+    if (inFrame) {
+      try { window.parent.postMessage(JSON.stringify(obj), location.origin); } catch (e) {}
+    }
   }
 
   // ┌─ GOOGLE'NING KONSOL XABARINI USHLAB QOLAMIZ ──────────────────┐
@@ -394,7 +400,17 @@
     });
     toHost({ type: 'boot' });
   } catch (e) {
-    // `chrome.webview` yo'q — sahifa oddiy brauzerda ochilgan.
+    // `chrome.webview` yo'q — oddiy brauzer yoki web panel iframe'i.
+    if (inFrame) {
+      window.addEventListener('message', function (e) {
+        if (e.origin !== location.origin || e.source !== window.parent) return;
+        try {
+          var cfg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          startOnce(cfg);
+        } catch (err) {}
+      });
+      toHost({ type: 'boot' });
+    }
   }
 
   // ┌─ JIMGINA QOTIB QOLMASLIK KAFOLATI ────────────────────────────┐

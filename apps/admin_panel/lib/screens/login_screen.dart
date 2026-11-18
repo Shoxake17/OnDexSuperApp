@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -302,7 +303,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           // PK-3: admin passkey (server: faqat admin roli + IP ro'yxati).
           PasskeyLoginButton(
             passkeys: _passkeys,
-            clientId: 'admin-web',
+            // Web'da BFF klienti (Plane 479; server baribir majburlaydi).
+            clientId: kIsWeb ? 'admin-panel-web' : 'admin-web',
             deviceName: _deviceName,
             enabled: !_busy,
             onSignedIn: (s) => _run(() => _handle(s)),

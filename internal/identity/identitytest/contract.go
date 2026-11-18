@@ -6,6 +6,7 @@ package identitytest
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -45,6 +46,7 @@ func RunStoreContract(t *testing.T, newStore func(t *testing.T) identity.Store, 
 	t.Run("parallel refresh: faqat BITTASI o'tadi", c.parallel)
 	t.Run("bir xil refresh xeshi ikki sessiyada bo'lmaydi", c.duplicateHash)
 	t.Run("parent_id saqlanadi, RevokeChildren faqat bolalarni yopadi", c.children)
+	t.Run("Touch idle'ni uzaytiradi, abs'dan oshirmaydi, o'likni tiriltirmaydi", c.touch)
 }
 
 // children — OIDC: SSO sessiyasi va undan ochilgan ilova sessiyalari.
@@ -289,4 +291,37 @@ func has(list []*identity.Session, id string) bool {
 		}
 	}
 	return false
+}
+
+func (c *contract) touch(t *testing.T) {
+	st := c.newStore(t)
+	s := c.session(t, st, "t1"+t.Name()) // idle base+1h, abs base+24h
+	at := base.Add(50 * time.Minute)
+	if err := st.Touch(c.ctx, s.ID, at, time.Hour); err != nil {
+		t.Fatalf("Touch: %v", err)
+	}
+	g, _ := st.Get(c.ctx, s.ID)
+	if !g.IdleExpiresAt.Equal(at.Add(time.Hour)) || !g.LastUsedAt.Equal(at) {
+		t.Fatalf("idle uzaymadi: %v / %v", g.IdleExpiresAt, g.LastUsedAt)
+	}
+	// abs'dan oshmaydi.
+	late := base.Add(23*time.Hour + 30*time.Minute)
+	_ = st.Touch(c.ctx, s.ID, base.Add(100*time.Minute), 24*time.Hour) // idle -> abs
+	if err := st.Touch(c.ctx, s.ID, late, 5*time.Hour); err != nil {
+		t.Fatalf("Touch (kech): %v", err)
+	}
+	if g, _ := st.Get(c.ctx, s.ID); !g.IdleExpiresAt.Equal(g.AbsExpiresAt) {
+		t.Fatalf("idle abs'dan oshdi: %v > %v", g.IdleExpiresAt, g.AbsExpiresAt)
+	}
+	// Muddati o'tgan sessiya tirilmaydi.
+	dead := c.session(t, st, "t2"+t.Name())
+	if err := st.Touch(c.ctx, dead.ID, base.Add(2*time.Hour), time.Hour); !errors.Is(err, identity.ErrNotFound) {
+		t.Fatalf("idle o'tgan sessiya tirildi: %v", err)
+	}
+	// Yopilgan sessiya tirilmaydi.
+	rv := c.session(t, st, "t3"+t.Name())
+	_ = st.Revoke(c.ctx, rv.ID, "logout", base.Add(time.Minute))
+	if err := st.Touch(c.ctx, rv.ID, base.Add(2*time.Minute), time.Hour); !errors.Is(err, identity.ErrNotFound) {
+		t.Fatalf("yopilgan sessiya tirildi: %v", err)
+	}
 }

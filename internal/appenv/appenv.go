@@ -108,7 +108,7 @@ var Registry = []Var{
 	{Name: "PASSKEY_ANDROID_APPS", Effect: "Android ilovalarda (OnDexPro, OnDexGO, mijoz) passkey ishlamaydi — 'paket=SHA256,...'"},
 	{Name: "PASSKEY_APPLE_APP_IDS", Effect: "iOS ilovalarda passkey ishlamaydi — 'TEAMID.bundle.id,...'"},
 	{Name: "PPROF_ADDR", Effect: "profiler o'chiq (faqat loopback, masalan 127.0.0.1:6060; yuklama testida yoqiladi)"},
-	{Name: "LEGACY_TOKENS_DISABLED", Effect:"eski 30 kunlik HS256 token barcha realmlarda qabul qilinadi (relizlardan keyin merchant,platform,customer)"},
+	{Name: "LEGACY_TOKENS_DISABLED", Effect: "eski 30 kunlik HS256 token barcha realmlarda qabul qilinadi (relizlardan keyin merchant,platform,customer)"},
 	{Name: "ADMIN_ALLOWED_CIDRS", Effect: "admin kirishi va admin API har qanday tarmoqdan ochiq (TOTP + parol + kod baribir talab qilinadi)"},
 	{Name: "AUTH_ISSUER", Effect: "token `iss` qiymati PUBLIC_API_URL dan olinadi"},
 	// Faqat DEV: `ondex run` API logini faylga ham yozadi (o'lchov/tahlil).
@@ -251,6 +251,7 @@ var Registry = []Var{
 
 	// ---------- Merchant web panel BFF (RS-7, `httpapi/panelweb_bff.go`) ----------
 	{Name: "PANEL_WEB_ORIGIN", Effect: "web panel manbasi https://merchant.ondex.uz deb olinadi (boshqa domendan ishlatilsa CSRF tekshiruvi 403 beradi)"},
+	{Name: "ADMIN_WEB_ORIGIN", Effect: "admin web panel manbasi https://admin.ondex.uz deb olinadi (boshqa domendan ishlatilsa CSRF tekshiruvi 403 beradi)"},
 
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
 	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},

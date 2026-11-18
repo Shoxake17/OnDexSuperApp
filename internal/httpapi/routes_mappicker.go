@@ -169,7 +169,7 @@ func (s *Server) registerMapPickerRoutes(mux *http.ServeMux) {
 				// MapLibre v6 ishchisi — shu serverdagi ES modul
 				// (`/map-picker/lib/maplibre-gl-worker.mjs`), blob: — eski yo'l.
 				"worker-src 'self' blob:; child-src blob:; "+
-				"frame-ancestors 'none'; base-uri 'none'")
+				"frame-ancestors 'self'; base-uri 'none'") // 'self': admin web iframe'i (Plane 479), boshqa domen joylay olmaydi
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// Sahifa o'zgarmas (embed qilingan), lekin keshlanmasin —

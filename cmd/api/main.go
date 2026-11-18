@@ -1607,7 +1607,9 @@ func main() {
 		Dispatcher:         dispatcher,
 		DevMode:            devMode,
 		// RS-7 web panel BFF: CSRF uchun panel manbasi (bo'sh — merchant.ondex.uz).
-		PanelWebOrigin: os.Getenv("PANEL_WEB_ORIGIN"),
+		PanelWebOrigin:   os.Getenv("PANEL_WEB_ORIGIN"),
+		AdminWebOrigin:   os.Getenv("ADMIN_WEB_ORIGIN"),
+		OndexMapAdminURL: os.Getenv("ONDEXMAP_ADMIN_URL"),
 		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
 		// u haqiqatan pochtaga boradi (`Deps.EmailConfigured` izohi).
 		EmailConfigured: emailConfigured,

@@ -250,6 +250,10 @@ type Deps struct {
 	// PanelWebOrigin — Flutter web panel manbasi (RS-7 BFF CSRF tekshiruvi,
 	// `PANEL_WEB_ORIGIN`). Bo'sh — https://merchant.ondex.uz.
 	PanelWebOrigin string
+	// AdminWebOrigin — admin web panel manbasi (Plane 479 BFF CSRF; bo'sh = https://admin.ondex.uz).
+	AdminWebOrigin string
+	// OndexMapAdminURL — admin web OnDexMap proksisi manzili (bo'sh = https://maps.ondex.uz/admin).
+	OndexMapAdminURL string
 
 	// PlatformCouriers — OnDex platforma kuryerlari (o'zi ro'yxatdan
 	// o'tadigan) YOQILGANMI. Hozircha `false` (2026-09-15, foydalanuvchi
@@ -429,6 +433,8 @@ type Server struct {
 	// panelWebCache — RS-7 BFF: cookie bo'yicha access token keshi
 	// (`panelweb_bff.go`). Deps'da EMAS — mutex nusxalanmasin.
 	panelWebCache panelWebAccessCache
+	// adminWebCache — admin web BFF keshi (alohida: cookie aralashmasin).
+	adminWebCache panelWebAccessCache
 }
 
 func New(d Deps) *Server {

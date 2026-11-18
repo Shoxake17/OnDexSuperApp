@@ -149,3 +149,18 @@ func (m *MemoryStore) RevokeAllForUser(_ context.Context, userID, reason string,
 	}
 	return n, nil
 }
+
+func (m *MemoryStore) Touch(_ context.Context, id string, now time.Time, idle time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rows[id]
+	if !ok || !r.s.Active(now) {
+		return ErrNotFound
+	}
+	until := now.Add(idle)
+	if until.After(r.s.AbsExpiresAt) {
+		until = r.s.AbsExpiresAt
+	}
+	r.s.LastUsedAt, r.s.IdleExpiresAt = now, until
+	return nil
+}

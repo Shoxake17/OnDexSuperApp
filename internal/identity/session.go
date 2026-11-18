@@ -40,9 +40,12 @@ var DefaultClients = map[string]ClientPolicy{
 	// Refresh rotatsiyasi yo'q (BFF sessiya bo'yicha access chiqaradi), idle
 	// uzaytirilmaydi — shuning uchun idle = abs: 7 kundan keyin qayta kirish.
 	PanelWebClientID: {Realm: users.RealmMerchant, Idle: 7 * 24 * time.Hour, Abs: 7 * 24 * time.Hour, NoPublicRefresh: true},
-	"ondex-pro":        {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
-	"ondex-go":         {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
-	"admin-web":        {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour},
+	"ondex-pro":      {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
+	"ondex-go":       {Realm: users.RealmMerchant, Idle: 14 * 24 * time.Hour, Abs: 60 * 24 * time.Hour},
+	"admin-web":      {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour},
+	// admin-panel-web — admin web panel BFF'i (Plane 479, `panelweb.go`).
+	// Refresh yo'q; faol foydalanuvchida BFF idle'ni uzaytiradi (Store.Touch).
+	AdminPanelWebClientID: {Realm: users.RealmPlatform, Idle: 30 * time.Minute, Abs: 12 * time.Hour, NoPublicRefresh: true},
 	// ondex-customer — mijoz ilovasi (137). Eski token 30 kun mutlaq edi;
 	// endi 30 kun HARAKATSIZ (ishlatib turgan mijoz chiqib ketmaydi), 180
 	// kun mutlaq — keyin bir marta qayta kirish. Qurilma alohida ko'rinadi
@@ -136,6 +139,11 @@ type Store interface {
 	// RevokeChildren — `parentID` dan ochilgan faol sessiyalarni yopadi va
 	// yopilganlarini qaytaradi (back-channel logout yuborish uchun).
 	RevokeChildren(ctx context.Context, parentID, reason string, now time.Time) ([]*Session, error)
+	// Touch — FAOL sessiyaning harakatsizlik muddatini `min(now+idle, abs)` ga
+	// uzaytiradi va last_used_at ni yangilaydi (refresh'siz BFF sessiyalari:
+	// admin/merchant web). Yopilgan, idle yoki abs muddati o'tgan sessiya
+	// TIRILMAYDI — ErrNotFound.
+	Touch(ctx context.Context, id string, now time.Time, idle time.Duration) error
 }
 
 // UserReader — sessiya egasini tekshirish uchun (o'chirilgan akkaunt,
@@ -450,6 +458,7 @@ func (s *Service) RefreshPublic(ctx context.Context, refresh string, meta Meta) 
 	}
 	return tok, nil
 }
+
 // idleFor — klientning harakatsizlik chegarasi; noma'lum klient — 0
 // (Store sessiyani yopadi).
 func (s *Service) idleFor(clientID string) time.Duration {

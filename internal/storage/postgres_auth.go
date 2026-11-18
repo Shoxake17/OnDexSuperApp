@@ -182,6 +182,22 @@ func (r *PgAuthSessionStore) RevokeChildren(ctx context.Context, parentID, reaso
 	return out, rows.Err()
 }
 
+// Touch — faol sessiya idle muddatini uzaytiradi (abs dan oshirmaydi).
+// Shart SQL ichida: yopilgan/muddati o'tgan sessiya tirilmaydi.
+func (r *PgAuthSessionStore) Touch(ctx context.Context, id string, now time.Time, idle time.Duration) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE auth_sessions SET last_used_at = $2,
+		idle_expires_at = LEAST($3::timestamptz, abs_expires_at)
+		WHERE id = $1 AND revoked_at IS NULL AND idle_expires_at > $2 AND abs_expires_at > $2`,
+		id, now, now.Add(idle))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return identity.ErrNotFound
+	}
+	return nil
+}
+
 // PgAuditLog — `audit_log` (0067, faqat qo'shiladi). Yozib bo'lmasa asosiy
 // amal TO'XTATILMAYDI, lekin xato logga yoziladi.
 type PgAuditLog struct{ pool *pgxpool.Pool }

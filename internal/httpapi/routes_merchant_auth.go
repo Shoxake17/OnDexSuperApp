@@ -107,7 +107,7 @@ func respondMePasskey(w http.ResponseWriter, err error) {
 // ADMIN_ALLOWED_CIDRS bilan cheklanadi (birinchi bosqich kabi): ruxsatsiz
 // tarmoqdan admin paroli/TOTP'ini terib bo'lmaydi.
 func (s *Server) mfaIPAllowed(w http.ResponseWriter, r *http.Request, mfaToken string) bool {
-	if s.MerchantAuth.MFATokenClient(mfaToken) == identity.AdminClientID && !s.adminIPAllowed(r) {
+	if identity.IsAdminClient(s.MerchantAuth.MFATokenClient(mfaToken)) && !s.adminIPAllowed(r) {
 		httpError(w, http.StatusForbidden, errAdminIPDenied)
 		return false
 	}
@@ -199,11 +199,13 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			Phone      string `json:"phone"`
 			Code       string `json:"code"`
 			DeviceName string `json:"device_name"`
+			// ClientID — admin-web (Windows) yoki admin-panel-web (web BFF majburlaydi).
+			ClientID string `json:"client_id"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		out, err := s.MerchantAuth.AdminLoginCode(r.Context(), req.Phone, req.Code, merchantMeta(r, req.DeviceName))
+		out, err := s.MerchantAuth.AdminLoginCode(r.Context(), req.Phone, req.Code, req.ClientID, merchantMeta(r, req.DeviceName))
 		if err != nil {
 			respondMerchantAuthError(w, err)
 			return
@@ -486,7 +488,7 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			return
 		}
 		// PK-2: admin passkey kirishi ham ADMIN_ALLOWED_CIDRS bilan cheklangan.
-		if req.ClientID == identity.AdminClientID && !s.adminIPAllowed(r) {
+		if identity.IsAdminClient(req.ClientID) && !s.adminIPAllowed(r) {
 			httpError(w, http.StatusForbidden, errAdminIPDenied)
 			return
 		}
@@ -516,7 +518,7 @@ func (s *Server) registerMerchantAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusBadRequest, identity.ErrPasskeyState)
 			return
 		}
-		if req.ClientID == identity.AdminClientID && !s.adminIPAllowed(r) {
+		if identity.IsAdminClient(req.ClientID) && !s.adminIPAllowed(r) {
 			httpError(w, http.StatusForbidden, errAdminIPDenied)
 			return
 		}
