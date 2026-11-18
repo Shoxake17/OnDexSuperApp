@@ -81,7 +81,9 @@ func (s *Server) proxyOndexMap(w http.ResponseWriter, r *http.Request, path, tok
 		req.Header.Set("Content-Type", ct)
 	}
 	req.Header.Set("Accept", "application/json")
-	res, err := adminOndexMapClient.Do(req)
+	// Host QAT'IY sozlamadan (ONDEXMAP_ADMIN_URL), foydalanuvchidan faqat
+	// tozalangan yo'l keladi; yo'naltirishga ergashilmaydi.
+	res, err := adminOndexMapClient.Do(req) //nolint:gosec // G704: host qat'iy, yo'l tozalangan
 	if err != nil {
 		panelWebErr(w, http.StatusBadGateway, "OnDexMap serveriga ulanib bo'lmadi")
 		return

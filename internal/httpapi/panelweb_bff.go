@@ -61,7 +61,6 @@ type webBFF struct {
 	loginPaths  map[string]bool // javobida token bo'lishi mumkin
 	clientPaths map[string]bool // tanasida client_id bor (majburlanadi)
 	denied      []string        // BFF orqali ochilmaydigan yuzalar
-	cache       *panelWebAccessCache
 }
 
 var merchantWebBFF = webBFF{
@@ -270,11 +269,6 @@ func webBFFSameOrigin(r *http.Request, origin string) bool {
 		return o == origin
 	}
 	return r.Header.Get("Sec-Fetch-Site") == "same-origin"
-}
-
-// panelWebSameOrigin — merchant panel uchun (eski nom).
-func (s *Server) panelWebSameOrigin(r *http.Request) bool {
-	return webBFFSameOrigin(r, s.panelWebOrigin())
 }
 
 func (s *Server) panelWebOrigin() string {

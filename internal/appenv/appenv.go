@@ -252,6 +252,7 @@ var Registry = []Var{
 	// ---------- Merchant web panel BFF (RS-7, `httpapi/panelweb_bff.go`) ----------
 	{Name: "PANEL_WEB_ORIGIN", Effect: "web panel manbasi https://merchant.ondex.uz deb olinadi (boshqa domendan ishlatilsa CSRF tekshiruvi 403 beradi)"},
 	{Name: "ADMIN_WEB_ORIGIN", Effect: "admin web panel manbasi https://admin.ondex.uz deb olinadi (boshqa domendan ishlatilsa CSRF tekshiruvi 403 beradi)"},
+	{Name: "ONDEXMAP_ADMIN_URL", Effect: "admin web OnDexMap proksisi https://maps.ondex.uz/admin ga ulanadi"},
 
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
 	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
