@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'live.dart';
+import 'notification_center.dart';
+import 'support_center.dart';
 import 'panel_prefs.dart';
 import 'printing/receipt_printer.dart';
 import 'screens/login_screen.dart';
@@ -27,8 +30,40 @@ void main() async {
 
   // Markaziy sessiya (A4b): access + refresh shifrlangan omborda.
   api.attachStore(restTokenStore);
+  // Sessiya tugasa (refresh ham rad etilsa) — BITTA joyda avtomatik chiqish.
+  api.onUnauthorized = _onSessionExpired;
 
   runApp(const RestaurantApp());
+}
+
+/// Ilova navigatori — sessiya tugaganda kirish ekraniga qaytarish uchun.
+final restaurantNavigatorKey = GlobalKey<NavigatorState>();
+
+bool _expiring = false;
+
+/// Avval `onUnauthorized` ULANMAGAN edi: token tugagach har sahifa o'zicha
+/// 401 ko'rsatardi, panel chiqmasdi (admin panelda ham shunday edi, 2026-11-18).
+Future<void> _onSessionExpired() async {
+  if (_expiring) return;
+  _expiring = true;
+  try {
+    await restaurantLive.stop();
+    await notificationCenter.stop();
+    await supportCenter.stop();
+    await api.clearSession();
+    restaurantNavigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const RestaurantLoginScreen()),
+      (_) => false,
+    );
+    final ctx = restaurantNavigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+        content: Text('Sessiya tugadi — xavfsizlik uchun qaytadan kiring'),
+      ));
+    }
+  } finally {
+    _expiring = false;
+  }
 }
 
 /// Mahalliy ishlab chiqish rejimimi (API shu kompyuterda). Production
@@ -53,6 +88,7 @@ class RestaurantApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final selectable = selectableText ?? isLocalDevApi();
     return MaterialApp(
+      navigatorKey: restaurantNavigatorKey,
       title: 'OnDex — Restoran paneli',
       debugShowCheckedModeBanner: false,
       theme: buildOnDexTheme(),

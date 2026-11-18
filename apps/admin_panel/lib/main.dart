@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'live.dart';
+import 'support_inbox.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
 import 'widgets/admin_action_dialog.dart';
@@ -29,7 +31,42 @@ void main() async {
         needReason: needReason, needCode: needCode, error: error);
   };
 
+  // ┌─ SESSIYA BITTA, TUGASA — AVTOMATIK CHIQISH (2026-11-18) ─────────────┐
+  // Avval `onUnauthorized` ULANMAGAN edi: token (refresh ham) tugagach har
+  // sahifa o'zicha 401 xatosini ko'rsatardi, panel esa chiqmasdi — egasi
+  // "bir sahifa chiqib ketgan, qolganlari yo'q" deb ko'rdi. Endi 401 (refresh
+  // ham rad etilgach) BITTA joyda ushlanadi: soket/inbox to'xtaydi, sessiya
+  // tozalanadi, ochiq oynalar yopiladi va kirish ekrani ochiladi.
+  // └──────────────────────────────────────────────────────────────────────┘
+  api.onUnauthorized = _onSessionExpired;
+
   runApp(const AdminApp());
+}
+
+bool _expiring = false;
+
+Future<void> _onSessionExpired() async {
+  if (_expiring) return; // parallel 401 lar — bitta chiqish
+  _expiring = true;
+  try {
+    await adminLive.stop();
+    await supportInbox.stop();
+    await api.clearSession();
+    final nav = adminNavigatorKey.currentState;
+    if (nav == null) return;
+    nav.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
+      (_) => false,
+    );
+    final ctx = adminNavigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+        content: Text('Sessiya tugadi — xavfsizlik uchun qaytadan kiring'),
+      ));
+    }
+  } finally {
+    _expiring = false;
+  }
 }
 
 class AdminApp extends StatelessWidget {
