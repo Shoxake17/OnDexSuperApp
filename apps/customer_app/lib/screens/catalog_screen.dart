@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../category_icons.dart';
@@ -18,6 +17,7 @@ import 'address_screen.dart';
 import 'category_products_screen.dart';
 import 'menu_screen.dart';
 import 'notifications_screen.dart';
+import 'ondex_map_screen.dart';
 import '../reservations/reservation_screen.dart';
 import 'wallet_screen.dart';
 
@@ -1151,15 +1151,15 @@ class _RestaurantCard extends StatelessWidget {
   final _Mode mode;
   const _RestaurantCard({required this.r, this.mode = _Mode.order});
 
-  /// Xaritada yo'l (Google Maps / tizim xaritasi).
-  Future<void> _route() async {
+  /// Yo'l — ILOVA ICHIDA OnDexMap (pastdan suzib ochiladi; Google Maps'ga
+  /// chiqib ketmaydi). A = mening joylashuvim, B = restoran.
+  void _route(BuildContext context) {
     final lat = (r['lat'] as num?)?.toDouble() ?? 0;
     final lng = (r['lng'] as num?)?.toDouble() ?? 0;
-    final dest = (lat != 0 || lng != 0) ? '$lat,$lng' : Uri.encodeComponent((r['address'] as String?) ?? '');
-    await launchUrl(
-      Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$dest'),
-      mode: LaunchMode.externalApplication,
-    );
+    if (lat == 0 && lng == 0) return;
+    Navigator.of(context).push(sheetRoute(OndexMapScreen(
+      destination: (lat: lat, lng: lng, label: (r['name'] as String?) ?? 'Restoran'),
+    )));
   }
 
   @override
@@ -1315,7 +1315,7 @@ class _RestaurantCard extends StatelessWidget {
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 key: const ValueKey('route-btn'),
-                onPressed: _route,
+                onPressed: () => _route(context),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kBrand,
                   side: const BorderSide(color: kBrand),

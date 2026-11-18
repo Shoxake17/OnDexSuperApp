@@ -41,7 +41,12 @@ import 'catalog_screen.dart' show kBrand;
 /// Qidiruvdan topilgan joy ham to'g'ridan-to'g'ri B ga tushadi.
 /// └────────────────────────────────────────────────────────────────────┘
 class OndexMapScreen extends StatefulWidget {
-  const OndexMapScreen({super.key});
+  const OndexMapScreen({super.key, this.destination});
+
+  /// Berilsa ekran shu joyga YO'L rejimida ochiladi (A = mening joylashuvim,
+  /// B = shu nuqta). Restoran kartasidagi "Yo'l" tugmasi shu bilan ochadi —
+  /// mijoz ilovadan chiqib Google Maps'ga o'tmaydi.
+  final ({double lat, double lng, String label})? destination;
 
   @override
   State<OndexMapScreen> createState() => _OndexMapScreenState();
@@ -147,8 +152,17 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
   @override
   void initState() {
     super.initState();
+    final d = widget.destination;
+    if (d != null) {
+      _routeMode = true;
+      _b = _RoutePoint(d.lat, d.lng, d.label);
+      _center = ml.LatLng(d.lat, d.lng);
+      _zoomLevel = 15;
+    }
     _readLocPerm();
     _armStyleWatchdog();
+    // A = mening joylashuvim; tayyor bo'lgach yo'l o'zi chiziladi.
+    if (d != null) _useMyLocation(_Slot.a, jim: true);
   }
 
   /// Uslub [kOndexStyleTimeout] ichida yuklanmasa xato ko'rsatiladi
@@ -683,6 +697,10 @@ class _OndexMapScreenState extends State<OndexMapScreen> {
           await loadPoiIcons(ctrl);
         }
         await _redraw();
+        // Yo'l uslubdan OLDIN hisoblangan bo'lsa (tez joylashuv) — kamera
+        // endi moslanadi.
+        final r = _route;
+        if (r != null && _routeMode) await _fitRoute(r);
       },
       onCameraMove: (pos) {
         _center = pos.target;
