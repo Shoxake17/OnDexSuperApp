@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 // `appVersion` shu yerdan keladi: `api.dart` `ondex_core` ni qayta
 // eksport qiladi, ya'ni alohida import ortiqcha.
 import '../api.dart';
+import '../flow_patch.dart';
 import 'connected_apps_screen.dart';
 import 'catalog_screen.dart' show kBrand;
 import '../data/address_scope.dart';
@@ -631,6 +632,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+                if (kFlowPatchLabel.isNotEmpty)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        kFlowPatchLabel,
+                        key: const ValueKey('customer-flow-patch'),
+                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF16A34A), fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 8),
               ],
             );
