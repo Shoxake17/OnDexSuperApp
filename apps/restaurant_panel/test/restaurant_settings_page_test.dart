@@ -170,7 +170,9 @@ void main() {
       expect(find.text('+998900000061'), findsOneWidget);
       expect(find.text('M. Fayozov ko\'chasi'), findsOneWidget);
       // Sahifadagi YAGONA matn maydoni — tavsif.
-      expect(find.byType(TextField), findsOneWidget);
+      // Matn maydonlari: tavsif va olib ketish ko'rsatmasi (Plane 477).
+      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('pickup-note')), findsOneWidget);
     });
   });
 

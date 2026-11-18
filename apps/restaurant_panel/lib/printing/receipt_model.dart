@@ -1,6 +1,7 @@
 import 'package:ondex_core/ondex_core.dart' show formatSum, tableText;
 
-import '../widgets/order_card_header.dart' show isDineInOrder, parseOrderAt, shortOrderNumber;
+import '../widgets/order_card_header.dart'
+    show isDineInOrder, isPickupOrder, parseOrderAt, pickupWhenText, shortOrderNumber;
 
 /// Chek turi (RS-8).
 ///
@@ -90,7 +91,10 @@ Receipt buildReceipt(
   final created = parseOrderAt(o['created_at']);
   final printed = now ?? DateTime.now();
   final party = _int(o['party_size']);
-  final badge = dineIn ? tableText('${o['table_label'] ?? ''}') : 'YETKAZISH';
+  final pickup = isPickupOrder(o);
+  final badge = dineIn
+      ? tableText('${o['table_label'] ?? ''}')
+      : (pickup ? 'OLIB KETISH' : 'YETKAZISH');
 
   final items = <ReceiptItem>[];
   for (final raw in (o['items'] as List? ?? const [])) {
@@ -109,6 +113,7 @@ Receipt buildReceipt(
   final meta = <String>[];
   if (created != null) meta.add('Buyurtma: ${_dateTime(created)}');
   if (dineIn && party > 0) meta.add('$party kishi');
+  if (pickup) meta.add('Olib ketish: ${pickupWhenText(o)}');
 
   if (kind == ReceiptKind.kitchen) {
     final readyIn = _int(o['preparation_minutes']);
@@ -125,7 +130,7 @@ Receipt buildReceipt(
     );
   }
 
-  if (!dineIn) {
+  if (!dineIn && !pickup) {
     final addr = o['delivery_address'];
     if (addr is Map) {
       final parts = <String>[

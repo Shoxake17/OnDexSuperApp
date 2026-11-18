@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
-import 'order_card_header.dart' show isDineInOrder;
+import 'order_card_header.dart' show isDineInOrder, isPickupOrder;
 
 /// Serverdagi `orders.DispatchNotFound` qiymati.
 const kDispatchNotFound = 'not_found';
@@ -15,6 +15,7 @@ const kDispatchNotFound = 'not_found';
 /// tugmalar erta yoki kech chiqib qolardi.
 bool isCourierNotFound(Map<String, dynamic> order) =>
     !isDineInOrder(order) &&
+    !isPickupOrder(order) &&
     (order['courier_id'] as String? ?? '').isEmpty &&
     order['dispatch_state'] == kDispatchNotFound;
 
@@ -49,6 +50,9 @@ class CourierStatusBox extends StatelessWidget {
   final VoidCallback? onCancel;
   final VoidCallback? onRetry;
 
+  /// Olib ketish: mijoz kelib kodni aytganda "Berish" (kod dialogi).
+  final VoidCallback? onHandover;
+
   /// Amal serverga yuborilmoqda — tugmalar vaqtincha o'chiq, ikki marta
   /// bosib ikkita so'rov yuborilmaydi.
   final bool busy;
@@ -61,6 +65,7 @@ class CourierStatusBox extends StatelessWidget {
     required this.order,
     this.onCancel,
     this.onRetry,
+    this.onHandover,
     this.busy = false,
     this.now,
   });
@@ -72,6 +77,28 @@ class CourierStatusBox extends StatelessWidget {
 
     // Stol buyurtmasiga kuryer UMUMAN tegishli emas — taomni affitsiant
     // zalga olib boradi (`isDineInOrder` izohi).
+    // Olib ketish: kuryer yo'q — mijoz o'zi keladi va kodni aytadi.
+    if (isPickupOrder(order)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _StatusLine(
+            background: OnDexColors.warningBg,
+            leading: Icon(Icons.storefront_rounded, size: 15, color: OnDexColors.warning),
+            text: 'Mijoz o''zi olib ketadi — kodini so''rang',
+            color: OnDexColors.warning,
+            bold: true,
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            key: const ValueKey('pickup-handover'),
+            onPressed: busy ? null : onHandover,
+            icon: const Icon(Icons.verified_rounded, size: 18),
+            label: const Text('Berish (kod bilan)'),
+          ),
+        ],
+      );
+    }
     if (isDineInOrder(order)) {
       return const _StatusLine(
         background: OnDexColors.primaryTint,

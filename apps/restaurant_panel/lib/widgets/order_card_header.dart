@@ -58,6 +58,27 @@ class OrderCardHeader extends StatelessWidget {
         if (trailing != null) ...[const SizedBox(width: 2), trailing!],
       ],
     );
+    if (isPickupOrder(order)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          numberRow,
+          const SizedBox(height: 8),
+          Container(
+            key: const ValueKey('order-pickup-chip'),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(color: OnDexColors.warningBg, borderRadius: BorderRadius.circular(8)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text('OLIB KETISH · ${pickupWhenText(order)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: OnDexColors.warning)),
+            ),
+          ),
+        ],
+      );
+    }
     if (!dineIn) return numberRow;
 
     // ┌─ NEGA STOL ALOHIDA QATORDA ─────────────────────────────────────┐
@@ -175,6 +196,15 @@ class TableChip extends StatelessWidget {
 /// `Type.Normalized()` qoidasi bilan bir xil.
 /// └───────────────────────────────────────────────────────────────────┘
 bool isDineInOrder(Map<String, dynamic> order) => order['type'] == 'dine_in';
+
+/// Olib ketish (Borish, Plane 476): mijoz o'zi keladi, kuryer YO'Q.
+bool isPickupOrder(Map<String, dynamic> order) => order['type'] == 'pickup';
+
+/// Olib ketish vaqti matni: "18:30 da oladi" yoki "Tayyor bo'lishi bilan".
+String pickupWhenText(Map<String, dynamic> order) {
+  final at = parseOrderAt(order['pickup_at']);
+  return at == null ? "Tayyor bo'lishi bilan" : "${orderTimeOfDay(at)} da oladi";
+}
 
 /// ISO satrni mahalliy vaqtga aylantiradi (noto'g'ri qiymatda `null`).
 DateTime? parseOrderAt(dynamic iso) =>

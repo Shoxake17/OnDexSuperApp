@@ -119,4 +119,24 @@ void main() {
     expect(autoCancelText(const Duration(minutes: 29, seconds: 1)),
         '30 daqiqadan keyin avtomatik bekor qilinadi');
   });
+
+  testWidgets('olib ketish: kuryer yo''q, kod bilan berish tugmasi', (tester) async {
+    var tapped = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 300,
+          child: CourierStatusBox(
+            order: const {'id': 'o1', 'type': 'pickup', 'status': 'ready', 'dispatch_state': 'not_found'},
+            onHandover: () => tapped++,
+          ),
+        ),
+      ),
+    ));
+    expect(find.byKey(const ValueKey('courier-not-found')), findsNothing);
+    expect(find.textContaining('Kuryer'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('pickup-handover')));
+    expect(tapped, 1);
+    expect(isCourierNotFound(const {'type': 'pickup', 'dispatch_state': 'not_found'}), isFalse);
+  });
 }

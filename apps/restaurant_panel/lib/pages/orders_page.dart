@@ -272,6 +272,23 @@ class _OrdersPageState extends State<OrdersPage> {
         label: 'kuryer_topilmadi_bekor');
   }
 
+  /// Olib ketish → "Berish": mijoz aytgan 4 xonali kod so'raladi va server
+  /// tekshiradi. Noto'g'ri kod — xato SHU oynada, qayta kiritiladi.
+  Future<void> _handover(Map<String, dynamic> order) async {
+    final id = order['id'] as String;
+    final done = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _HandoverDialog(order: order),
+    );
+    if (done == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${shortOrderNumber(order)} mijozga berildi')),
+      );
+      await _load();
+    }
+    _busy.remove(id);
+  }
+
   /// "Kuryer topilmadi" → "Kuryer qidirish": server qidiruvni yangi
   /// muddat bilan qaytadan boshlaydi.
   Future<void> _retryCourier(String id) => _do(
@@ -435,6 +452,7 @@ class _OrdersPageState extends State<OrdersPage> {
               _do(id, () => api.transition(id, 'ready'), label: 'tayyor'),
                   onCancelNoCourier: _cancelNoCourier,
                   onRetryCourier: _retryCourier,
+                  onHandover: _handover,
                   busy: _busy,
                 )
               else
@@ -804,6 +822,7 @@ class _KanbanBoard extends StatelessWidget {
   final void Function(String id) onReady;
   final void Function(Map<String, dynamic> order) onCancelNoCourier;
   final void Function(String id) onRetryCourier;
+  final void Function(Map<String, dynamic> order) onHandover;
 
   /// Hozir serverga amal yuborilayotgan buyurtmalar.
   final Set<String> busy;
@@ -820,6 +839,7 @@ class _KanbanBoard extends StatelessWidget {
     required this.onReady,
     required this.onCancelNoCourier,
     required this.onRetryCourier,
+    required this.onHandover,
     required this.busy,
   });
 
@@ -871,6 +891,7 @@ class _KanbanBoard extends StatelessWidget {
               busy: busy.contains(o['id']),
               onCancel: () => onCancelNoCourier(o),
               onRetry: () => onRetryCourier(o['id'] as String),
+              onHandover: () => onHandover(o),
             ),
         ],
       ),
@@ -1218,11 +1239,13 @@ class _ReadyCard extends StatelessWidget {
   final Map<String, dynamic> order;
   final VoidCallback onCancel;
   final VoidCallback onRetry;
+  final VoidCallback onHandover;
   final bool busy;
   const _ReadyCard({
     required this.order,
     required this.onCancel,
     required this.onRetry,
+    required this.onHandover,
     required this.busy,
   });
 
@@ -1255,6 +1278,7 @@ class _ReadyCard extends StatelessWidget {
             busy: busy,
             onCancel: onCancel,
             onRetry: onRetry,
+            onHandover: onHandover,
           ),
         ],
       ),
@@ -1390,3 +1414,82 @@ class _ActiveListRow extends StatelessWidget {
   }
 }
 
+
+/// Olib ketish: mijoz aytgan kodni kiritish oynasi (Plane 476).
+class _HandoverDialog extends StatefulWidget {
+  final Map<String, dynamic> order;
+  const _HandoverDialog({required this.order});
+
+  @override
+  State<_HandoverDialog> createState() => _HandoverDialogState();
+}
+
+class _HandoverDialogState extends State<_HandoverDialog> {
+  final _code = TextEditingController();
+  String? _error;
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final code = _code.text.trim();
+    if (code.length != 4) {
+      setState(() => _error = '4 xonali kodni kiriting');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      await api.transition(widget.order['id'] as String, 'delivered', pickupCode: code);
+      if (mounted) Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _error = e.statusCode == 429 ? 'Juda ko\'p urinish — birozdan keyin qayta urinib ko\'ring' : e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('${shortOrderNumber(widget.order)} — mijozga berish'),
+      content: SizedBox(
+        width: 360,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Mijozdan ilovadagi 4 xonali OLISH KODINI so\'rang.',
+              style: TextStyle(color: OnDexColors.inkDim)),
+          const SizedBox(height: 14),
+          TextField(
+            key: const ValueKey('pickup-code-input'),
+            controller: _code,
+            autofocus: true,
+            maxLength: 4,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 12),
+            decoration: InputDecoration(counterText: '', errorText: _error, border: const OutlineInputBorder()),
+            onSubmitted: (_) => _sending ? null : _submit(),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: _sending ? null : () => Navigator.pop(context, false), child: const Text('Bekor')),
+        FilledButton(
+          key: const ValueKey('pickup-code-submit'),
+          onPressed: _sending ? null : _submit,
+          child: _sending
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Berish'),
+        ),
+      ],
+    );
+  }
+}

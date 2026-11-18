@@ -102,6 +102,7 @@ ThemeData buildOnDexTheme() {
     // Stol buyurtmasining tugashi: affitsiant taomni stolga olib bordi.
     'served' => ('Berildi', OnDexColors.success, OnDexColors.successBg),
     'rejected' => ('Rad etildi', OnDexColors.danger, OnDexColors.dangerBg),
+    'not_picked_up' => ('Olib ketilmadi', OnDexColors.danger, OnDexColors.dangerBg),
     'cancelled' => (
         'Bekor qilindi',
         OnDexColors.danger,

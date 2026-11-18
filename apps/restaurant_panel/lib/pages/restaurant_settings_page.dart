@@ -16,6 +16,7 @@ import '../widgets/date_range_dialog.dart';
 part 'settings/settings_cards.dart';
 part 'settings/hours_dialog.dart';
 part 'settings/printer_card.dart';
+part 'settings/pickup_card.dart';
 
 /// "Restoran sozlamalari" — `image/RestorantSozlamalari.png` bo'yicha
 /// (ichki bo'limlar menyusisiz: hamma bo'lim bitta sahifada ko'rinadi).
@@ -161,6 +162,7 @@ class _Settings {
     required this.payClick,
     required this.payUzum,
     required this.onlineAvailable,
+    required this.pickup,
   });
 
   final String name;
@@ -180,6 +182,8 @@ class _Settings {
   final bool payClick;
   final bool payUzum;
   final bool onlineAvailable;
+  /// Olib ketish sozlamasi (server javobidagi "pickup" obyekti).
+  final Map<String, dynamic> pickup;
 
   factory _Settings.fromJson(Map<String, dynamic> j) {
     final wh = j['working_hours'];
@@ -210,6 +214,7 @@ class _Settings {
       payClick: pm['click'] == true,
       payUzum: pm['uzum'] == true,
       onlineAvailable: j['online_payments_available'] == true,
+      pickup: j['pickup'] is Map ? Map<String, dynamic>.from(j['pickup'] as Map) : const {},
     );
   }
 }
@@ -320,6 +325,8 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
       payClick: old.payClick,
       payUzum: old.payUzum,
       onlineAvailable: fresh.onlineAvailable,
+      // Olib ketish kartasi O'ZI saqlaydi — server qiymati to'g'ri manba.
+      pickup: fresh.pickup,
     );
   }
 
@@ -595,6 +602,9 @@ class _RestaurantSettingsPageState extends State<RestaurantSettingsPage> {
                     onClick: (v) => setState(() => _payClick = v),
                     onUzum: (v) => setState(() => _payUzum = v),
                   ),
+                  const SizedBox(height: 16),
+                  // Olib ketish (Borish, Plane 477) — mustaqil karta, o'zi saqlaydi.
+                  _PickupCard(initial: s.pickup, onlineAvailable: s.onlineAvailable),
                   const SizedBox(height: 16),
                   const _NotificationsCard(),
                   const SizedBox(height: 16),

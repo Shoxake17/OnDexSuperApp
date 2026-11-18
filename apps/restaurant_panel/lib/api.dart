@@ -95,11 +95,13 @@ class RestaurantApi extends ApiClient {
   /// AVTOMATIK boshlaydi (ETA-asoslangan matching engine) — qo'lda
   /// "Kuryer chaqirish" tugmasi endi shart emas.
   Future<void> transition(String orderId, String to,
-          {int? preparationMinutes}) =>
+          {int? preparationMinutes, String? pickupCode}) =>
       send('POST', '/orders/$orderId/transition', {
         'to': to,
         if (preparationMinutes != null)
           'preparation_minutes': preparationMinutes,
+        // Olib ketish: mijoz aytgan 4 xonali kod (server tekshiradi).
+        if (pickupCode != null) 'pickup_code': pickupCode,
       });
 
   /// "Kuryer topilmadi" holatida kuryer qidiruvini qayta boshlaydi (yangi
