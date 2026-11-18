@@ -12,3 +12,18 @@
 #
 # Qoida: yangi zaiflik = yangilash, olib tashlash yoki kodni tuzatish.
 # Istisno faqat egasi tasdig'i bilan va muddat (expires) bilan.
+
+# ── VAQTINCHALIK ISTISNO (egasi tasdig'i 2026-11-18, muddat 14 kun) ─────────
+# GHSA-fc5q-39xc-vjpf (CVE-2026-112366) — picomatch ReDoS (extglob).
+#   * Barcha versiyalar <= 4.0.7 zaif; npm'da TUZATILGAN RELIZ YO'Q
+#     (tuzatish faqat upstream PR #194 da). Yangilash/olib tashlash imkoni yo'q.
+#   * Bizda faqat DEV vositalarda: tailwindcss 3 (chokidar/micromatch ->
+#     picomatch 2.3.2) va eslint-config-next (tinyglobby -> picomatch 4.0.5).
+#     Sayt runtime'iga kirmaydi; glob naqshlari bizning konfigdan, foydalanuvchi
+#     kiritmasidan emas.
+#   * Muddati tugagach skaner yana yiqiladi — o'shanda picomatch'ning tuzatilgan
+#     relizini o'rnatib (npm overrides) shu blokni O'CHIRING.
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-02T00:00:00Z
+reason = "picomatch ReDoS: tuzatilgan reliz yo'q; faqat dev (tailwind/eslint). Egasi tasdig'i 2026-11-18, 14 kun."
