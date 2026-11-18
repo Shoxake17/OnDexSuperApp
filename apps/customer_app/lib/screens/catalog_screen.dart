@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -290,60 +291,101 @@ double? _distanceKm(Map<String, dynamic> r) {
   return 6371 * 2 * math.asin(math.sqrt(h));
 }
 
-/// Kategoriyalar ostidagi uch bo'lim tugmasi.
+/// Kategoriyalar ostidagi uch bo'lim — OnDex segmenti (ikonsiz).
+///
+/// Tanlangan bo'lim ostida brend gradientli "tabletka" prujinali animatsiya
+/// bilan suriladi (AnimatedAlign + easeOutBack), matn rangi va qalinligi
+/// silliq almashadi. Faqat Dart — rasm/shrift yo'q (OnDexFlow yamog'i bilan
+/// yetkaziladi).
 class _ModeTabs extends StatelessWidget {
   final _Mode mode;
   final ValueChanged<_Mode> onChanged;
   const _ModeTabs({required this.mode, required this.onChanged});
 
+  static const _labels = {
+    _Mode.order: 'Buyurtma berish',
+    _Mode.go: 'Borish',
+    _Mode.reserve: 'Bron qilish',
+  };
+
   @override
   Widget build(BuildContext context) {
-    Widget tab(_Mode m, IconData icon, String label) {
-      final sel = m == mode;
-      return Expanded(
-        child: GestureDetector(
-          key: ValueKey('mode-${m.name}'),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onChanged(m),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: sel ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: sel
-                  ? const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))]
-                  : null,
-            ),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 20, color: sel ? kBrand : const Color(0xFF6B7280)),
-              const SizedBox(height: 3),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                    color: sel ? const Color(0xFF111827) : const Color(0xFF6B7280),
-                  )),
-            ]),
-          ),
-        ),
-      );
-    }
+    const modes = _Mode.values;
+    final index = modes.indexOf(mode);
+    // -1 .. 1 oralig'ida: 0 -> chap, 1 -> o'rta, 2 -> o'ng.
+    final x = modes.length == 1 ? 0.0 : -1 + 2 * index / (modes.length - 1);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Container(
+        height: 48,
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(16),
+          color: const Color(0xFFF5F5F4),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFECEAE8)),
         ),
-        child: Row(children: [
-          tab(_Mode.order, Icons.delivery_dining_outlined, 'Buyurtma berish'),
-          tab(_Mode.go, Icons.directions_walk, 'Borish'),
-          tab(_Mode.reserve, Icons.event_seat_outlined, 'Bron qilish'),
+        child: Stack(children: [
+          // Suriladigan brend "tabletka".
+          AnimatedAlign(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutBack,
+            alignment: Alignment(x, 0),
+            child: FractionallySizedBox(
+              widthFactor: 1 / modes.length,
+              heightFactor: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFFF7A45), kBrand],
+                  ),
+                  boxShadow: [
+                    BoxShadow(color: kBrand.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Row(children: [
+            for (final m in modes)
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  selected: m == mode,
+                  child: GestureDetector(
+                    key: ValueKey('mode-${m.name}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (m == mode) return;
+                      HapticFeedback.selectionClick();
+                      onChanged(m);
+                    },
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              letterSpacing: -0.1,
+                              fontWeight: m == mode ? FontWeight.w800 : FontWeight.w600,
+                              color: m == mode ? Colors.white : const Color(0xFF57534E),
+                            ),
+                            child: Text(_labels[m]!, maxLines: 1),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
         ]),
       ),
     );
