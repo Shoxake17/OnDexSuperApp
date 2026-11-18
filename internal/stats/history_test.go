@@ -84,7 +84,7 @@ func TestHistoryStatusMatchesClassification(t *testing.T) {
 	all := []orders.Status{
 		orders.StatusCreated, orders.StatusAccepted, orders.StatusPreparing, orders.StatusReady,
 		orders.StatusPickedUp, orders.StatusDelivered, orders.StatusServed,
-		orders.StatusRejected, orders.StatusCancelled,
+		orders.StatusRejected, orders.StatusCancelled, orders.StatusNotPickedUp,
 	}
 	for _, s := range all {
 		hits := 0
@@ -99,7 +99,7 @@ func TestHistoryStatusMatchesClassification(t *testing.T) {
 			t.Errorf("%s holati %d ta guruhga tushdi", s, hits)
 		}
 	}
-	if len(TerminalStatusStrings()) != 4 {
+	if len(TerminalStatusStrings()) != 5 {
 		t.Fatalf("terminal holatlar: %v", TerminalStatusStrings())
 	}
 }

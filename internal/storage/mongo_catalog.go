@@ -41,6 +41,7 @@ type mongoRestaurant struct {
 	Description    string                  `bson:"description"`
 	WorkingHours   *catalog.WorkingHours   `bson:"working_hours"`
 	PaymentMethods *catalog.PaymentMethods `bson:"payment_methods"`
+	Pickup         *catalog.PickupSettings `bson:"pickup,omitempty"`
 	// Eski hujjatlarda bu maydonlar YO'Q — BSON ularni nol qiymat bilan
 	// qoldiradi, ya'ni "ma'lumot yo'q". Migratsiya kerak emas.
 	Rating        float64 `bson:"rating"`
@@ -74,7 +75,7 @@ func (d mongoRestaurant) toDomain() *catalog.Restaurant {
 		ID: d.ID, Name: d.Name, Address: d.Address, Lat: d.Lat, Lng: d.Lng, Open: d.Open,
 		LogoURL: d.LogoURL, CoverURL: d.CoverURL, Tags: d.Tags,
 		Kind: catalog.RestaurantKind(d.Kind), Description: d.Description,
-		WorkingHours: d.WorkingHours, PaymentMethods: d.PaymentMethods,
+		WorkingHours: d.WorkingHours, PaymentMethods: d.PaymentMethods, Pickup: d.Pickup,
 		Rating: d.Rating, RatingCount: d.RatingCount,
 		ETAMinMinutes: d.ETAMinMinutes, ETAMaxMinutes: d.ETAMaxMinutes,
 		MulticardStoreID: d.MulticardStoreID,
@@ -90,7 +91,7 @@ func restaurantDoc(x *catalog.Restaurant) mongoRestaurant {
 		ID: x.ID, Name: x.Name, Address: x.Address, Lat: x.Lat, Lng: x.Lng, Open: x.Open,
 		LogoURL: x.LogoURL, CoverURL: x.CoverURL, Tags: x.Tags,
 		Kind: string(x.Kind), Description: x.Description,
-		WorkingHours: x.WorkingHours, PaymentMethods: x.PaymentMethods,
+		WorkingHours: x.WorkingHours, PaymentMethods: x.PaymentMethods, Pickup: x.Pickup,
 		Rating: x.Rating, RatingCount: x.RatingCount,
 		ETAMinMinutes: x.ETAMinMinutes, ETAMaxMinutes: x.ETAMaxMinutes,
 		MulticardStoreID: x.MulticardStoreID,

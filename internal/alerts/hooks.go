@@ -45,6 +45,9 @@ func (n *orderNotifier) OrderCreated(o *orders.Order) {
 	// Buyurtma ko'rsatkichidan NUSXA — goroutine ichida o'zgarib qolmasin.
 	id, number, rid, total := o.ID, o.OrderNumber, o.RestaurantID, o.TotalTiyin
 	where := "Yetkazib berish"
+	if o.IsPickup() {
+		where = "Olib ketish"
+	}
 	if o.IsDineIn() {
 		where = "Stol"
 		if label := strings.TrimSpace(o.TableLabel); label != "" {

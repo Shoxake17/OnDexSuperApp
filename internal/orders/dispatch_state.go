@@ -61,7 +61,7 @@ var ErrDispatchNotRestartable = errors.New(
 // Holatlar ro'yxati `storage.PgOrderRepo.ListAwaitingCourier` dagi SQL
 // va migration 0048 dagi qisman indeks bilan BIR XIL bo'lishi shart.
 func (o *Order) AwaitsCourier() bool {
-	if o.IsDineIn() || o.CourierID != "" {
+	if !o.NeedsCourier() || o.CourierID != "" {
 		return false
 	}
 	switch o.Status {
@@ -103,7 +103,7 @@ func (o *Order) lastChangeTo(s Status) (time.Time, bool) {
 // muddati BITTA atomik yozuvda saqlanadi — oraliqda "tayyor, lekin
 // muddatsiz" buyurtma bo'lib qolmaydi.
 func applyDispatchPolicy(o *Order, to Status, now time.Time) {
-	if o.IsDineIn() {
+	if !o.NeedsCourier() {
 		return
 	}
 	switch {

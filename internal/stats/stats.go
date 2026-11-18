@@ -147,7 +147,9 @@ func dayOf(t time.Time) time.Time {
 
 var (
 	// completedStatuses — pul HAQIQATAN tushgan buyurtmalar.
-	completedStatuses = []orders.Status{orders.StatusDelivered, orders.StatusServed}
+	// not_picked_up — olib ketish olinmadi, lekin pul YECHILGAN (taom tayyor,
+	// egasi qarori: qaytmaydi) — tushum sifatida hisoblanadi.
+	completedStatuses = []orders.Status{orders.StatusDelivered, orders.StatusServed, orders.StatusNotPickedUp}
 	// cancelledStatuses — bajarilmagan (restoran rad etdi yoki bekor bo'ldi).
 	cancelledStatuses = []orders.Status{orders.StatusRejected, orders.StatusCancelled}
 )

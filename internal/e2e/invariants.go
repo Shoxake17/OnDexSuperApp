@@ -170,7 +170,8 @@ var validTransitions = map[string][]string{
 	"created":   {"accepted", "rejected", "cancelled"},
 	"accepted":  {"preparing", "cancelled"},
 	"preparing": {"ready", "cancelled"},
-	"ready":     {"picked_up", "served", "cancelled"},
+	// pickup: ready -> delivered (kod bilan) | not_picked_up (2 soat).
+	"ready":     {"picked_up", "served", "cancelled", "delivered", "not_picked_up"},
 	"picked_up": {"delivered", "cancelled"},
 }
 
@@ -206,7 +207,7 @@ func (w *World) CheckOrder(t *testing.T, o map[string]any) {
 		}
 	}
 
-	if typ == "dine_in" {
+	if typ == "dine_in" || typ == "pickup" {
 		w.R().Checked(InvQuoteDineInFree)
 		if fee != 0 {
 			w.Violate(t, InvQuoteDineInFree, "stol buyurtmasida yetkazish haqi %d", fee)
@@ -214,13 +215,16 @@ func (w *World) CheckOrder(t *testing.T, o map[string]any) {
 	}
 
 	w.R().Checked(InvOrderCourier)
-	if cid, _ := o["courier_id"].(string); cid != "" && typ == "dine_in" {
+	if cid, _ := o["courier_id"].(string); cid != "" && typ != "delivery" {
 		w.Violate(t, InvOrderCourier, "stol buyurtmasiga kuryer biriktirilgan (%s)", cid)
 	}
 
 	w.R().Checked(InvOrderTerminalTyp)
-	if status == "delivered" && typ != "delivery" {
+	if status == "delivered" && typ != "delivery" && typ != "pickup" {
 		w.Violate(t, InvOrderTerminalTyp, "%s buyurtma `delivered` holatida", typ)
+	}
+	if status == "not_picked_up" && typ != "pickup" {
+		w.Violate(t, InvOrderTerminalTyp, "%s buyurtma `not_picked_up` holatida", typ)
 	}
 	if status == "served" && typ != "dine_in" {
 		w.Violate(t, InvOrderTerminalTyp, "%s buyurtma `served` holatida", typ)

@@ -100,7 +100,7 @@ func (s *Server) registerTrackingRoutes(mux *http.ServeMux) {
 				return
 			}
 			o, err := s.OrderSvc.Get(r.Context(), r.PathValue("id"))
-			if err != nil || !canSeeOrder(claims, o) || o.IsDineIn() {
+			if err != nil || !canSeeOrder(claims, o) || !o.NeedsCourier() {
 				httpError(w, http.StatusNotFound, orders.ErrNotFound)
 				return
 			}
@@ -113,7 +113,7 @@ func (s *Server) registerTrackingRoutes(mux *http.ServeMux) {
 }
 
 func trackingPhase(o *orders.Order) string {
-	if o.CourierID == "" || o.IsDineIn() {
+	if o.CourierID == "" || !o.NeedsCourier() {
 		return trackingNone
 	}
 	switch o.Status {

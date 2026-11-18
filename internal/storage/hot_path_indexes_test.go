@@ -14,7 +14,8 @@ import (
 // Qisman indeks faqat so'rov sharti indeks shartiga HARFMA-HARF mos kelsa
 // ishlatiladi — migratsiya va kod ajralib ketmasin.
 func TestActiveCourierIndexMatchesQuery(t *testing.T) {
-	sqlBytes, err := migrationFS.ReadFile("migrations/0054_hot_path_indexes.sql")
+	// Indeks oxirgi marta 0080 da (yangi terminal holat) qayta qurilgan.
+	sqlBytes, err := migrationFS.ReadFile("migrations/0080_order_pickup.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

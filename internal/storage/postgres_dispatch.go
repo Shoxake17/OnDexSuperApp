@@ -20,6 +20,22 @@ func (r *PgOrderRepo) ListAwaitingCourier(ctx context.Context, limit int) ([]*or
 		 WHERE courier_id IS NULL
 		   AND status IN ('accepted', 'preparing', 'ready')
 		   AND order_type <> 'dine_in'
+		   AND order_type <> 'pickup'
+		 ORDER BY created_at LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanOrderRows(rows)
+}
+
+// ListReadyPickups — tayyor, hali olinmagan olib ketish buyurtmalari
+// (eslatma va 2 soatlik "olib ketilmadi" nazoratchisi; migratsiya 0080
+// qisman indeksi bilan bir xil predikat).
+func (r *PgOrderRepo) ListReadyPickups(ctx context.Context, limit int) ([]*orders.Order, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+orderColumns+` FROM orders
+		 WHERE order_type = 'pickup' AND status = 'ready'
 		 ORDER BY created_at LIMIT $1`, limit)
 	if err != nil {
 		return nil, err

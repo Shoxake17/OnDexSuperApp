@@ -30,7 +30,7 @@ func courierPublicName(full string) string {
 // boshqa buyurtmaga ketadi — uning joylashuvi endi bu mijozga tegishli
 // emas.
 func courierLocationShared(o *orders.Order) bool {
-	return o != nil && o.CourierID != "" && !o.IsDineIn() && !o.IsTerminal()
+	return o != nil && o.CourierID != "" && o.NeedsCourier() && !o.IsTerminal()
 }
 
 // withCourierInfo — `GET /orders/{id}` javobiga kuryer ismi va (faqat
@@ -47,7 +47,7 @@ func courierLocationShared(o *orders.Order) bool {
 // Chaqiruvchi `canSeeOrder` ni allaqachon tekshirgan. Kuryerning o'zi
 // va affitsiant uchun hech narsa qo'shilmaydi.
 func (s *Server) withCourierInfo(ctx context.Context, c *users.Claims, o *orders.Order, out any) any {
-	if o == nil || o.CourierID == "" || o.IsDineIn() || s.CourierRepo == nil {
+	if o == nil || o.CourierID == "" || !o.NeedsCourier() || s.CourierRepo == nil {
 		return out
 	}
 	switch c.Role {

@@ -1663,6 +1663,12 @@ func main() {
 			os.Exit(1)
 		}
 		api.RunDispatchWatchdog(context.Background(), queue)
+		// Olib ketish (Plane 473): 30 daq eslatma, 2 soatda "olib ketilmadi".
+		if pickups, ok := orderRepo.(httpapi.ReadyPickupLister); ok {
+			api.RunPickupWatchdog(context.Background(), pickups)
+		} else {
+			slog.Error("buyurtmalar ombori ListReadyPickups ni qo'llamaydi — olib ketish nazoratchisi o'chiq")
+		}
 	}
 
 	// Do'kon javob bermagan `new` buyurtmalar muddatidan keyin bekor qilinadi, band qoldiq qaytadi
@@ -1685,6 +1691,8 @@ func main() {
 		}
 		api.FlowSvc = flowSvc
 	}
+	// Olib ketish kodi kaliti — JWT siridan HOSIL QILINGAN alohida kalit.
+	api.PickupCodeKey = httpapi.DerivePickupCodeKey(jwtSecret)
 	// ── Stol broni + zaklad (RS-3, modul: internal/modules/reservation) ──
 	{
 		var rsvStore reservation.Store

@@ -85,6 +85,9 @@ func orderDelay(o *orders.Order, now time.Time) (liveDelay, bool) {
 		if o.IsDineIn() {
 			return over(15*time.Minute, "tayyor taom stolga berilmadi")
 		}
+		if o.IsPickup() {
+			return over(30*time.Minute, "tayyor taomni mijoz olib ketmadi")
+		}
 		return over(10*time.Minute, "tayyor taomni kuryer olmadi")
 	case orders.StatusPickedUp:
 		return over(60*time.Minute, "yetkazish uzoq davom etmoqda")

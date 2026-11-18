@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/delivery"
@@ -138,6 +139,11 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				// Ixtiyoriy — eski klientlar buni yubormaydi va ular
 				// uchun hech narsa o'zgarmaydi.
 				ExpectedTotalTiyin int64 `json:"expected_total_tiyin"`
+				// Fulfillment — "pickup" = olib ketish (Borish, Plane 473).
+				// Bo'sh/"delivery" — yetkazish (eski klientlar).
+				Fulfillment string `json:"fulfillment"`
+				// PickupAt — olib ketish vaqti (bo'sh = tayyor bo'lishi bilan).
+				PickupAt *time.Time `json:"pickup_at"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -167,6 +173,16 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			if strings.TrimSpace(req.TableToken) != "" {
 				s.createDineInOrder(w, r, req.Items, req.TableToken,
 					req.PartySize, req.IdempotencyKey, paymentMethod)
+				return
+			}
+			switch req.Fulfillment {
+			case "", string(orders.TypeDelivery):
+			case string(orders.TypePickup):
+				s.createPickupOrder(w, r, req.Items, req.IdempotencyKey, paymentMethod,
+					req.PickupAt, req.ExpectedTotalTiyin)
+				return
+			default:
+				httpError(w, http.StatusBadRequest, errors.New("fulfillment: delivery yoki pickup"))
 				return
 			}
 
@@ -272,6 +288,9 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				// ⚠️ Stol oqimi buni YUBORISHI SHART, aks holda mijoz
 				// stolda o'tirib yetkazish haqini to'lardi.
 				DineIn bool `json:"dine_in"`
+				// Pickup — olib ketish (Borish): yetkazish haqi yo'q, restoran
+				// chegirmasi qo'llanadi.
+				Pickup bool `json:"pickup"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -286,7 +305,16 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("mahsulotlar boshqa restoranga tegishli"))
 				return
 			}
-			quote, err := s.OrderSvc.Quote(r.Context(), restaurantID, items, claimsFrom(r).Subject, req.DineIn)
+			opt := orders.QuoteOptions{NoCourier: req.DineIn || req.Pickup}
+			if req.Pickup {
+				rest, rerr := s.CatalogRepo.GetRestaurant(r.Context(), restaurantID)
+				if rerr != nil || !rest.PickupEnabled() {
+					httpError(w, http.StatusBadRequest, errPickupDisabled)
+					return
+				}
+				opt.PickupDiscountPercent = rest.PickupDiscount()
+			}
+			quote, err := s.OrderSvc.QuoteFor(r.Context(), restaurantID, items, claimsFrom(r).Subject, opt)
 			if err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return
@@ -356,7 +384,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 					entry["restaurant_name"] = rest.Name
 					entry["restaurant_logo_url"] = rest.LogoURL
 				}
-				if o.CourierID != "" && !o.IsDineIn() && s.CourierRepo != nil {
+				if o.CourierID != "" && o.NeedsCourier() && s.CourierRepo != nil {
 					name, ok := courierNames[o.CourierID]
 					if !ok {
 						if c, err := s.CourierRepo.GetByID(r.Context(), o.CourierID); err == nil {
@@ -434,6 +462,8 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 			var req struct {
 				To                 orders.Status `json:"to"`
 				PreparationMinutes int           `json:"preparation_minutes"`
+				// PickupCode — olib ketish buyurtmasini BERISHda mijoz aytgan kod.
+				PickupCode string `json:"pickup_code"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				httpError(w, http.StatusBadRequest, err)
@@ -462,6 +492,17 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				o.WaiterID != "" && o.WaiterID != claims.Subject {
 				httpError(w, http.StatusConflict, orders.ErrWaiterTaken)
 				return
+			}
+			// Olib ketish: restoran faqat mijoz aytgan TO'G'RI kod bilan beradi.
+			if o.IsPickup() && req.To == orders.StatusDelivered && claims.Role == users.RoleRestaurant {
+				if rateLimited(w, pickupCodeLimiter, o.ID) {
+					return
+				}
+				if !s.checkPickupCode(o.ID, req.PickupCode) {
+					writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+						"error": "olish kodi noto'g'ri", "code": "pickup_code_invalid"})
+					return
+				}
 			}
 			o, err = s.OrderSvc.ChangeStatus(r.Context(), o.ID, req.To, roleToActor(claims.Role))
 			if err != nil {
@@ -512,7 +553,7 @@ func (s *Server) registerOrderRoutes(mux *http.ServeMux) {
 				// uchun kuryerlarni bezovta qilib, ularni "band"
 				// holatiga o'tkazib qo'yardi.
 				// └───────────────────────────────────────────────────┘
-				if !o.IsDineIn() {
+				if o.NeedsCourier() {
 					oID, rID, prep := o.ID, o.RestaurantID, req.PreparationMinutes
 					safeGo("dispatch:"+oID, func() { s.dispatchOrder(oID, rID, prep) })
 				}

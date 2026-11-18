@@ -131,9 +131,10 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			                    payment_method, payment_state,
 			                    delivery_address,
 			                    order_type, table_id, table_label, party_size,
-			                    dispatch_state, dispatch_deadline, placed_by, waiter_id, waiter_name)
+			                    dispatch_state, dispatch_deadline, placed_by, waiter_id, waiter_name,
+			                    pickup_at, pickup_reminded_at, pickup_discount_tiyin)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-			        $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+			        $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
 			ON CONFLICT (id) DO UPDATE SET
 				courier_id           = EXCLUDED.courier_id,
 				status               = EXCLUDED.status,
@@ -154,6 +155,8 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 				-- ostida: ikki ofitsiantdan bittasi o'tadi).
 				waiter_id            = EXCLUDED.waiter_id,
 				waiter_name          = EXCLUDED.waiter_name,
+				-- Olib ketish eslatmasi (Plane 473): Sweep bir marta yozadi.
+				pickup_reminded_at   = EXCLUDED.pickup_reminded_at,
 				version              = orders.version + 1
 			WHERE orders.version = EXCLUDED.version
 			RETURNING order_number, version`,
@@ -176,6 +179,8 @@ func (r *PgOrderRepo) Save(ctx context.Context, o *orders.Order) error {
 			// yo'q): buyurtmani kim kiritgani keyin o'zgarmaydi.
 			o.PlacedBy,
 			o.WaiterID, o.WaiterName,
+			// pickup_at / pickup_discount_tiyin — faqat INSERT'da (o'zgarmaydi).
+			o.PickupAt, o.PickupRemindedAt, o.PickupDiscountTiyin,
 		).Scan(&o.OrderNumber, &o.Version)
 
 		if err == nil {
@@ -287,7 +292,8 @@ const orderColumns = `id, order_number, customer_id, restaurant_id, courier_id, 
 		       subtotal_tiyin, discount_tiyin, promotion_id, promotion_name,
 		       promotion_discount_tiyin, payment_method, payment_state, delivery_address,
 		       order_type, table_id, table_label, party_size, dispatch_state, dispatch_deadline,
-		       placed_by, waiter_id, waiter_name`
+		       placed_by, waiter_id, waiter_name,
+		       pickup_at, pickup_reminded_at, pickup_discount_tiyin`
 
 // rowScanner — pgx.Row va pgx.Rows ning umumiy qismi. Ikkalasi ham
 // `Scan(...any) error` beradi, shuning uchun bitta scan funksiyasi
@@ -311,7 +317,8 @@ func scanOrder(row rowScanner) (*orders.Order, error) {
 		&o.SubtotalTiyin, &o.DiscountTiyin, &o.PromotionID, &o.PromotionName,
 		&o.PromotionDiscountTiyin, &o.PaymentMethod, &o.PaymentState, &addressJSON,
 		&o.Type, &tableID, &tableLabel, &partySize, &o.DispatchState, &o.DispatchDeadline,
-		&o.PlacedBy, &o.WaiterID, &o.WaiterName)
+		&o.PlacedBy, &o.WaiterID, &o.WaiterName,
+		&o.PickupAt, &o.PickupRemindedAt, &o.PickupDiscountTiyin)
 	if err != nil {
 		return nil, err
 	}

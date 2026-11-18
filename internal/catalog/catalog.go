@@ -35,6 +35,8 @@ type Restaurant struct {
 	WorkingHours *WorkingHours `json:"working_hours"`
 	// PaymentMethods — `nil` — standart (`DefaultPaymentMethods`).
 	PaymentMethods *PaymentMethods `json:"payment_methods"`
+	// Pickup — olib ketish sozlamasi (nil = o'chiq). Mijozga ochiq ma'lumot.
+	Pickup *PickupSettings `json:"pickup,omitempty"`
 	// OpenNow — HISOBLANADIGAN, saqlanmaydi: hozir buyurtma qabul
 	// qilinadimi (`Open` VA ish vaqti, `OrderableAt`). Faqat ochiq
 	// javoblarda to'ldiriladi (`WithOpenState`). Mijoz ilovalari

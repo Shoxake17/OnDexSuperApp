@@ -78,7 +78,25 @@ var dineInTransitions = func() map[Status]map[Status][]Actor {
 	return t
 }()
 
-// delivered/served/rejected/cancelled — terminal, hech qayerga o'tmaydi.
+// pickupTransitions — mijoz o'zi olib ketadi ("Borish", Plane 473).
+//
+//	ready → delivered      restoran, mijoz aytgan OLISH KODI bilan
+//	                       (kod HTTP qatlamida tekshiriladi: routes_orders.go)
+//	ready → not_picked_up  tizim (2 soat olinmadi) yoki admin; pul QAYTMAYDI
+//
+// Restoran tayyor buyurtmani bekor qila olmaydi: pul allaqachon yechilgan,
+// taom tayyor — nizoni admin hal qiladi.
+var pickupTransitions = func() map[Status]map[Status][]Actor {
+	t := commonTransitions()
+	t[StatusReady] = map[Status][]Actor{
+		StatusDelivered:   {ActorRestaurant},
+		StatusNotPickedUp: {ActorSystem, ActorAdmin},
+		StatusCancelled:   {ActorAdmin},
+	}
+	return t
+}()
+
+// delivered/served/rejected/cancelled/not_picked_up — terminal, hech qayerga o'tmaydi.
 
 // IsTerminal — buyurtma yakunlanganmi (boshqa holatga o'tmaydi).
 //
@@ -90,7 +108,7 @@ var dineInTransitions = func() map[Status]map[Status][]Actor {
 // JIM bo'lardi (yakunlangan buyurtma "faol" deb ko'rinardi).
 func IsTerminal(s Status) bool {
 	switch s {
-	case StatusDelivered, StatusServed, StatusRejected, StatusCancelled:
+	case StatusDelivered, StatusServed, StatusRejected, StatusCancelled, StatusNotPickedUp:
 		return true
 	default:
 		return false
@@ -112,8 +130,11 @@ func (e *TransitionError) Error() string {
 // `orderType` bo'sh bo'lsa `delivery` deb qaraladi (Type.Normalized()).
 func ValidateTransition(orderType Type, from, to Status, by Actor) error {
 	table := deliveryTransitions
-	if orderType.Normalized() == TypeDineIn {
+	switch orderType.Normalized() {
+	case TypeDineIn:
 		table = dineInTransitions
+	case TypePickup:
+		table = pickupTransitions
 	}
 	targets, ok := table[from]
 	if !ok {
@@ -150,7 +171,7 @@ func ValidateOrderTransition(o *Order, to Status, by Actor) error {
 // nizolarni hal qiladi.
 // └───────────────────────────────────────────────────────────────────┘
 func checkCourierNotFoundCancel(o *Order, to Status, by Actor) error {
-	if to != StatusCancelled || o.Status != StatusReady || o.IsDineIn() {
+	if to != StatusCancelled || o.Status != StatusReady || !o.NeedsCourier() {
 		return nil
 	}
 	if by != ActorRestaurant && by != ActorSystem {

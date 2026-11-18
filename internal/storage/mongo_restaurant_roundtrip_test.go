@@ -79,6 +79,10 @@ func fillRestaurant(t *testing.T) catalog.Restaurant {
 					Cash: true, CardTerminal: true, CardOnline: true,
 					Payme: true, Click: true, Uzum: true,
 				}))
+			case "Pickup":
+				fv.Set(reflect.ValueOf(&catalog.PickupSettings{
+					Enabled: true, PrepMinutes: 25, DiscountPercent: 10, Note: "Kassa 1-qavatda",
+				}))
 			default:
 				t.Fatalf("YANGI ko'rsatkich maydon %q — bu testni kengaytiring "+
 					"va `restaurantDoc`/`toDomain` da ham hisobga oling", f.Name)

@@ -495,6 +495,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		t.Fatal(err)
 	}
 	api.FlowSvc = flowSvc
+	api.PickupCodeKey = httpapi.DerivePickupCodeKey("e2e-pickup")
 	w.api = api
 	w.Srv = httptest.NewServer(api.Routes(nil))
 	t.Cleanup(w.Srv.Close)
@@ -527,6 +528,15 @@ func (w *World) Sweep(t *testing.T) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	w.api.RunDispatchWatchdog(ctx, w.Orders)
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+}
+
+// SweepPickups — olib ketish nazoratchisining bitta tsikli (eslatma, 2 soatlik yakun).
+func (w *World) SweepPickups(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	w.api.RunPickupWatchdog(ctx, w.Orders)
 	time.Sleep(150 * time.Millisecond)
 	cancel()
 }

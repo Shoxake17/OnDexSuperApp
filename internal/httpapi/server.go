@@ -39,6 +39,9 @@ import (
 	"chustapp/internal/images"
 	"chustapp/internal/mapprovider"
 	"chustapp/internal/model3d"
+	"chustapp/internal/modules/flow"
+	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/notify"
 	"chustapp/internal/ondexmap"
 	"chustapp/internal/orders"
@@ -56,9 +59,6 @@ import (
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/support"
-	"chustapp/internal/modules/flow"
-	"chustapp/internal/modules/reservation"
-	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/tables"
 	"chustapp/internal/telegram"
 	"chustapp/internal/tracking"
@@ -161,6 +161,8 @@ type Deps struct {
 	ReservationSvc *reservation.Service
 	// FlowSvc — OnDexFlow (o'z OTA yangilanishi, internal/modules/flow).
 	FlowSvc *flow.Service
+	// PickupCodeKey — olib ketish kodi kaliti (DerivePickupCodeKey(JWT_SECRET)).
+	PickupCodeKey []byte
 
 	// TableBillSvc — stolda hisobni bo'lish (RS-5, `internal/modules/tablebill`).
 	TableBillSvc *tablebill.Service
@@ -515,6 +517,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerTableRoutes(mux)
 	s.registerReservationRoutes(mux)
 	s.registerFlowRoutes(mux)
+	s.registerPickupRoutes(mux)
 	s.registerTableBillRoutes(mux)
 	s.registerAdminLiveRoutes(mux)
 	s.registerBookRoutes(mux)

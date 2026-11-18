@@ -15,6 +15,10 @@ const (
 	StatusServed    Status = "served"    // affitsiant stolga olib bordi (terminal, faqat dine_in)
 	StatusRejected  Status = "rejected"  // restoran rad etdi (terminal)
 	StatusCancelled Status = "cancelled" // bekor qilindi (terminal)
+	// StatusNotPickedUp — olib ketish buyurtmasi tayyor bo'lgach 2 soat ichida
+	// olinmadi (terminal). Pul QAYTARILMAYDI — taom tayyorlangan (egasi qarori
+	// 2026-11-18, Plane 473).
+	StatusNotPickedUp Status = "not_picked_up"
 )
 
 // Type — buyurtma turi.
@@ -39,6 +43,9 @@ const (
 	TypeDelivery Type = "delivery"
 	// TypeDineIn — mijoz restoranda, stol QR kodi orqali buyurtma berdi.
 	TypeDineIn Type = "dine_in"
+	// TypePickup — mijoz oldindan to'laydi va restorandan O'ZI olib ketadi
+	// ("Borish", Plane 473). Kuryer, manzil va yetkazish haqi YO'Q.
+	TypePickup Type = "pickup"
 )
 
 // Normalized — bo'sh turni `delivery` ga keltiradi.
@@ -230,6 +237,16 @@ type Order struct {
 	// na juda kech kelsin).
 	PreparationMinutes int        `json:"preparation_minutes,omitempty"`
 	ReadyAt            *time.Time `json:"ready_at,omitempty"`
+	// PickupAt — olib ketish buyurtmasida mijoz tanlagan olish vaqti (nil =
+	// "tayyor bo'lishi bilan"). Faqat restoranga ma'lumot.
+	PickupAt *time.Time `json:"pickup_at,omitempty"`
+	// PickupRemindedAt — "buyurtmangiz kutmoqda" eslatmasi yuborilgan vaqt
+	// (bir marta; Sweep takror yubormasin).
+	PickupRemindedAt *time.Time `json:"pickup_reminded_at,omitempty"`
+	// PickupDiscountPercent — buyurtma vaqtidagi restoran chegirmasi (kirish;
+	// saqlanmaydi). PickupDiscountTiyin — undan chiqqan summa (DiscountTiyin ICHIDA).
+	PickupDiscountPercent int   `json:"-"`
+	PickupDiscountTiyin   int64 `json:"pickup_discount_tiyin,omitempty"`
 
 	// DispatchState/DispatchDeadline — kuryer qidiruvi holati va uning
 	// muddati (faqat yetkazish). Qoidalari va nega bazada saqlanishi —
@@ -285,10 +302,11 @@ type Order struct {
 // (`TerminalStatusStrings()`), ya'ni ro'yxat bir joyda o'zgaradi.
 // └────────────────────────────────────────────────────────────────────┘
 var terminalStatuses = []Status{
-	StatusDelivered, // yetkazib berildi (delivery)
-	StatusServed,    // affitsiant stolga olib bordi (dine_in)
-	StatusRejected,  // restoran rad etdi
-	StatusCancelled, // bekor qilindi
+	StatusDelivered,   // yetkazib berildi (delivery)
+	StatusServed,      // affitsiant stolga olib bordi (dine_in)
+	StatusRejected,    // restoran rad etdi
+	StatusCancelled,   // bekor qilindi
+	StatusNotPickedUp, // olib ketish: olinmadi (pickup)
 }
 
 func (o *Order) IsTerminal() bool {
@@ -312,6 +330,15 @@ func TerminalStatusStrings() []string {
 
 // IsDineIn — stolda ovqatlanish buyurtmasimi.
 func (o *Order) IsDineIn() bool { return o.Type.Normalized() == TypeDineIn }
+
+// IsPickup — mijoz o'zi olib ketadigan buyurtmami.
+func (o *Order) IsPickup() bool { return o.Type.Normalized() == TypePickup }
+
+// NeedsCourier — kuryer kerakmi. FAQAT yetkazish buyurtmasi; stol va olib
+// ketish buyurtmalarida dispatch, kuzatuv, kuryer ko'rinishi va yetkazish
+// haqi umuman ishlamaydi. Kuryerga oid har tekshiruv SHU bilan qilinadi
+// ("!IsDineIn()" emas) — yangi kuryersiz tur qo'shilganda unutilmasin.
+func (o *Order) NeedsCourier() bool { return o.Type.Normalized() == TypeDelivery }
 
 // PaymentMethod — mijoz tanlagan to'lov usuli.
 type PaymentMethod string

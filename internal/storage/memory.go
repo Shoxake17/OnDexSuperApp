@@ -171,6 +171,13 @@ func (r *MemoryOrderRepo) ListAwaitingCourier(_ context.Context, limit int) ([]*
 	return r.listFiltered(limit, (*orders.Order).AwaitsCourier)
 }
 
+// ListReadyPickups — tayyor, hali olinmagan olib ketish buyurtmalari.
+func (r *MemoryOrderRepo) ListReadyPickups(_ context.Context, limit int) ([]*orders.Order, error) {
+	return r.listFiltered(limit, func(o *orders.Order) bool {
+		return o.IsPickup() && o.Status == orders.StatusReady
+	})
+}
+
 // ListByRestaurant — to'lanmagan KARTA buyurtmalari ro'yxatga
 // tushmaydi (Postgres implementatsiyasidagi bilan bir xil qoida —
 // izohi o'sha yerda).

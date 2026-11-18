@@ -33,6 +33,8 @@ import (
 
 var restaurantEditableFields = []string{
 	"logo_url", "cover_url", "description", "working_hours", "payment_methods",
+	// Olib ketish (Borish, Plane 477): yoqish, tayyorlash vaqti, chegirma 0..30%, ko'rsatma.
+	"pickup",
 }
 
 // movedFields — ilgari shu yerda tahrirlangan, endi BOSHQA joyda
@@ -82,6 +84,7 @@ type restaurantSettingsView struct {
 	OpenNow                 bool                   `json:"open_now"`
 	WorkingHours            *catalog.WorkingHours  `json:"working_hours"`
 	PaymentMethods          catalog.PaymentMethods `json:"payment_methods"`
+	Pickup                  catalog.PickupSettings `json:"pickup"`
 	OnlinePaymentsAvailable bool                   `json:"online_payments_available"`
 	// To'lov ulanishi — FAQAT ko'rish uchun. O'zgartirish
 	// `POST /restaurants/{id}/finance/connect` orqali (u kalitlarni
@@ -110,6 +113,7 @@ func (s *Server) restaurantSettings(ctx context.Context, rest *catalog.Restauran
 		OpenNow:        rest.AcceptingOrdersAt(time.Now()),
 		WorkingHours:   rest.WorkingHours,
 		PaymentMethods: rest.EffectivePaymentMethods(),
+		Pickup:         pickupView(rest),
 		// Onlayn usullarni YOQISH uchun ikkalasi shart: tizimda to'lov
 		// xizmati bor VA shu restoran shlyuzda kassaga ulangan. Ulanmagan
 		// restoran Uzum'ni yoqib qo'ysa, mijozga baribir ko'rinmasdi
@@ -385,6 +389,21 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 				changed = append(changed, "payment_methods")
 			}
 
+			if v, ok := raw["pickup"]; ok {
+				var p catalog.PickupSettings
+				if err := decodeStrict(v, &p); err != nil {
+					httpError(w, http.StatusBadRequest, errors.New("pickup noto'g'ri shaklda"))
+					return
+				}
+				norm, err := p.Validate()
+				if err != nil {
+					httpError(w, http.StatusBadRequest, err)
+					return
+				}
+				rest.Pickup = &norm
+				changed = append(changed, "pickup")
+			}
+
 			// ┌─ TO'LOV SHLYUZI SOZLAMALAR ORQALI O'ZGARMAYDI ─────────┐
 			// `multicard_store_id` ATAYLAB bu yerda emas. Pul manzilini
 			// belgilaydigan yagona eshik —
@@ -411,4 +430,13 @@ func (s *Server) registerRestaurantSettingsRoutes(mux *http.ServeMux) {
 			}
 			writeJSON(w, http.StatusOK, s.restaurantSettings(r.Context(), rest))
 		}))
+}
+
+// pickupView — sozlamalar sahifasi uchun (o'chiq bo'lsa ham standart
+// qiymatlar ko'rsatiladi: tayyorlash 15 daqiqa, chegirma 0).
+func pickupView(rest *catalog.Restaurant) catalog.PickupSettings {
+	if rest.Pickup != nil {
+		return *rest.Pickup
+	}
+	return catalog.PickupSettings{PrepMinutes: 15}
 }

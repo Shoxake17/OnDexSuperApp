@@ -46,7 +46,7 @@ func (s *Server) registerVoiceRoutes(mux *http.ServeMux) {
 				return
 			}
 			o, err := s.OrderSvc.Get(r.Context(), r.URL.Query().Get("order_id"))
-			if err != nil || o.CourierID != courierID || o.IsDineIn() || o.IsTerminal() {
+			if err != nil || o.CourierID != courierID || !o.NeedsCourier() || o.IsTerminal() {
 				httpError(w, http.StatusNotFound, orders.ErrNotFound)
 				return
 			}

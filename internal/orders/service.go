@@ -320,6 +320,8 @@ type QuoteResult struct {
 	// DeliveryFeeTiyin — yetkazib berish haqi (0 = bepul yoki stol
 	// buyurtmasi). `TotalTiyin` ga ALLAQACHON qo'shilgan.
 	DeliveryFeeTiyin int64 `json:"delivery_fee_tiyin"`
+	// PickupDiscountTiyin — olib ketish chegirmasi (DiscountTiyin ICHIDA).
+	PickupDiscountTiyin int64 `json:"pickup_discount_tiyin,omitempty"`
 	// TotalTiyin = SubtotalTiyin − DiscountTiyin + DeliveryFeeTiyin.
 	TotalTiyin int64 `json:"total_tiyin"`
 	// PromotionID/PromotionName — ENG KO'P hissa qo'shgan aksiya. Savatga
@@ -383,21 +385,37 @@ type QuoteLine struct {
 // parametr ATAYLAB majburiy: uni chaqiruvchi tanlashi kerak va
 // "unutib qoldirish" mumkin emas.
 func (s *Service) Quote(ctx context.Context, restaurantID string, items []Item, customerID string, dineIn bool) (*QuoteResult, error) {
+	return s.QuoteFor(ctx, restaurantID, items, customerID, QuoteOptions{NoCourier: dineIn})
+}
+
+// QuoteOptions — buyurtma turiga bog'liq narxlash.
+type QuoteOptions struct {
+	// NoCourier — stol yoki olib ketish: yetkazish haqi YO'Q.
+	NoCourier bool
+	// PickupDiscountPercent — olib ketish chegirmasi (restoran sozlamasi, 0..30).
+	PickupDiscountPercent int
+}
+
+// QuoteFor — Quote, buyurtma turi bilan (olib ketish chegirmasi ham).
+func (s *Service) QuoteFor(ctx context.Context, restaurantID string, items []Item, customerID string, opt QuoteOptions) (*QuoteResult, error) {
 	subtotal, discount, applied, lineDiscounts, err := s.priceCart(ctx, restaurantID, items, customerID)
 	if err != nil {
 		return nil, err
 	}
+	pickupOff := applyPickupDiscount(items, lineDiscounts, opt.PickupDiscountPercent)
+	discount += pickupOff
 	goods := subtotal - discount
-	fee, err := s.deliveryFee(ctx, restaurantID, goods, dineIn)
+	fee, err := s.deliveryFee(ctx, restaurantID, goods, opt.NoCourier)
 	if err != nil {
 		return nil, err
 	}
 	res := &QuoteResult{
-		SubtotalTiyin:    subtotal,
-		DiscountTiyin:    discount,
-		DeliveryFeeTiyin: fee,
-		TotalTiyin:       goods + fee,
-		Lines:            make([]QuoteLine, 0, len(items)),
+		SubtotalTiyin:       subtotal,
+		DiscountTiyin:       discount,
+		DeliveryFeeTiyin:    fee,
+		TotalTiyin:          goods + fee,
+		PickupDiscountTiyin: pickupOff,
+		Lines:               make([]QuoteLine, 0, len(items)),
 	}
 	for i, it := range items {
 		lineSubtotal := it.PriceTiyin * int64(it.Qty)
@@ -477,13 +495,18 @@ func (s *Service) CreateExpecting(ctx context.Context, o *Order,
 	o.UpdatedAt = o.CreatedAt
 	o.Version = 1
 
-	subtotal, discount, applied, _, err := s.priceCart(ctx, o.RestaurantID, o.Items, o.CustomerID)
+	subtotal, discount, applied, lineDiscounts, err := s.priceCart(ctx, o.RestaurantID, o.Items, o.CustomerID)
 	if err != nil {
 		return nil, err
 	}
+	// Olib ketish chegirmasi (restoran sozlamasi) — aksiyadan KEYINGI summadan.
+	if o.IsPickup() {
+		o.PickupDiscountTiyin = applyPickupDiscount(o.Items, lineDiscounts, o.PickupDiscountPercent)
+		discount += o.PickupDiscountTiyin
+	}
 	// Yetkazib berish haqi — buyurtmaga SURATGA OLINADI (`Order`
 	// izohiga qarang). Stol buyurtmasida `deliveryFee` 0 qaytaradi.
-	fee, err := s.deliveryFee(ctx, o.RestaurantID, subtotal-discount, o.IsDineIn())
+	fee, err := s.deliveryFee(ctx, o.RestaurantID, subtotal-discount, !o.NeedsCourier())
 	if err != nil {
 		return nil, err
 	}
@@ -1097,4 +1120,28 @@ func (s *Service) AssignCourier(ctx context.Context, orderID, courierID string) 
 		return o, nil
 	}
 	return nil, ErrConflict
+}
+
+// applyPickupDiscount — olib ketish chegirmasini HAR QATOR bo'yicha
+// (aksiyadan keyingi summadan) hisoblaydi va `lineDiscounts` ga qo'shadi.
+// Qaytgan qiymat = qatorlar ulushlari yig'indisi, ya'ni Quote qatorlari,
+// buyurtma jami va chek BIR XIL chiqadi. Foiz 0..30 bilan cheklanadi.
+func applyPickupDiscount(items []Item, lineDiscounts []int64, percent int) int64 {
+	if percent <= 0 {
+		return 0
+	}
+	if percent > 30 {
+		percent = 30
+	}
+	var total int64
+	for i, it := range items {
+		goods := it.PriceTiyin*int64(it.Qty) - lineDiscounts[i]
+		if goods <= 0 {
+			continue
+		}
+		off := goods * int64(percent) / 100
+		lineDiscounts[i] += off
+		total += off
+	}
+	return total
 }

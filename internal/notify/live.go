@@ -100,6 +100,9 @@ func (l *Live) OrderCreated(o *orders.Order) {
 		event["table_label"] = o.TableLabel
 		event["party_size"] = o.PartySize
 	}
+	if o.IsPickup() {
+		event["order_type"] = string(orders.TypePickup)
+	}
 	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
 	// Superadmin paneli — o'sha eventning nusxasi. Busiz panel yangi
 	// buyurtmani faqat keyingi so'rov siklida ko'rardi (`Admin()`
@@ -124,6 +127,9 @@ func (l *Live) OrderStatusChanged(o *orders.Order, from orders.Status) {
 		event["order_type"] = string(orders.TypeDineIn)
 		event["table_label"] = o.TableLabel
 		event["party_size"] = o.PartySize
+	}
+	if o.IsPickup() {
+		event["order_type"] = string(orders.TypePickup)
 	}
 	// Restoran va kuryer — ish kanallari (jonli, tarixsiz).
 	l.svc.Broadcast(Entity(ModuleFood, o.RestaurantID), event)
@@ -211,12 +217,30 @@ func orderStatusTitle(o *orders.Order) string {
 	if o.IsDineIn() && o.Status == orders.StatusServed {
 		return "Buyurtmangiz keldi"
 	}
+	if o.IsPickup() && o.Status == orders.StatusReady {
+		return "Buyurtmangiz tayyor"
+	}
 	return "Buyurtma holati"
 }
 
 func orderStatusText(o *orders.Order) string {
 	// Stolda ovqatlanishda "yetkazish" atamalari ma'nosiz — mijoz
 	// restoranning o'zida o'tiribdi.
+	// Olib ketish: mijoz restoranga O'ZI keladi — kuryer atamalari yo'q.
+	if o.IsPickup() {
+		switch o.Status {
+		case orders.StatusAccepted:
+			return "Restoran buyurtmangizni qabul qildi"
+		case orders.StatusPreparing:
+			return "Buyurtmangiz tayyorlanmoqda"
+		case orders.StatusReady:
+			return "Olib ketishingiz mumkin — restoranda olish kodini ayting"
+		case orders.StatusDelivered:
+			return "Buyurtmangiz berildi. Yoqimli ishtaha!"
+		case orders.StatusNotPickedUp:
+			return "Buyurtma 2 soat ichida olib ketilmadi va yopildi"
+		}
+	}
 	if o.IsDineIn() {
 		switch o.Status {
 		case orders.StatusAccepted:
