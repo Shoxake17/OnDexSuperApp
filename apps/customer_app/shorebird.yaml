@@ -10,7 +10,7 @@
 #
 # app_id — admin panel -> OnDexFlow -> "Ilova ulash" da shu qiymat bilan
 # ro'yxatga olinadi.
-app_id: 511a3ebc-cff6-4c16-95dc-73ad1e53ccb4
+app_id: 16a1d07f-5b05-4a32-97c4-07d219b86237
 
 # Yamoq tekshiruvi va yuklash FAQAT shu manzildan.
 base_url: https://api.ondex.uz/flow
