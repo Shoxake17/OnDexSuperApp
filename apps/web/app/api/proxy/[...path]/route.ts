@@ -155,7 +155,8 @@ async function handle(req: NextRequest, path: string[]): Promise<NextResponse> {
   // uchun bu "ilova buzuq" ko'rinishida edi, chiqib qayta kirish
   // yo'li esa ko'rinmasdi.
   // └───────────────────────────────────────────────────────────────┘
-  if (res.status === 401 && token) {
+  const expired = res.status === 401 && Boolean(token);
+  if (expired) {
     await clearSessionToken();
   }
 
@@ -164,6 +165,9 @@ async function handle(req: NextRequest, path: string[]): Promise<NextResponse> {
     status: res.status,
     headers: {
       "Content-Type": res.headers.get("Content-Type") ?? "application/json",
+      // Ochiq sahifa sessiya tugaganini bilsin (`session-watcher.tsx`):
+      // web — "kirmagan" holatga o'tadi, TMA — initData bilan o'zi qayta kiradi.
+      ...(expired ? { "X-Ondex-Session-Expired": "1" } : {}),
     },
   });
 }

@@ -3,6 +3,7 @@ import "./globals.css";
 import TelegramAuth from "./telegram-auth";
 import TableInit from "./table-init";
 import AppTableBridge from "./app-table-bridge";
+import SessionWatcher from "./session-watcher";
 import { getSessionToken, isAppShell } from "@/lib/session";
 
 export const metadata: Metadata = {
@@ -46,6 +47,8 @@ export default async function RootLayout({
     <html lang="uz">
       <body>
         <TelegramAuth signedIn={signedIn} />
+        {/* Sessiya tugasa ochiq sahifa ham "kirmagan" holatga o'tadi. */}
+        <SessionWatcher />
         {/* Stol QR kodi bilan kelgan mijozni to'g'ri menyuga olib
             boradi. Telegram tashqarisida hech narsa qilmaydi. */}
         <TableInit signedIn={signedIn} />
