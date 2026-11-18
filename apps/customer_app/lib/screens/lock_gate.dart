@@ -154,7 +154,7 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
     // navigatsiya steki bir necha marta tozalanardi.
     if (_sessionLostHandled) return;
     _sessionLostHandled = true;
-    await _signOut('Akkaunt o\'chirildi — qaytadan kiring.',
+    await _signOut('Sessiya tugadi — xavfsizlik uchun qaytadan kiring.',
         notifyServer: false);
   }
 
