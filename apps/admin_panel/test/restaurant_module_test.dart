@@ -315,81 +315,82 @@ void main() {
     });
   });
 
-  testWidgets('Sidebar: Restoran, Do\'kon, Qurt statistikasi, Statistika, Mijozlar, OnDex kuryerlari, Bannerlar, Sozlamalar, KYC, Jonli holat, OnDexFlow; pastda OnDexMap', (tester) async {
+  testWidgets('Sidebar xizmatlar bo\'yicha izolyatsiyalangan; almashtirgich; holat saqlanadi', (tester) async {
     await _run(tester, const AdminShell(), (requests) async {
       expect(tester.takeException(), isNull);
       int count(String path) => requests.where((r) => r.url.path == path).length;
       Finder nav(String name) => find.byKey(ValueKey('nav-$name'));
-
-      // Sidebar'da AYNAN to'qqizta band; boshqa (yuqori tablar kabi) navigatsiya yo'q.
-      final navItems = find.byWidgetPredicate((w) =>
+      Finder navItems() => find.byWidgetPredicate((w) =>
           w.key is ValueKey<String> && (w.key as ValueKey<String>).value.startsWith('nav-'));
-      expect(navItems, findsNWidgets(12));
-      for (final label in const [
-        'Restoran', 'Do\'kon', 'Qurt statistikasi', 'Statistika', 'Mijozlar', 'OnDex kuryerlari', 'Bannerlar', 'Sozlamalar', 'Tashkilotlar (KYC)', 'Jonli holat', 'OnDexFlow', 'OnDexMap'
-      ]) {
-        expect(find.text(label), findsOneWidget, reason: '"$label" sidebar\'da bo\'lishi kerak');
+      Future<void> switchTo(String service) async {
+        await tester.tap(find.byKey(const ValueKey('service-switcher')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('service-$service')));
+        await tester.pumpAndSettle();
       }
 
-      // Tartib: yuqoridan pastga; OnDexMap eng pastda.
-      final order = ['restaurants', 'stores', 'qurt-stats', 'stats', 'customers', 'couriers', 'banners', 'settings', 'kyc', 'live', 'ondexmap'];
+      // Restoran xizmati: FAQAT uning 5 bo'limi, tartib yuqoridan pastga.
+      expect(navItems(), findsNWidgets(5));
+      final order = ['restaurants', 'live', 'stats', 'couriers', 'banners'];
       for (var i = 1; i < order.length; i++) {
-        expect(tester.getTopLeft(nav(order[i])).dy, greaterThan(tester.getTopLeft(nav(order[i - 1])).dy),
-            reason: '${order[i]} ${order[i - 1]} dan pastda bo\'lishi kerak');
+        expect(tester.getTopLeft(nav(order[i])).dy, greaterThan(tester.getTopLeft(nav(order[i - 1])).dy));
+      }
+      for (final other in ['stores', 'qurt-stats', 'ondexmap', 'customers', 'kyc', 'flow', 'settings']) {
+        expect(nav(other), findsNothing, reason: '$other restoran xizmatida ko\'rinmasligi kerak');
       }
 
-      // Boshlang'ich bo'lim — restoranlar ro'yxati; o'qilmagan chat "Restoran" bandida.
+      // Boshlang'ich bo'lim — restoranlar; o'qilmagan chat rozetkasi.
       expect(find.byKey(const ValueKey('restaurant-card-rest-a')), findsOneWidget);
       expect(find.descendant(of: nav('restaurants'), matching: find.text('2')), findsOneWidget);
-      // Ochilmagan bo'limlar so'rov yubormaydi.
       expect(count('/admin/stats'), 0);
       expect(count('/admin/customers'), 0);
       expect(count('/support/contacts'), 0);
 
-      // Restoran ochiladi.
       await _openRestaurant(tester, 'rest-a');
       expect(find.byKey(const ValueKey('restaurant-module-tabs')), findsOneWidget);
 
-      // Statistika.
       await tester.tap(nav('stats'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('stats-period')), findsOneWidget);
       expect(count('/admin/stats'), 1);
       expect(requests.lastWhere((r) => r.url.path == '/admin/stats').url.queryParameters['period'], '30d');
 
-      // Mijozlar.
-      await tester.tap(nav('customers'));
-      await tester.pumpAndSettle();
-      expect(find.text('Sardor Mijoz'), findsOneWidget);
-
       // OnDex kuryerlari: faqat restoranga BOG'LANMAGAN kuryer.
       await tester.tap(nav('couriers'));
       await tester.pumpAndSettle();
       expect(find.text('Umumiy Kuryer'), findsOneWidget);
       expect(find.text('Anvar Kuryer'), findsNothing);
-      expect(find.text('Boshqa Kuryer'), findsNothing);
 
-      // Sozlamalar.
+      // Platforma: faqat o'z bo'limlari.
+      await switchTo('platform');
+      expect(navItems(), findsNWidgets(4));
+      expect(nav('restaurants'), findsNothing);
+      await tester.tap(nav('customers'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sardor Mijoz'), findsOneWidget);
       await tester.tap(nav('settings'));
       await tester.pumpAndSettle();
       expect(count('/support/contacts'), 1);
 
-      // OnDexMap.
-      await tester.tap(nav('ondexmap'));
-      await tester.pumpAndSettle();
+      // Do'kon va OnDexMap — alohida xizmatlar.
+      await switchTo('store');
+      expect(navItems(), findsNWidgets(1));
+      expect(nav('stores'), findsOneWidget);
+      await switchTo('map');
+      expect(nav('ondexmap'), findsOneWidget);
 
-      // Restoran'ga qaytilsa ochiq restoran o'z joyida; ko'rilgan bo'limlar qayta yuklanmaydi.
+      // Restoranga qaytilsa — oxirgi bo'lim (Kuryerlar) ochiladi, ochiq
+      // restoran saqlangan, ko'rilgan bo'limlar qayta yuklanmaydi.
+      await switchTo('food');
+      expect(find.text('Umumiy Kuryer'), findsOneWidget);
       await tester.tap(nav('restaurants'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('restaurant-module-tabs')), findsOneWidget);
-      expect(find.byKey(const ValueKey('restaurant-module-title')), findsOneWidget);
       await tester.tap(nav('stats'));
       await tester.pumpAndSettle();
       expect(count('/admin/stats'), 1);
       expect(tester.takeException(), isNull);
 
-      // Global chat qutisi (AdminShell ishga tushirgan) taymeri to'xtatiladi.
-      // stop() haqiqiy asinxron kutadi — soxta soatdan tashqarida.
       await tester.runAsync(supportInbox.stop);
     });
   });
@@ -397,12 +398,20 @@ void main() {
   testWidgets('sidebar past oynada (768 px) sig\'adi va overflow bermaydi', (tester) async {
     await _run(tester, const AdminShell(), (requests) async {
       expect(tester.takeException(), isNull);
-      expect(find.byKey(const ValueKey('nav-ondexmap')), findsOneWidget);
+      expect(find.byKey(const ValueKey('service-switcher')), findsOneWidget);
       expect(find.byTooltip('Chiqish'), findsOneWidget);
       await tester.runAsync(supportInbox.stop);
     }, size: const Size(1366, 600));
   });
 
+  testWidgets('tor oynada sidebar ixcham (faqat ikonka) va overflowsiz', (tester) async {
+    await _run(tester, const AdminShell(), (requests) async {
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('service-title')), findsNothing);
+      expect(find.byKey(const ValueKey('nav-restaurants')), findsOneWidget);
+      await tester.runAsync(supportInbox.stop);
+    }, size: const Size(1000, 700));
+  });
   testWidgets('eski server filtrni bilmasa ham begona restoran buyurtmasi chiqmaydi', (tester) async {
     await _run(tester, const RestaurantsSection(), (requests) async {
       await _openRestaurant(tester, 'rest-a');

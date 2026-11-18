@@ -17,28 +17,35 @@ import '../pages/stores_page.dart';
 import '../support_inbox.dart';
 import 'login_screen.dart';
 
-/// Asosiy tuzilma: chapda navigatsiya (Sidebar), o'ngda sahifa.
-///
-/// Sidebar (yuqoridan pastga):
-///   * **Restoran** — restoranlar ro'yxati; restoran tanlansa uning ALOHIDA
-///     moduli ochiladi (buyurtmalar, kuryerlar, affitsiantlar, kutubxona, chat);
-///   * **Do'kon** — do'konlarni ro'yxatdan o'tkazish (OnDex akkaunti);
-///   * **Statistika** — barcha restoranlar bo'yicha umumiy ko'rsatkichlar;
-///   * **Mijozlar**;
-///   * **OnDex kuryerlari** — restoranga bog'lanmagan platforma kuryerlari;
-///   * **Bannerlar** — mijoz ilovasidagi reklama bloki (Yandex Eats/Go uslubi);
-///   * **Sozlamalar** — qo'llab-quvvatlash aloqa ma'lumotlari;
-///   * (eng pastda) **OnDexMap** — alohida loyihaning muharriri va takliflari.
-class AdminShell extends StatefulWidget {
-  const AdminShell({super.key});
+// ┌─ XIZMATLAR BO'YICHA IZOLYATSIYA (Plane 479, egasi 2026-11-19) ─────────────┐
+// Avval 12 ta bo'lim bitta ro'yxatda aralash turardi (restoran, do'kon,
+// qurt, platforma, xarita). Endi sidebar XIZMATGA bog'liq: pastdagi
+// almashtirgichda xizmat tanlanadi va yuqorida FAQAT o'sha xizmatning
+// bo'limlari ko'rinadi. Do'konga kirilsa — faqat do'kon, OnDexMap'ga —
+// faqat xarita.
+//
+// Bo'lim (`_Section`) global identifikatorga ega: IndexedStack holatni
+// saqlaydi (xizmat almashganda ochiq restoran, davr, xarita yo'qolmaydi) va
+// bo'lim faqat birinchi ochilganda quriladi (keraksiz so'rov yo'q).
+// └────────────────────────────────────────────────────────────────────────────┘
 
-  @override
-  State<AdminShell> createState() => _AdminShellState();
+enum _Section {
+  restaurants,
+  live,
+  stats,
+  couriers,
+  banners,
+  stores,
+  qurtStats,
+  ondexmap,
+  customers,
+  kyc,
+  flow,
+  settings,
 }
 
-/// Sidebar bandi. Tartib `_AdminShellState._page` bilan AYNAN bir xil
-/// (ikkalasi uchun bitta indeks).
-typedef _NavSpec = ({
+typedef _SectionSpec = ({
+  _Section id,
   String key,
   String label,
   String screen,
@@ -46,121 +53,119 @@ typedef _NavSpec = ({
   IconData selectedIcon,
 });
 
-const _navTop = <_NavSpec>[
+typedef _Service = ({
+  String id,
+  String title,
+  String subtitle,
+  IconData icon,
+  Color accent,
+  List<_SectionSpec> sections,
+});
+
+const _services = <_Service>[
   (
-    key: 'nav-restaurants',
-    label: 'Restoran',
-    screen: 'Restaurants',
-    icon: Icons.storefront_outlined,
-    selectedIcon: Icons.storefront,
+    id: 'food',
+    title: 'Restoran',
+    subtitle: 'Restoranlar, buyurtmalar, kuryerlar',
+    icon: Icons.restaurant_rounded,
+    accent: Color(0xFFF4511E),
+    sections: [
+      (id: _Section.restaurants, key: 'nav-restaurants', label: 'Restoranlar', screen: 'Restaurants',
+          icon: Icons.storefront_outlined, selectedIcon: Icons.storefront),
+      (id: _Section.live, key: 'nav-live', label: 'Jonli holat', screen: 'LiveOps',
+          icon: Icons.monitor_heart_outlined, selectedIcon: Icons.monitor_heart),
+      (id: _Section.stats, key: 'nav-stats', label: 'Statistika', screen: 'Statistics',
+          icon: Icons.insights_outlined, selectedIcon: Icons.insights),
+      (id: _Section.couriers, key: 'nav-couriers', label: 'OnDex kuryerlari', screen: 'Couriers',
+          icon: Icons.delivery_dining_outlined, selectedIcon: Icons.delivery_dining),
+      (id: _Section.banners, key: 'nav-banners', label: 'Bannerlar', screen: 'Banners',
+          icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
+    ],
   ),
   (
-    key: 'nav-stores',
-    label: 'Do\'kon',
-    screen: 'Stores',
-    icon: Icons.store_mall_directory_outlined,
-    selectedIcon: Icons.store_mall_directory,
+    id: 'store',
+    title: 'Do\'kon',
+    subtitle: 'Do\'konlar va ularning akkauntlari',
+    icon: Icons.shopping_bag_rounded,
+    accent: Color(0xFF2563EB),
+    sections: [
+      (id: _Section.stores, key: 'nav-stores', label: 'Do\'konlar', screen: 'Stores',
+          icon: Icons.store_mall_directory_outlined, selectedIcon: Icons.store_mall_directory),
+    ],
   ),
   (
-    key: 'nav-qurt-stats',
-    label: 'Qurt statistikasi',
-    screen: 'QurtStats',
-    icon: Icons.local_shipping_outlined,
-    selectedIcon: Icons.local_shipping,
+    id: 'qurt',
+    title: 'Qurt',
+    subtitle: 'Qurt buyurtmalari va logistika',
+    icon: Icons.local_shipping_rounded,
+    accent: Color(0xFF059669),
+    sections: [
+      (id: _Section.qurtStats, key: 'nav-qurt-stats', label: 'Qurt statistikasi', screen: 'QurtStats',
+          icon: Icons.local_shipping_outlined, selectedIcon: Icons.local_shipping),
+    ],
   ),
   (
-    key: 'nav-stats',
-    label: 'Statistika',
-    screen: 'Statistics',
-    icon: Icons.insights_outlined,
-    selectedIcon: Icons.insights,
+    id: 'map',
+    title: 'OnDexMap',
+    subtitle: 'Xarita, joylar va takliflar',
+    icon: Icons.map_rounded,
+    accent: Color(0xFF0891B2),
+    sections: [
+      (id: _Section.ondexmap, key: 'nav-ondexmap', label: 'Xarita muharriri', screen: 'OnDexMap',
+          icon: Icons.map_outlined, selectedIcon: Icons.map),
+    ],
   ),
   (
-    key: 'nav-customers',
-    label: 'Mijozlar',
-    screen: 'Customers',
-    icon: Icons.people_outline,
-    selectedIcon: Icons.people,
-  ),
-  (
-    key: 'nav-couriers',
-    label: 'OnDex kuryerlari',
-    screen: 'Couriers',
-    icon: Icons.delivery_dining_outlined,
-    selectedIcon: Icons.delivery_dining,
-  ),
-  (
-    key: 'nav-banners',
-    label: 'Bannerlar',
-    screen: 'Banners',
-    icon: Icons.campaign_outlined,
-    selectedIcon: Icons.campaign,
-  ),
-  (
-    key: 'nav-settings',
-    label: 'Sozlamalar',
-    screen: 'Settings',
-    icon: Icons.settings_outlined,
-    selectedIcon: Icons.settings,
-  ),
-  (
-    key: 'nav-kyc',
-    label: 'Tashkilotlar (KYC)',
-    screen: 'Kyc',
-    icon: Icons.verified_user_outlined,
-    selectedIcon: Icons.verified_user,
-  ),
-  // RS-6: restoranlar jonli holati (oxirida — oldingi indekslar surilmaydi).
-  (
-    key: 'nav-live',
-    label: 'Jonli holat',
-    screen: 'LiveOps',
-    icon: Icons.monitor_heart_outlined,
-    selectedIcon: Icons.monitor_heart,
-  ),
-  // OnDexFlow: o'z OTA yangilanishi (oxirida — indekslar surilmaydi).
-  (
-    key: 'nav-flow',
-    label: 'OnDexFlow',
-    screen: 'Flow',
-    icon: Icons.system_update_outlined,
-    selectedIcon: Icons.system_update,
+    id: 'platform',
+    title: 'Platforma',
+    subtitle: 'Mijozlar, tashkilotlar, yangilanish',
+    icon: Icons.hub_rounded,
+    accent: Color(0xFF7C3AED),
+    sections: [
+      (id: _Section.customers, key: 'nav-customers', label: 'Mijozlar', screen: 'Customers',
+          icon: Icons.people_outline, selectedIcon: Icons.people),
+      (id: _Section.kyc, key: 'nav-kyc', label: 'Tashkilotlar (KYC)', screen: 'Kyc',
+          icon: Icons.verified_user_outlined, selectedIcon: Icons.verified_user),
+      (id: _Section.flow, key: 'nav-flow', label: 'OnDexFlow', screen: 'Flow',
+          icon: Icons.system_update_outlined, selectedIcon: Icons.system_update),
+      (id: _Section.settings, key: 'nav-settings', label: 'Sozlamalar', screen: 'Settings',
+          icon: Icons.settings_outlined, selectedIcon: Icons.settings),
+    ],
   ),
 ];
 
-const _navBottom = <_NavSpec>[
-  (
-    key: 'nav-ondexmap',
-    label: 'OnDexMap',
-    screen: 'OnDexMap',
-    icon: Icons.map_outlined,
-    selectedIcon: Icons.map,
-  ),
-];
+// Sidebar ranglari (ikkala rejimda ham bir xil — panel ish quroli).
+const _sideBg = Color(0xFF0F172A);
+const _sideFg = Color(0xFFE2E8F0);
+const _sideDim = Color(0xFF94A3B8);
 
-const _navAll = [..._navTop, ..._navBottom];
+class AdminShell extends StatefulWidget {
+  const AdminShell({super.key});
+
+  @override
+  State<AdminShell> createState() => _AdminShellState();
+}
 
 class _AdminShellState extends State<AdminShell> {
-  int _index = 0;
+  int _service = 0;
+  _Section _section = _Section.restaurants;
 
-  /// Bo'limlar birinchi ochilgunicha qurilmaydi (OnDexMap xaritasi og'ir,
-  /// qolganlari ortiqcha so'rov yubormasin), keyin esa saqlanib qoladi:
-  /// boshqa bo'limga o'tib qaytganda holat (tanlangan restoran, davr,
-  /// muharrir) yo'qolmaydi.
-  final Set<int> _visited = {0};
+  /// Har xizmatda oxirgi ochilgan bo'lim — xizmatga qaytganda shu ochiladi.
+  final Map<int, _Section> _lastInService = {};
+
+  /// Bo'limlar birinchi ochilgunicha qurilmaydi, keyin holati saqlanadi.
+  final Set<_Section> _visited = {_Section.restaurants};
+
   @override
   void initState() {
     super.initState();
-    // Jonli kanal BUTUN panel uchun bitta marta ochiladi (sahifalar
-    // unga obuna bo'ladi — `lib/live.dart`). Ekran darajasida ochilsa
-    // har bo'limga o'tganda yangi soket va yangi bilet kerak bo'lardi.
+    // Jonli kanal BUTUN panel uchun bitta marta ochiladi (`lib/live.dart`).
     adminLive.start();
-    // Restoranlardan kelgan chat xabarlari — "Restoran" bo'limidagi rozetka.
+    // Restoranlardan kelgan chat xabarlari — "Restoranlar" bandidagi rozetka.
     supportInbox.addListener(_onInbox);
     supportInbox.start();
-    // Ilova ochilganda birinchi sahifani PostHog'ga yozamiz.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Analytics.instance.screen(_navAll[0].screen);
+      Analytics.instance.screen(_specOf(_section).screen);
     });
   }
 
@@ -171,63 +176,59 @@ class _AdminShellState extends State<AdminShell> {
   @override
   void dispose() {
     supportInbox.removeListener(_onInbox);
-    // Panel yopilganda soket ham yopiladi.
     adminLive.stop();
     super.dispose();
   }
 
-  void _select(int i) {
-    if (i == _index) return;
+  static _SectionSpec _specOf(_Section s) =>
+      _services.expand((x) => x.sections).firstWhere((x) => x.id == s);
+
+  void _select(_Section s) {
+    if (s == _section) return;
     setState(() {
-      _index = i;
-      _visited.add(i);
+      _section = s;
+      _visited.add(s);
+      _lastInService[_service] = s;
     });
-    Analytics.instance.screen(_navAll[i].screen);
+    Analytics.instance.screen(_specOf(s).screen);
   }
 
-  Widget _page(int i) => switch (i) {
-        0 => const RestaurantsSection(),
-        1 => const StoresPage(),
-        2 => const QurtStatsPage(),
-        3 => const StatsPage(),
-        4 => const CustomersPage(),
+  void _switchService(int i) {
+    if (i == _service) return;
+    final target = _lastInService[i] ?? _services[i].sections.first.id;
+    setState(() => _service = i);
+    _select(target);
+    setState(() {}); // _select bir xil bo'lim bo'lsa ham xizmat almashsin
+  }
+
+  Widget _page(_Section s) => switch (s) {
+        _Section.restaurants => const RestaurantsSection(),
+        _Section.live => const LiveOpsPage(),
+        _Section.stats => const StatsPage(),
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
-        5 => const CouriersPage(onlyPlatform: true),
-        6 => const BannersPage(),
-        7 => const SettingsPage(),
+        _Section.couriers => const CouriersPage(onlyPlatform: true),
+        _Section.banners => const BannersPage(),
+        _Section.stores => const StoresPage(),
+        _Section.qurtStats => const QurtStatsPage(),
+        // OnDexMap — ALOHIDA loyihaning muharriri. ChustApp bazasiga tegmaydi.
+        _Section.ondexmap => const OndexMapPage(),
+        _Section.customers => const CustomersPage(),
         // KYC (A6): faqat OnDex ID admin sessiyasida.
-        8 => const KycPage(),
-        9 => const LiveOpsPage(),
-        10 => const FlowPage(),
-        // OnDexMap — ALOHIDA loyihaning muharriri (oyna sifatida).
-        // ChustApp bazasiga ham, API'siga ham tegmaydi.
-        _ => const OndexMapPage(),
+        _Section.kyc => const KycPage(),
+        _Section.flow => const FlowPage(),
+        _Section.settings => const SettingsPage(),
       };
+
   Future<void> _logout() async {
     // Soket tokendan OLDIN yopiladi: aks holda u chiqib ketgan
     // sessiya uchun qayta ulanishga urinib, har safar 401 olardi.
     await adminLive.stop();
     await supportInbox.stop();
-    // ┌─ TUZATILGAN NOSOZLIK (bug.md 93-band) ────────────────────────┐
-    // "Chiqish" AVVAL faqat mahalliy nusxani o'chirardi — token esa
-    // serverda 30 KUN yaroqli qolaverardi. Uchala mobil ilova
-    // (`customer`, `courier`, `waiter`) `api.logout()` ni chaqiradi,
-    // panellar — yo'q edi.
-    //
-    // Aynan panellarda bu eng yomon: admin tokeni butun platformaga
-    // kirish beradi, va agar u bir marta olingan bo'lsa (fayldan yoki
-    // WebView'dan) uni to'xtatishning BOSHQA yo'li yo'q — bekor
-    // qilish faqat `/auth/logout` orqali bo'ladi.
-    //
-    // `try/catch` SHART: internet yo'q bo'lsa ham foydalanuvchi
-    // mahalliy sessiyadan chiqishi kerak (bug.md 87-band).
-    // └───────────────────────────────────────────────────────────────┘
+    // Token serverda ham bekor qilinadi (bug.md 93-band); internet bo'lmasa
+    // ham mahalliy chiqish bajariladi (87-band).
     try {
       await api.logout();
-    } catch (_) {
-      // Server bilan bog'lanib bo'lmadi — mahalliy chiqish baribir
-      // bajariladi (pastda).
-    }
+    } catch (_) {}
     await api.clearSession();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -237,25 +238,26 @@ class _AdminShellState extends State<AdminShell> {
 
   @override
   Widget build(BuildContext context) {
-    final unread = supportInbox.unread;
+    final compact = MediaQuery.sizeOf(context).width < 1180;
     return Scaffold(
       body: Row(
         children: [
           _SideBar(
-            selected: _index,
-            unread: unread,
+            compact: compact,
+            service: _services[_service],
+            serviceIndex: _service,
+            selected: _section,
+            unread: supportInbox.unread,
             onSelect: _select,
+            onSwitch: _switchService,
             onLogout: _logout,
           ),
-          const VerticalDivider(width: 1),
           Expanded(
-            // IndexedStack: barcha ochilgan bo'limlarning holati saqlanadi;
-            // ochilmaganlari qurilmaydi (`_visited`).
             child: IndexedStack(
-              index: _index,
+              index: _Section.values.indexOf(_section),
               children: [
-                for (var i = 0; i < _navAll.length; i++)
-                  _visited.contains(i) ? _page(i) : const SizedBox.shrink(),
+                for (final s in _Section.values)
+                  _visited.contains(s) ? _page(s) : const SizedBox.shrink(),
               ],
             ),
           ),
@@ -265,88 +267,166 @@ class _AdminShellState extends State<AdminShell> {
   }
 }
 
-/// Chap navigatsiya: yuqorida asosiy bo'limlar, pastda "OnDexMap", eng
-/// pastda chiqish tugmasi va build versiyasi.
+/// Chap navigatsiya: brend, tanlangan xizmat bo'limlari, pastda xizmat
+/// almashtirgich, chiqish va versiya.
 class _SideBar extends StatelessWidget {
   const _SideBar({
+    required this.compact,
+    required this.service,
+    required this.serviceIndex,
     required this.selected,
     required this.unread,
     required this.onSelect,
+    required this.onSwitch,
     required this.onLogout,
   });
 
-  final int selected;
+  final bool compact;
+  final _Service service;
+  final int serviceIndex;
+  final _Section selected;
   final int unread;
-  final ValueChanged<int> onSelect;
+  final ValueChanged<_Section> onSelect;
+  final ValueChanged<int> onSwitch;
   final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: 88,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      width: compact ? 84 : 248,
+      decoration: const BoxDecoration(
+        color: _sideBg,
+        border: Border(right: BorderSide(color: Color(0xFF1E293B))),
+      ),
       child: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Icon(Icons.admin_panel_settings, size: 32),
-            ),
-            // Asosiy bo'limlar. Past ekranda (1366x768 noutbuk) sig'masa
-            // shu qism aylantiriladi — chiqish tugmasi va OnDexMap doim ko'rinadi.
+            _Brand(compact: compact),
+            if (!compact)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 16, 8),
+                child: Text(
+                  service.title.toUpperCase(),
+                  key: const ValueKey('service-title'),
+                  style: TextStyle(
+                    color: service.accent,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+            // Bo'limlar. Past ekranda sig'masa shu qism aylantiriladi —
+            // almashtirgich va chiqish doim ko'rinadi.
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (child, a) => FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(a),
+                    child: child,
+                  ),
+                ),
+                child: ListView(
+                  key: ValueKey('sections-${service.id}'),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   children: [
-                    for (var i = 0; i < _navTop.length; i++)
+                    for (final s in service.sections)
                       _NavItem(
-                        key: ValueKey(_navTop[i].key),
-                        spec: _navTop[i],
-                        selected: selected == i,
-                        // Restoranlardan kelgan o'qilmagan chat xabarlari.
-                        badge: i == 0 ? unread : 0,
-                        onTap: () => onSelect(i),
+                        key: ValueKey(s.key),
+                        spec: s,
+                        compact: compact,
+                        accent: service.accent,
+                        selected: selected == s.id,
+                        badge: s.id == _Section.restaurants ? unread : 0,
+                        onTap: () => onSelect(s.id),
                       ),
                   ],
                 ),
               ),
             ),
-            for (var j = 0; j < _navBottom.length; j++)
-              _NavItem(
-                key: ValueKey(_navBottom[j].key),
-                spec: _navBottom[j],
-                selected: selected == _navTop.length + j,
-                onTap: () => onSelect(_navTop.length + j),
-              ),
-            const SizedBox(height: 12),
-            // ┌─ HUQUQIY HAVOLALAR OLIB TASHLANDI ──────────┐
-            // Oferta va maxfiylik siyosati MIJOZGA kerak —
-            // u xizmatdan foydalanish shartlarini qabul
-            // qiladi. Superadmin esa platformaning egasi:
-            // u hujjatlarni o'zi yozadi va panelda ularga
-            // havola bosishning ma'nosi yo'q edi.
-            //
-            // Mijoz ilovasidagi havolalar TEGILMADI.
-            // └──────────────────────────────────────────────┘
-            IconButton(
-              tooltip: 'Chiqish',
-              icon: const Icon(Icons.logout),
-              onPressed: onLogout,
+            _ServiceSwitcher(
+              compact: compact,
+              current: serviceIndex,
+              onSwitch: onSwitch,
             ),
-            // Qaysi build ishlayotgani — har reliz +1
-            // (`scripts/version.ps1`).
             const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                appVersionLabel,
-                key: const ValueKey('admin-app-version'),
-                style: theme.textTheme.labelSmall,
-              ),
+            Row(
+              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.spaceBetween,
+              children: [
+                if (!compact)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 20),
+                    child: Text(
+                      appVersionLabel,
+                      key: const ValueKey('admin-app-version'),
+                      style: const TextStyle(color: _sideDim, fontSize: 11.5),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Chiqish',
+                  icon: const Icon(Icons.logout_rounded, color: _sideDim),
+                  onPressed: onLogout,
+                ),
+              ],
             ),
+            if (compact)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  appVersionLabel,
+                  key: const ValueKey('admin-app-version'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _sideDim, fontSize: 10),
+                ),
+              ),
+            const SizedBox(height: 6),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _Brand extends StatelessWidget {
+  const _Brand({required this.compact});
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final mark = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF7A45), Color(0xFFF4511E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Color(0x55F4511E), blurRadius: 14, offset: Offset(0, 4))],
+      ),
+      alignment: Alignment.center,
+      child: const Text('O', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(compact ? 0 : 18, 18, 12, 14),
+      child: compact
+          ? Center(child: mark)
+          : Row(children: [
+              mark,
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('OnDex', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
+                  Text('Boshqaruv markazi', style: TextStyle(color: _sideDim, fontSize: 11.5)),
+                ]),
+              ),
+            ]),
     );
   }
 }
@@ -355,64 +435,173 @@ class _NavItem extends StatelessWidget {
   const _NavItem({
     super.key,
     required this.spec,
+    required this.compact,
+    required this.accent,
     required this.selected,
     required this.onTap,
     this.badge = 0,
   });
 
-  final _NavSpec spec;
+  final _SectionSpec spec;
+  final bool compact;
+  final Color accent;
   final bool selected;
   final VoidCallback onTap;
   final int badge;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final iconWidget = Icon(selected ? spec.selectedIcon : spec.icon,
-        color:
-            selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant);
+    final icon = Badge(
+      isLabelVisible: badge > 0,
+      label: Text('$badge'),
+      child: Icon(selected ? spec.selectedIcon : spec.icon, size: 22, color: selected ? Colors.white : _sideDim),
+    );
+    final body = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: selected ? accent.withValues(alpha: 0.18) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: selected ? accent.withValues(alpha: 0.55) : Colors.transparent),
+      ),
+      child: compact
+          ? Center(child: icon)
+          : Row(children: [
+              icon,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  spec.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? Colors.white : _sideFg,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (selected)
+                Container(width: 6, height: 6, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+            ]),
+    );
     return Semantics(
       button: true,
       selected: selected,
       label: spec.label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 56,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: selected ? scheme.secondaryContainer : null,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                alignment: Alignment.center,
-                child: Badge(
-                  isLabelVisible: badge > 0,
-                  label: Text('$badge'),
-                  child: iconWidget,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                spec.label,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color:
-                          selected ? scheme.onSurface : scheme.onSurfaceVariant,
+      child: Tooltip(
+        message: compact ? spec.label : '',
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: body),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pastdagi xizmat almashtirgich: joriy xizmat kartasi; bosilganda barcha
+/// xizmatlar ro'yxati ochiladi.
+class _ServiceSwitcher extends StatelessWidget {
+  const _ServiceSwitcher({required this.compact, required this.current, required this.onSwitch});
+
+  final bool compact;
+  final int current;
+  final ValueChanged<int> onSwitch;
+
+  Future<void> _open(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox;
+    final pos = box.localToGlobal(Offset.zero);
+    final picked = await showMenu<int>(
+      context: context,
+      color: const Color(0xFF111C33),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      position: RelativeRect.fromLTRB(pos.dx + 8, pos.dy - 330, pos.dx + 300, pos.dy),
+      items: [
+        for (var i = 0; i < _services.length; i++)
+          PopupMenuItem<int>(
+            key: ValueKey('service-${_services[i].id}'),
+            value: i,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: _ServiceTile(service: _services[i], selected: i == current),
+          ),
+      ],
+    );
+    if (picked != null) onSwitch(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _services[current];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Material(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          key: const ValueKey('service-switcher'),
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _open(context),
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 10 : 12),
+            child: compact
+                ? Center(child: _ServiceIcon(service: s))
+                : Row(children: [
+                    _ServiceIcon(service: s),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(s.title,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                        const Text('Xizmatni almashtirish', style: TextStyle(color: _sideDim, fontSize: 11.5)),
+                      ]),
                     ),
-              ),
-            ],
+                    const Icon(Icons.unfold_more_rounded, color: _sideDim, size: 20),
+                  ]),
           ),
         ),
       ),
     );
   }
+}
+
+class _ServiceIcon extends StatelessWidget {
+  const _ServiceIcon({required this.service});
+  final _Service service;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: service.accent.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: Icon(service.icon, color: service.accent, size: 20),
+      );
+}
+
+class _ServiceTile extends StatelessWidget {
+  const _ServiceTile({required this.service, required this.selected});
+  final _Service service;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 260,
+        child: Row(children: [
+          _ServiceIcon(service: service),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(service.title,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(service.subtitle, style: const TextStyle(color: _sideDim, fontSize: 11.5)),
+            ]),
+          ),
+          if (selected) Icon(Icons.check_rounded, color: service.accent, size: 20),
+        ]),
+      );
 }
