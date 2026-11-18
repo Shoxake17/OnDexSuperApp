@@ -53,7 +53,11 @@ async function latestApkUrl(): Promise<string | null> {
   if (!origin) return null;
   try {
     // Manifest R2 da 60 soniya keshlanadi — bu yerda ham shuncha.
-    const res = await fetch(origin + MANIFEST_PATH, { cache: "no-store" });
+    // Cloudflare manifestni max-age=60 ga qaramay KUNLAB keshlab qoldi
+    // (2026-11-19: CDN 0.2.15 ni berdi, R2 da 0.2.17). Daqiqalik parametr
+    // CDN keshini chetlab o'tadi, lekin daqiqada bir martadan ko'p so'ramaydi.
+    const bust = Math.floor(Date.now() / 60_000);
+    const res = await fetch(`${origin}${MANIFEST_PATH}?v=${bust}`, { cache: "no-store" });
     if (!res.ok) return null;
     const data: unknown = await res.json();
     const url = data && typeof data === "object" ? (data as { url?: unknown }).url : null;
