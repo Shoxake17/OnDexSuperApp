@@ -217,9 +217,9 @@ export default function CheckoutPage() {
     return (
       <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-2 px-4 text-center">
         <p className="text-lg font-semibold">Savat bo'sh</p>
-        <a href="/" className="text-[#E53935] underline">
+        <Link href="/" className="text-[#E53935] underline">
           Bosh sahifaga qaytish
-        </a>
+        </Link>
       </main>
     );
   }

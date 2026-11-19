@@ -3,7 +3,7 @@
 import { Search, ShoppingBasket, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fullImageUrl } from "@/lib/images";
 import { goBack } from "@/lib/nav";
 import { categoryOf, computeProductDiscount } from "@/lib/promotions";

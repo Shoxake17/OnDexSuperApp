@@ -1,6 +1,7 @@
 "use client";
 
 import { MapPin, UtensilsCrossed } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use } from "react";
 import { useOrderTracking } from "@/lib/use-order-tracking";
@@ -53,9 +54,9 @@ export default function OrderTrackingPage({
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-2">
         <p className="text-lg font-semibold">Buyurtma topilmadi</p>
-        <a href="/" className="text-[#E53935] underline">
+        <Link href="/" className="text-[#E53935] underline">
           Bosh sahifaga qaytish
-        </a>
+        </Link>
       </main>
     );
   }
