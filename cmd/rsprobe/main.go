@@ -213,6 +213,42 @@ func main() {
 	st, _, _ = call(c0, "GET", "/restaurants/"+rid+"/delivery-map", nil)
 	check("mijoz restoran xaritasini ko'ra olmaydi", st == 403 || st == 404, st)
 
+	// 7. Olib ketish (Borish, Plane 473): sozlama -> chegirmali narx -> Wallet
+	//    bilan buyurtma -> kod faqat egaga -> kuryersiz -> kod bilan berish.
+	st, ps, _ := call(owner, "PATCH", "/restaurants/"+rid+"/settings", map[string]any{"pickup": map[string]any{
+		"enabled": true, "prep_minutes": 15, "discount_percent": 10, "note": "rsprobe"}})
+	check("olib ketish yoqildi (10% chegirma)", st == 200 && ps["pickup"] != nil, st)
+	pcart := []map[string]any{{"product_id": "loadtest-" + *run + "-p00", "qty": 2}}
+	st, pq, _ := call(c0, "POST", "/restaurants/"+rid+"/quote", map[string]any{"items": pcart, "pickup": true})
+	check("olib ketish narxi: yetkazish 0, chegirma bor", st == 200 && num(pq, "delivery_fee_tiyin") == 0 && num(pq, "pickup_discount_tiyin") > 0, pq)
+	st, _, _ = call(c0, "POST", "/orders", map[string]any{"items": pcart, "payment_method": "cash",
+		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-cash-" + *run})
+	check("olib ketish naqd bilan rad etiladi", st == 400, st)
+	st, po, _ := call(c0, "POST", "/orders", map[string]any{"items": pcart, "payment_method": "wallet",
+		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-" + *run})
+	pid, _ := po["id"].(string)
+	check("olib ketish buyurtmasi (Wallet)", st == 201 && po["type"] == "pickup" && num(po, "delivery_fee_tiyin") == 0, st)
+	if pid != "" {
+		st, pc, _ := call(c0, "GET", "/orders/"+pid+"/pickup-code", nil)
+		code, _ := pc["code"].(string)
+		check("olish kodi egasiga beriladi", st == 200 && len(code) == 4, st)
+		st, _, _ = call(c1, "GET", "/orders/"+pid+"/pickup-code", nil)
+		check("begona mijoz kodni ko'rmaydi", st == 404, st)
+		for _, step := range []map[string]any{{"to": "accepted", "preparation_minutes": 5}, {"to": "preparing"}, {"to": "ready"}} {
+			st, _, _ = call(owner, "POST", "/orders/"+pid+"/transition", step)
+			check("olib ketish: "+step["to"].(string), st == 200, st)
+		}
+		st, got, _ := call(owner, "GET", "/orders/"+pid, nil)
+		check("kuryer biriktirilmadi", st == 200 && (got["courier_id"] == nil || got["courier_id"] == ""), got["courier_id"])
+		wrong := "0000"
+		if code == wrong {
+			wrong = "1111"
+		}
+		st, _, _ = call(owner, "POST", "/orders/"+pid+"/transition", map[string]any{"to": "delivered", "pickup_code": wrong})
+		check("xato kod rad etiladi", st == 422, st)
+		st, dv, _ := call(owner, "POST", "/orders/"+pid+"/transition", map[string]any{"to": "delivered", "pickup_code": code})
+		check("to'g'ri kod bilan berildi", st == 200 && dv["status"] == "delivered", st)
+	}
 	if fails > 0 {
 		fmt.Printf("NATIJA: %d ta FAIL\n", fails)
 		os.Exit(1)
