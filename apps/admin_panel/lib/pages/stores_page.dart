@@ -24,13 +24,28 @@ const storeCategories = <({String value, String title, String hint})>[
   (value: 'pharmacy', title: 'Dorixona', hint: 'Dorixona paneli'),
 ];
 
+/// Sidebar va sarlavha nomi (egasi: Market / Qurt / Apteka).
+String storeSectionTitle(String? category) => switch (category) {
+      'store' => 'Market',
+      'qurt' => 'Qurt do\'konlari',
+      'pharmacy' => 'Apteka',
+      _ => 'Do\'konlar',
+    };
+
 String storeCategoryTitle(String? value) => storeCategories
     .firstWhere((c) => c.value == value,
         orElse: () => (value: '', title: '—', hint: ''))
     .title;
 
 class StoresPage extends StatefulWidget {
-  const StoresPage({super.key});
+  const StoresPage({super.key, this.category, this.embedded = false});
+
+  /// Faqat shu toifadagi do'konlar (sidebar: Market=store, Qurt=qurt,
+  /// Apteka=pharmacy). `null` — hammasi.
+  final String? category;
+
+  /// Boshqa sahifa ichida (Qurt tablari) — sarlavha kichikroq.
+  final bool embedded;
 
   @override
   State<StoresPage> createState() => _StoresPageState();
@@ -68,7 +83,7 @@ class _StoresPageState extends State<StoresPage> {
     final name = TextEditingController();
     final phone = TextEditingController(text: '+998');
     final password = TextEditingController();
-    String? category;
+    String? category = widget.category;
 
     final created = await showDialog<bool>(
       context: context,
@@ -264,6 +279,7 @@ class _StoresPageState extends State<StoresPage> {
     final q = _query.trim().toLowerCase();
     final rows = _list
         .whereType<Map>()
+        .where((r) => widget.category == null || r['category'] == widget.category)
         .where((r) =>
             q.isEmpty ||
             '${r['name']}'.toLowerCase().contains(q) ||
@@ -283,8 +299,12 @@ class _StoresPageState extends State<StoresPage> {
           children: [
             Row(
               children: [
-                Text('Do\'konlar',
-                    style: Theme.of(context).textTheme.headlineSmall),
+                Text(storeSectionTitle(widget.category),
+                    style: widget.embedded
+                        ? Theme.of(context).textTheme.titleLarge
+                        : Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(width: 10),
+                if (!_loading) Chip(label: Text('${rows.length} ta')),
                 const Spacer(),
                 SizedBox(
                   width: 260,
@@ -309,7 +329,7 @@ class _StoresPageState extends State<StoresPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : rows.isEmpty
-                      ? const Center(child: Text('Hozircha do\'kon yo\'q'))
+                      ? Center(child: Text(q.isEmpty ? 'Hozircha ${storeSectionTitle(widget.category).toLowerCase()} yo\'q' : 'Topilmadi'))
                       : ListView.separated(
                           itemCount: rows.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),

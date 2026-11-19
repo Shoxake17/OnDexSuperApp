@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ondex_admin/pages/restaurant_module.dart';
+import 'package:ondex_admin/pages/stores_page.dart';
 import 'package:ondex_admin/screens/shell.dart';
 import 'package:ondex_admin/support_inbox.dart';
 import 'package:flutter/material.dart';
@@ -85,6 +86,12 @@ Future<void> _run(WidgetTester tester, Widget home,
           return _json([
             _restaurant('rest-a', 'Book Cafe'),
             _restaurant('rest-b', 'Osh Markazi', open: false),
+          ]);
+        case '/admin/accounts' when q['role'] == 'store':
+          return _json([
+            {'entity_id': 's-1', 'name': 'Korzinka Mini', 'phone': '+998901000001', 'category': 'store'},
+            {'entity_id': 's-2', 'name': 'Chust Qurt', 'phone': '+998901000002', 'category': 'qurt'},
+            {'entity_id': 's-3', 'name': 'Shifo Apteka', 'phone': '+998901000003', 'category': 'pharmacy'},
           ]);
         case '/admin/accounts':
           return _json([
@@ -335,7 +342,7 @@ void main() {
       for (var i = 1; i < order.length; i++) {
         expect(tester.getTopLeft(nav(order[i])).dy, greaterThan(tester.getTopLeft(nav(order[i - 1])).dy));
       }
-      for (final other in ['stores', 'qurt-stats', 'ondexmap', 'customers', 'kyc', 'flow', 'settings']) {
+      for (final other in ['stores-market', 'stores-qurt', 'stores-pharmacy', 'ondexmap', 'customers', 'kyc', 'flow', 'settings']) {
         expect(nav(other), findsNothing, reason: '$other restoran xizmatida ko\'rinmasligi kerak');
       }
 
@@ -372,10 +379,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(count('/support/contacts'), 1);
 
-      // Do'kon va OnDexMap — alohida xizmatlar.
+      // Do'kon: "Do'konlar" guruhi -> Market / Qurt / Apteka (alohida Qurt xizmati YO'Q).
+      expect(find.byKey(const ValueKey('service-qurt')), findsNothing);
       await switchTo('store');
-      expect(navItems(), findsNWidgets(1));
-      expect(nav('stores'), findsOneWidget);
+      expect(find.byKey(const ValueKey('nav-group-Do\'konlar')), findsOneWidget);
+      final storeOrder = ['stores-market', 'stores-qurt', 'stores-pharmacy'];
+      for (var i = 1; i < storeOrder.length; i++) {
+        expect(tester.getTopLeft(nav(storeOrder[i])).dy, greaterThan(tester.getTopLeft(nav(storeOrder[i - 1])).dy));
+      }
+      await tester.tap(nav('stores-qurt'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('qurt-tabs')), findsOneWidget);
       await switchTo('map');
       expect(nav('ondexmap'), findsOneWidget);
 
@@ -428,5 +442,20 @@ void main() {
       await _tab(tester, 'Chat');
       expect(tester.takeException(), isNull);
     }, size: const Size(1000, 700));
+  });
+
+  testWidgets('Do\'kon toifalari: Market / Qurt / Apteka faqat o\'z do\'konlarini ko\'rsatadi', (tester) async {
+    for (final (cat, name, others) in [
+      ('store', 'Korzinka Mini', ['Chust Qurt', 'Shifo Apteka']),
+      ('pharmacy', 'Shifo Apteka', ['Korzinka Mini', 'Chust Qurt']),
+    ]) {
+      await _run(tester, StoresPage(category: cat), (requests) async {
+        expect(find.text(name), findsOneWidget);
+        for (final o in others) {
+          expect(find.text(o), findsNothing, reason: '$o $cat sahifasida ko\'rinmasligi kerak');
+        }
+        expect(find.text(storeSectionTitle(cat)), findsOneWidget);
+      });
+    }
   });
 }

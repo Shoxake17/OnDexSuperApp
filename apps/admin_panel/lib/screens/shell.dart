@@ -9,7 +9,7 @@ import '../pages/kyc_page.dart';
 import '../pages/live_ops_page.dart';
 import '../pages/ondexmap_page.dart';
 import '../pages/people_page.dart';
-import '../pages/qurt_stats_page.dart';
+import '../pages/qurt_section.dart';
 import '../pages/restaurant_module.dart';
 import '../pages/settings_page.dart';
 import '../pages/stats_page.dart';
@@ -35,8 +35,9 @@ enum _Section {
   stats,
   couriers,
   banners,
-  stores,
-  qurtStats,
+  storesMarket,
+  storesQurt,
+  storesPharmacy,
   ondexmap,
   customers,
   kyc,
@@ -46,6 +47,8 @@ enum _Section {
 
 typedef _SectionSpec = ({
   _Section id,
+  // group — sidebar'da ochiladigan guruh nomi (bo'sh = guruhsiz band).
+  String group,
   String key,
   String label,
   String screen,
@@ -70,38 +73,33 @@ const _services = <_Service>[
     icon: Icons.restaurant_rounded,
     accent: Color(0xFFF4511E),
     sections: [
-      (id: _Section.restaurants, key: 'nav-restaurants', label: 'Restoranlar', screen: 'Restaurants',
+      (id: _Section.restaurants, group: '', key: 'nav-restaurants', label: 'Restoranlar', screen: 'Restaurants',
           icon: Icons.storefront_outlined, selectedIcon: Icons.storefront),
-      (id: _Section.live, key: 'nav-live', label: 'Jonli holat', screen: 'LiveOps',
+      (id: _Section.live, group: '', key: 'nav-live', label: 'Jonli holat', screen: 'LiveOps',
           icon: Icons.monitor_heart_outlined, selectedIcon: Icons.monitor_heart),
-      (id: _Section.stats, key: 'nav-stats', label: 'Statistika', screen: 'Statistics',
+      (id: _Section.stats, group: '', key: 'nav-stats', label: 'Statistika', screen: 'Statistics',
           icon: Icons.insights_outlined, selectedIcon: Icons.insights),
-      (id: _Section.couriers, key: 'nav-couriers', label: 'OnDex kuryerlari', screen: 'Couriers',
+      (id: _Section.couriers, group: '', key: 'nav-couriers', label: 'OnDex kuryerlari', screen: 'Couriers',
           icon: Icons.delivery_dining_outlined, selectedIcon: Icons.delivery_dining),
-      (id: _Section.banners, key: 'nav-banners', label: 'Bannerlar', screen: 'Banners',
+      (id: _Section.banners, group: '', key: 'nav-banners', label: 'Bannerlar', screen: 'Banners',
           icon: Icons.campaign_outlined, selectedIcon: Icons.campaign),
     ],
   ),
   (
     id: 'store',
     title: 'Do\'kon',
-    subtitle: 'Do\'konlar va ularning akkauntlari',
+    subtitle: 'Market, Qurt, Apteka',
     icon: Icons.shopping_bag_rounded,
     accent: Color(0xFF2563EB),
     sections: [
-      (id: _Section.stores, key: 'nav-stores', label: 'Do\'konlar', screen: 'Stores',
-          icon: Icons.store_mall_directory_outlined, selectedIcon: Icons.store_mall_directory),
-    ],
-  ),
-  (
-    id: 'qurt',
-    title: 'Qurt',
-    subtitle: 'Qurt buyurtmalari va logistika',
-    icon: Icons.local_shipping_rounded,
-    accent: Color(0xFF059669),
-    sections: [
-      (id: _Section.qurtStats, key: 'nav-qurt-stats', label: 'Qurt statistikasi', screen: 'QurtStats',
+      // Egasi 2026-11-19: Qurt alohida xizmat EMAS — do'kon turi. "Do'konlar"
+      // guruhi ochilganda Market / Qurt / Apteka bandlari chiqadi.
+      (id: _Section.storesMarket, group: 'Do\'konlar', key: 'nav-stores-market', label: 'Market', screen: 'StoresMarket',
+          icon: Icons.local_grocery_store_outlined, selectedIcon: Icons.local_grocery_store),
+      (id: _Section.storesQurt, group: 'Do\'konlar', key: 'nav-stores-qurt', label: 'Qurt', screen: 'StoresQurt',
           icon: Icons.local_shipping_outlined, selectedIcon: Icons.local_shipping),
+      (id: _Section.storesPharmacy, group: 'Do\'konlar', key: 'nav-stores-pharmacy', label: 'Apteka', screen: 'StoresPharmacy',
+          icon: Icons.local_pharmacy_outlined, selectedIcon: Icons.local_pharmacy),
     ],
   ),
   (
@@ -111,7 +109,7 @@ const _services = <_Service>[
     icon: Icons.map_rounded,
     accent: Color(0xFF0891B2),
     sections: [
-      (id: _Section.ondexmap, key: 'nav-ondexmap', label: 'Xarita muharriri', screen: 'OnDexMap',
+      (id: _Section.ondexmap, group: '', key: 'nav-ondexmap', label: 'Xarita muharriri', screen: 'OnDexMap',
           icon: Icons.map_outlined, selectedIcon: Icons.map),
     ],
   ),
@@ -122,13 +120,13 @@ const _services = <_Service>[
     icon: Icons.hub_rounded,
     accent: Color(0xFF7C3AED),
     sections: [
-      (id: _Section.customers, key: 'nav-customers', label: 'Mijozlar', screen: 'Customers',
+      (id: _Section.customers, group: '', key: 'nav-customers', label: 'Mijozlar', screen: 'Customers',
           icon: Icons.people_outline, selectedIcon: Icons.people),
-      (id: _Section.kyc, key: 'nav-kyc', label: 'Tashkilotlar (KYC)', screen: 'Kyc',
+      (id: _Section.kyc, group: '', key: 'nav-kyc', label: 'Tashkilotlar (KYC)', screen: 'Kyc',
           icon: Icons.verified_user_outlined, selectedIcon: Icons.verified_user),
-      (id: _Section.flow, key: 'nav-flow', label: 'OnDexFlow', screen: 'Flow',
+      (id: _Section.flow, group: '', key: 'nav-flow', label: 'OnDexFlow', screen: 'Flow',
           icon: Icons.system_update_outlined, selectedIcon: Icons.system_update),
-      (id: _Section.settings, key: 'nav-settings', label: 'Sozlamalar', screen: 'Settings',
+      (id: _Section.settings, group: '', key: 'nav-settings', label: 'Sozlamalar', screen: 'Settings',
           icon: Icons.settings_outlined, selectedIcon: Icons.settings),
     ],
   ),
@@ -208,8 +206,9 @@ class _AdminShellState extends State<AdminShell> {
         // Restoranga bog'lanmagan (platformaning o'z) kuryerlari.
         _Section.couriers => const CouriersPage(onlyPlatform: true),
         _Section.banners => const BannersPage(),
-        _Section.stores => const StoresPage(),
-        _Section.qurtStats => const QurtStatsPage(),
+        _Section.storesMarket => const StoresPage(category: 'store'),
+        _Section.storesQurt => const QurtSection(),
+        _Section.storesPharmacy => const StoresPage(category: 'pharmacy'),
         // OnDexMap — ALOHIDA loyihaning muharriri. ChustApp bazasiga tegmaydi.
         _Section.ondexmap => const OndexMapPage(),
         _Section.customers => const CustomersPage(),
@@ -331,21 +330,13 @@ class _SideBar extends StatelessWidget {
                     child: child,
                   ),
                 ),
-                child: ListView(
+                child: _SectionList(
                   key: ValueKey('sections-${service.id}'),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  children: [
-                    for (final s in service.sections)
-                      _NavItem(
-                        key: ValueKey(s.key),
-                        spec: s,
-                        compact: compact,
-                        accent: service.accent,
-                        selected: selected == s.id,
-                        badge: s.id == _Section.restaurants ? unread : 0,
-                        onTap: () => onSelect(s.id),
-                      ),
-                  ],
+                  service: service,
+                  compact: compact,
+                  selected: selected,
+                  unread: unread,
+                  onSelect: onSelect,
                 ),
               ),
             ),
@@ -603,5 +594,108 @@ class _ServiceTile extends StatelessWidget {
           ),
           if (selected) Icon(Icons.check_rounded, color: service.accent, size: 20),
         ]),
+      );
+}
+
+/// Xizmat bo'limlari ro'yxati; `group` bo'yicha ochiladigan guruhlar
+/// ("Do'konlar" -> Market / Qurt / Apteka). Tanlangan band ichidagi guruh
+/// doim ochiq turadi.
+class _SectionList extends StatefulWidget {
+  const _SectionList({
+    super.key,
+    required this.service,
+    required this.compact,
+    required this.selected,
+    required this.unread,
+    required this.onSelect,
+  });
+
+  final _Service service;
+  final bool compact;
+  final _Section selected;
+  final int unread;
+  final ValueChanged<_Section> onSelect;
+
+  @override
+  State<_SectionList> createState() => _SectionListState();
+}
+
+class _SectionListState extends State<_SectionList> {
+  final Set<String> _collapsed = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    String? group;
+    for (final s in widget.service.sections) {
+      final inGroup = s.group.isNotEmpty;
+      if (inGroup && s.group != group && !widget.compact) {
+        final g = s.group;
+        final hasSelected = widget.service.sections.any((x) => x.group == g && x.id == widget.selected);
+        final open = hasSelected || !_collapsed.contains(g);
+        children.add(_NavGroup(
+          key: ValueKey('nav-group-$g'),
+          label: g,
+          open: open,
+          accent: widget.service.accent,
+          onTap: hasSelected
+              ? null
+              : () => setState(() => _collapsed.contains(g) ? _collapsed.remove(g) : _collapsed.add(g)),
+        ));
+      }
+      group = inGroup ? s.group : null;
+      final hidden = inGroup &&
+          !widget.compact &&
+          _collapsed.contains(s.group) &&
+          !widget.service.sections.any((x) => x.group == s.group && x.id == widget.selected);
+      if (hidden) continue;
+      children.add(Padding(
+        padding: EdgeInsets.only(left: inGroup && !widget.compact ? 14 : 0),
+        child: _NavItem(
+          key: ValueKey(s.key),
+          spec: s,
+          compact: widget.compact,
+          accent: widget.service.accent,
+          selected: widget.selected == s.id,
+          badge: s.id == _Section.restaurants ? widget.unread : 0,
+          onTap: () => widget.onSelect(s.id),
+        ),
+      ));
+    }
+    return ListView(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), children: children);
+  }
+}
+
+class _NavGroup extends StatelessWidget {
+  const _NavGroup({super.key, required this.label, required this.open, required this.accent, this.onTap});
+
+  final String label;
+  final bool open;
+  final Color accent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(children: [
+              Icon(Icons.storefront_rounded, size: 22, color: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+              ),
+              AnimatedRotation(
+                turns: open ? 0.5 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: const Icon(Icons.expand_more_rounded, color: _sideDim, size: 20),
+              ),
+            ]),
+          ),
+        ),
       );
 }
