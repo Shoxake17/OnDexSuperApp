@@ -213,19 +213,29 @@ func main() {
 	st, _, _ = call(c0, "GET", "/restaurants/"+rid+"/delivery-map", nil)
 	check("mijoz restoran xaritasini ko'ra olmaydi", st == 403 || st == 404, st)
 
+	probePickup(owner, c0, c1, rid, *run)
+	if fails > 0 {
+		fmt.Printf("NATIJA: %d ta FAIL\n", fails)
+		os.Exit(1)
+	}
+	fmt.Println("NATIJA: hammasi PASS")
+}
+
+// probePickup — olib ketish (Borish, Plane 473) oqimi; main'dan ajratilgan (gocognit).
+func probePickup(owner, c0, c1, rid, run string) {
 	// 7. Olib ketish (Borish, Plane 473): sozlama -> chegirmali narx -> Wallet
 	//    bilan buyurtma -> kod faqat egaga -> kuryersiz -> kod bilan berish.
 	st, ps, _ := call(owner, "PATCH", "/restaurants/"+rid+"/settings", map[string]any{"pickup": map[string]any{
 		"enabled": true, "prep_minutes": 15, "discount_percent": 10, "note": "rsprobe"}})
 	check("olib ketish yoqildi (10% chegirma)", st == 200 && ps["pickup"] != nil, st)
-	pcart := []map[string]any{{"product_id": "loadtest-" + *run + "-p00", "qty": 2}}
+	pcart := []map[string]any{{"product_id": "loadtest-" + run + "-p00", "qty": 2}}
 	st, pq, _ := call(c0, "POST", "/restaurants/"+rid+"/quote", map[string]any{"items": pcart, "pickup": true})
 	check("olib ketish narxi: yetkazish 0, chegirma bor", st == 200 && num(pq, "delivery_fee_tiyin") == 0 && num(pq, "pickup_discount_tiyin") > 0, pq)
 	st, _, _ = call(c0, "POST", "/orders", map[string]any{"items": pcart, "payment_method": "cash",
-		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-cash-" + *run})
+		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-cash-" + run})
 	check("olib ketish naqd bilan rad etiladi", st == 400, st)
 	st, po, _ := call(c0, "POST", "/orders", map[string]any{"items": pcart, "payment_method": "wallet",
-		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-" + *run})
+		"fulfillment": "pickup", "idempotency_key": "rsprobe-pk-" + run})
 	pid, _ := po["id"].(string)
 	check("olib ketish buyurtmasi (Wallet)", st == 201 && po["type"] == "pickup" && num(po, "delivery_fee_tiyin") == 0, st)
 	if pid != "" {
@@ -249,9 +259,4 @@ func main() {
 		st, dv, _ := call(owner, "POST", "/orders/"+pid+"/transition", map[string]any{"to": "delivered", "pickup_code": code})
 		check("to'g'ri kod bilan berildi", st == 200 && dv["status"] == "delivered", st)
 	}
-	if fails > 0 {
-		fmt.Printf("NATIJA: %d ta FAIL\n", fails)
-		os.Exit(1)
-	}
-	fmt.Println("NATIJA: hammasi PASS")
 }
