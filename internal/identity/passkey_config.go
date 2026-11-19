@@ -60,6 +60,11 @@ func ResolvePasskeyConfig(cfg PasskeyConfig, issuer string) (PasskeyConfig, erro
 		raw = append(raw, a.Origin())
 	}
 	out.AndroidApps, out.AppleAppIDs = cfg.AndroidApps, cfg.AppleAppIDs
+	for _, o := range cfg.WebPanelOrigins {
+		if u, err := url.Parse(strings.TrimSpace(o)); err == nil && u.Scheme == "https" && hostWithin(strings.ToLower(u.Hostname()), out.RPID) {
+			raw = append(raw, o)
+		}
+	}
 	seen := map[string]bool{}
 	for _, o := range raw {
 		o = strings.TrimSpace(o)

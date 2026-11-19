@@ -171,6 +171,19 @@ func (r *MemoryOrderRepo) ListAwaitingCourier(_ context.Context, limit int) ([]*
 	return r.listFiltered(limit, (*orders.Order).AwaitsCourier)
 }
 
+// ListAbandonedUnpaid — Postgres implementatsiyasi bilan bir xil predikat.
+func (r *MemoryOrderRepo) ListAbandonedUnpaid(_ context.Context, before time.Time, limit int) ([]string, error) {
+	list, err := r.listFiltered(limit, func(o *orders.Order) bool {
+		return o.Status == orders.StatusCreated && o.PaymentMethod == orders.PaymentCard &&
+			o.PaymentState == orders.PaymentAwaiting && o.CreatedAt.Before(before)
+	})
+	ids := make([]string, 0, len(list))
+	for _, o := range list {
+		ids = append(ids, o.ID)
+	}
+	return ids, err
+}
+
 // ListReadyPickups — tayyor, hali olinmagan olib ketish buyurtmalari.
 func (r *MemoryOrderRepo) ListReadyPickups(_ context.Context, limit int) ([]*orders.Order, error) {
 	return r.listFiltered(limit, func(o *orders.Order) bool {

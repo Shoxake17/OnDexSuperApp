@@ -63,6 +63,12 @@ type PasskeyConfig struct {
 	// o'zi assetlinks.json'ga. AppleAppIDs — apple-app-site-association.
 	AndroidApps []AndroidApp
 	AppleAppIDs []string
+	// WebPanelOrigins — web panellar (merchant /r/, admin.ondex.uz) passkey'ni
+	// O'Z origin'idan chaqiradi. Origins (WEBAUTHN_ORIGINS) qanday bo'lishidan
+	// qat'i nazar qo'shiladi; RP ID ichida bo'lmagani (dev: localhost) jimgina
+	// tashlab ketiladi. Prod 2026-11-19: admin.ondex.uz ro'yxatda yo'q edi —
+	// "Error validating origin".
+	WebPanelOrigins []string
 }
 
 // passkeyUser — webauthn.User adapteri.

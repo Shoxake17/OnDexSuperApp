@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"chustapp/internal/orders"
 )
@@ -42,4 +43,29 @@ func (r *PgOrderRepo) ListReadyPickups(ctx context.Context, limit int) ([]*order
 	}
 	defer rows.Close()
 	return scanOrderRows(rows)
+}
+
+// ListAbandonedUnpaid — `before` dan oldin yaratilgan, to'lovi hali
+// kutilayotgan KARTA buyurtmalari ID'lari (audit 480: to'lov sahifasi
+// ochilmay tashlab ketilganlar abadiy `created` bo'lib qolardi).
+// Yakuniy qaror `payments.Service.CloseAbandoned` da (urinishlar tekshiriladi).
+func (r *PgOrderRepo) ListAbandonedUnpaid(ctx context.Context, before time.Time, limit int) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id FROM orders
+		 WHERE status = 'created' AND payment_method = 'card' AND payment_state = 'awaiting'
+		   AND created_at < $1
+		 ORDER BY created_at LIMIT $2`, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

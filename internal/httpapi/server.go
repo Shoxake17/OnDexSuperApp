@@ -1,20 +1,20 @@
-// Package httpapi â€” API'ning HTTP qatlami.
+// Package httpapi — API'ning HTTP qatlami.
 //
 // TUZILISH (Express.js bilan taqqoslash uchun):
 //
-//	server.go        ~ app.js        â€” bog'lash (wiring) va router ro'yxati
-//	middleware.go    ~ middleware/   â€” auth, CORS, tana chegarasi, rate limit
-//	respond.go       ~ res helpers   â€” javob yozishning yagona joyi
-//	authz.go         ~ policies      â€” "kim nimani ko'ra oladi" qoidalari
-//	routes_*.go      ~ routes/       â€” endpointlar mavzu bo'yicha
+//	server.go        ~ app.js        — bog'lash (wiring) va router ro'yxati
+//	middleware.go    ~ middleware/   — auth, CORS, tana chegarasi, rate limit
+//	respond.go       ~ res helpers   — javob yozishning yagona joyi
+//	authz.go         ~ policies      — "kim nimani ko'ra oladi" qoidalari
+//	routes_*.go      ~ routes/       — endpointlar mavzu bo'yicha
 //	internal/{orders,catalog,users,...}  ~ services/models
 //
-// NEGA AJRATILDI: avval hammasi `cmd/api/main.go` da edi â€” 3200 qator,
+// NEGA AJRATILDI: avval hammasi `cmd/api/main.go` da edi — 3200 qator,
 // 49 ta route, bitta funksiya (`main`) ichida. Bunday faylda (a) biror
 // endpointni topish qiyin, (b) yangi modul qo'shilganda u yanada
 // o'sadi, (c) handler'lar `main` ning lokal o'zgaruvchilarini
 // yopilma (closure) orqali ushlagani uchun ularni alohida testlash
-// IMKONSIZ edi. Endi bog'liqliklar `Server` maydonlari â€” har bir
+// IMKONSIZ edi. Endi bog'liqliklar `Server` maydonlari — har bir
 // handler'ni soxta (fake) repo bilan chaqirib testlash mumkin.
 package httpapi
 
@@ -71,7 +71,7 @@ import (
 	"chustapp/internal/cache"
 )
 
-// Deps â€” `main()` yig'adigan bog'liqliklar. Alohida struct sifatida:
+// Deps — `main()` yig'adigan bog'liqliklar. Alohida struct sifatida:
 // yangi bog'liqlik qo'shilganda `New` imzosi o'zgarmaydi va chaqiruv
 // joyida qaysi qiymat qayerga borayotgani nom bilan ko'rinadi.
 type Deps struct {
@@ -79,7 +79,7 @@ type Deps struct {
 	CourierRepo couriers.Repository
 	UserRepo    users.Repository
 	CatalogRepo catalog.Repository
-	// BookRepo â€” kafe kutubxonasi. IXTIYORIY: faqat Mongo rejimida
+	// BookRepo — kafe kutubxonasi. IXTIYORIY: faqat Mongo rejimida
 	// ulanadi. `nil` bo'lsa kitob endpointlari xizmat yo'qligini
 	// aytadi, qolgan API esa ishlayveradi.
 	BookRepo       catalog.BookRepository
@@ -128,12 +128,12 @@ type Deps struct {
 	WsTickets  *ws.TicketStore
 	ImageStore images.Store
 
-	// Scenes â€” 3D maket fayllari uchun muddatli havola beruvchi
+	// Scenes — 3D maket fayllari uchun muddatli havola beruvchi
 	// (`internal/scenes`). `nil` bo'lsa maket manzili saqlanganidek
 	// qaytadi, lekin FAQAT kirgan foydalanuvchiga
 	// (`scene_access.go` izohiga qarang).
 	Scenes *scenes.Signer
-	// MediaPublicBaseURL â€” `R2_PUBLIC_URL`. Saqlangan to'liq manzildan
+	// MediaPublicBaseURL — `R2_PUBLIC_URL`. Saqlangan to'liq manzildan
 	// obyekt kalitini ajratish uchun kerak (`scenes.ObjectKey`).
 	MediaPublicBaseURL string
 	// ScenesUnavailable — `R2_SCENES_BUCKET` BERILGAN, lekin unga
@@ -151,9 +151,9 @@ type Deps struct {
 	CatalogSvc *catalog.Service
 	Dispatcher *couriers.Dispatcher
 
-	// TableSvc â€” stol QR kodlari (dine_in buyurtmalar). `nil` bo'lsa
+	// TableSvc — stol QR kodlari (dine_in buyurtmalar). `nil` bo'lsa
 	// stol buyurtmalari 503 qaytaradi, qolgan hamma narsa ishlayveradi
-	// â€” bu funksiyani bosqichma-bosqich yoqish uchun.
+	// — bu funksiyani bosqichma-bosqich yoqish uchun.
 	TableSvc *tables.Service
 
 	// ReservationSvc — stol broni va zaklad (RS-3, `internal/modules/reservation`).
@@ -180,11 +180,11 @@ type Deps struct {
 	// (`internal/support`). `nil` bo'lsa tegishli endpointlar 503 qaytaradi.
 	SupportSvc *support.Service
 
-	// Payments â€” karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
+	// Payments — karta orqali to'lov. `nil` bo'lsa to'lov endpointlari
 	// 503 qaytaradi va buyurtmalar faqat NAQD bo'ladi (tizimning
 	// qolgan qismi normal ishlaydi).
 	Payments *payments.Service
-	// OctoClient â€” callback imzosini tekshirish uchun. `Payments`
+	// OctoClient — callback imzosini tekshirish uchun. `Payments`
 	// bilan birga to'ldiriladi.
 	OctoClient *octo.Client
 
@@ -201,7 +201,7 @@ type Deps struct {
 	// to'lov yaratilmaydi; qolgan hamma narsa ishlayveradi.
 	MC *mcconnect.Registry
 
-	// WalletSvc â€” OnDex Wallet (`internal/wallet`). `nil` bo'lsa
+	// WalletSvc — OnDex Wallet (`internal/wallet`). `nil` bo'lsa
 	// `GET /wallet` 503 qaytaradi, checkout'da "wallet" to'lov usuli
 	// `orders.Service`da xuddi shunday yopiq bo'ladi.
 	WalletSvc *wallet.Service
@@ -243,7 +243,7 @@ type Deps struct {
 	// QurtOrderSvc — qurt buyurtmalari va reys logistikasi (internal/qurtorders).
 	QurtOrderSvc *qurtorders.Service
 
-	// DevMode â€” dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
+	// DevMode — dev rejim (faqat aniq `APP_ENV=development`). Ba'zi
 	// javoblar (masalan OTP kodi) faqat shu rejimda qaytariladi.
 	DevMode bool
 
@@ -263,63 +263,63 @@ type Deps struct {
 	// bosqichi qo'shilgan kuni).
 	PlatformCouriers bool
 
-	// EmailConfigured â€” HAQIQIY SMTP ulanganmi.
+	// EmailConfigured — HAQIQIY SMTP ulanganmi.
 	//
-	// NEGA KERAK: `dev_code` javobda qaytarilishining YAGONA sababi â€”
+	// NEGA KERAK: `dev_code` javobda qaytarilishining YAGONA sababi —
 	// haqiqiy yetkazish kanali yo'qligi (SMS uchun Eskiz.uz hali
 	// ulanmagan, shuning uchun kodni boshqa yo'l bilan olib
-	// bo'lmaydi). SMTP ulangÐ°Ñ‡ email kodi HAQIQATAN pochtaga boradi,
+	// bo'lmaydi). SMTP ulangач email kodi HAQIQATAN pochtaga boradi,
 	// ya'ni uni javobda ham qaytarish endi:
-	//   * keraksiz â€” ilova uni avtomatik to'ldirib, foydalanuvchi
+	//   * keraksiz — ilova uni avtomatik to'ldirib, foydalanuvchi
 	//     xatni umuman ochmaydi va yetkazish muammolari YASHIRINADI;
-	//   * xavfli â€” `APP_ENV` ni production'ga o'tkazish unutilsa,
+	//   * xavfli — `APP_ENV` ni production'ga o'tkazish unutilsa,
 	//     kod API javobida ochiq ketaveradi.
 	// Shu sabab email kodi SMTP ulangan zahoti javobdan chiqariladi.
 	EmailConfigured bool
 
-	// EmailLoginEnabled â€” email orqali kirish/ro'yxatdan o'tish
+	// EmailLoginEnabled — email orqali kirish/ro'yxatdan o'tish
 	// endpointlari ochiqmi (`emailLoginReady` izohiga qarang).
-	// `.env` dagi `EMAIL_LOGIN_ENABLED`, standart â€” O'CHIQ.
+	// `.env` dagi `EMAIL_LOGIN_ENABLED`, standart — O'CHIQ.
 	EmailLoginEnabled bool
 
-	// Firebase â€” Phone Auth ID tokenlarini tekshiruvchi. `nil` yoki
+	// Firebase — Phone Auth ID tokenlarini tekshiruvchi. `nil` yoki
 	// loyiha ID'si bo'sh bo'lsa `/auth/firebase` 503 qaytaradi.
 	Firebase *firebaseauth.Verifier
 
-	// Telegram â€” bot orqali kod yetkazish (birinchi pog'ona).
+	// Telegram — bot orqali kod yetkazish (birinchi pog'ona).
 	// Sozlanmagan bo'lsa `/auth/telegram/start` 503 qaytaradi va
 	// ilova keyingi pog'onaga (Firebase) o'tadi.
 	Telegram *telegram.Verifier
 
-	// TelegramBotToken â€” Mini App `initData` imzosini tekshirish uchun
+	// TelegramBotToken — Mini App `initData` imzosini tekshirish uchun
 	// (`POST /auth/telegram/miniapp`).
 	//
 	// NEGA ALOHIDA: `Verifier` tokenni ichida saqlaydi, lekin uni
-	// TASHQARIGA BERMAYDI â€” bu ataylab shunday (sir bitta joyda
+	// TASHQARIGA BERMAYDI — bu ataylab shunday (sir bitta joyda
 	// qolsin). `initData` tekshiruvi esa xuddi shu tokenni talab
 	// qiladi, shuning uchun u bu yerga ALOHIDA beriladi.
 	//
 	// Bo'sh bo'lsa Mini App kirishi ishlamaydi va `ValidateInitData`
-	// aniq xato qaytaradi â€” jimgina "hammasi joyida" demaydi.
+	// aniq xato qaytaradi — jimgina "hammasi joyida" demaydi.
 	TelegramBotToken string
 
-	// Devices â€” foydalanuvchi qaysi mijoz dasturidan (TMA, mobil
-	// ilova, brauzer) kirgani qaydi â€” superadmin panelidagi "Qurilma"
+	// Devices — foydalanuvchi qaysi mijoz dasturidan (TMA, mobil
+	// ilova, brauzer) kirgani qaydi — superadmin panelidagi "Qurilma"
 	// ustuni uchun. `nil` bo'lsa qayd YURITILMAYDI va qolgan hamma
 	// narsa o'zgarishsiz ishlaydi (`devices.go`).
 	Devices users.DeviceStore
 
-	// Model3D â€” taom rasmidan 3D model generatsiyasi. `nil` bo'lsa
+	// Model3D — taom rasmidan 3D model generatsiyasi. `nil` bo'lsa
 	// tegishli endpointlar 503 qaytaradi va qolgan hamma narsa
 	// o'zgarishsiz ishlaydi (`TRIPO_API_KEY` sozlanmagan holat).
 	Model3D *model3d.Service
-	// Model3DLimiter â€” restoran bo'yicha tezlik chegarasi. Har chaqiruv
+	// Model3DLimiter — restoran bo'yicha tezlik chegarasi. Har chaqiruv
 	// tashqi xizmatda PUL sarflaydi, shuning uchun chegara SHART.
 	Model3DLimiter *ratelimit.Limiter
 
-	// UploadLimiter â€” media yuklash uchun xodim bo'yicha chegara.
+	// UploadLimiter — media yuklash uchun xodim bo'yicha chegara.
 	//
-	// â”Œâ”€ NEGA YUKLASHGA HAM CHEGARA KERAK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ NEGA YUKLASHGA HAM CHEGARA KERAK ─────────────────────────────┐
 	// Yuklash autentifikatsiya talab qiladi, shuning uchun uzoq vaqt
 	// chegarasiz qoldirilgandi. Lekin kitob PDF i qo'shilgach hisob
 	// o'zgardi: bitta so'rov 25 MB qabul qiladi, uni R2 ga yozadi
@@ -329,15 +329,15 @@ type Deps struct {
 	//
 	// Rasm yuklash ham shu chegaraga tushadi: u yengilroq, lekin
 	// alohida hisoblagich saqlashga arzimaydi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └────────────────────────────────────────────────────────────────┘
 	UploadLimiter *ratelimit.Limiter
 
-	// Notifications â€” saqlangan bildirishnomalar ombori
+	// Notifications — saqlangan bildirishnomalar ombori
 	// (`GET /notifications`). `nil` bo'lsa endpointlar 503 qaytaradi.
 	Notifications notify.Store
-	// PushTokens â€” qurilma push tokenlari (`POST /me/push-token`).
+	// PushTokens — qurilma push tokenlari (`POST /me/push-token`).
 	PushTokens notify.TokenStore
-	// Notifier â€” bildirishnomani BIR chaqiruvda saqlaydi, WebSocket
+	// Notifier — bildirishnomani BIR chaqiruvda saqlaydi, WebSocket
 	// bilan yuboradi va ilova yopiq bo'lsa push qiladi.
 	//
 	// `Notifications`/`PushTokens` dan farqi: ular xom omborlar
@@ -346,27 +346,27 @@ type Deps struct {
 	// hamma narsa ishlayveradi.
 	Notifier *notify.Service
 
-	// AgentSvc â€” tashqi AI agentlar integratsiyasi
+	// AgentSvc — tashqi AI agentlar integratsiyasi
 	// (`internal/agentapi`). `nil` bo'lsa `/agent/v1/*` va
 	// `/me/agent/*` 503 qaytaradi va qolgan API o'zgarishsiz
-	// ishlaydi â€” bazasiz (xotira) dev rejimida aynan shunday
+	// ishlaydi — bazasiz (xotira) dev rejimida aynan shunday
 	// bo'ladi.
 	AgentSvc *agentapi.Service
 
-	// Assistant â€” ILOVA ICHIDAGI AI yordamchi (`internal/assistant`).
+	// Assistant — ILOVA ICHIDAGI AI yordamchi (`internal/assistant`).
 	//
 	// `AgentSvc` bilan chalkashtirmang: u tashqi serverga eshik
 	// ochadi, bu esa OnDex ilovasining o'z chat/ovoz oynasini
-	// ta'minlaydi va buyurtma YARATA OLMAYDI â€” faqat savat taklifi.
+	// ta'minlaydi va buyurtma YARATA OLMAYDI — faqat savat taklifi.
 	//
 	// `SHADDIY_AI_URL` yoki `SHADDIY_API_KEY` bo'lmasa `nil` va
 	// `/ai/*` 503 qaytaradi.
 	Assistant *assistant.Service
 
-	// AssistantLive â€” OVOZLI rejim sozlamasi (Gemini Live).
+	// AssistantLive — OVOZLI rejim sozlamasi (Gemini Live).
 	//
 	// Matnli chatdan MUSTAQIL: `Assistant` bor bo'lib, bu `nil`
-	// bo'lishi mumkin (kalit qo'yilmagan) â€” bunda ilova chat oynasini
+	// bo'lishi mumkin (kalit qo'yilmagan) — bunda ilova chat oynasini
 	// ko'rsatadi, mikrofon tugmasini esa yo'q. Teskarisi bo'lmaydi:
 	// ovoz `Assistant` ning tool'lariga tayanadi.
 	//
@@ -375,12 +375,12 @@ type Deps struct {
 	AssistantLive *assistant.LiveConfig
 }
 
-// Server â€” HTTP qatlamining holati. Barcha handler'lar shu turning
+// Server — HTTP qatlamining holati. Barcha handler'lar shu turning
 // metodlari, ya'ni bog'liqliklar oshkora va almashtiriladigan.
 type Server struct {
 	Deps
 
-	// speedGate â€” kuryer koordinatasining "teleport" qilishini
+	// speedGate — kuryer koordinatasining "teleport" qilishini
 	// aniqlaydi (GPS soxtalashtirishga qarshi).
 	speedGate *delivery.SpeedGate
 
@@ -465,9 +465,9 @@ func New(d Deps) *Server {
 
 	// 3D model holati o'zgarganda ikki ish qilinadi. Ikkalasi ham
 	// SHART:
-	//   * menyu keshi tozalanadi â€” aks holda mijoz ilovasi 30 soniya
+	//   * menyu keshi tozalanadi — aks holda mijoz ilovasi 30 soniya
 	//     davomida eski (modelsiz) menyuni olib turardi;
-	//   * restoran kanaliga xabar â€” panel tugmani "tayyorlanmoqda"
+	//   * restoran kanaliga xabar — panel tugmani "tayyorlanmoqda"
 	//     dan "tayyor" ga o'zi almashtiradi, sahifani yangilash
 	//     kerak bo'lmaydi.
 	if s.Model3D != nil {
@@ -488,10 +488,10 @@ func New(d Deps) *Server {
 	return s
 }
 
-// Routes â€” barcha endpointlarni ro'yxatga oladi va tayyor handler
+// Routes — barcha endpointlarni ro'yxatga oladi va tayyor handler
 // qaytaradi (Express'dagi `app.use(router)` zanjiriga mos).
 //
-// Har bir `register*` metodi alohida faylda â€” yangi modul qo'shilganda
+// Har bir `register*` metodi alohida faylda — yangi modul qo'shilganda
 // shu ro'yxatga BITTA qator qo'shiladi, mavjud fayllar tegilmaydi.
 func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	mux := http.NewServeMux()
@@ -545,7 +545,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerUploadRoutes(mux)
 	s.registerModel3DRoutes(mux)
 	// Tashqi AI agentlar: sherik yuzasi (`/agent/v1/*`) va
-	// foydalanuvchi nazorati (`/me/agent/*`) â€” ATAYLAB ikki alohida
+	// foydalanuvchi nazorati (`/me/agent/*`) — ATAYLAB ikki alohida
 	// ro'yxat, chunki ular butunlay boshqa autentifikatsiyaga
 	// tayanadi (sherik kaliti + grant / oddiy foydalanuvchi JWT).
 	s.registerAgentRoutes(mux)

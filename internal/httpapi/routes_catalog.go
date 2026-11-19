@@ -25,11 +25,11 @@ func annotatePaymentOptions(list []*catalog.Restaurant) {
 }
 
 func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
-	// GET /restaurants â€” ochiq: mijoz ilovasining bosh sahifasi. Eng ko'p
-	// so'raladigan endpoint (har mijoz ilova ochganda) â€” shuning uchun
+	// GET /restaurants — ochiq: mijoz ilovasining bosh sahifasi. Eng ko'p
+	// so'raladigan endpoint (har mijoz ilova ochganda) — shuning uchun
 	// Redis'da qisqa muddatga (30s) keshlanadi. Restoran ma'lumoti
 	// o'zgarganda (yaratish/tahrirlash/ochiq-yopiq) kesh darhol tozalanadi
-	// (restaurantsCacheKey konstantasiga qarang), shuning uchun 30s â€”
+	// (restaurantsCacheKey konstantasiga qarang), shuning uchun 30s —
 	// "eng yomon holatda shuncha eskirishi mumkin" chegarasi, oddiy TTL
 	// emas.
 	//
@@ -52,7 +52,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, s.sceneViewMany(r, s.visibleRestaurants(r, list)))
 	})))
 
-	// GET /restaurants/{id} â€” bitta restoran ma'lumoti (ochiq)
+	// GET /restaurants/{id} — bitta restoran ma'lumoti (ochiq)
 	mux.HandleFunc("GET /restaurants/{id}", publicCache(5, 30, func(w http.ResponseWriter, r *http.Request) {
 		rest, err := s.CatalogRepo.GetRestaurant(r.Context(), r.PathValue("id"))
 		if err != nil {
@@ -62,7 +62,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, s.sceneViewOne(r, rest))
 	}))
 
-	// GET /restaurants/{id}/orders â€” restoranning o'z buyurtmalari (yoki admin)
+	// GET /restaurants/{id}/orders — restoranning o'z buyurtmalari (yoki admin)
 	mux.HandleFunc("GET /restaurants/{id}/orders", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -77,19 +77,19 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				return
 			}
 			// Har bir buyurtmaga mijoz telefon raqami VA (biriktirilgan
-			// bo'lsa) kuryer ismi qo'shiladi â€” FAQAT shu yerda (restoran
+			// bo'lsa) kuryer ismi qo'shiladi — FAQAT shu yerda (restoran
 			// o'z buyurtmalarini ko'rayotganda, egalik tekshiruvi yuqorida
 			// allaqachon bajarilgan), xuddi kuryerga picked_up'dan keyin
 			// ko'rsatilgan customer_phone bilan bir xil xavfsizlik
 			// darajasida (GET /orders/{id}dagi customerPhoneFor'ga
-			// qarang) â€” ochiq/umumiy endpointda bu maydonlar HECH QACHON
-			// ko'rinmaydi. Kuryer ismi â€” restoran panelida "Faol
+			// qarang) — ochiq/umumiy endpointda bu maydonlar HECH QACHON
+			// ko'rinmaydi. Kuryer ismi — restoran panelida "Faol
 			// buyurtmalar" ro'yxatida qaysi kuryer ekanini ko'rsatish
 			// uchun (avval faqat xom ID ko'rinardi).
 			writeJSON(w, http.StatusOK, s.restaurantOrderViews(r.Context(), list))
 		}))
 
-	// POST /restaurants/{id}/open â€” restoran o'zini ochiq/yopiq qiladi (yoki admin)
+	// POST /restaurants/{id}/open — restoran o'zini ochiq/yopiq qiladi (yoki admin)
 	mux.HandleFunc("POST /restaurants/{id}/open", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -119,15 +119,15 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, rest)
 		}))
 
-	// GET /categories â€” ochiq. Barcha restoranlar uchun umumiy, standart
-	// taom turkumlari ro'yxati (yagona manba â€” restoran paneli va mijoz
+	// GET /categories — ochiq. Barcha restoranlar uchun umumiy, standart
+	// taom turkumlari ro'yxati (yagona manba — restoran paneli va mijoz
 	// ilovasi ikkalasi ham shundan foydalanadi, ular orasida yozilishi
 	// farq qilib ketmasligi uchun).
 	mux.HandleFunc("GET /categories", publicCache(3600, 86400, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, catalog.PredefinedCategories)
 	}))
 
-	// GET /products/search?q=... â€” ochiq. Restoranga bog'liq bo'lmagan
+	// GET /products/search?q=... — ochiq. Restoranga bog'liq bo'lmagan
 	// holda, turkum yoki nom bo'yicha barcha restoranlardagi mos taomlarni
 	// bitta ro'yxatda qaytaradi (mijoz ilovasining turkum filtri uchun).
 	//
@@ -176,8 +176,8 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusOK, list)
 		})))
 
-	// GET /restaurants/{id}/menu â€” ochiq. Har mijoz restoran menyusini
-	// ochganda so'raladi â€” Redis'da 30s keshlanadi, mahsulot
+	// GET /restaurants/{id}/menu — ochiq. Har mijoz restoran menyusini
+	// ochganda so'raladi — Redis'da 30s keshlanadi, mahsulot
 	// qo'shilganda/tahrirlanganda/o'chirilganda kesh darhol tozalanadi.
 	mux.HandleFunc("GET /restaurants/{id}/menu", publicCache(5, 30, func(w http.ResponseWriter, r *http.Request) {
 		restaurantID := r.PathValue("id")
@@ -195,11 +195,11 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		writeRawJSON(w, http.StatusOK, body)
 	}))
 
-	// GET /restaurants/{id}/products â€” restoran panelining TO'LIQ ro'yxati.
+	// GET /restaurants/{id}/products — restoran panelining TO'LIQ ro'yxati.
 	//
 	// Ochiq `/menu` dan farqi: bu yerda restoranning ichki maydonlari ham
 	// (ulgurji narx) qaytadi, shuning uchun endpoint avtorizatsiya va
-	// EGALIK tekshiruvidan o'tadi. Kesh ishlatilmaydi â€” panel har doim
+	// EGALIK tekshiruvidan o'tadi. Kesh ishlatilmaydi — panel har doim
 	// eng so'nggi holatni ko'rishi kerak.
 	mux.HandleFunc("GET /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +220,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			}
 			writeJSON(w, http.StatusOK, list)
 		}))
-	// POST /restaurants/{id}/products â€” restoran o'z menyusini boshqaradi (yoki admin)
+	// POST /restaurants/{id}/products — restoran o'z menyusini boshqaradi (yoki admin)
 	mux.HandleFunc("POST /restaurants/{id}/products", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			restaurantID := r.PathValue("id")
@@ -250,9 +250,9 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 				httpError(w, http.StatusBadRequest, errors.New("discount_price_tiyin asosiy narxdan kichik bo'lishi kerak"))
 				return
 			}
-			// Ulgurji narx â€” ixtiyoriy ichki maydon. ASOSIY NARX BILAN
+			// Ulgurji narx — ixtiyoriy ichki maydon. ASOSIY NARX BILAN
 			// TAQQOSLANMAYDI: u sotuv narxidan yuqori ham bo'lishi mumkin
-			// (masalan aksiya davrida zarariga sotish) â€” bu restoranning
+			// (masalan aksiya davrida zarariga sotish) — bu restoranning
 			// o'z biznes qarori, tizim unga aralashmaydi.
 			if p.WholesalePriceTiyin < 0 {
 				httpError(w, http.StatusBadRequest, errors.New("wholesale_price_tiyin manfiy bo'lishi mumkin emas"))
@@ -344,7 +344,7 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 			writeJSON(w, http.StatusCreated, p)
 		}))
 
-	// DELETE /restaurants/{id}/products/{productId} â€” taomni menyudan o'chirish.
+	// DELETE /restaurants/{id}/products/{productId} — taomni menyudan o'chirish.
 	// Eski buyurtmalarga ta'sir qilmaydi (nom/narx buyurtma vaqtida nusxalanadi).
 	mux.HandleFunc("DELETE /restaurants/{id}/products/{productId}", s.auth([]users.Role{users.RoleRestaurant, users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
@@ -378,13 +378,13 @@ func (s *Server) registerCatalogRoutes(mux *http.ServeMux) {
 		}))
 
 	// ---------- Aksiyalar (promotions) ----------
-	// checkout'ga ULANGAN (orders.Service.priceCart + promotions.ApplyBest) â€”
+	// checkout'ga ULANGAN (orders.Service.priceCart + promotions.ApplyBest) —
 	// "foydalanish/savdo" ko'rsatkichlari endi HAQIQIY, checkout'da shu
 	// aksiya haqiqatan tanlanganda oshadi (orders.Service.Create'ga qarang).
 
-	// GET /restaurants/{id}/active-promotions â€” OCHIQ (mijoz ilovasi uchun):
+	// GET /restaurants/{id}/active-promotions — OCHIQ (mijoz ilovasi uchun):
 	// faqat HOZIR FAOL (ComputeStatus==active) aksiyalarni, faqat
-	// mijozga tegishli/xavfsiz maydonlar bilan qaytaradi â€” restoranning
+	// mijozga tegishli/xavfsiz maydonlar bilan qaytaradi — restoranning
 	// ichki biznes ko'rsatkichlari (UsageCount/SalesTotalTiyin) BU YERDA
 	// HECH QACHON chiqarilmaydi.
 }

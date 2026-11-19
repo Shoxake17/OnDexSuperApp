@@ -69,12 +69,12 @@ import (
 	"chustapp/internal/ws"
 )
 
-// devMode â€” SMS kodlarni HTTP javobda qaytarish va zaif sozlamalarga
+// devMode — SMS kodlarni HTTP javobda qaytarish va zaif sozlamalarga
 // ruxsat berish kabi FAQAT ishlab chiqish uchun mo'ljallangan
 // yengilliklar.
 //
 // XAVFSIZLIK (fail-closed): bu bayroq faqat ANIQ `APP_ENV=development`
-// bo'lgandagina yoqiladi. Avval teskari edi â€” `APP_ENV != "production"`,
+// bo'lgandagina yoqiladi. Avval teskari edi — `APP_ENV != "production"`,
 // ya'ni bo'sh qiymat, `"Production"` (katta harf bilan), `"prod"` yoki
 // oddiy xato yozuv ham dev rejimni YOQIB YUBORARDI. U holda:
 //   - haqiqiy OTP kod HTTP javobda qaytarilardi (istalgan raqamga kirish),
@@ -85,7 +85,7 @@ import (
 // (production) og'adi.
 var devMode bool
 
-// devEnvValue â€” dev rejimni yoqadigan YAGONA qiymat.
+// devEnvValue — dev rejimni yoqadigan YAGONA qiymat.
 const devEnvValue = "development"
 
 // listenAddr — server tinglaydigan manzil. Standart `:8080`; faqat benchmark
@@ -99,7 +99,7 @@ var listenAddr = ":8080"
 // uchun bu qiymat faqat BOSHQA jarayon (admin vositalari) yozganda ahamiyatli.
 const entityCacheTTL = 2 * time.Second
 
-// loadDotEnv â€” loyiha ildizidagi .env faylni o'qiydi (bor bo'lsa).
+// loadDotEnv — loyiha ildizidagi .env faylni o'qiydi (bor bo'lsa).
 // Tizim muhitida allaqachon o'rnatilgan o'zgaruvchilar ustun turadi.
 // Maxfiy qiymatlar (kalitlar, parollar) faqat shu faylda saqlanadi,
 // kodga hech qachon yozilmaydi.
@@ -126,15 +126,15 @@ func loadDotEnv() {
 	slog.Info(".env yuklandi")
 }
 
-// firebaseServiceAccount â€” FCM xizmat akkaunti JSON'ini ikki
+// firebaseServiceAccount — FCM xizmat akkaunti JSON'ini ikki
 // manbadan biridan oladi.
 //
-// â”Œâ”€ NEGA IKKI YO'L â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+// ┌─ NEGA IKKI YO'L ──────────────────────────────────────────────────┐
 // `.env` parseri QATORMA-QATOR ishlaydi (`loadDotEnv`). Xizmat
 // akkaunti JSON'i esa Google'dan CHIROYLI (ko'p qatorli) holda
 // yuklab olinadi. Uni to'g'ridan-to'g'ri `.env` ga ko'chirsangiz
 // faqat BIRINCHI QATOR o'qiladi va xato "kalit PEM formatida emas"
-// bo'lib chiqadi â€” sababi esa umuman ko'rinmaydi.
+// bo'lib chiqadi — sababi esa umuman ko'rinmaydi.
 //
 // Shuning uchun FAYL YO'LI afzal: JSON o'z holicha qoladi, hech
 // nimani bitta qatorga siqish shart emas.
@@ -144,12 +144,12 @@ func loadDotEnv() {
 //
 // Ikkalasi ham berilsa INLINE ustun turadi (konteynerlarda odatda
 // muhit o'zgaruvchisi ishlatiladi).
-// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+// └───────────────────────────────────────────────────────────────────┘
 
-// parseEnvBool â€” env o'zgaruvchisini bool qilib o'qiydi.
-// Qaytarilgan 2-qiymat (set) â€” bu o'zgaruvchi aniq belgilanganmi yoki yo'qmi
+// parseEnvBool — env o'zgaruvchisini bool qilib o'qiydi.
+// Qaytarilgan 2-qiymat (set) — bu o'zgaruvchi aniq belgilanganmi yoki yo'qmi
 // (default dan farqlanish uchun). Qabul qilinadigan qiymatlar (case insensitive):
-// true/1/yes/on â†’ true; false/0/no/off â†’ false.
+// true/1/yes/on → true; false/0/no/off → false.
 func parseEnvBool(key string) (value, set bool) {
 	raw := os.Getenv(key)
 	if raw == "" {
@@ -157,7 +157,7 @@ func parseEnvBool(key string) (value, set bool) {
 	}
 	v, err := strconv.ParseBool(strings.TrimSpace(strings.ToLower(raw)))
 	if err != nil {
-		slog.Warn("muhit o'zgaruvchisi bool emas â€” false deb qabul qilinadi",
+		slog.Warn("muhit o'zgaruvchisi bool emas — false deb qabul qilinadi",
 			"nom", key, "qiymat", raw)
 		return false, true
 	}
@@ -174,9 +174,9 @@ func firebaseServiceAccount() string {
 	}
 	data, err := os.ReadFile(path) //nolint:gosec // yo'l operator .env da beradi (FIREBASE_SERVICE_ACCOUNT_FILE), foydalanuvchi kiritmasi emas
 	if err != nil {
-		// Yo'l berilgan, lekin o'qib bo'lmadi â€” bu ANIQ konfiguratsiya
+		// Yo'l berilgan, lekin o'qib bo'lmadi — bu ANIQ konfiguratsiya
 		// xatosi, jimgina "push o'chirilgan" deb o'tib ketmaymiz.
-		slog.Error("FIREBASE_SERVICE_ACCOUNT_FILE o'qib bo'lmadi â€” push o'chirilgan holda davom etiladi",
+		slog.Error("FIREBASE_SERVICE_ACCOUNT_FILE o'qib bo'lmadi — push o'chirilgan holda davom etiladi",
 			"path", path, "err", err)
 		return ""
 	}
@@ -213,21 +213,21 @@ func main() {
 	appEnv := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
 	devMode = appEnv == devEnvValue
 	if devMode {
-		slog.Warn("DEV REJIM yoqilgan (APP_ENV=development) â€” OTP kodlar javobda qaytariladi, zaif sozlamalarga ruxsat beriladi")
+		slog.Warn("DEV REJIM yoqilgan (APP_ENV=development) — OTP kodlar javobda qaytariladi, zaif sozlamalarga ruxsat beriladi")
 	} else {
 		slog.Info("production rejim", "app_env", appEnv)
 	}
 
-	// â”Œâ”€ MUHIT INVENTARIZATSIYASI (bug.md 42, 99-bandlar) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ MUHIT INVENTARIZATSIYASI (bug.md 42, 99-bandlar) ─────────────┐
 	// Yo'q o'zgaruvchilarni ULAR NIMANI O'CHIRISHI bilan birga logga
 	// chiqaradi. Sabab: bu loyihada bir xil xato to'rt marta
-	// takrorlangan â€” kod o'zgaruvchini o'qiydi, prod compose'ida esa
+	// takrorlangan — kod o'zgaruvchini o'qiydi, prod compose'ida esa
 	// u sanab chiqilmagan, va funksiya JIMGINA o'chadi (karta to'lovi,
-	// AI, ovoz, email login â€” beshtasi bir vaqtda o'lik turgan edi).
+	// AI, ovoz, email login — beshtasi bir vaqtda o'lik turgan edi).
 	//
 	// Ro'yxatning o'zi `internal/appenv` da va u ikki tomondan
 	// test bilan qulflangan (manba kodi + prod compose).
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └────────────────────────────────────────────────────────────────┘
 	appenv.Report(devMode)
 
 	var orderRepo orders.Repository
@@ -265,23 +265,23 @@ func main() {
 			slog.Error("migratsiya xatosi", "err", err)
 			os.Exit(1)
 		}
-		// â”Œâ”€ DEMO AKKAUNTLAR FAQAT DEV'DA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+		// ┌─ DEMO AKKAUNTLAR FAQAT DEV'DA ────────────────────────────┐
 		// Avval bu ikki seed `DATABASE_URL` bor bo'lsa HAR DOIM,
 		// ya'ni PRODUCTION'da ham ishlardi va jonli bazaga
 		// `+998900000099` raqamli ADMIN hamda demo restoran/kuryer
 		// akkauntlarini qo'yardi.
 		//
-		// NEGA XAVFLI: kirish uchun parol kerak emas â€” OTP yetarli.
+		// NEGA XAVFLI: kirish uchun parol kerak emas — OTP yetarli.
 		// Kod esa Telegram orqali keladi. Ya'ni o'sha raqam operator
 		// tomonidan kimgadir berilsa yoki kimdir uni Telegramda
 		// ro'yxatdan o'tkazsa, o'sha odam SUPERADMIN huquqini qo'lga
 		// kiritardi. Demo ma'lumot production bazasida turishining
 		// o'zi ham noto'g'ri.
 		//
-		// ESLATMA: bu o'zgarish MAVJUD qatorlarni O'CHIRMAYDI â€” u
+		// ESLATMA: bu o'zgarish MAVJUD qatorlarni O'CHIRMAYDI — u
 		// faqat yangi qo'shilishini to'xtatadi. Allaqachon tushib
 		// qolgan demo akkauntlar qo'lda o'chirilishi kerak.
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+		// └────────────────────────────────────────────────────────────┘
 		if devMode {
 			if err := storage.SeedDemoCouriers(ctx, pool); err != nil {
 				slog.Error("seed xatosi", "err", err)
@@ -293,10 +293,10 @@ func main() {
 			}
 		}
 
-		// â”Œâ”€ SUPERADMIN TAYINLASH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-		// Admin roli hech qanday endpoint orqali BERILMAYDI â€” bu
+		// ┌─ SUPERADMIN TAYINLASH ────────────────────────────────────┐
+		// Admin roli hech qanday endpoint orqali BERILMAYDI — bu
 		// ataylab: aks holda u huquqni ko'tarish (privilege
-		// escalation) yuzasi bo'lardi. Yagona yo'l â€” server
+		// escalation) yuzasi bo'lardi. Yagona yo'l — server
 		// sozlamasi, ya'ni serverga kira oladigan odam.
 		//
 		// FAQAT MAVJUD foydalanuvchini ko'taradi. Yangi akkaunt
@@ -306,7 +306,7 @@ func main() {
 		//
 		// Har ishga tushishda qayta qo'llanadi (idempotent), shuning
 		// uchun rol tasodifan o'zgarib qolsa ham tiklanadi.
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+		// └────────────────────────────────────────────────────────────┘
 		if raw := strings.TrimSpace(os.Getenv("BOOTSTRAP_ADMIN_PHONE")); raw != "" {
 			phone, err := users.NormalizePhone(raw)
 			if err != nil {
@@ -324,7 +324,7 @@ func main() {
 				slog.Warn("BOOTSTRAP_ADMIN_PHONE: foydalanuvchi ADMIN roliga ko'tarildi",
 					"phone", phone)
 			default:
-				slog.Error("BOOTSTRAP_ADMIN_PHONE: bu raqamli foydalanuvchi topilmadi â€” "+
+				slog.Error("BOOTSTRAP_ADMIN_PHONE: bu raqamli foydalanuvchi topilmadi — "+
 					"avval shu raqam bilan ilovadan ro'yxatdan o'ting, keyin serverni qayta ishga tushiring",
 					"phone", phone)
 			}
@@ -354,7 +354,7 @@ func main() {
 		userRepo = storage.NewMemoryUserRepo(storage.DemoUsers()...)
 		codeStore = storage.NewMemoryCodeStore()
 		favoritesRepo = storage.NewMemoryFavoritesRepo()
-		slog.Warn("rejim: in-memory (DATABASE_URL berilmagan â€” ma'lumotlar server o'chsa yo'qoladi)")
+		slog.Warn("rejim: in-memory (DATABASE_URL berilmagan — ma'lumotlar server o'chsa yo'qoladi)")
 	}
 
 	// ---------- Katalog (restoranlar+menyu): MongoDB ----------
@@ -362,7 +362,7 @@ func main() {
 	// to'lov, foydalanuvchi) PostgreSQL'da; hujjat-shaklidagi, tez o'zgaruvchi
 	// katalog MongoDB'da.
 	//
-	// â”Œâ”€ YAGONA HAQIQAT MANBAI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ YAGONA HAQIQAT MANBAI ────────────────────────────────────────┐
 	// Katalog uchun FAQAT MongoDB. Ilgari bu yerda PostgreSQL zaxira
 	// tarmog'i bor edi va `MONGODB_URI` berilmasa unga JIMGINA o'tardi.
 	// Bu eng yomon turdagi nosozlikni tug'dirardi: server sog'lom
@@ -372,7 +372,7 @@ func main() {
 	// Endi: Mongo bor -> Mongo. Yo'q va dev -> xotira (ogohlantirish
 	// bilan). Yo'q va production -> DARHOL TO'XTASH. Postgres'dagi
 	// katalog jadvallari 0036 migratsiyasida o'chirilgan.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └────────────────────────────────────────────────────────────────┘
 	if mongoURI := os.Getenv("MONGODB_URI"); mongoURI != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -398,7 +398,7 @@ func main() {
 			slog.Error("mongo indeks xatosi (aksiyalar)", "err", err)
 			os.Exit(1)
 		}
-		// Demo katalog (r1 "Chust Osh Markazi" + p1..p3) FAQAT dev'da â€”
+		// Demo katalog (r1 "Chust Osh Markazi" + p1..p3) FAQAT dev'da —
 		// `SeedDemoUsers` bilan bir xil sabab: production bazasi
 		// namunaviy ma'lumot bilan to'lmasligi kerak. Mavjud
 		// hujjatlarni O'CHIRMAYDI (`scripts/cleanup_demo_data.sql`).
@@ -457,13 +457,13 @@ func main() {
 	} else if devMode {
 		catalogRepo = storage.NewMemoryCatalogRepo(storage.DemoRestaurants(), storage.DemoProducts())
 		promotionsRepo = storage.NewMemoryPromotionsRepo()
-		slog.Warn("rejim: in-memory (katalog) â€” MONGODB_URI berilmagan; " +
+		slog.Warn("rejim: in-memory (katalog) — MONGODB_URI berilmagan; " +
 			"ma'lumot server o'chsa YO'QOLADI, faqat tez sinov uchun")
 	} else {
-		// Fail-closed: production'da katalogsiz ishga tushish â€” bu
+		// Fail-closed: production'da katalogsiz ishga tushish — bu
 		// "ishlayotgan, lekin bo'sh do'kon" degani. Jimgina davom
 		// etgandan ko'ra to'xtagan ma'qul.
-		slog.Error("MONGODB_URI berilmagan â€” katalog manbai yo'q. " +
+		slog.Error("MONGODB_URI berilmagan — katalog manbai yo'q. " +
 			"Production'da bu MAJBURIY (katalog faqat MongoDB'da saqlanadi).")
 		os.Exit(1)
 	}
@@ -504,16 +504,16 @@ func main() {
 		mediaPublicBaseURL = publicURL
 		slog.Info("rejim: Cloudflare R2 (rasm saqlash)")
 
-		// â”Œâ”€ 3D MAKETLAR UCHUN ALOHIDA, YOPIQ BUCKET â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+		// ┌─ 3D MAKETLAR UCHUN ALOHIDA, YOPIQ BUCKET ──────────────────┐
 		// Maket rasm emas: u ~100-220 MB va ichida bajariladigan kod
 		// bor. Rasmlar bucket'i OMMAVIY, R2 da esa ommaviylik butun
-		// bucket uchun yoqiladi â€” ya'ni bir joyda saqlansa maket ham
+		// bucket uchun yoqiladi — ya'ni bir joyda saqlansa maket ham
 		// ommaviy bo'lib qolardi.
 		//
 		// Sozlanmagan bo'lsa xato EMAS: maket havolasi avvalgidek
 		// qaytadi, lekin baribir faqat kirgan foydalanuvchiga
 		// (`internal/httpapi/scene_access.go`).
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+		// └────────────────────────────────────────────────────────────┘
 		if sceneBucket := strings.TrimSpace(os.Getenv("R2_SCENES_BUCKET")); sceneBucket != "" {
 			// ┌─ ALOHIDA, FAQAT-O'QISH TOKENI (tavsiya etiladi) ───────┐
 			// Rasmlar tokeni YOZISH huquqiga ega — usiz panel rasm
@@ -560,7 +560,7 @@ func main() {
 					"bucket", sceneBucket, "muddat", scenes.DefaultTTL)
 			}
 		} else {
-			slog.Warn("R2_SCENES_BUCKET yo'q â€” 3D maket ommaviy bucket'dan beriladi; " +
+			slog.Warn("R2_SCENES_BUCKET yo'q — 3D maket ommaviy bucket'dan beriladi; " +
 				"havola faqat kirgan foydalanuvchiga ko'rsatiladi, lekin MUDDATSIZ")
 		}
 		// Brauzer 3D modelni (GLB) `fetch` orqali oladi va bu boshqa
@@ -573,33 +573,33 @@ func main() {
 		corsCtx, corsCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := r2.EnsurePublicReadCORS(corsCtx); err != nil {
 			// Odatiy sabab: R2 tokenida bucket SOZLAMALARI huquqi yo'q
-			// (faqat obyekt o'qish/yozish) â€” bu to'g'ri, eng kam huquq.
+			// (faqat obyekt o'qish/yozish) — bu to'g'ri, eng kam huquq.
 			// Mobil ilova baribir ishlaydi (`model_3d_view.dart` sahifa
 			// origin'ini model domeniga qo'yadi), lekin VEB/Mini App
 			// uchun qoida Cloudflare panelidan qo'lda qo'yilishi kerak:
-			// R2 â†’ bucket â†’ Settings â†’ CORS Policy â†’ GET/HEAD, origin *.
-			slog.Warn("R2 CORS qoidasi qo'yilmadi â€” veb/Mini App'da 3D model yuklanmasligi mumkin "+
-				"(Cloudflare panelidan qo'lda qo'ying: R2 â†’ bucket â†’ Settings â†’ CORS Policy)",
+			// R2 → bucket → Settings → CORS Policy → GET/HEAD, origin *.
+			slog.Warn("R2 CORS qoidasi qo'yilmadi — veb/Mini App'da 3D model yuklanmasligi mumkin "+
+				"(Cloudflare panelidan qo'lda qo'ying: R2 → bucket → Settings → CORS Policy)",
 				"err", err)
 		}
 		corsCancel()
 	} else if devMode {
 		imageStore = images.NewLocalStore("uploads")
-		slog.Warn("rejim: lokal disk (media saqlash) â€” R2_BUCKET berilmagan. " +
+		slog.Warn("rejim: lokal disk (media saqlash) — R2_BUCKET berilmagan. " +
 			"FAQAT dev uchun: fayllar server diskida qoladi va deploy'da yo'qoladi")
 	} else {
-		// â”Œâ”€ FAIL-CLOSED: PRODUCTION'DA FAQAT R2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+		// ┌─ FAIL-CLOSED: PRODUCTION'DA FAQAT R2 ─────────────────────┐
 		// Barcha media (taom rasmlari, 3D modellar, kelajakdagi video
 		// va hujjatlar) obyekt omborida turishi SHART.
 		//
 		// Lokal disk production'da jimgina ma'lumot yo'qotadi:
 		// konteyner qayta yaratilganda (har deploy) `uploads/` papkasi
-		// bo'shab qoladi â€” restoranlar menyusidagi rasmlar va 3D
+		// bo'shab qoladi — restoranlar menyusidagi rasmlar va 3D
 		// modellar birdaniga yo'qoladi, xato esa hech qayerda
 		// ko'rinmaydi. Bu MongoDB'siz ishga tushish bilan bir xil
 		// toifadagi xato, shuning uchun javob ham bir xil: to'xtash.
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-		slog.Error("R2_BUCKET berilmagan â€” media ombori yo'q. " +
+		// └───────────────────────────────────────────────────────────┘
+		slog.Error("R2_BUCKET berilmagan — media ombori yo'q. " +
 			"Production'da bu MAJBURIY: rasm, 3D model va boshqa fayllar " +
 			"faqat Cloudflare R2 da saqlanadi (lokal disk deploy'da yo'qoladi).")
 		os.Exit(1)
@@ -608,7 +608,7 @@ func main() {
 	// ---------- 3D model generatsiyasi (ixtiyoriy) ----------
 	// TRIPO_API_KEY berilmasa xizmat O'CHIQ bo'ladi: tegishli
 	// endpointlar 503 qaytaradi, qolgan hamma narsa normal ishlaydi.
-	// Bu â€” R2/Redis/Telegram bilan bir xil falsafa: ixtiyoriy
+	// Bu — R2/Redis/Telegram bilan bir xil falsafa: ixtiyoriy
 	// komponent hech qachon ilovani to'xtatmaydi.
 	//
 	// KALIT FAQAT SHU YERDA O'QILADI va hech qachon mijozga
@@ -629,14 +629,14 @@ func main() {
 		model3DLimiter = ratelimit.New(20.0/3600.0, 5).Shared("model3DLimiter")
 		slog.Info("3D model generatsiyasi yoqilgan", "provayder", gen.Name())
 	} else {
-		slog.Info("3D model generatsiyasi o'chiq â€” TRIPO_API_KEY berilmagan")
+		slog.Info("3D model generatsiyasi o'chiq — TRIPO_API_KEY berilmagan")
 	}
 
 	// ---------- Redis: kesh + OTP kodlar (ixtiyoriy) ----------
-	// Redis bo'lmasa (REDIS_ADDR berilmagan yoki ulanib bo'lmasa) â€” kesh
+	// Redis bo'lmasa (REDIS_ADDR berilmagan yoki ulanib bo'lmasa) — kesh
 	// butunlay o'chirilgan holda ishlaydi (har so'rov to'g'ridan-to'g'ri
 	// bazaga tushadi, faqat sekinroq) va OTP kodlar yuqorida tanlangan
-	// asosiy bazada (Postgres yoki xotira) qolaveradi â€” Mongo/R2 kabi boshqa
+	// asosiy bazada (Postgres yoki xotira) qolaveradi — Mongo/R2 kabi boshqa
 	// ixtiyoriy komponentlar bilan bir xil falsafa: Redis hech qachon
 	// ilovani to'xtatmaydi, faqat mavjud bo'lganda tezlashtiradi.
 	redisClient := cache.Connect(os.Getenv("REDIS_ADDR"))
@@ -651,7 +651,7 @@ func main() {
 		slog.Warn("XAVFSIZLIK: Redis yo'q — rate limit va urinishlar hisobi faqat jarayon xotirasida (bir nechta nusxada bo'linmaydi)")
 	}
 
-	// JWT_SECRET â€” production'da MAJBURIY va yetarlicha uzun bo'lishi
+	// JWT_SECRET — production'da MAJBURIY va yetarlicha uzun bo'lishi
 	// shart. Avval faqat bo'sh-emaslik tekshirilardi, ya'ni bir belgili
 	// kalit ham o'tib ketardi (HS256 uchun bu amalda brute-force
 	// qilinadigan darajada zaif).
@@ -669,7 +669,7 @@ func main() {
 		}
 	} else if jwtSecret == "" {
 		jwtSecret = "dev-secret-almashtiring" //nolint:gosec // faqat dev rejimida; production'da JWT_SECRET majburiy
-		slog.Warn("JWT_SECRET berilmagan â€” FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
+		slog.Warn("JWT_SECRET berilmagan — FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
 	}
 	const tokenTTL = 30 * 24 * time.Hour
 	tokens := users.NewTokenIssuer(jwtSecret, tokenTTL)
@@ -696,13 +696,13 @@ func main() {
 		tokens.DisableRealms(realms...)
 		slog.Info("rejim: eski HS256 token o'chirilgan realmlar", "realmlar", realms)
 	}
-	// revoked â€” muddatidan oldin bekor qilingan sessiyalar (chiqish,
+	// revoked — muddatidan oldin bekor qilingan sessiyalar (chiqish,
 	// akkaunt o'chirilishi, kuryer tasdig'ining bekor qilinishi).
 	// Qarang: internal/revoke.
 	revokedSessions := revoke.New(redisClient, tokenTTL)
 
 	// Tezlik cheklovi mijoz IP'siga tayanadi. `X-Forwarded-For` FAQAT
-	// shu ro'yxatdagi manbalardan qabul qilinadi â€” aks holda istalgan
+	// shu ro'yxatdagi manbalardan qabul qilinadi — aks holda istalgan
 	// mijoz sarlavhani o'zi yozib, barcha IP cheklovlarini (SMS, login,
 	// pullik geokodlash) chetlab o'tardi. Bo'sh bo'lsa sarlavha umuman
 	// o'qilmaydi; reverse-proxy orqasiga qo'yilganda sozlash SHART.
@@ -721,11 +721,11 @@ func main() {
 		notifStore = storage.NewPgNotificationStore(pgPool)
 		tokenStore = storage.NewPgTokenStore(pgPool)
 	} else {
-		// Postgres yo'q (dev/test) â€” xotirada. Server qayta ishga
+		// Postgres yo'q (dev/test) — xotirada. Server qayta ishga
 		// tushganda tarix yo'qoladi, lekin oqim bir xil ishlaydi.
 		notifStore = storage.NewMemoryNotificationStore()
 		tokenStore = storage.NewMemoryTokenStore()
-		slog.Warn("bildirishnomalar XOTIRADA saqlanadi (DATABASE_URL yo'q) â€” restartda yo'qoladi")
+		slog.Warn("bildirishnomalar XOTIRADA saqlanadi (DATABASE_URL yo'q) — restartda yo'qoladi")
 	}
 	notifSvc := notify.NewService(notifStore, hub, httpapi.NewID)
 
@@ -740,15 +740,15 @@ func main() {
 		deviceStore = storage.NewMemoryDeviceStore()
 	}
 
-	// FCM push â€” `FIREBASE_SERVICE_ACCOUNT_JSON` bo'lmasa o'chirilgan
+	// FCM push — `FIREBASE_SERVICE_ACCOUNT_JSON` bo'lmasa o'chirilgan
 	// holda davom etadi (SMTP/Eskiz bilan bir xil naqsh).
 	if fcm, err := notify.NewFCM(firebaseServiceAccount()); err != nil {
-		slog.Error("FCM sozlamasi noto'g'ri â€” push o'chirilgan holda davom etiladi", "err", err)
+		slog.Error("FCM sozlamasi noto'g'ri — push o'chirilgan holda davom etiladi", "err", err)
 	} else if fcm != nil {
 		notifSvc = notifSvc.WithPush(fcm, tokenStore)
 		slog.Info("rejim: FCM push yoqilgan")
 	} else {
-		slog.Warn("FIREBASE_SERVICE_ACCOUNT_JSON yo'q â€” push yuborilmaydi (ilova yopiq bo'lsa xabar yetmaydi)")
+		slog.Warn("FIREBASE_SERVICE_ACCOUNT_JSON yo'q — push yuborilmaydi (ilova yopiq bo'lsa xabar yetmaydi)")
 	}
 
 	notifier := notify.NewLive(notifSvc).
@@ -778,10 +778,10 @@ func main() {
 			}
 			return ids, nil
 		})
-	// Email yuborish â€” SMS bilan bir xil naqsh: `.env` da SMTP_HOST
+	// Email yuborish — SMS bilan bir xil naqsh: `.env` da SMTP_HOST
 	// bo'lsa haqiqiy yuborish, bo'lmasa dev log. Sozlanmagan bo'lsa
 	// email oqimlari ANIQ xato bilan rad etiladi (`users` paketidagi
-	// `ErrEmailSendUnavailable`) â€” jimgina "yuborildi" deyilmaydi.
+	// `ErrEmailSendUnavailable`) — jimgina "yuborildi" deyilmaydi.
 	// ── Restoran "Bildirishnomalar" markazi (`internal/alerts`) ──
 	//
 	// Buyurtma, to'lov, xodim va kuryer hodisalari AVVAL bazaga yoziladi,
@@ -809,12 +809,12 @@ func main() {
 	if emailConfigured {
 		slog.Info("rejim: SMTP (email tasdiqlash yoqilgan)", "host", os.Getenv("SMTP_HOST"))
 	} else if devMode {
-		slog.Warn("SMTP sozlanmagan â€” email kodlar faqat logga yoziladi (dev)")
+		slog.Warn("SMTP sozlanmagan — email kodlar faqat logga yoziladi (dev)")
 	} else {
-		slog.Warn("SMTP sozlanmagan â€” email orqali ro'yxatdan o'tish/tiklash ISHLAMAYDI")
+		slog.Warn("SMTP sozlanmagan — email orqali ro'yxatdan o'tish/tiklash ISHLAMAYDI")
 	}
 
-	// Firebase Phone Auth â€” SMS kodni FIREBASE yuboradi va tekshiradi;
+	// Firebase Phone Auth — SMS kodni FIREBASE yuboradi va tekshiradi;
 	// biz faqat natijadagi ID tokenni tekshiramiz. Maxfiy kalit KERAK
 	// EMAS: tekshiruv Google'ning ochiq sertifikatlari bilan bajariladi,
 	// shuning uchun `.env` da faqat loyiha ID'si turadi.
@@ -822,7 +822,7 @@ func main() {
 	if firebaseVerifier.ProjectID() != "" {
 		slog.Info("rejim: Firebase Phone Auth yoqilgan", "project", firebaseVerifier.ProjectID())
 	} else {
-		slog.Warn("FIREBASE_PROJECT_ID yo'q â€” /auth/firebase o'chirilgan")
+		slog.Warn("FIREBASE_PROJECT_ID yo'q — /auth/firebase o'chirilgan")
 	}
 
 	// ---------- OTP yetkazish zanjiri ----------
@@ -830,37 +830,37 @@ func main() {
 	// Uchta pog'ona, har biri MUSTAQIL sozlanadi va biri yo'q bo'lsa
 	// ilova keyingisiga o'tadi:
 	//
-	//   1. Telegram bot   â€” bepul; foydalanuvchi botni ochishi kerak
-	//   2. Firebase       â€” ilova tomonida (client SDK), pullik SMS
-	//   3. Eskiz.uz       â€” mahalliy SMS provayderi, so'mda
+	//   1. Telegram bot   — bepul; foydalanuvchi botni ochishi kerak
+	//   2. Firebase       — ilova tomonida (client SDK), pullik SMS
+	//   3. Eskiz.uz       — mahalliy SMS provayderi, so'mda
 	//
 	// Uchalasi ham OXIRIDA BIR XIL yo'lga tushadi: kod `CodeStore` ga
 	// yoziladi va `POST /auth/verify` bilan tekshiriladi (Firebase
-	// bundan mustasno â€” u o'z tokenini beradi). Shu sabab yangi
+	// bundan mustasno — u o'z tokenini beradi). Shu sabab yangi
 	// tasdiqlash mantiqi yozilmadi.
 	eskizEnabled, eskizEnabledSet := parseEnvBool("ESKIZ_ENABLED")
 
-	// â”Œâ”€ "O'CHIRILGAN" NIMANI ANGLATADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ "O'CHIRILGAN" NIMANI ANGLATADI ───────────────────────────────┐
 	// `ESKIZ_ENABLED=false` SMS kanalini o'chiradi. Lekin standart
 	// qiymat `LogSms` va u ikki ish qiladi: kodni logga OCHIQ yozadi
 	// va `nil` qaytaradi. Ya'ni oddiygina "o'chirdim" deb qo'yish
-	// production'da 47-banddagi teshikni QAYTA OCHADI â€” logga kira
+	// production'da 47-banddagi teshikni QAYTA OCHADI — logga kira
 	// olgan har kim istalgan raqamga kirish oqimini boshlab, kodni
 	// logdan o'qib, akkauntni parolsiz egallaydi.
 	//
 	// Shuning uchun o'chirish production'da `DisabledSms` ga tushadi:
 	// kod hech qayerga yozilmaydi va SMS yo'li ANIQ xato qaytaradi
-	// (jimgina "yuborildi" bo'lmaydi). Dev'da esa `LogSms` qoladi â€”
+	// (jimgina "yuborildi" bo'lmaydi). Dev'da esa `LogSms` qoladi —
 	// u yerda kod aynan logdan olinadi va provayder bo'lmaydi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └────────────────────────────────────────────────────────────────┘
 	smsDisabled := false
 	smsOff := func(sabab string) users.SmsSender {
 		if devMode {
-			slog.Warn("SMS o'chirildi â€” dev rejim: kodlar LOGGA yoziladi", "sabab", sabab)
+			slog.Warn("SMS o'chirildi — dev rejim: kodlar LOGGA yoziladi", "sabab", sabab)
 			return notify.LogSms{}
 		}
 		smsDisabled = true
-		slog.Warn("rejim: SMS O'CHIQ â€” kod FAQAT Telegram bot / Firebase orqali yetkaziladi; "+
+		slog.Warn("rejim: SMS O'CHIQ — kod FAQAT Telegram bot / Firebase orqali yetkaziladi; "+
 			"/auth/request-code va SMS'ga tayanadigan oqimlar xato qaytaradi", "sabab", sabab)
 		return notify.DisabledSms{}
 	}
@@ -876,9 +876,9 @@ func main() {
 	} else if eskizEnabledSet && !eskizEnabled {
 		smsSender = smsOff("ESKIZ_ENABLED=false va ESKIZ_* sozlanmagan")
 	} else if devMode {
-		slog.Warn("Eskiz sozlanmagan â€” SMS kodlar faqat logga yoziladi (FAQAT dev)")
+		slog.Warn("Eskiz sozlanmagan — SMS kodlar faqat logga yoziladi (FAQAT dev)")
 	} else {
-		slog.Error("ESKIZ_EMAIL/ESKIZ_PASSWORD berilmagan â€” SMS yuborilmaydi. " +
+		slog.Error("ESKIZ_EMAIL/ESKIZ_PASSWORD berilmagan — SMS yuborilmaydi. " +
 			"Agar SMS kerak bo'lmasa (faqat Telegram/Firebase bilan kifoyalasangiz), " +
 			".env ga `ESKIZ_ENABLED=false` qo'shib, serverni qayta ishga tushiring.")
 		os.Exit(1)
@@ -887,7 +887,7 @@ func main() {
 	authSvc := users.NewService(userRepo, codeStore, smsSender, tokens, httpapi.NewID)
 	if smsDisabled {
 		// `/auth/request-code` endi kod yaratmasdan ANIQ xato beradi
-		// ("Telegram bot orqali davom eting") â€” 500 emas. Izoh:
+		// ("Telegram bot orqali davom eting") — 500 emas. Izoh:
 		// `users.WithoutSms`.
 		authSvc = authSvc.WithoutSms()
 	}
@@ -913,7 +913,7 @@ func main() {
 	// esa haqiqiy SMTP shart.
 	authSvc = authSvc.WithEmail(emailSender, emailConfigured || devMode)
 
-	// Telegram bot â€” birinchi pog'ona.
+	// Telegram bot — birinchi pog'ona.
 	//
 	// Kod bot tomonida YARATILMAYDI: raqam tasdiqlangach `IssueCode`
 	// chaqiriladi va kod odatdagi do'konga tushadi. Ya'ni bot faqat
@@ -932,13 +932,13 @@ func main() {
 				return code, err
 			},
 			users.NormalizePhone,
-			5, // kod amal qilish muddati (daqiqa) â€” users.codeTTL bilan bir xil
+			5, // kod amal qilish muddati (daqiqa) — users.codeTTL bilan bir xil
 		// Kutilayotgan kirish sessiyalari Redis'da ham saqlanadi:
 		// busiz HAR DEPLOY o'sha daqiqada Telegram orqali kirayotgan
 		// foydalanuvchilarni "havola eskirgan" holatiga tushirardi.
 		// Redis yo'q bo'lsa avvalgidek faqat xotirada ishlaydi.
 		).WithRedis(redisClient)
-		// PUBLIC_BASE_URL â€” "OnDex'ga qaytish" tugmasi ishora qiladigan
+		// PUBLIC_BASE_URL — "OnDex'ga qaytish" tugmasi ishora qiladigan
 		// manzil. TELEFON BRAUZERI unga chiqa olishi SHART.
 		//
 		// Dev'da `adb reverse tcp:8080 tcp:8080` bo'lsa `http://localhost:8080`
@@ -946,14 +946,14 @@ func main() {
 		// Wi-Fi orqali ishlansa LAN IP yozilishi kerak, production'da esa
 		// haqiqiy domen.
 		publicURL := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL"))
-		// WEB_PUBLIC_BASE_URL â€” `apps/web`ning o'zi (masalan
+		// WEB_PUBLIC_BASE_URL — `apps/web`ning o'zi (masalan
 		// `https://ondex.uz`), `PUBLIC_BASE_URL` (Go API domeni,
 		// `api.ondex.uz`) bilan ADASHTIRMASLIK KERAK. Faqat oddiy
 		// brauzerdan "Telegram bilan kirish" uchun (`StartLoginWeb`,
-		// `Pending.Web`) â€” bo'sh bo'lsa o'sha yo'l botning "qaytish"
+		// `Pending.Web`) — bo'sh bo'lsa o'sha yo'l botning "qaytish"
 		// tugmasisiz qoladi (ilova yo'liga ta'sir qilmaydi).
 		webPublicURL := strings.TrimSpace(os.Getenv("WEB_PUBLIC_BASE_URL"))
-		// â”Œâ”€ KALIT QACHON MAJBURIY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+		// ┌─ KALIT QACHON MAJBURIY ────────────────────────────────┐
 		// Avval shart `!devMode` edi, ya'ni dev'da fishing teshigi
 		// HAR DOIM ochiq turardi. Aslida kalitni tushirib qoldirish
 		// uchun yagona uzrli sabab bor edi: uni YETKAZIB bo'lmasligi
@@ -963,24 +963,24 @@ func main() {
 		// Lokal Cloudflare tunnel (scripts/dev_tunnel.ps1) dev'da ham
 		// haqiqiy HTTPS domen beradi. Shuning uchun shart endi
 		// muhitga emas, YETKAZISH IMKONIYATIGA bog'landi: domen
-		// bo'lsa â€” kalit majburiy, muhitidan qat'i nazar.
+		// bo'lsa — kalit majburiy, muhitidan qat'i nazar.
 		//
 		// Production o'zgarishsiz: u yerda `PUBLIC_BASE_URL` doim
 		// bor, bo'lmasa ham `!devMode` fail-closed ushlab qoladi.
-		// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+		// └────────────────────────────────────────────────────────┘
 		tgVerifier = tgVerifier.
 			WithPublicURL(publicURL).
 			WithWebPublicURL(webPublicURL).
 			WithConfirmSecretRequired(!devMode || publicURL != "").
-			// â”Œâ”€ MINI APP BOG'LANISHI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-			// Kontakt ulashilganda telegram_id â†” telefon saqlanadi
+			// ┌─ MINI APP BOG'LANISHI ────────────────────────────────┐
+			// Kontakt ulashilganda telegram_id ↔ telefon saqlanadi
 			// (migration 0031). Busiz Mini App foydalanuvchi kimligini
 			// aniqlay olmaydi: `initData` da telefon YO'Q.
 			//
 			// Hook orqali ulanadi, chunki `internal/telegram` paketi
 			// `internal/users` ni import qilmaydi (`WithContactHook`
 			// izohiga qarang).
-			// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+			// └───────────────────────────────────────────────────────┘
 			WithContactHook(func(ctx context.Context, tgID int64, phone string) error {
 				u, err := authSvc.LinkTelegramPhone(ctx, tgID, phone)
 				if err != nil {
@@ -997,22 +997,22 @@ func main() {
 		secretRequired := !devMode || publicURL != ""
 		if !secretRequired {
 			slog.Warn("Telegram bilan kirish: tasdiq kaliti TALAB QILINMAYDI " +
-				"(dev, PUBLIC_BASE_URL yo'q). Bu fishingga ochiq â€” havolani " +
+				"(dev, PUBLIC_BASE_URL yo'q). Bu fishingga ochiq — havolani " +
 				"qurbonga yuborgan odam uning akkauntiga kira oladi. Kalitni " +
 				"yoqish uchun PUBLIC_BASE_URL ga OMMAVIY domen bering " +
-				"(Telegram localhost'ni rad etadi) â€” masalan lokal tunnel: " +
+				"(Telegram localhost'ni rad etadi) — masalan lokal tunnel: " +
 				"scripts/dev_tunnel.ps1")
 		} else if publicURL == "" {
-			slog.Error("PUBLIC_BASE_URL yo'q â€” \"Telegram bilan kirish\" " +
+			slog.Error("PUBLIC_BASE_URL yo'q — \"Telegram bilan kirish\" " +
 				"YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
 		// Ilova yo'lidan MUSTAQIL: apps/web'dagi login sahifasi (`/login`)
 		// SMS ulanmagan paytda ham ishlashi uchun yagona kanal shu.
 		if secretRequired && webPublicURL == "" {
-			slog.Error("WEB_PUBLIC_BASE_URL yo'q â€” brauzerdan \"Telegram bilan " +
+			slog.Error("WEB_PUBLIC_BASE_URL yo'q — brauzerdan \"Telegram bilan " +
 				"kirish\" YAKUNLANMAYDI (qaytish tugmasi yuborib bo'lmaydi)")
 		}
-		// `safego` â€” recover bilan (bug.md 44-band). Bot polling
+		// `safego` — recover bilan (bug.md 44-band). Bot polling
 		// sikli soatlab ishlaydi va tashqi (Telegram) ma'lumot bilan
 		// oziqlanadi: u yerdagi panic butun API'ni yiqitardi.
 		safego.Go("telegram.verifier", func() { tgVerifier.Run(context.Background()) })
@@ -1020,7 +1020,7 @@ func main() {
 			"qaytish_manzili", publicURL, "web_qaytish_manzili", webPublicURL,
 			"kalit_majburiy", secretRequired)
 	} else {
-		slog.Warn("TELEGRAM_BOT_TOKEN yo'q â€” /auth/telegram/start o'chirilgan")
+		slog.Warn("TELEGRAM_BOT_TOKEN yo'q — /auth/telegram/start o'chirilgan")
 	}
 	orderSvc := orders.NewService(orderRepo, alertsSvc.WrapOrders(notifier), httpapi.NewID, promotionsRepo)
 	catalogSvc := catalog.NewService(catalogRepo)
@@ -1079,18 +1079,18 @@ func main() {
 		},
 		secrets, multicardBaseURL, multicardClient)
 
-	// â”€â”€ OnDex Wallet (keshbek + hamyondan to'lash) â”€â”€
+	// ── OnDex Wallet (keshbek + hamyondan to'lash) ──
 	//
-	// Tashqi provayder EMAS (Octo'dan farqli) â€” faqat ichki ledger,
+	// Tashqi provayder EMAS (Octo'dan farqli) — faqat ichki ledger,
 	// shuning uchun ATAYLAB shartsiz yoqilgan (Postgres bo'lmasa
-	// xotirada, server qayta ishga tushganda yo'qoladi â€” xuddi boshqa
+	// xotirada, server qayta ishga tushganda yo'qoladi — xuddi boshqa
 	// modullar kabi). Reja: F:\ChustApp\ondexwallet.md.
 	var walletRepo wallet.Repository
 	if pgPool != nil {
 		walletRepo = storage.NewPostgresWalletRepo(pgPool)
 	} else {
 		walletRepo = storage.NewMemoryWalletRepo()
-		slog.Warn("rejim: in-memory (OnDex Wallet) â€” server qayta ishga tushganda yo'qoladi")
+		slog.Warn("rejim: in-memory (OnDex Wallet) — server qayta ishga tushganda yo'qoladi")
 	}
 	walletSvc := wallet.NewService(walletRepo, httpapi.NewID)
 
@@ -1159,7 +1159,7 @@ func main() {
 	}
 	orderSvc.WithWallet(walletSvc)
 
-	// â”€â”€ Stollar (QR kod orqali buyurtma) â”€â”€
+	// ── Stollar (QR kod orqali buyurtma) ──
 	//
 	// Katalog Mongo'da bo'lishi mumkin, lekin stollar ATAYLAB
 	// Postgres/xotirada: ular buyurtmalar bilan bir xil hayot
@@ -1170,7 +1170,7 @@ func main() {
 		tableRepo = storage.NewPgTableRepo(pgPool)
 	} else {
 		tableRepo = storage.NewMemoryTableRepo()
-		slog.Warn("rejim: in-memory (stollar) â€” QR kodlar server qayta ishga tushganda yo'qoladi")
+		slog.Warn("rejim: in-memory (stollar) — QR kodlar server qayta ishga tushganda yo'qoladi")
 	}
 	tableSvc := tables.NewService(tableRepo)
 
@@ -1258,10 +1258,10 @@ func main() {
 	// jimgina "hamma yerda bepul" degani bo'lardi.
 	orderSvc.WithDelivery(httpapi.NewDeliveryPricer(staffRepo))
 
-	// â”€â”€ Tashqi AI agentlar (integratsiya sheriklari) â”€â”€
+	// ── Tashqi AI agentlar (integratsiya sheriklari) ──
 	//
-	// â”Œâ”€ NEGA XOTIRA REJIMIDA O'CHIQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-	// Grantlar â€” foydalanuvchi bergan, PUL sarflashga ruxsat
+	// ┌─ NEGA XOTIRA REJIMIDA O'CHIQ ────────────────────────────────┐
+	// Grantlar — foydalanuvchi bergan, PUL sarflashga ruxsat
 	// beruvchi yozuvlar. Ular server qayta ishga tushganda
 	// yo'qolsa, sherik "token yaroqsiz" xatosini olib qoladi va
 	// foydalanuvchi sababini tushunmaydi. Bundan ko'ra funksiyani
@@ -1269,69 +1269,69 @@ func main() {
 	//
 	// Stollar/bildirishnomalardan farqi shu: ular yo'qolsa ish
 	// davom etaveradi, bu esa yarim buzilgan holat yaratardi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └───────────────────────────────────────────────────────────────┘
 	var agentSvc *agentapi.Service
 	if pgPool != nil {
 		agentSvc = agentapi.NewService(
 			storage.NewPgAgentRepo(pgPool), catalogSvc, orderSvc)
 		slog.Info("rejim: AI agent integratsiyasi yoqilgan (/agent/v1)")
 	} else {
-		slog.Warn("AI agent integratsiyasi O'CHIQ (DATABASE_URL yo'q) â€” /agent/v1 503 qaytaradi")
+		slog.Warn("AI agent integratsiyasi O'CHIQ (DATABASE_URL yo'q) — /agent/v1 503 qaytaradi")
 	}
 
-	// â”€â”€ Ilova ichidagi AI yordamchi (chat + ovoz) â”€â”€
+	// ── Ilova ichidagi AI yordamchi (chat + ovoz) ──
 	//
-	// â”Œâ”€ TASHQI AGENTDAN FARQI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-	// Yuqoridagi `agentSvc` â€” BOSHQA server (Shaddiy ilovasi)
+	// ┌─ TASHQI AGENTDAN FARQI ───────────────────────────────────────┐
+	// Yuqoridagi `agentSvc` — BOSHQA server (Shaddiy ilovasi)
 	// foydalanuvchi nomidan ish qilishi uchun. Bu esa OnDex
 	// ilovasining O'Z chat oynasi: Shaddiy bu yerda faqat TIL
 	// MODELI, tool'larni OnDex o'zi bajaradi va yordamchi buyurtma
-	// YARATA OLMAYDI â€” u savat taklifini qaytaradi, tugmani odam
+	// YARATA OLMAYDI — u savat taklifini qaytaradi, tugmani odam
 	// bosadi.
 	//
 	// Bazaga bog'liq EMAS (holat mijozda saqlanadi), shuning uchun
 	// dev rejimda ham ishlaydi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └───────────────────────────────────────────────────────────────┘
 	var assistantSvc *assistant.Service
 	if shaddiy, ok := assistant.NewShaddiyFromEnv(); ok {
 		assistantSvc = assistant.NewService(
 			shaddiy, catalogRepo, catalogSvc, orderSvc, orderRepo, orderSvc)
 		slog.Info("rejim: ilova ichidagi AI yordamchi yoqilgan (/ai/chat)")
 	} else {
-		slog.Warn("AI yordamchi O'CHIQ (SHADDIY_AI_URL/SHADDIY_API_KEY yo'q) â€” /ai/* 503 qaytaradi")
+		slog.Warn("AI yordamchi O'CHIQ (SHADDIY_AI_URL/SHADDIY_API_KEY yo'q) — /ai/* 503 qaytaradi")
 	}
 
-	// â”Œâ”€ OVOZLI REJIM (Gemini Live) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ OVOZLI REJIM (Gemini Live) ───────────────────────────────────┐
 	// Matnli chatdan MUSTAQIL yoqiladi. Sabab: qurilmadagi nutq
 	// tanish/sintez o'zbek tilini QO'LLAMAYDI (telefonda o'lchandi:
 	// tanish `ru-RU` ga tushardi, javob esa o'zbek matnini rus ovozi
 	// bilan o'qirdi). Gemini Live esa o'zbekcha tabiiy ovoz beradi.
 	//
 	// MAXFIYLIK: bu rejimda mikrofon oqimi serverga va u yerdan
-	// Google'ga ketadi â€” ilova buni foydalanuvchiga aytadi va
+	// Google'ga ketadi — ilova buni foydalanuvchiga aytadi va
 	// roziligini so'raydi. Matnli chatda audio YO'Q.
 	//
 	// Yordamchining o'zi bo'lmasa ovoz ham yoqilmaydi: ovozli rejim
 	// AYNAN o'sha tool'lar ustida ishlaydi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └────────────────────────────────────────────────────────────────┘
 	var assistantLive *assistant.LiveConfig
 	if assistantSvc != nil {
 		if cfg, ok := assistant.LiveConfigFromEnv(); ok {
 			assistantLive = &cfg
 			slog.Info("rejim: ovozli yordamchi yoqilgan (/ai/live)", "model", cfg.Model)
 		} else {
-			slog.Warn("Ovozli rejim O'CHIQ (GEMINI_API_KEY yo'q) â€” ilova mikrofon tugmasini ko'rsatmaydi")
+			slog.Warn("Ovozli rejim O'CHIQ (GEMINI_API_KEY yo'q) — ilova mikrofon tugmasini ko'rsatmaydi")
 		}
 	}
 
-	// â”€â”€ Karta orqali to'lov (Octo) â”€â”€
+	// ── Karta orqali to'lov (Octo) ──
 	//
-	// â”Œâ”€ SOZLANMAGAN BO'LSA TIZIM NORMAL ISHLAYDI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ SOZLANMAGAN BO'LSA TIZIM NORMAL ISHLAYDI ────────────────────┐
 	// Kalitlar bo'lmasa `octoClient`/`paymentSvc` nil qoladi:
 	// buyurtmalar faqat NAQD bo'ladi, to'lov endpointlari 503
 	// qaytaradi, qolgan hamma narsa avvalgidek. Ya'ni to'lovni
 	// bosqichma-bosqich yoqish mumkin.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └───────────────────────────────────────────────────────────────┘
 	// ┌─ QAYSI PROVAYDER ──────────────────────────────────────────────┐
 	// Multicard (Rahmat) — ASOSIY: shartnoma tuzilgan va pul
 	// to'g'ridan-to'g'ri restoran hisobiga tushadi. Octo bilan
@@ -1474,18 +1474,18 @@ func main() {
 			"buyurtmalar faqat naqd (MULTICARD_BASE_URL yoki OCTO_SHOP_ID kerak)")
 	}
 
-	// Dispatch matching engine â€” Google Distance Matrix orqali HAQIQIY ETA.
+	// Dispatch matching engine — Google Distance Matrix orqali HAQIQIY ETA.
 	// MUHIM: bu ham xuddi geokodlash kabi SERVER-SERVER chaqiruv, shuning
 	// uchun veb (HTTP referrer bilan cheklangan) yoki Android (paket+SHA-1
-	// bilan cheklangan) kaliti ISHLAMAYDI â€” ikkalasi ham to'g'ridan-to'g'ri
+	// bilan cheklangan) kaliti ISHLAMAYDI — ikkalasi ham to'g'ridan-to'g'ri
 	// Go serveridan kelgan so'rovni rad etadi. Shu sabab mavjud
 	// GOOGLE_GEOCODING_API_KEY (allaqachon server-server uchun, cheklovsiz/
-	// IP-cheklangan) qayta ishlatiladi â€” Cloud Console'da shu KALITGA
+	// IP-cheklangan) qayta ishlatiladi — Cloud Console'da shu KALITGA
 	// "Distance Matrix API"ni ham qo'shib yoqish kifoya, uchinchi kalit
 	// yaratish shart emas.
 	distanceMatrixKey := os.Getenv("GOOGLE_GEOCODING_API_KEY")
 	if distanceMatrixKey == "" {
-		slog.Warn("GOOGLE_GEOCODING_API_KEY berilmagan â€” dispatch har doim zaxira (to'g'ri chiziq masofa) ETA'ga tushadi")
+		slog.Warn("GOOGLE_GEOCODING_API_KEY berilmagan — dispatch har doim zaxira (to'g'ri chiziq masofa) ETA'ga tushadi")
 	}
 	geoClient := geo.NewClient(distanceMatrixKey)
 	// Taklif faqat YETIB BORADIGAN kuryerlarga: ilova ochiq yoki push bilan
@@ -1493,10 +1493,10 @@ func main() {
 	dispatcher := couriers.NewDispatcher(courierRepo, notifier, geoClient, 20*time.Second).
 		WithReachability(notifier)
 
-	// â”Œâ”€ NEGA BU YERDA TEKSHIRILADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+	// ┌─ NEGA BU YERDA TEKSHIRILADI ──────────────────────────────────┐
 	// Yuqoridagi kalitdan FARQLI o'laroq (u brauzer kaliti, referrer
 	// bilan cheklangan) bu faqat `/config/maps` da o'qiladi. Ya'ni
-	// yo'qligi server ishga tushganda umuman bilinmasdi â€” nosozlik
+	// yo'qligi server ishga tushganda umuman bilinmasdi — nosozlik
 	// kimdir admin panelda xaritani ochganda, "config/maps -> 503"
 	// degan tushunarsiz xabar bo'lib chiqardi.
 	//
@@ -1506,9 +1506,9 @@ func main() {
 	//
 	// Fatal EMAS: xaritasiz ham platformaning qolgan hammasi ishlaydi,
 	// server ko'tarilmay qolishi bundan ancha yomon bo'lardi.
-	// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+	// └───────────────────────────────────────────────────────────────┘
 	if os.Getenv("GOOGLE_MAPS_API_KEY") == "" {
-		slog.Warn("GOOGLE_MAPS_API_KEY berilmagan â€” /config/maps 503 qaytaradi, " +
+		slog.Warn("GOOGLE_MAPS_API_KEY berilmagan — /config/maps 503 qaytaradi, " +
 			"admin/restoran panelida xarita ochilmaydi " +
 			"(tekshiring: .env da bormi VA docker-compose.prod.yml environment ro'yxatida bormi)")
 	}
@@ -1545,7 +1545,7 @@ func main() {
 
 	// ---------- HTTP qatlami ----------
 	// Barcha endpointlar `internal/httpapi` da (routes_*.go). Bu yerda
-	// faqat bog'liqliklar yig'iladi â€” Express'dagi `app.js` kabi.
+	// faqat bog'liqliklar yig'iladi — Express'dagi `app.js` kabi.
 	// GOOGLE_MAP bayrog'i: true (standart) — Google, false — OnDexMap (Google zaxira).
 	// Mijoz har doim yaratiladi: "OnDex Xarita" ekrani rejimdan qat'i nazar unga tayanadi.
 	mapMode := mapprovider.FromValue(os.Getenv("GOOGLE_MAP"))
@@ -1610,10 +1610,10 @@ func main() {
 		PanelWebOrigin:   os.Getenv("PANEL_WEB_ORIGIN"),
 		AdminWebOrigin:   os.Getenv("ADMIN_WEB_ORIGIN"),
 		OndexMapAdminURL: os.Getenv("ONDEXMAP_ADMIN_URL"),
-		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI â€”
+		// SMTP ulangan bo'lsa email kodi javobda QAYTARILMAYDI —
 		// u haqiqatan pochtaga boradi (`Deps.EmailConfigured` izohi).
 		EmailConfigured: emailConfigured,
-		// Email orqali KIRISH â€” standart holda O'CHIQ. Mijoz ilovasida
+		// Email orqali KIRISH — standart holda O'CHIQ. Mijoz ilovasida
 		// bu yo'l olib tashlangan (ROADMAP 62-band), SMTP esa
 		// chek/bildirishnoma uchun ishlashda davom etadi.
 		EmailLoginEnabled: strings.EqualFold(
@@ -1634,14 +1634,14 @@ func main() {
 		// Yuklash: xodim uchun daqiqasiga ~6 ta, qisqa muddatda 12
 		// tagacha ketma-ket. Menyuni to'ldirish (bir necha o'nlab rasm)
 		// bemalol sig'adi, 25 MB li PDF larni ketma-ket haydash esa
-		// yo'q â€” R2 da joy ham, PDF tahlili ham pul turadi.
+		// yo'q — R2 da joy ham, PDF tahlili ham pul turadi.
 		UploadLimiter: ratelimit.New(6.0/60.0, 12).Shared("UploadLimiter"),
 	})
 
 	// Tugallanmagan 3D vazifalarni davom ettiramiz. Server qayta ishga
 	// tushganda kuzatuvchi gorutinalar yo'qoladi va mahsulot abadiy
 	// "tayyorlanmoqda" holatida qolardi (`ResumePending` izohiga
-	// qarang). Fon rejimida â€” ishga tushishni sekinlashtirmasin.
+	// qarang). Fon rejimida — ishga tushishni sekinlashtirmasin.
 	if model3DSvc != nil {
 		safego.Go("model3d.resumePending", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -1677,6 +1677,13 @@ func main() {
 	// (aks holda mahsulot "qolmagandek" ko'rinib, mijoz abadiy kutardi). Hodisa odatdagidek
 	// mijozga va do'kon paneliga jonli yetkaziladi.
 	safego.Go("qurtorders.expire", func() { runQurtExpiry(context.Background(), qurtOrderSvc) })
+
+	// To'lov muddati (audit 480): muddati o'tgan urinishlar va to'lovi
+	// boshlanmagan karta buyurtmalari yopiladi (payment_expiry.go).
+	if paymentSvc != nil {
+		unpaid, _ := orderRepo.(abandonedUnpaidLister)
+		safego.Go("payments.expire", func() { runPaymentExpiry(context.Background(), paymentSvc, unpaid) })
+	}
 
 	// ── OnDexFlow (o'z OTA yangilanishi, modul: internal/modules/flow) ──
 	{
@@ -1748,7 +1755,7 @@ func main() {
 	startPprof(pgPool)
 
 	addr := listenAddr
-	// ANIQ timeout'lar â€” `http.ListenAndServe` nol-qiymatli serverdan
+	// ANIQ timeout'lar — `http.ListenAndServe` nol-qiymatli serverdan
 	// foydalanadi, ya'ni o'qish/yozish CHEKSIZ kutadi. Bir necha o'nlab
 	// sekin (baytma-bayt yozadigan) ulanish barcha goroutine'larni band
 	// qilib, serverni arzimas kuch bilan to'xtatishi mumkin (Slowloris).
@@ -1763,7 +1770,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown â€” SIGTERM/SIGINT kelganda ishlab turgan
+	// Graceful shutdown — SIGTERM/SIGINT kelganda ishlab turgan
 	// so'rovlar tugatiladi, DB pool'lari yopiladi (avval jarayon
 	// darhol o'lardi va so'rovlar yarim yo'lda uzilardi).
 	shutdownDone := make(chan struct{})
@@ -1771,13 +1778,13 @@ func main() {
 		// `close(shutdownDone)` ATAYLAB `defer` da va `safego.Run` dan
 		// TASHQARIDA (bug.md 44-band): shu goroutine'da panic bo'lsa
 		// ham `main` `<-shutdownDone` da abadiy osilib qolmasligi
-		// kerak â€” aks holda konteyner SIGKILL kutgan bo'lardi.
+		// kerak — aks holda konteyner SIGKILL kutgan bo'lardi.
 		defer close(shutdownDone)
 		safego.Run("api.shutdown", func() {
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 			<-sigCh
-			slog.Info("to'xtatish signali qabul qilindi â€” so'rovlar yakunlanmoqda")
+			slog.Info("to'xtatish signali qabul qilindi — so'rovlar yakunlanmoqda")
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {

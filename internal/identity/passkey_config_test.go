@@ -53,3 +53,29 @@ func TestResolvePasskeyConfigStrict(t *testing.T) {
 		}
 	}
 }
+
+// Prod 2026-11-19: WEBAUTHN_ORIGINS'da admin.ondex.uz yo'q edi — admin web'da
+// passkey "Error validating origin". Web panel origin'lari har doim qo'shiladi,
+// RP'dan tashqaridagisi (dev) esa passkey'ni O'CHIRMAYDI.
+func TestResolvePasskeyConfigWebPanelOrigins(t *testing.T) {
+	cfg, err := ResolvePasskeyConfig(PasskeyConfig{
+		Origins:         []string{"https://passport.ondex.uz", "https://merchant.ondex.uz"},
+		WebPanelOrigins: []string{"https://merchant.ondex.uz", "https://admin.ondex.uz", "https://evil.example.com", "http://admin.ondex.uz"},
+	}, "https://passport.ondex.uz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"https://passport.ondex.uz": true, "https://merchant.ondex.uz": true, "https://admin.ondex.uz": true}
+	if len(cfg.Origins) != len(want) {
+		t.Fatalf("origins = %v", cfg.Origins)
+	}
+	for _, o := range cfg.Origins {
+		if !want[o] {
+			t.Fatalf("kutilmagan origin %q (%v)", o, cfg.Origins)
+		}
+	}
+	dev, err := ResolvePasskeyConfig(PasskeyConfig{WebPanelOrigins: []string{"https://admin.ondex.uz"}}, "http://localhost:8080")
+	if err != nil || len(dev.Origins) != 1 || dev.Origins[0] != "http://localhost:8080" {
+		t.Fatalf("dev: %v %v", dev.Origins, err)
+	}
+}

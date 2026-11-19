@@ -8,14 +8,14 @@ STATS="$D/stats-$RUN.log"
 : > "$STATS"
 touch "$D/.running-$RUN"
 
-# 1) Kuzatuv + to'xtatgich: har 5 s â€” yuk, RAM, konteynerlar. Yuk 18 dan (3x yadro) oshsa k6 va wsload to'xtatiladi.
+# 1) Kuzatuv + to'xtatgich: har 5 s — yuk, RAM, konteynerlar. Yuk 18 dan (3x yadro) oshsa k6 va wsload to'xtatiladi.
 (
   while [ -f "$D/.running-$RUN" ]; do
     L=$(cut -d' ' -f1 /proc/loadavg)
     echo "$(date +%T) load=$L mem=$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')" >> "$STATS"
     docker stats --no-stream --format '  {{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}}' ondex-api-1 ondex-db-1 ondex-redis-1 ondex-mongo-1 k6-loadtest wsload-loadtest 2>/dev/null >> "$STATS"
     if awk -v l="$L" 'BEGIN{exit !(l>18)}'; then
-      echo "$(date +%T) TO'XTATGICH: load=$L > 18 â€” test to'xtatildi" >> "$STATS"
+      echo "$(date +%T) TO'XTATGICH: load=$L > 18 — test to'xtatildi" >> "$STATS"
       docker kill --signal=SIGINT k6-loadtest >/dev/null 2>&1; sleep 3; docker kill --signal=SIGINT wsload-loadtest >/dev/null 2>&1; rm -f "$D/.running-$RUN"
     fi
     sleep 5

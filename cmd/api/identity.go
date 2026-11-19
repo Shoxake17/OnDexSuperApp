@@ -421,6 +421,10 @@ func buildMerchantAuth(devMode bool, svc *identity.Service, az *authz.Authorizer
 	// Passkey RP (AUD-4): bo'sh bo'lsa issuer host/origin. Kirish sahifasi
 	// boshqa domendan berilsa (masalan passport.*) — shu yerda ko'rsatiladi.
 	pkCfg := identity.PasskeyConfig{RPID: strings.TrimSpace(os.Getenv("WEBAUTHN_RP_ID"))}
+	pkCfg.WebPanelOrigins = []string{
+		envOr(os.Getenv("PANEL_WEB_ORIGIN"), "https://merchant.ondex.uz"),
+		envOr(os.Getenv("ADMIN_WEB_ORIGIN"), "https://admin.ondex.uz"),
+	}
 	for _, o := range strings.Split(os.Getenv("WEBAUTHN_ORIGINS"), ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			pkCfg.Origins = append(pkCfg.Origins, o)
