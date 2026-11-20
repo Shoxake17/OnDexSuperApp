@@ -367,7 +367,7 @@ class _TelegramHint extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // â”Œâ”€ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          // ┌─ QADAMMA-QADAM KO'RSATMA OLIB TASHLANDI ──────────────────┐
           // Ilgari bu yerda "1. Start bosing, 2. Raqamni ulashing,
           // 3. Kodni kiriting" degan uch qatorli o'rgatish turardi.
           //
@@ -375,7 +375,7 @@ class _TelegramHint extends StatelessWidget {
           // Telegram Start tugmasini, so'ng raqam so'rovini o'zi
           // ko'rsatadi. Ya'ni ko'rsatma ekranda joy egallab, hech
           // qanday yangi ma'lumot bermasdi.
-          // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          // └────────────────────────────────────────────────────────────┘
           // Raqam MOS KELMASA bot kodni umuman yubormaydi — bu
           // xavfsizlik qoidasi, nosozlik emas. Affitsiant buni
           // bilmasa "bot ishlamayapti" deb o'ylardi.

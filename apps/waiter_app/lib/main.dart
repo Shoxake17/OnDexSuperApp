@@ -16,7 +16,7 @@ void main() async {
   //
   // Xatolik ilovani TO'XTATMAYDI: tahlil hech qachon ishga tushishga
   // to'sqinlik qilmasligi kerak.
-  // â”Œâ”€ SEANS YOZUVI (session replay) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  // ┌─ SEANS YOZUVI (session replay) ───────────────────────────────┐
   // Foydalanuvchi ekranini keyin video kabi qayta ko'rish imkonini
   // beradi - nosozlikni "qanday qilib shunday bo'ldi" degan savolga
   // javob topish uchun eng tez yo'l.
@@ -26,7 +26,7 @@ void main() async {
   //
   // Matn va rasmlar NIQOBLANADI: telefon raqami, manzil, parol
   // yozuvga tushmasligi kerak.
-  // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+  // └───────────────────────────────────────────────────────────────┘
   if (posthogEnabled) {
     try {
       final cfg = PostHogConfig(posthogApiKey)

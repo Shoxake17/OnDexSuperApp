@@ -412,11 +412,11 @@ class _MenuScreenState extends State<MenuScreen> {
   Future<void> _openGame() async {
     final info = _sceneInfo;
     if (info == null) return;
-    // â”Œâ”€ HOLAT IKKI TOMONGA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+    // ┌─ HOLAT IKKI TOMONGA ─────────────────────────────────────────┐
     // 3D tomonga hozirgi savat va sevimlilar uzatiladi, u yopilgach
     // o'zgargani qaytariladi. O'yin serverga o'zi yozmaydi: unda
     // foydalanuvchi tokeni yo'q va bo'lishi ham kerak emas.
-    // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+    // └──────────────────────────────────────────────────────────────┘
     // Sevimlilar `FavoritesStore` orqali: u API chaqiruvini ham,
     // ekranlarni xabardor qilishni ham o'zi bajaradi. To'g'ridan-
     // to'g'ri `api` ga murojaat qilinsa, ro'yxat ikki joyda ajralib
@@ -475,7 +475,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
   /// 3D maketdan qaytgan holatni OnDex tomonga qo'llaydi.
   ///
-  /// â”Œâ”€ FAQAT FARQ YOZILADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+  /// ┌─ FAQAT FARQ YOZILADI ──────────────────────────────────────────┐
   /// Sevimlilar ro'yxatini butunlay qayta yozish mumkin edi, lekin u
   /// BOSHQA restoranlarning mahsulotlarini ham o'z ichiga oladi -
   /// o'yin esa faqat shu kafening menyusini ko'radi. Hammasini
@@ -483,7 +483,7 @@ class _MenuScreenState extends State<MenuScreen> {
   ///
   /// Shuning uchun faqat FARQ qo'llanadi va u ham menyudagi
   /// mahsulotlar bilan cheklanadi.
-  /// â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+  /// └────────────────────────────────────────────────────────────────┘
   Future<void> _applyGameState(
     GameResult res,
     Set<String> favBefore,
@@ -497,7 +497,7 @@ class _MenuScreenState extends State<MenuScreen> {
     // begona ID savatga tushmasligi kerak.
     final known = _menu.map((p) => '${p['id'] ?? ''}').toSet();
 
-    // â”€â”€ Savat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Savat ────────────────────────────────────────────────────
     for (final id in {...cartBefore.keys, ...res.cart.keys}) {
       if (!known.contains(id)) continue;
       final want = res.cart[id] ?? 0;
@@ -505,7 +505,7 @@ class _MenuScreenState extends State<MenuScreen> {
       _cart.setQty(restaurantId: _id, productId: id, qty: want);
     }
 
-    // â”€â”€ Sevimlilar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Sevimlilar ───────────────────────────────────────────────
     for (final id in known) {
       final was = favBefore.contains(id);
       final now = res.favorites.contains(id);

@@ -7,6 +7,8 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -15,6 +17,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.Executors
 
 // FlutterActivity EMAS, FlutterFragmentActivity.
 //
@@ -194,10 +197,12 @@ class MainActivity : FlutterFragmentActivity() {
             result.success(mapOf("ready" to false, "reason" to "bad_expected_hash"))
             return
         }
-        val ok = sha256(file) == want
-        result.success(
-            mapOf("ready" to ok, "reason" to if (ok) "ok" else "bad_hash")
-        )
+        hashAsync(file) { got ->
+            val ok = got == want
+            result.success(
+                mapOf("ready" to ok, "reason" to if (ok) "ok" else "bad_hash")
+            )
+        }
     }
 
     /** Flutter faylni qayerga yozishini aytadi. */
@@ -245,19 +250,21 @@ class MainActivity : FlutterFragmentActivity() {
             result.error("no_file", "yuklab olingan fayl yo'q", null)
             return
         }
-        if (sha256(part) != want) {
-            part.delete()
-            result.error("bad_hash", "fayl butunligi tasdiqlanmadi", null)
-            return
+        hashAsync(part) { got ->
+            if (got != want) {
+                part.delete()
+                result.error("bad_hash", "fayl butunligi tasdiqlanmadi", null)
+                return@hashAsync
+            }
+            val target = sceneFile(id)
+            target.delete()
+            if (!part.renameTo(target)) {
+                part.delete()
+                result.error("rename_failed", "fayl joyiga qo'yilmadi", null)
+                return@hashAsync
+            }
+            result.success(true)
         }
-        val target = sceneFile(id)
-        target.delete()
-        if (!part.renameTo(target)) {
-            part.delete()
-            result.error("rename_failed", "fayl joyiga qo'yilmadi", null)
-            return
-        }
-        result.success(true)
     }
 
     /** Maketni o'chiradi — foydalanuvchi joy bo'shatmoqchi bo'lsa. */
@@ -309,11 +316,25 @@ class MainActivity : FlutterFragmentActivity() {
         // turadi va oradan vaqt o'tishi mumkin. Bu - oxirgi va eng
         // ishonchli nuqta.
         // └────────────────────────────────────────────────────────────┘
-        if (sha256(file) != want) {
-            file.delete()
-            result.error("bad_hash", "maket fayli buzilgan", null)
-            return
+        hashAsync(file) { got ->
+            if (got != want) {
+                file.delete()
+                result.error("bad_hash", "maket fayli buzilgan", null)
+            } else {
+                launchScene(call, result, file, restaurantId, tableLabel, apiBase)
+            }
         }
+    }
+
+    /** Xesh tasdiqlangach o'yinni ochadi (asosiy oqimda). */
+    private fun launchScene(
+        call: io.flutter.plugin.common.MethodCall,
+        result: MethodChannel.Result,
+        file: File,
+        restaurantId: String,
+        tableLabel: String,
+        apiBase: String
+    ) {
 
         // Yuklanish ekranida ko'rsatiladigan nom va logotip.
         //
@@ -325,7 +346,7 @@ class MainActivity : FlutterFragmentActivity() {
         val name = call.argument<String>("name").orEmpty().take(64)
         val logo = call.argument<String>("logoUrl").orEmpty().take(512)
 
-        // â”Œâ”€ SAVAT VA SEVIMLILAR: HOLAT IKKI TOMONGA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+        // ┌─ SAVAT VA SEVIMLILAR: HOLAT IKKI TOMONGA ─────────────────┐
         // O'yin bu ma'lumotni serverdan O'ZI olmaydi va yozmaydi:
         // buning uchun foydalanuvchi tokeni kerak bo'lardi va u
         // ataylab berilmaydi (`ondex_config.gd` izohiga qarang).
@@ -337,7 +358,7 @@ class MainActivity : FlutterFragmentActivity() {
         // Qiymatlar SHU YERDA ham tekshiriladi: ular Flutter'dan
         // keladi, lekin kanal orqali kelgan hamma narsa tashqi
         // ma'lumot deb qaraladi.
-        // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+        // └───────────────────────────────────────────────────────────┘
         val favorites = sanitizeIds(call.argument<String>("favorites").orEmpty())
         val cart = sanitizeCart(call.argument<String>("cart").orEmpty())
 
@@ -361,11 +382,11 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         try {
-            // â”Œâ”€ NATIJA KUTILADI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+            // ┌─ NATIJA KUTILADI ────────────────────────────────────┐
             // Avval `startActivity` ishlatilardi va Flutter darrov
             // javob olardi. Endi o'yin yopilgunicha kutiladi: holat
             // fayli faqat o'shanda tayyor bo'ladi.
-            // â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+            // └──────────────────────────────────────────────────────┘
             pendingGameResult?.error("cancelled", "yangi o'yin ochildi", null)
             pendingGameResult = result
             startActivityForResult(intent, GAME_REQUEST)
@@ -422,6 +443,29 @@ class MainActivity : FlutterFragmentActivity() {
             }
             .take(MAX_LIST_ITEMS)
             .joinToString(",")
+
+    /**
+     * SHA-256 ni FON oqimida hisoblaydi va natijani ASOSIY oqimga qaytaradi
+     * (MethodChannel.Result faqat asosiy oqimda chaqirilishi shart).
+     *
+     * bug.md 96: ~104 MB fayl xeshi asosiy oqimda bir necha soniya olardi
+     * va sekin telefonda ANR ("ilova javob bermayapti") chiqarardi.
+     * O'qish xatosi = null (xesh mos kelmaydi deb qaraladi).
+     */
+    private fun hashAsync(file: File, done: (String?) -> Unit) {
+        hashExecutor.execute {
+            val got = try {
+                sha256(file)
+            } catch (e: Exception) {
+                Log.w(TAG, "xesh hisoblanmadi: ${e.message}")
+                null
+            }
+            mainHandler.post { done(got) }
+        }
+    }
+
+    private val hashExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /** Faylning SHA-256 yig'indisi (kichik harfda). */
     private fun sha256(file: File): String {
