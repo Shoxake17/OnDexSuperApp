@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isTelegramLink } from "@/lib/telegram-link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bike, Eye, EyeOff, MapPin, Send, ShieldCheck, Smartphone } from "lucide-react";
 import { getTelegramWebApp } from "@/lib/telegram";
@@ -58,7 +59,7 @@ export default function LoginClient({
         body: JSON.stringify({ phone }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || typeof data?.deep_link !== "string") {
+      if (!res.ok || !isTelegramLink(data?.deep_link)) {
         setError(data?.error ?? "Telegram bilan bog'lanib bo'lmadi.");
         return;
       }

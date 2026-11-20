@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isTelegramLink } from "@/lib/telegram-link";
 import Script from "next/script";
 import {
   applyTelegramTheme,
@@ -126,7 +127,7 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
       return;
     }
 
-    if (current.status === "need_contact" && current.botLink) {
+    if (current.status === "need_contact" && isTelegramLink(current.botLink)) {
       if (wa.openTelegramLink) wa.openTelegramLink(current.botLink);
       else window.open(current.botLink, "_blank", "noopener,noreferrer");
     }
