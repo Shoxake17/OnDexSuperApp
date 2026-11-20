@@ -32,7 +32,9 @@ var DefaultHeaderTargets = []HeaderTarget{
 	{"maps", "https://maps.ondex.uz/", "html"},
 	{"maps_console", "https://console.ondex.uz/", "html"},
 	{"plane", "https://plane.ondex.uz/", "html"},
-	{"git", "https://git.ondex.uz/users/sign_in", "html"},
+	// git.ondex.uz olib tashlandi (2026-11-20): GitLab egasi qarori bilan
+	// o'chirilgan — doimiy 502 kuzatuvda yolg'on ogohlantirish berardi.
+	{"admin", "https://admin.ondex.uz/", "html"},
 	{"cdn", "https://cdn.ondex.uz/", "static"},
 	{"tiles", "https://tiles.ondex.uz/", "static"},
 }

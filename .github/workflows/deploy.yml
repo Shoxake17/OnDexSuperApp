@@ -1119,8 +1119,17 @@ jobs:
         run: |
           # yangi konteyner migratsiya/ishga tushishni tugatsin
           sleep 15
+          # Kod siri qo'yilmagan bo'lsa test kirishi prod'da O'CHIQ (cmd/api
+          # testLoginCode) — akkaunt tekshiruvlari o'tkazib yuboriladi.
+          ACC=""
+          if [ -n "$TEST_OTP_CODE" ]; then
+            ACC="-waiter +998999999999 -courier +998888888888 -code $TEST_OTP_CODE"
+          else
+            echo "::warning::TEST_OTP_CODE siri yo'q — test akkaunt kirishi tekshirilmadi"
+          fi
+          # shellcheck disable=SC2086
           /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://merchant.ondex.uz/ \
-            -waiter +998999999999 -courier +998888888888 -code "$TEST_OTP_CODE" -out /tmp/smoke.prom
+            $ACC -out /tmp/smoke.prom
           echo "### Smoke: hammasi o'tdi" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke natijasi (yiqilganda)
