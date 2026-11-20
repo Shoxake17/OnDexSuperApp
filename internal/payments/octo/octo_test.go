@@ -92,7 +92,10 @@ func TestTiyinFromDecimal(t *testing.T) {
 
 	// Tiyindan mayda qism JIMGINA yaxlitlanmaydi — pul hisobida
 	// farq yaratardi.
-	for _, bad := range []string{"", "abc", "100.005", "1.999"} {
+	// bug.md 37: ishora ichkarida ("--5", "100.-5") va int64 dan toshadigan
+	// summa (w*100 manfiy bo'lib, summa tekshiruvini o'chirardi).
+	for _, bad := range []string{"", "abc", "100.005", "1.999", "--5", "+-5", "100.-5", "100.+5",
+		"92233720368547758", "9999999999999999.00"} {
 		if _, err := payments.TiyinFromDecimal(bad); err == nil {
 			t.Errorf("%q rad etilishi kerak edi", bad)
 		}

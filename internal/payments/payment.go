@@ -287,6 +287,13 @@ func TiyinFromDecimal(s string) (int64, error) {
 	if whole == "" {
 		whole = "0"
 	}
+	// Faqat raqamlar: ParseInt ishorani ham qabul qiladi, ya'ni "--5" yoki
+	// "100.-5" jimgina son bo'lib ketardi. Uzunlik chegarasi w*100 ning
+	// int64 dan toshib, MANFIY summa bo'lishini yopadi (bug.md 37) —
+	// 15 xona = 10^15 so'mdan kam, har qanday real to'lovdan ancha katta.
+	if !allDigits(whole) || len(whole) > 15 || (hasFrac && frac != "" && !allDigits(frac)) {
+		return 0, fmt.Errorf("summani o'qib bo'lmadi: %q", s)
+	}
 	w, err := strconv.ParseInt(whole, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("summani o'qib bo'lmadi: %q", s)
@@ -320,4 +327,13 @@ func TiyinFromDecimal(s string) (int64, error) {
 		total = -total
 	}
 	return total, nil
+}
+
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
