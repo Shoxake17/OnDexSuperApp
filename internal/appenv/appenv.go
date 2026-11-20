@@ -68,6 +68,13 @@ type Var struct {
 	// (masalan `OCTO_TRUST_CALLBACK_DEV`) yoki compose'da boshqa
 	// mexanizm bilan beriladi.
 	DeployRequired bool
+
+	// Alternatives — shu o'zgaruvchi o'rniga ishlaydigan boshqa nomlar
+	// (masalan eski nom moslik uchun). Ulardan biri o'rnatilgan bo'lsa
+	// o'zgaruvchi "yo'q" deb log'ga YOZILMAYDI — aks holda ishlab turgan
+	// funksiya haqida yolg'on ogohlantirish chiqardi (audit 480:
+	// PAYMENT_RETURN_URL yo'q, lekin OCTO_RETURN_URL bor edi).
+	Alternatives []string
 }
 
 // Registry — API server o'qiydigan barcha o'zgaruvchilar.
@@ -208,7 +215,7 @@ var Registry = []Var{
 	{Name: "OCTO_SECRET", Effect: "karta orqali to'lov o'chiq", DeployRequired: true},
 	{Name: "OCTO_SIGNATURE_KEY", Effect: "callback imzosi tekshirilmaydi", DeployRequired: true},
 	{Name: "OCTO_TEST", Effect: "to'lov SINOV rejimida qoladi — haqiqiy pul olinmaydi (bug.md 43-band)", DeployRequired: true},
-	{Name: "OCTO_RETURN_URL", Effect: "to'lovdan keyin mijoz ilovaga qaytmaydi", DeployRequired: true},
+	{Name: "OCTO_RETURN_URL", Effect: "to'lovdan keyin mijoz ilovaga qaytmaydi", DeployRequired: true, Alternatives: []string{"PAYMENT_RETURN_URL"}},
 	// FAQAT DEV: production'da bu bayroq YOQILMASLIGI kerak, shuning
 	// uchun compose'da ataylab yo'q.
 	{Name: "OCTO_TRUST_CALLBACK_DEV", Effect: "faqat dev: imzosiz callback qabul qilinadi", DeployRequired: false},
@@ -226,7 +233,7 @@ var Registry = []Var{
 	{Name: "SECRETS_ENC_KEY", Effect: "restoran o'z to'lov hisobini ULAY OLMAYDI (kalitlarni shifrlab bo'lmaydi)", DeployRequired: true},
 	// To'lovdan keyin mijoz qaytariladigan manzil — provayderdan
 	// mustaqil nom. Eski `OCTO_RETURN_URL` moslik uchun qoladi.
-	{Name: "PAYMENT_RETURN_URL", Effect: "to'lovdan keyin mijoz to'lov sahifasida qolib ketadi", DeployRequired: true},
+	{Name: "PAYMENT_RETURN_URL", Effect: "to'lovdan keyin mijoz to'lov sahifasida qolib ketadi", DeployRequired: true, Alternatives: []string{"OCTO_RETURN_URL"}},
 	//
 	// `MULTICARD_LIVE` va `MULTICARD_STORE_ID` bu ro'yxatda ATAYIN yo'q:
 	// ular faqat `payments/multicard/live_test.go` da o'qiladi, serverga
@@ -282,11 +289,21 @@ var Registry = []Var{
 	{Name: "ARGON_MAX_CONCURRENCY", Effect: "parol xeshlash cheklovi standart qiymatda", DeployRequired: true},
 }
 
+// set — o'zgaruvchining o'zi yoki muqobil nomlaridan biri o'rnatilganmi.
+func (v Var) set() bool {
+	for _, n := range append([]string{v.Name}, v.Alternatives...) {
+		if strings.TrimSpace(os.Getenv(n)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // Missing — hozir o'rnatilmagan (bo'sh) o'zgaruvchilar.
 func Missing() []Var {
 	var out []Var
 	for _, v := range Registry {
-		if strings.TrimSpace(os.Getenv(v.Name)) == "" {
+		if !v.set() {
 			out = append(out, v)
 		}
 	}

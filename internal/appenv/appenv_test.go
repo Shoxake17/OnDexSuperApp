@@ -198,3 +198,25 @@ func containsVar(list []Var, name string) bool {
 	}
 	return false
 }
+
+// Audit 480: muqobil nom o'rnatilgan bo'lsa o'zgaruvchi "yo'q" deb
+// yozilmaydi (yolg'on ogohlantirish log'ni ifloslantirardi).
+func TestMissingHonoursAlternatives(t *testing.T) {
+	t.Setenv("PAYMENT_RETURN_URL", "")
+	t.Setenv("OCTO_RETURN_URL", "https://api.example/return")
+	for _, v := range Missing() {
+		if v.Name == "PAYMENT_RETURN_URL" || v.Name == "OCTO_RETURN_URL" {
+			t.Fatalf("%s muqobil nom o'rnatilgan bo'lsa ham 'yo'q' deyildi", v.Name)
+		}
+	}
+	t.Setenv("OCTO_RETURN_URL", "")
+	found := false
+	for _, v := range Missing() {
+		if v.Name == "PAYMENT_RETURN_URL" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("ikkalasi ham bo'sh bo'lsa PAYMENT_RETURN_URL 'yo'q' bo'lishi kerak")
+	}
+}
