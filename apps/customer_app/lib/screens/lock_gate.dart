@@ -1,12 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../live.dart';
+import '../services/sign_out.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
-import '../services/push.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
-import 'web_session.dart';
 import 'pin_reset_screen.dart';
 import 'pin_screen.dart';
 
@@ -109,7 +111,7 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
   /// Bu ulanish ma'lumot ham so'ramaydi: yagona vazifasi — akkaunt
   /// o'chirilsa ilovani kirish ekraniga qaytarish.
   /// └───────────────────────────────────────────────────────────────┘
-  WsClient? _sessionWs;
+  StreamSubscription<Map<String, dynamic>>? _sessionWs;
 
   @override
   void initState() {
@@ -127,19 +129,19 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sessionWs?.dispose();
+    _sessionWs?.cancel();
     super.dispose();
   }
 
   void _connectSessionWs() {
     if (api.token == null) return;
-    _sessionWs = WsClient(
-      ticketProvider: api.wsTicket,
-      urlBuilder: (t) => wsUrl(t),
-      onEvent: (event) {
-        if (event['type'] == 'account_deleted') _handleSessionLost();
-      },
-    )..connect();
+    // Ilovaning YAGONA jonli kanali (live.dart). Avval bu yerda alohida
+    // WsClient ochilardi — har mijoz serverga 2 ta soket ochardi (prod
+    // logida juft ulanish/uzilish, 2026-11-21).
+    customerLive.start();
+    _sessionWs = customerLive.events.listen((event) {
+      if (event['type'] == 'account_deleted') _handleSessionLost();
+    });
   }
 
   /// Sessiya endi yaroqsiz (akkaunt o'chirilgan yoki bekor qilingan).
@@ -313,17 +315,8 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
   Future<void> _signOut(String reason, {bool notifyServer = true}) async {
     // Push tokeni logout'dan OLDIN — sabab profile_screen.dart'dagi
     // izohda (keyin so'rov 401 olardi va yozuv serverda qolardi).
-    await PushService.instance.stop();
-    if (notifyServer) {
-      try {
-        await api.logout();
-      } catch (_) {
-        // Tarmoq bo'lmasa ham lokal tozalash BAJARILADI.
-      }
-    }
-    await api.clearSession();
-    await AppPin.clear();
-    await clearMiniAppSession();
+    // Profil'dagi chiqish bilan AYNAN bir xil tozalash (services/sign_out.dart).
+    await signOutLocally(notifyServer: notifyServer);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(reason),

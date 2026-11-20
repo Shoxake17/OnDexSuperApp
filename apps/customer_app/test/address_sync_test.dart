@@ -97,13 +97,21 @@ void main() {
       // Singleton ilova ishlagan vaqt davomida yashaydi: tozalanmasa
       // chiqqan odamning manzili keyingi foydalanuvchiga ko'rinadi.
       expect(scope, contains('void clear()'));
+      // Chiqish tozalashi bitta joyda (`services/sign_out.dart`) — profil
+      // ham, sessiya yo'qolishi (`lock_gate`) ham AYNAN shuni chaqiradi.
+      final signOut = File('lib/services/sign_out.dart').readAsStringSync();
+      expect(signOut, contains('AddressScope.instance.clear()'),
+          reason: 'chiqishda manzil xotirada qolib ketadi');
+      expect(signOut, contains('customerLive.stop()'),
+          reason: 'jonli soket eski foydalanuvchi nomidan ochiq qoladi');
       final i = profil.indexOf('Future<void> _doLogout()');
       expect(i, greaterThan(-1));
-      expect(
-        profil.substring(i),
-        contains('AddressScope.instance.clear()'),
-        reason: 'chiqishda manzil xotirada qolib ketadi',
-      );
+      expect(profil.substring(i), contains('signOutLocally('));
+      final gate = File('lib/screens/lock_gate.dart').readAsStringSync();
+      expect(gate, contains('signOutLocally('),
+          reason: 'sessiya yo\'qolganda ham to\'liq tozalash');
+      expect(gate, isNot(contains('WsClient(')),
+          reason: 'ikkinchi soket ochilmasin — customerLive ishlatiladi');
     });
 
     test('rasmiylashtirish serverdan o\'qiganini manbaga ham yozadi', () {

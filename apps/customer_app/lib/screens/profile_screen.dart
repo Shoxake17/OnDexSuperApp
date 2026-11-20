@@ -6,21 +6,15 @@ import '../api.dart';
 import '../flow_patch.dart';
 import 'connected_apps_screen.dart';
 import 'catalog_screen.dart' show kBrand;
-import '../data/address_scope.dart';
-import '../data/catalog_repository.dart';
-import '../data/qurt_cart.dart';
 import '../services/app_lock.dart';
 import '../services/app_pin.dart';
-import '../services/firebase_phone.dart';
-import '../services/google_auth.dart';
-import '../services/push.dart';
+import '../services/sign_out.dart';
 import '../widgets/sheet_scaffold.dart';
 import 'address_screen.dart';
 import 'delete_account_screen.dart';
 import 'devices_screen.dart';
 import 'legal_webview_screen.dart';
 import 'login_screen.dart';
-import 'web_session.dart';
 import 'pin_screen.dart';
 
 /// Profil kartochkalarining umumiy bezagi — vebdagi
@@ -228,54 +222,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _doLogout() async {
-    // Push tokeni ENG BIRINCHI o'chiriladi — `api.logout()` dan ham
-    // oldin. Logout barcha sessiyalarni bekor qilgandan keyin
-    // `DELETE /me/push-token` 401 olardi va yozuv serverda qolib
-    // ketardi: bu telefonga keyingi egasining buyurtmalari haqidagi
-    // xabarlar kelaverardi (push.dart izohiga qarang).
-    await PushService.instance.stop();
-    // Avval SERVERGA xabar beramiz — token o'chirilishidan OLDIN, chunki
-    // so'rov aynan shu token bilan yuboriladi. Busiz "chiqish" faqat
-    // qurilmadagi nusxani o'chirardi va o'g'irlangan token yana 30 kun
-    // ishlayverardi (backend: POST /auth/logout).
-    await api.logout();
-    await api.clearSession();
-    // Google va Firebase O'Z sessiyalarini alohida saqlaydi — ular
-    // tozalanmasa "chiqish" faqat yarim ish bo'lardi:
-    //   * Google: keyingi safar hisob tanlash oynasi KO'RSATILMAY,
-    //     eskisi jimgina qayta ishlatilardi. Umumiy qurilmada bu
-    //     to'g'ridan-to'g'ri begona odamning akkauntiga kirish demakdir;
-    //   * Firebase: chiqqan foydalanuvchi Firebase'da kirgan bo'lib
-    //     qolardi va keyingi telefon tasdiqlashda eski hisob
-    //     ishlatilishi mumkin edi.
-    // Ikkalasi ham xatoni yutadi — chiqishga xalaqit bermaydi.
-    await GoogleAuth.signOut();
-    await FirebasePhoneAuth.signOut();
-    // PIN ham o'chiriladi: u SHU sessiyaga tegishli. Qolib ketsa,
-    // qurilmadan chiqqan odamning PIN'i keyingi foydalanuvchiga
-    // qolardi va u boshqa hisobning qulfini ochardi.
-    await AppPin.clear();
-    // WebView'dagi `chust_session` cookie'si ham tozalanadi — busiz
-    // chiqqandan keyin ham web tomondagi sessiya 30 kun ochiq qolardi
-    // (web_session.dart'dagi izohga qarang).
-    await clearMiniAppSession();
-    // Shaxsiy kesh (buyurtmalar, sevimlilar) SHIFRLANGAN holda
-    // diskda yotadi — u ham tozalanishi SHART. Busiz qurilmadan
-    // chiqqan odamning buyurtmalari va manzili keyingi
-    // foydalanuvchiga ko'rinardi.
-    //
-    // Katalog keshi ATAYLAB qoldiriladi: u shaxsiy emas va keyingi
-    // kirishda ilova bir zumda ochilishini ta'minlaydi
-    // (`data/catalog_repository.dart` izohiga qarang).
-    await Repos.clearOnLogout();
-    // Joriy manzil XOTIRADA turadi (`AddressScope` — singleton) va
-    // diskdagi kesh bilan birga tozalanmaydi. Tozalanmasa chiqqan
-    // odamning manzili sarlavhada qolib, keyingi foydalanuvchiga
-    // ko'rinardi — restoran ro'yxati ham o'sha shahar bo'yicha
-    // filtrlanardi.
-    AddressScope.instance.clear();
-    // Qurt savati ham shaxsiy: chiqqan odamning savati keyingisiga ko'rinmasin.
-    await QurtCart.instance.reset();
+    // Hamma tozalash bitta joyda (services/sign_out.dart izohi): push,
+    // jonli soket, server sessiyasi, Google/Firebase, PIN, WebView cookie,
+    // shaxsiy kesh, manzil, qurt savati.
+    await signOutLocally(notifyServer: true);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
