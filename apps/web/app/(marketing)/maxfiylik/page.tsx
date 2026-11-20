@@ -234,6 +234,16 @@ export default function PrivacyPage() {
           <b>Vakolatli davlat organlariga</b> — qonun hujjatlarida
           belgilangan tartibda va asoslar bo‘lgan taqdirdagina.
         </Clause>
+        <Clause n="3.4">
+          <b>AI yordamchisi xizmatiga</b> — faqat yordamchidan
+          foydalanganingizda. Savolingizga javob berish uchun yozishma va,
+          kerak bo‘lsa, buyurtmalaringiz tarkibi (taomlar, summa, restoran
+          nomi va holati) uzatiladi. Akkauntingiz psevdonim (taxallus)
+          bilan almashtiriladi; telefon raqamingiz va manzilingiz yordamchiga
+          uzatilmaydi (o‘zingiz yozib yubormasangiz). Yordamchining
+          amallarini ilovadagi «Profil → AI yordamchilar va ruxsatlar»
+          bo‘limida o‘chirib qo‘yishingiz mumkin.
+        </Clause>
       </Section>
 
       <Section n="4" title="Ma’lumotlar qanday himoyalanadi">
