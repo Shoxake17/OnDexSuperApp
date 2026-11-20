@@ -152,6 +152,12 @@ func publishAndroidRelease(apkPath, version string) error {
 		return err
 	}
 
+	// 2026-11-20: lokal `.env` dev bucket'ga (r2.dev) yo'naltirilgan edi —
+	// reliz "joylandi" deyildi-yu, sayt (cdn.ondex.uz) uni hech qachon
+	// ko'rmadi. Ommaviy reliz faqat sayt o'qiydigan CDN'ga ketadi.
+	if err := checkReleaseTarget(os.Getenv("R2_PUBLIC_URL")); err != nil {
+		return err
+	}
 	store, err := newStore()
 	if err != nil {
 		return fmt.Errorf("R2 sozlanmadi: %w", err)
@@ -197,5 +203,21 @@ func publishAndroidRelease(apkPath, version string) error {
 	fmt.Println("URL     :", url)
 	fmt.Println("SHA-256 :", digest)
 	fmt.Println("Sayt 1 daqiqa ichida yangi APK ni bera boshlaydi (/download/android).")
+	return nil
+}
+
+// releaseCDN — sayt (`/download/android`) manifestni FAQAT shu yerdan o'qiydi
+// (`NEXT_PUBLIC_MEDIA_ORIGIN`). Boshqa joyga yozilgan reliz foydalanuvchiga
+// hech qachon yetmaydi.
+const releaseCDN = "https://cdn.ondex.uz"
+
+// checkReleaseTarget — R2_PUBLIC_URL sayt o'qiydigan CDN bo'lmasa to'xtatadi.
+// Kalitlar dev bucket'niki bo'lsa: serverda prod `.env` bilan ishga tushiring
+// (`r2upload -env ~/ondex/.env -release-version X.Y.Z+N -android-release ...`).
+func checkReleaseTarget(publicURL string) error {
+	if strings.TrimRight(strings.TrimSpace(publicURL), "/") != releaseCDN {
+		return fmt.Errorf("R2_PUBLIC_URL=%q — reliz faqat %s ga joylanadi (sayt boshqasini ko'rmaydi); "+
+			"prod kalitlari bilan serverda ishga tushiring", publicURL, releaseCDN)
+	}
 	return nil
 }
