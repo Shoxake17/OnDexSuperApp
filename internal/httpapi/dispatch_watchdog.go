@@ -73,10 +73,15 @@ type dispatchWatchdog struct {
 	// relaunched — qidiruv oxirgi marta qachon qayta boshlangani.
 	// Faqat nazoratchi goroutine'i ishlatadi — qulf kerak emas.
 	relaunched map[string]time.Time
+	// stalled — qidiruvi "oshxona tayyorlamadi" sababli muzlatilgan
+	// buyurtmalar (log va bildirishnoma bir marta). Bildirishnomaning
+	// o'zi ham DedupeKey bilan himoyalangan — restartdan keyin takrorlanmaydi.
+	stalled map[string]time.Time
 }
 
 func newDispatchWatchdog(s *Server, source AwaitingCourierLister) *dispatchWatchdog {
-	return &dispatchWatchdog{s: s, source: source, relaunched: map[string]time.Time{}}
+	return &dispatchWatchdog{s: s, source: source,
+		relaunched: map[string]time.Time{}, stalled: map[string]time.Time{}}
 }
 
 // runOnce — bitta tsikl. Panika nazoratchini TO'XTATMAYDI: keyingi tsikl
@@ -120,6 +125,11 @@ func (w *dispatchWatchdog) tick(ctx context.Context) error {
 			delete(w.relaunched, id)
 		}
 	}
+	for id := range w.stalled {
+		if _, ok := seen[id]; !ok {
+			delete(w.stalled, id)
+		}
+	}
 	return nil
 }
 
@@ -160,6 +170,20 @@ func (w *dispatchWatchdog) check(ctx context.Context, o *orders.Order) error {
 		w.s.stopDispatch(cancelled.ID)
 		slog.Warn("kuryer topilmagani uchun buyurtma avtomatik bekor qilindi",
 			"order", cancelled.ID, "order_number", cancelled.OrderNumber)
+	case o.KitchenStalled(now):
+		// Restoran uzoq vaqt "tayyor" demadi — qidiruv muzlatiladi,
+		// buyurtma bekor QILINMAYDI (bu restoran/admin qarori).
+		if w.s.Dispatcher != nil && w.s.Dispatcher.IsRunning(o.ID) {
+			w.s.stopDispatch(o.ID)
+		}
+		if _, done := w.stalled[o.ID]; !done {
+			w.stalled[o.ID] = now
+			slog.Warn("restoran buyurtmani uzoq vaqt tayyorlamadi — kuryer qidiruvi to'xtatildi",
+				"order", o.ID, "order_number", o.OrderNumber, "status", o.Status)
+			if w.s.AlertsSvc != nil {
+				w.s.AlertsSvc.KitchenStalled(o.RestaurantID, o.ID, o.OrderNumber)
+			}
+		}
 	case o.NeedsDispatchRecovery():
 		if w.s.Dispatcher == nil || w.s.Dispatcher.IsRunning(o.ID) {
 			return nil

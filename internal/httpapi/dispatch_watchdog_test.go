@@ -297,3 +297,56 @@ func TestDispatchWatchdog_RelaunchesAndStopsSearch(t *testing.T) {
 		t.Fatal("bekor qilingan buyurtmaning qidiruvi to'xtatilmadi")
 	}
 }
+
+// Audit 480: restoran qabul qilib, uzoq vaqt "tayyor" demagan buyurtmaga
+// kuryer qidiruvi ABADIY aylanmaydi — muzlatiladi, buyurtma bekor
+// qilinmaydi; "tayyor" bosilgach qidiruv odatdagidek qayta boshlanadi.
+func TestDispatchWatchdog_KitchenStallFreezesSearch(t *testing.T) {
+	f := newWatchFixture(t, true)
+	ctx := context.Background()
+	o, err := f.svc.Create(ctx, &orders.Order{
+		CustomerID: "u-wc", RestaurantID: testRestA, Type: orders.TypeDelivery,
+		Items: []orders.Item{{ProductID: "p1", Name: "Osh", Qty: 1, PriceTiyin: 3_500_000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []orders.Status{orders.StatusAccepted, orders.StatusPreparing} {
+		if o, err = f.svc.ChangeStatus(ctx, o.ID, to, orders.ActorRestaurant); err != nil {
+			t.Fatalf("-> %s: %v", to, err)
+		}
+	}
+	d := f.s.Dispatcher
+
+	f.tick(t)
+	waitDispatch(t, d, o.ID, true)
+
+	f.clock.Advance(orders.KitchenStallAfter - time.Second)
+	f.tick(t)
+	if !d.IsRunning(o.ID) {
+		t.Fatal("muddatdan OLDIN qidiruv to'xtatildi")
+	}
+
+	f.clock.Advance(time.Second)
+	f.tick(t)
+	waitDispatch(t, d, o.ID, false)
+	if got := f.get(t, o.ID); got.Status != orders.StatusPreparing {
+		t.Fatalf("muzlatish buyurtma holatini o'zgartirdi: %s", got.Status)
+	}
+
+	f.clock.Advance(2 * dispatchRelaunchGap)
+	f.tick(t)
+	time.Sleep(50 * time.Millisecond)
+	if d.IsRunning(o.ID) {
+		t.Fatal("nazoratchi muzlatilgan qidiruvni qayta boshladi")
+	}
+
+	if _, err := f.svc.ChangeStatus(ctx, o.ID, orders.StatusReady, orders.ActorRestaurant); err != nil {
+		t.Fatal(err)
+	}
+	f.tick(t)
+	waitDispatch(t, d, o.ID, true)
+	if got := f.get(t, o.ID); got.DispatchState != orders.DispatchSearching || got.DispatchDeadline == nil {
+		t.Fatalf("tayyor bo'lgach: holat=%q muddat=%v", got.DispatchState, got.DispatchDeadline)
+	}
+}

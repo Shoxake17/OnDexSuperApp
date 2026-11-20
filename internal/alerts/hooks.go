@@ -166,6 +166,23 @@ func (s *Service) CourierNotFound(restaurantID, orderID, orderNumber string, aut
 	})
 }
 
+// KitchenStalled — restoran buyurtmani qabul qilgan, lekin
+// `orders.KitchenStallAfter` davomida "tayyor" demagan: kuryer qidiruvi
+// to'xtatildi. Restoran buyurtmani tayyor qilishi yoki bekor qilishi kerak.
+func (s *Service) KitchenStalled(restaurantID, orderID, orderNumber string) {
+	s.publishAsync(restaurantID, func(context.Context) (Input, bool) {
+		return Input{
+			Kind: KindOrderWaiting, Category: CategoryImportant,
+			Title: "Buyurtma tayyorlanmay qoldi",
+			Body: fmt.Sprintf("%s buyurtma %d soatdan beri tayyor deb belgilanmagan, shuning uchun kuryer qidiruvi to'xtatildi. "+
+				"Taom tayyor bo'lsa \"Tayyor\" ni bosing (qidiruv qayta boshlanadi) yoki buyurtmani bekor qiling.",
+				orderLabel(orderNumber, orderID), int(orders.KitchenStallAfter.Hours())),
+			Data:      map[string]string{"order_id": orderID, "order_number": orderNumber},
+			DedupeKey: "kitchen_stalled:" + orderID,
+		}, true
+	})
+}
+
 // ─── Xodimlar ──────────────────────────────────────────────────────────
 
 // StaffEvents — `staff.Service.WithObserver` uchun. Faqat restoran

@@ -20,7 +20,7 @@ import (
 // tayyor bo'lsa kuryer ETA'si o'tib ketgan vaqtga emas, "hozir"ga
 // moslanishi kerak (nol — moslashtirish yo'q, eng yaqini yaxshi).
 func (s *Server) launchDispatch(o *orders.Order) {
-	if s.Dispatcher == nil || o == nil || !o.NeedsDispatchRecovery() {
+	if s.Dispatcher == nil || o == nil || !o.NeedsDispatchRecovery() || o.KitchenStalled(s.OrderSvc.Now()) {
 		return
 	}
 	prep := 0
@@ -109,7 +109,7 @@ func (s *Server) dispatchOrder(orderID, restaurantID string, prepMinutes int) {
 			if err != nil {
 				return false, err
 			}
-			return !o.NeedsDispatchRecovery(), nil
+			return !o.NeedsDispatchRecovery() || o.KitchenStalled(s.OrderSvc.Now()), nil
 		},
 	})
 	if err != nil {

@@ -48,7 +48,28 @@ const (
 	// qilinadi: mijoz noma'lum muddat kutib qolmaydi, karta to'lovi
 	// qaytariladi.
 	CourierNotFoundCancelAfter = 30 * time.Minute
+	// KitchenStallAfter — restoran buyurtmani qabul qilib, shuncha vaqt
+	// ichida "tayyor" demasa, kuryer qidiruvi TO'XTATILADI (bekor
+	// qilinmaydi). Audit 480 (2026-11-19): prod'da `accepted`/`preparing`
+	// da 23–45 kun qolgan buyurtmalarga qidiruv har 5 soniyada aylanib,
+	// restoran kuryerlariga eski buyurtma takliflarini yuborib turardi.
+	// Restoran keyinroq "tayyor" bossa qidiruv odatdagidek qaytadan
+	// boshlanadi.
+	KitchenStallAfter = 6 * time.Hour
 )
+
+// KitchenStalled — buyurtma qabul qilinganiga `KitchenStallAfter` bo'lib
+// hali tayyor emas: kuryer qidiruvi uchun "muzlatilgan".
+func (o *Order) KitchenStalled(now time.Time) bool {
+	if !o.AwaitsCourier() || o.Status == StatusReady {
+		return false
+	}
+	since, ok := o.lastChangeTo(StatusAccepted)
+	if !ok {
+		since = o.CreatedAt
+	}
+	return now.Sub(since) >= KitchenStallAfter
+}
 
 // ErrDispatchNotRestartable — qidiruvni qayta boshlash faqat "kuryer
 // topilmadi" holatidagi tayyor buyurtmada mumkin.
