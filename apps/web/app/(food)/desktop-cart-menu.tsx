@@ -7,7 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { fetchRestaurantMenu } from "@/lib/client-fetch";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
-import { computeProductDiscount } from "@/lib/promotions";
+import { computeProductDiscount, rawSubtotal } from "@/lib/promotions";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
 import { useDesktopCheckout } from "./desktop-checkout-context";
 

@@ -128,3 +128,13 @@ export function computeProductDiscount(
   if (bestDiscount <= 0 || !bestLabel) return null;
   return { discountedPriceTiyin: price - bestDiscount, label: bestLabel };
 }
+
+// rawSubtotal — savatning CHEGIRMASIZ summasi (computeProductDiscount ning
+// uchinchi argumenti). bug.md 72: desktop menyu uni bermasdi va "minimal
+// buyurtma" sharti har bir taomga alohida qo'llanardi — ekrandagi narx
+// serverdagidan past chiqardi.
+export function rawSubtotal(lines: { product: Product; qty: number }[]): number {
+  let sum = 0;
+  for (const { product, qty } of lines) sum += (product.price_tiyin ?? 0) * qty;
+  return sum;
+}

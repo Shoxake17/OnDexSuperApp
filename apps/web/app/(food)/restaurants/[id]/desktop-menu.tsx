@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
-import { categoryOf, computeProductDiscount } from "@/lib/promotions";
+import { categoryOf, computeProductDiscount, rawSubtotal } from "@/lib/promotions";
 import { closedMessage } from "@/lib/restaurant-status";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
 import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
@@ -63,6 +63,11 @@ export default function DesktopMenu({
   // ANIQ shu restoran savati — faol savat boshqa restoranniki bo'lsa
   // ham (`lib/cart-context.tsx` dagi `itemsFor` izohiga qarang).
   const items = cart.itemsFor(restaurant.id);
+  // Aksiyaning "minimal buyurtma" sharti uchun savat summasi (bug.md 72).
+  const cartRaw = useMemo(
+    () => menu.reduce((s, p) => s + (p.price_tiyin ?? 0) * (items[p.id] ?? 0), 0),
+    [menu, items],
+  );
 
   const categories = useMemo(() => {
     const list: string[] = [];
@@ -259,7 +264,7 @@ export default function DesktopMenu({
                       key={p.id}
                       product={p}
                       qty={items[p.id] ?? 0}
-                      discount={computeProductDiscount(p, promotions)}
+                      discount={computeProductDiscount(p, promotions, cartRaw)}
                       favorited={favoriteIds.has(p.id)}
                       onFavoriteChange={onFavoriteChange}
                       onQty={(qty) => cart.setQty(restaurant.id, p.id, qty)}
@@ -556,14 +561,15 @@ function CartPanel({
     [items, productsById],
   );
 
+  const raw = useMemo(() => rawSubtotal(lines), [lines]);
   const subtotal = useMemo(() => {
     let sum = 0;
     for (const { product, qty } of lines) {
-      const discount = computeProductDiscount(product, promotions);
+      const discount = computeProductDiscount(product, promotions, raw);
       sum += (discount?.discountedPriceTiyin ?? product.price_tiyin ?? 0) * qty;
     }
     return sum;
-  }, [lines, promotions]);
+  }, [lines, promotions, raw]);
 
   return (
     // Balandlik qatordan olinadi (sahifa o'zi skroll bo'lmaydi) —
@@ -594,7 +600,7 @@ function CartPanel({
         <>
           <div className="ondex-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5">
             {lines.map(({ id, product, qty }) => {
-              const discount = computeProductDiscount(product, promotions);
+              const discount = computeProductDiscount(product, promotions, raw);
               const price =
                 discount?.discountedPriceTiyin ?? product.price_tiyin ?? 0;
               return (

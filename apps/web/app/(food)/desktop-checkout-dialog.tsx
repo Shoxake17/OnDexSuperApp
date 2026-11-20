@@ -8,7 +8,7 @@ import { fetchRestaurantMenu } from "@/lib/client-fetch";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import { computeProductDiscount } from "@/lib/promotions";
+import { computeProductDiscount, rawSubtotal } from "@/lib/promotions";
 import { useTableSession } from "@/lib/table-session";
 import type { ActivePromotion, Product } from "@/lib/types";
 import DesktopAddressDialog from "./desktop-address-dialog";
