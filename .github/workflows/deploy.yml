@@ -1112,11 +1112,15 @@ jobs:
       # └─────────────────────────────────────────────────────────────────────┘
       - name: Smoke test (foydalanuvchi oqimi)
         id: smoke
+        env:
+          # Test akkauntlarining MAXFIY kodi (audit 480: repo ochiq, ommaviy
+          # 666666 production'da qabul qilinmaydi). GitHub logda yashiradi.
+          TEST_OTP_CODE: ${{ secrets.TEST_OTP_CODE }}
         run: |
           # yangi konteyner migratsiya/ishga tushishni tugatsin
           sleep 15
           /tmp/smoke -api https://api.ondex.uz -web https://ondex.uz/ -pos https://merchant.ondex.uz/ \
-            -waiter +998999999999 -courier +998888888888 -out /tmp/smoke.prom
+            -waiter +998999999999 -courier +998888888888 -code "$TEST_OTP_CODE" -out /tmp/smoke.prom
           echo "### Smoke: hammasi o'tdi" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke natijasi (yiqilganda)

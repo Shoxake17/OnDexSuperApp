@@ -897,15 +897,24 @@ func main() {
 	// O'CHIQ. Mijoz, restoran va admin akkaunti hech qachon ochilmaydi
 	// (xavfsizlik chegaralari: internal/users/test_login.go).
 	if testOTP, _ := parseEnvBool("TEST_OTP"); testOTP {
-		withTest, err := authSvc.WithTestLogin(users.TestLogins, users.TestLoginCode)
+		// Audit 480: kod ochiq repoda edi (users.TestLoginCode) — istalgan
+		// odam prod'da haqiqiy restoranning ofitsianti/kuryeri bo'lib kira
+		// olardi. Production'da kod FAQAT maxfiy TEST_OTP_CODE dan olinadi
+		// va ommaviy standart qiymat qabul qilinmaydi.
+		code, err := testLoginCode(devMode, os.Getenv("TEST_OTP_CODE"))
 		if err != nil {
-			slog.Error("TEST_OTP: test akkauntlarini yoqib bo'lmadi", "err", err)
-			os.Exit(1)
-		}
-		authSvc = withTest
-		for _, l := range users.TestLogins {
-			slog.Warn("rejim: TEST_OTP YOQIQ - test raqami sobit kod bilan kiradi "+
-				"(sharhdan keyin o'chiring)", "raqam", l.Phone, "rol", l.Role)
+			slog.Error("TEST_OTP: test akkauntlari YOQILMADI", "err", err)
+		} else {
+			withTest, err := authSvc.WithTestLogin(users.TestLogins, code)
+			if err != nil {
+				slog.Error("TEST_OTP: test akkauntlarini yoqib bo'lmadi", "err", err)
+				os.Exit(1)
+			}
+			authSvc = withTest
+			for _, l := range users.TestLogins {
+				slog.Warn("rejim: TEST_OTP YOQIQ - test raqami maxfiy sobit kod bilan kiradi "+
+					"(sharhdan keyin o'chiring)", "raqam", l.Phone, "rol", l.Role)
+			}
 		}
 	}
 	// Dev rejimda SMTP bo'lmasa ham email oqimini SINASH mumkin bo'lsin:

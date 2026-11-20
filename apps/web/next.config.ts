@@ -26,6 +26,9 @@ const webVersion: string = (() => {
 // muhim (production build bunday cheklovga ega emas).
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Audit 480: `x-powered-by: Next.js` texnologiya va versiya qidirishni
+  // osonlashtiradi (hujumchiga bepul razvedka) — foydasi yo'q.
+  poweredByHeader: false,
   env: { NEXT_PUBLIC_APP_VERSION: webVersion },
   // `dev-web-ondex.shoxpro.uz` — lokal Cloudflare tunnel
   // (scripts/dev_tunnel.ps1). Busiz tunnel orqali ochilgan sahifa

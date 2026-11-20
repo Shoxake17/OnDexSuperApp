@@ -209,6 +209,9 @@ var Registry = []Var{
 	// sharhlovchi jimgina kira olmaydi. `parseEnvBool` orqali o'qiladi —
 	// manba skaneri uni topmaydi, qo'lda qo'shildi.
 	{Name: "TEST_OTP", Effect: "test akkaunti (sobit OTP) o'chiq — xavfsiz standart", DeployRequired: true},
+	// TEST_OTP_CODE — test akkauntlarining MAXFIY kodi (production'da majburiy,
+	// ommaviy standart qabul qilinmaydi — audit 480).
+	{Name: "TEST_OTP_CODE", Effect: "TEST_OTP yoqilgan bo'lsa ham test akkauntlari production'da ishlamaydi", DeployRequired: true},
 
 	// ---------- To'lov (Octo) ----------
 	{Name: "OCTO_SHOP_ID", Effect: "karta orqali to'lov O'CHIQ — faqat naqd", DeployRequired: true},
