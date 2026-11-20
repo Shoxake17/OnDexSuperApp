@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { formatSum } from "@/lib/format";
 import { fullImageUrl } from "@/lib/images";
-import { categoryOf, computeProductDiscount, rawSubtotal } from "@/lib/promotions";
+import { categoryOf, computeProductDiscount, promoLabel, rawSubtotal } from "@/lib/promotions";
 import { closedMessage } from "@/lib/restaurant-status";
 import type { ActivePromotion, Product, Restaurant } from "@/lib/types";
 import { useRestaurantOpenStatus } from "@/lib/use-restaurant-open-status";
@@ -265,6 +265,7 @@ export default function DesktopMenu({
                       product={p}
                       qty={items[p.id] ?? 0}
                       discount={computeProductDiscount(p, promotions, cartRaw)}
+                      badge={promoLabel(p, promotions)}
                       favorited={favoriteIds.has(p.id)}
                       onFavoriteChange={onFavoriteChange}
                       onQty={(qty) => cart.setQty(restaurant.id, p.id, qty)}
@@ -426,6 +427,7 @@ function MenuCard({
   product,
   qty,
   discount,
+  badge,
   favorited,
   onFavoriteChange,
   onQty,
@@ -434,6 +436,8 @@ function MenuCard({
   product: Product;
   qty: number;
   discount: ReturnType<typeof computeProductDiscount>;
+  /** Narxsiz aksiya belgisi (1+1, to'plam) — bug.md 80. */
+  badge: string | null;
   favorited: boolean;
   onFavoriteChange: (productId: string, favorited: boolean) => void;
   onQty: (qty: number) => void;
@@ -460,9 +464,9 @@ function MenuCard({
           </div>
         )}
 
-        {discount && (
+        {(discount || badge) && (
           <span className="absolute left-3 top-3 rounded-full bg-brand px-2.5 py-1 text-xs font-bold">
-            {discount.label}
+            {discount?.label ?? badge}
           </span>
         )}
 

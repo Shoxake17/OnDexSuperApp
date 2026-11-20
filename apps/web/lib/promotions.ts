@@ -138,3 +138,25 @@ export function rawSubtotal(lines: { product: Product; qty: number }[]): number 
   for (const { product, qty } of lines) sum += (product.price_tiyin ?? 0) * qty;
   return sum;
 }
+
+// promoLabel — narxni o'zgartirmaydigan, lekin mahsulotni QAMRAYDIGAN aksiya
+// belgisi (bug.md 80): "1+1" (bogo), "To'plam" (bundle) yoki umumiy "Aksiya".
+// Chegirma 2-donadan / to'plam to'liq bo'lgandagina SERVERDA qo'llanadi,
+// shuning uchun bu yerda narx emas, faqat belgi. Desktop menyu avval bunday
+// aksiyalarni umuman ko'rsatmasdi (mobil web `promoted` lentasi bilan
+// ko'rsatardi) — restoran e'lon qilgan aksiyani mijoz ko'rmasdi.
+export function promoLabel(product: Product, promotions: ActivePromotion[]): string | null {
+  const category = categoryOf(product);
+  let label: string | null = null;
+  for (const p of promotions) {
+    const covers =
+      p.applies_to_orders ||
+      (p.applies_to_products && (p.target_product_ids ?? []).includes(product.id)) ||
+      (p.applies_to_categories && (p.target_categories ?? []).includes(category));
+    if (!covers) continue;
+    if (p.type === "bogo") return "1+1";
+    if (p.type === "bundle") label = "To'plam";
+    else if (!label) label = "Aksiya";
+  }
+  return label;
+}

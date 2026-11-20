@@ -1714,7 +1714,13 @@ class _PromotionFormPageState extends State<_PromotionFormPage> {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
+                        // bug.md 80: `free_delivery` serverda ATAYLAB hech
+                        // qachon qo'llanmaydi (yetkazish narxi tushunchasi
+                        // aksiyalarda yo'q) — yangi aksiyada taklif qilinmaydi.
+                        // Mavjud shunday aksiyani tahrirlashda ko'rinib turadi,
+                        // aks holda turi jimgina o'zgarib ketardi.
                         for (final t in _promoTypes)
+                          if (t != 'free_delivery' || _type == 'free_delivery')
                           SizedBox(
                             width: cardWidth,
                             child: _TypeSelectCard(
