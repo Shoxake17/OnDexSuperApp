@@ -275,18 +275,26 @@ class _FlowPageState extends State<FlowPage> {
         const SizedBox(height: 16),
         Expanded(
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 260, child: _column('Ilovalar', [for (final a in _apps) _appTile(a)])),
+            SizedBox(width: 260, child: _column('Ilovalar', [for (final a in _apps) _appTile(a)],
+                empty: 'Ilova ulanmagan — "Ilova ulash"')),
             const SizedBox(width: 16),
-            SizedBox(width: 260, child: _column('Relizlar', [for (final r in _releases) _releaseTile(r)])),
+            SizedBox(width: 260, child: _column('Relizlar', [for (final r in _releases) _releaseTile(r)],
+                empty: 'Reliz yo\'q — build_mobile.ps1 -Flow bilan yuboriladi')),
             const SizedBox(width: 16),
-            Expanded(child: _column('Yamoqlar', [for (final p in _patches) _patchCard(p)])),
+            Expanded(child: _column('Yamoqlar', [for (final p in _patches) _patchCard(p)],
+                empty: _releaseId == null
+                    ? 'Avval relizni tanlang'
+                    : 'Bu relizga hali yamoq yo\'q.\n\n'
+                        'Relizning o\'zi bu yerda faollashtirilmaydi — u APK sifatida bir marta '
+                        'o\'rnatiladi. Keyingi Dart tuzatishlari shu relizga yamoq bo\'lib keladi '
+                        '(build_mobile.ps1 -Flow -FlowPatch N) va shu yerda chiqariladi.')),
           ]),
         ),
       ]),
     );
   }
 
-  Widget _column(String title, List<Widget> children) => Card(
+  Widget _column(String title, List<Widget> children, {String empty = 'Hozircha yo\'q'}) => Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -294,7 +302,12 @@ class _FlowPageState extends State<FlowPage> {
             const SizedBox(height: 8),
             Expanded(
               child: children.isEmpty
-                  ? const Center(child: Text('Hozircha yo\'q', style: TextStyle(color: Colors.black45)))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Text(empty, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black45)),
+                      ),
+                    )
                   : ListView(children: children),
             ),
           ]),
