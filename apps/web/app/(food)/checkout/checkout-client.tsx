@@ -63,6 +63,8 @@ export default function CheckoutPage() {
   const [loadingAddress, setLoadingAddress] = useState(true);
   const [phone, setPhone] = useState<string>("");
   const [quote, setQuote] = useState<Quote | null>(null);
+  // quoteNonce — narx o'zgargani (409 total_changed) uchun summani qayta so'rash.
+  const [quoteNonce, setQuoteNonce] = useState(0);
   const [loadingQuote, setLoadingQuote] = useState(true);
   const [placing, setPlacing] = useState(false);
   // To'lov usuli — serverga HAQIQATAN yuboriladi. Standart naqd.
@@ -125,7 +127,7 @@ export default function CheckoutPage() {
       .catch(() => setQuote(null))
       .finally(() => setLoadingQuote(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, JSON.stringify(cartItems), cart.hydrated]);
+  }, [restaurantId, JSON.stringify(cartItems), cart.hydrated, quoteNonce]);
 
   async function placeOrder() {
     if (!restaurantId) return;
@@ -160,12 +162,20 @@ export default function CheckoutPage() {
           items,
           idempotency_key: idempotencyKeyRef.current,
           payment_method: payMethod,
+          // bug.md 54: ekranda ko'rsatilgan jami — server hozirgi hisob
+          // bilan solishtiradi va farq bo'lsa buyurtma YARATMAYDI (409).
+          // Stol buyurtmasida server bu maydonni ishlatmaydi.
+          ...(!table && quote ? { expected_total_tiyin: quote.total_tiyin } : {}),
           ...(table
             ? { table_token: table.token, party_size: partySize }
             : {}),
         }),
       });
       const data = await res.json();
+      if (res.status === 409 && data.code === "total_changed") {
+        setQuoteNonce((n) => n + 1);
+        throw new Error("Narx o'zgardi — yangilangan summani tekshirib, qayta tasdiqlang");
+      }
       if (!res.ok) throw new Error(data.error || "Xato yuz berdi");
 
       // ┌─ KARTA: TO'LOV SAHIFASIGA O'TAMIZ ────────────────────────┐

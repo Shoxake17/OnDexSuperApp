@@ -70,6 +70,8 @@ export default function DesktopCheckoutDialog({
   const [addressOpen, setAddressOpen] = useState(false);
 
   const [quote, setQuote] = useState<Quote | null>(null);
+  // quoteNonce — narx o'zgargani (409 total_changed) uchun summani qayta so'rash.
+  const [quoteNonce, setQuoteNonce] = useState(0);
   const [loadingQuote, setLoadingQuote] = useState(true);
   const [payMethod, setPayMethod] = useState<"cash" | "card">("cash");
   const [placing, setPlacing] = useState(false);
@@ -138,7 +140,7 @@ export default function DesktopCheckoutDialog({
       .catch(() => setQuote(null))
       .finally(() => setLoadingQuote(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantId, JSON.stringify(items)]);
+  }, [restaurantId, JSON.stringify(items), quoteNonce]);
 
   const lines = Object.entries(items)
     .filter(([, qty]) => qty > 0)
@@ -171,10 +173,16 @@ export default function DesktopCheckoutDialog({
           items: list,
           idempotency_key: idempotencyKeyRef.current,
           payment_method: payMethod,
+          // bug.md 54: ekrandagi jami — farq bo'lsa server 409 qaytaradi.
+          ...(!table && quote ? { expected_total_tiyin: quote.total_tiyin } : {}),
           ...(table ? { table_token: table.token, party_size: partySize } : {}),
         }),
       });
       const data = await res.json();
+      if (res.status === 409 && data.code === "total_changed") {
+        setQuoteNonce((n) => n + 1);
+        throw new Error("Narx o'zgardi — yangilangan summani tekshirib, qayta tasdiqlang");
+      }
       if (!res.ok) throw new Error(data.error || "Xato yuz berdi");
 
       if (payMethod === "card") {
