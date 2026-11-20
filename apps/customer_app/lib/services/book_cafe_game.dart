@@ -1,6 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -103,28 +104,45 @@ class BookCafeGame {
     final client = http.Client();
     IOSink? sink;
     try {
-      final res = await client.send(http.Request('GET', Uri.parse(info.url)));
+      // bug.md 82: avval timeout ham, hajm chegarasi ham yo'q edi — osilgan
+      // ulanish yuklashni abadiy qotirardi, buzilgan/soxta javob esa telefon
+      // xotirasini to'ldirishi mumkin edi.
+      final res = await client
+          .send(http.Request('GET', Uri.parse(info.url)))
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode != 200) return 'http_${res.statusCode}';
 
       final total = res.contentLength;
       var received = 0;
+      // Kutilgan hajm (server aytgan) + 1 MB zaxira; noma'lum bo'lsa 300 MB.
+      final limit = info.bytes > 0 ? info.bytes + (1 << 20) : 300 * (1 << 20);
 
       final file = File(partPath);
       // Yarim qolgan eski nusxa ustiga yozilmasin.
       if (await file.exists()) await file.delete();
-      sink = file.openWrite();
+      final out = file.openWrite();
+      sink = out;
 
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
+      await for (final chunk
+          in res.stream.timeout(const Duration(seconds: 60))) {
         received += chunk.length;
+        if (received > limit) {
+          await out.close();
+          sink = null;
+          await file.delete();
+          return 'too_large';
+        }
+        out.add(chunk);
         if (onProgress != null) {
           onProgress(total == null || total == 0 ? null : received / total);
         }
       }
-      await sink.flush();
-      await sink.close();
+      await out.flush();
+      await out.close();
       sink = null;
     } on SocketException {
+      return 'network';
+    } on TimeoutException {
       return 'network';
     } catch (_) {
       return 'download_failed';
