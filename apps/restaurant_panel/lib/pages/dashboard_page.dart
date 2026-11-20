@@ -417,7 +417,7 @@ _DailyStats _computeDailyStats(
     final createdAt = _parseAt(o['created_at']);
     if (createdAt == null) continue;
     final status = o['status'] as String? ?? '';
-    final total = (o['total_tiyin'] ?? 0) as int;
+    final total = ((o['total_tiyin'] ?? 0) as num).toInt();
 
     if (_isSameDay(createdAt, refDate)) {
       todayCount++;
@@ -477,7 +477,8 @@ List<_DayPoint> _computeRevenueSeries(
     if (_terminalBad.contains(status)) continue;
     final key = DateTime(createdAt.year, createdAt.month, createdAt.day);
     if (totals.containsKey(key)) {
-      totals[key] = totals[key]! + (o['total_tiyin'] ?? 0) as int;
+      // bug.md 62: `as` ning ustuvorligi `+` dan past — cast QIYMATGA qo'llanadi.
+      totals[key] = totals[key]! + ((o['total_tiyin'] ?? 0) as num).toInt();
     }
   }
   return dayList
@@ -541,7 +542,7 @@ List<_ProductAgg> _computeTopProducts(
           key,
           () => _ProductAgg(
               item['name'] as String? ?? '?', item['image_url'] as String? ?? ''));
-      agg.qty += (item['qty'] ?? 0) as int;
+      agg.qty += ((item['qty'] ?? 0) as num).toInt();
       agg.revenueTiyin += ((item['price_tiyin'] ?? 0) as int) * ((item['qty'] ?? 0) as int);
     }
   }
