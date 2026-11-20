@@ -24,7 +24,7 @@ $mutations = @(
     @{ name = 'qoida: ta''tildagi kuryer haqi mijozga qo''shiladi'; file = 'internal\staff\staff.go';
        old = '|| !m.AccessEffective() ||'; new = '||' },
     @{ name = 'qoida: stolda yetkazish haqi olinadi (quote dine_in ni e''tiborsiz qoldiradi)'; file = 'internal\httpapi\routes_orders.go';
-       old = 'claimsFrom(r).Subject, req.DineIn)'; new = 'claimsFrom(r).Subject, false)' },
+       old = 'opt := orders.QuoteOptions{NoCourier: req.DineIn || req.Pickup}'; new = 'opt := orders.QuoteOptions{NoCourier: req.Pickup}' },
     @{ name = 'xavfsizlik: chiqishdan keyin token ishlaydi'; file = 'internal\revoke\revoke.go';
        old = 'return issuedAt.Before(t)'; new = 'return issuedAt.Before(t) && false' },
     @{ name = 'xavfsizlik: moliya reestrida draft summa qo''shiladi'; file = 'internal\httpapi\routes_finance.go';
