@@ -222,6 +222,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://chust:chust@localhost:5432/chustapp_test?sslmode=disable
           REDIS_ADDR: localhost:6379
+          # storage Redis testlari (OTP kodini bir martalik olish, umumiy
+          # rate-limit) TEST_REDIS_ADDR ni o'qiydi — u yo'qligida ular CI'da
+          # jimgina SKIP bo'lardi (audit 480, 2026-11-20).
+          TEST_REDIS_ADDR: localhost:6379
         run: go test -race -count=1 ./...
 
       # Rasmiy Go zaiflik bazasi. Trivy'dan farqi: u faqat siz
