@@ -479,7 +479,7 @@ func (l *LiveSession) NotifyCheckoutReady(restaurant string, totalTiyin int64) e
 		// (ilova ham tekshiradi), lekin ikkinchi qavat zarar qilmaydi.
 		return nil
 	}
-	restaurant = trimRunes(strings.TrimSpace(restaurant), 80)
+	restaurant = trimRunes(safeDisplayName(restaurant), 80)
 	if restaurant == "" {
 		restaurant = "restoran"
 	}

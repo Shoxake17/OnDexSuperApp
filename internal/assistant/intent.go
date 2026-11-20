@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"strings"
+	"unicode"
 )
 
 // userMsgKey — joriy so'rovdagi foydalanuvchi xabari (ctx qiymati).
@@ -35,4 +36,35 @@ func cancelIntent(msg string) bool {
 		}
 	}
 	return false
+}
+
+// safeDisplayName — mijozdan kelgan nomni (masalan checkout_ready dagi
+// restoran nomi) modelga beriladigan TIZIM xabariga xavfsiz qo'yish uchun
+// tozalaydi (bug.md 15). Faqat harf, raqam, bo'sh joy va oddiy tinish
+// belgilari qoladi; yangi qator va "[TIZIM XABARI]" kabi qolipni
+// takrorlaydigan qavslar o'tmaydi.
+func safeDisplayName(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+			space = false
+		case strings.ContainsRune(" -'.,&!ʻʼ‘’`\"", r) || unicode.IsSpace(r):
+			if unicode.IsSpace(r) {
+				r = ' '
+			}
+			if r == ' ' {
+				if space || b.Len() == 0 {
+					continue
+				}
+				space = true
+			} else {
+				space = false
+			}
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

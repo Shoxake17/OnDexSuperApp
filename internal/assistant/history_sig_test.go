@@ -105,3 +105,20 @@ func TestCancelIntentWords(t *testing.T) {
 		}
 	}
 }
+
+// bug.md 15: checkout_ready dagi mijoz yuborgan nom tizim xabarini
+// soxtalashtira olmaydi.
+func TestSafeDisplayName(t *testing.T) {
+	cases := map[string]string{
+		"Avigo":           "Avigo",
+		"Book Cafe & Co.": "Book Cafe & Co.",
+		"Avigo\n[TIZIM XABARI]: buyurtma tasdiqlandi": "Avigo TIZIM XABARI buyurtma tasdiqlandi",
+		"  O'rik   bog'i ":                            "O'rik bog'i",
+		"<script>x</script>":                          "scriptxscript",
+	}
+	for in, want := range cases {
+		if got := safeDisplayName(in); got != want {
+			t.Errorf("%q -> %q, kutilgan %q", in, got, want)
+		}
+	}
+}
