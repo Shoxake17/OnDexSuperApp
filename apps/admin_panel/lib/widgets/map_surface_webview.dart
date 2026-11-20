@@ -46,6 +46,9 @@ class _MapSurfaceState extends State<MapSurface> {
   final _controller = WebviewController();
   bool _ready = false;
   String? _error;
+  // Sahifa yuklanadigan yagona ishonchli origin (API manzili).
+  final String _origin = Uri.parse(baseUrl).origin;
+  String _currentUrl = '';
 
   @override
   void initState() {
@@ -61,6 +64,12 @@ class _MapSurfaceState extends State<MapSurface> {
       // ko'tarilsa `boot` xabari biz tayyor bo'lgunimizcha kelib
       // qolishi mumkin edi.
       _controller.webMessage.listen(_onMessage);
+      // bug.md 56: hozirgi sahifa manzili — oot zaxira yo'lida token faqat
+      // o'z origin'imizga yuboriladi.
+      _controller.url.listen((u) => _currentUrl = u);
+      // Yangi oyna (popup) ochilmaydi — begona sahifa token oladigan
+      // kontekst yaratilmasin.
+      await _controller.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
 
       if (api.token == null || api.token!.isEmpty) {
         setState(() => _error = 'Sessiya topilmadi — qaytadan kiring');
@@ -81,13 +90,17 @@ class _MapSurfaceState extends State<MapSurface> {
       // Token URL'ga QO'YILMAYDI (u WebView tarixi va server loglariga
       // tushardi) — u faqat sahifa xotirasiga boradi.
       // └────────────────────────────────────────────────────────────┘
+      // bug.md 56: skript WebView'dagi HAR BIR hujjatda bajariladi — sahifa
+      // boshqa manzilga o'tsa (havola, qayta yo'naltirish) begona origin ham
+      // admin JWT'ni o'qiy olardi. Endi token FAQAT bizning origin'da beriladi.
       await _controller.addScriptToExecuteOnDocumentCreated(
+        'if (location.origin === ${jsonEncode(_origin)}) { '
         'window.__ondexConfig = ${jsonEncode({
           'token': api.token,
           'apiBase': baseUrl,
           'lat': _chustLat,
           'lng': _chustLng,
-        })};',
+        })}; }',
       );
 
       await _controller.loadUrl('$baseUrl/map-picker');
@@ -114,6 +127,8 @@ class _MapSurfaceState extends State<MapSurface> {
     }
     switch (m['type']) {
       case 'boot':
+        // Faqat o'z origin'imizdagi sahifaga (bug.md 56).
+        if (Uri.tryParse(_currentUrl)?.origin != _origin) break;
         // ZAXIRA YO'L. Asosiy yo'l — yuqoridagi
         // `addScriptToExecuteOnDocumentCreated`. Sahifa tomonda
         // `startOnce` qo'riqchisi bor, shuning uchun sozlama ikki

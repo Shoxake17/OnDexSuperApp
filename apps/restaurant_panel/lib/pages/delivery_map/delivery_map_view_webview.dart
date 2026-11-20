@@ -20,6 +20,7 @@ class DeliveryMapView extends StatefulWidget {
 class _DeliveryMapViewState extends State<DeliveryMapView> {
   final _controller = WebviewController();
   bool _pageReady = false;
+  String _currentUrl = '';
   String? _error;
 
   @override
@@ -31,6 +32,10 @@ class _DeliveryMapViewState extends State<DeliveryMapView> {
   Future<void> _init() async {
     try {
       await _controller.initialize();
+      // Ma'lumot (kuryer va buyurtma joylashuvlari) faqat o'z sahifamizga:
+      // WebView boshqa manzilga o'tsa begona sahifa uni olmasin (audit 480).
+      _controller.url.listen((u) => _currentUrl = u);
+      await _controller.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
       _controller.webMessage.listen((raw) {
         try {
           final m = raw is String ? jsonDecode(raw) as Map : raw as Map;
@@ -53,6 +58,7 @@ class _DeliveryMapViewState extends State<DeliveryMapView> {
   void _push() {
     final d = widget.data;
     if (!_pageReady || d == null) return;
+    if (Uri.tryParse(_currentUrl)?.origin != Uri.parse(baseUrl).origin) return;
     _controller.postWebMessage(jsonEncode({...d, 'type': 'data'}));
   }
 
