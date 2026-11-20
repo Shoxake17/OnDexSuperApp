@@ -578,9 +578,17 @@ func main() {
 			// origin'ini model domeniga qo'yadi), lekin VEB/Mini App
 			// uchun qoida Cloudflare panelidan qo'lda qo'yilishi kerak:
 			// R2 → bucket → Settings → CORS Policy → GET/HEAD, origin *.
-			slog.Warn("R2 CORS qoidasi qo'yilmadi — veb/Mini App'da 3D model yuklanmasligi mumkin "+
-				"(Cloudflare panelidan qo'lda qo'ying: R2 → bucket → Settings → CORS Policy)",
-				"err", err)
+			// Ilgari bu har ishga tushishda YOLG'ON ogohlantirish berardi (qoida
+			// panelda qo'yilgan edi). Endi CDN'ning o'zidan haqiqiy preflight bilan
+			// tekshiriladi va faqat CORS rostdan yo'q bo'lsa ogohlantiriladi.
+			if publicCORSWorks(corsCtx, publicURL) {
+				slog.Info("R2 CORS: token bucket sozlamasini o'zgartira olmaydi (eng kam huquq), " +
+					"qoida Cloudflare panelida qo'yilgan va ishlayapti")
+			} else {
+				slog.Warn("R2 CORS qoidasi YO'Q — veb/Mini App'da 3D model yuklanmaydi "+
+					"(Cloudflare panelidan qo'ying: R2 → bucket → Settings → CORS Policy → GET/HEAD)",
+					"err", err)
+			}
 		}
 		corsCancel()
 	} else if devMode {
