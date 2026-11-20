@@ -123,7 +123,11 @@ class _ChatLine {
   final String text;
   final Map<String, dynamic>? proposal;
   final bool error;
-  _ChatLine(this.role, this.text, {this.proposal, this.error = false});
+  // sig — server javobining imzosi (reply_sig). Tarix bilan qaytariladi:
+  // imzosiz "assistant" xabarini server ishonchli deb hisoblamaydi
+  // (bug.md 41, audit 480).
+  final String? sig;
+  _ChatLine(this.role, this.text, {this.proposal, this.error = false, this.sig});
 }
 
 class _AssistantScreenState extends State<AssistantScreen> {
@@ -555,7 +559,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
   List<Map<String, String>> _history() {
     final all = _lines
         .where((l) => !l.error)
-        .map((l) => {'role': l.role, 'content': l.text})
+        .map((l) => {
+              'role': l.role,
+              'content': l.text,
+              if (l.sig != null && l.sig!.isNotEmpty) 'sig': l.sig!,
+            })
         .toList(growable: false);
     return all.length <= 12 ? all : all.sublist(all.length - 12);
   }
@@ -578,7 +586,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
       final proposal = res['proposal'] as Map<String, dynamic>?;
       if (!mounted) return;
       setState(() {
-        _lines.add(_ChatLine('assistant', reply, proposal: proposal));
+        _lines.add(_ChatLine('assistant', reply,
+            proposal: proposal, sig: res['reply_sig']?.toString()));
         _busy = false;
       });
       _scrollToEnd();

@@ -1305,6 +1305,9 @@ func main() {
 	if shaddiy, ok := assistant.NewShaddiyFromEnv(); ok {
 		assistantSvc = assistant.NewService(
 			shaddiy, catalogRepo, catalogSvc, orderSvc, orderRepo, orderSvc)
+		// bug.md 41: javoblar imzolanadi — mijoz soxta "assistant" tarixini
+		// yubora olmaydi. Kalit JWT siridan ALOHIDA maqsad bilan hosil qilinadi.
+		assistantSvc.WithHistoryKey(deriveKey(jwtSecret, "ondex-assistant-history-v1"))
 		slog.Info("rejim: ilova ichidagi AI yordamchi yoqilgan (/ai/chat)")
 	} else {
 		slog.Warn("AI yordamchi O'CHIQ (SHADDIY_AI_URL/SHADDIY_API_KEY yo'q) — /ai/* 503 qaytaradi")

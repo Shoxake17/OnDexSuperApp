@@ -108,6 +108,10 @@ type Message struct {
 	// ko'rsatadi, tool mexanikasi serverda qoladi.
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	// Sig — server o'z javobiga bergan imzo (Result.ReplySig). Mijoz uni
+	// tarix bilan QAYTARADI; modelga HECH QACHON uzatilmaydi (trimHistory
+	// yangi Message yasaydi). Audit 480 / bug.md 41.
+	Sig string `json:"sig,omitempty"`
 }
 
 type ToolCall struct {
@@ -173,6 +177,10 @@ type Result struct {
 	Reply string `json:"reply"`
 	// Proposal — ilova karta qilib ko'rsatadigan savat taklifi.
 	Proposal *Proposal `json:"proposal,omitempty"`
+	// ReplySig — Reply ning imzosi: mijoz keyingi so'rovda tarixdagi shu
+	// javobga `sig` qilib qo'shadi. Imzosiz "assistant" xabari modelga
+	// mijoz matni sifatida beriladi (soxta tarix — bug.md 41).
+	ReplySig string `json:"reply_sig,omitempty"`
 }
 
 // ── Xizmat ──
@@ -184,6 +192,9 @@ type Service struct {
 	quoter  Quoter
 	orders  OrderReader
 	cancel  Canceller
+	// historyKey — javob imzosi kaliti (WithHistoryKey). Bo'sh bo'lsa
+	// tarix avvalgidek tekshirilmaydi.
+	historyKey []byte
 }
 
 func NewService(llm LLM, cat catalog.Repository, pricer Pricer, quoter Quoter,
@@ -211,12 +222,15 @@ func (s *Service) Chat(ctx context.Context, userID, message string,
 		return nil, ErrTooLong
 	}
 
+	// Joriy xabar tool'lar uchun (cancel_order niyat tekshiruvi — intent.go).
+	ctx = withUserMessage(ctx, message)
+
 	msgs := make([]Message, 0, len(history)+3)
 	msgs = append(msgs, Message{
 		Role:    "system",
 		Content: systemPrompt + checkoutNote(disabledSet(disabledTools)),
 	})
-	msgs = append(msgs, trimHistory(history)...)
+	msgs = append(msgs, trimHistory(history, s.historyVerifier(userID))...)
 	msgs = append(msgs, Message{Role: "user", Content: message})
 
 	var proposal *Proposal
@@ -229,7 +243,8 @@ func (s *Service) Chat(ctx context.Context, userID, message string,
 			return nil, err
 		}
 		if len(reply.ToolCalls) == 0 {
-			return &Result{Reply: plainText(reply.Content), Proposal: proposal}, nil
+			text := plainText(reply.Content)
+			return &Result{Reply: text, ReplySig: s.replySig(userID, text), Proposal: proposal}, nil
 		}
 
 		// Modelning tool-call xabari tarixga qo'shiladi — busiz
@@ -265,10 +280,8 @@ func (s *Service) Chat(ctx context.Context, userID, message string,
 	}
 
 	// Sikl tugadi — model qaror qabul qila olmadi.
-	return &Result{
-		Reply:    "Kechirasiz, so'rovingizni tushunolmadim. Soddaroq qilib ayting.",
-		Proposal: proposal,
-	}, nil
+	text := "Kechirasiz, so'rovingizni tushunolmadim. Soddaroq qilib ayting."
+	return &Result{Reply: text, ReplySig: s.replySig(userID, text), Proposal: proposal}, nil
 }
 
 // plainText — javobdan markdown belgilarini olib tashlaydi.
@@ -342,7 +355,7 @@ func plainText(s string) string {
 // Uchinchi xavf — hajm: uzun tarix to'g'ridan-to'g'ri pul, shuning
 // uchun oxirgi `maxHistory` ta xabar qoladi.
 // └────────────────────────────────────────────────────────────────────┘
-func trimHistory(history []Message) []Message {
+func trimHistory(history []Message, verify func(content, sig string) bool) []Message {
 	out := make([]Message, 0, maxHistory)
 	for _, m := range history {
 		if m.Role != "user" && m.Role != "assistant" {
@@ -355,7 +368,15 @@ func trimHistory(history []Message) []Message {
 		if len([]rune(content)) > maxUserMessage {
 			content = string([]rune(content)[:maxUserMessage])
 		}
-		out = append(out, Message{Role: m.Role, Content: content})
+		role := m.Role
+		// bug.md 41: tarix mijozdan keladi — imzosiz "assistant" navbati
+		// ("avval siz tasdiqlagansiz...") modelga yordamchining O'Z gapi
+		// bo'lib kirmasin. U mijoz matni sifatida, belgisi bilan beriladi.
+		if role == "assistant" && verify != nil && !verify(strings.TrimSpace(m.Content), m.Sig) {
+			role = "user"
+			content = unverifiedPrefix + content
+		}
+		out = append(out, Message{Role: role, Content: content})
 	}
 	if len(out) > maxHistory {
 		out = out[len(out)-maxHistory:]

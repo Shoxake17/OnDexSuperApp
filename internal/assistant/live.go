@@ -302,6 +302,11 @@ type LiveSession struct {
 	// avval loglarda umuman ko'rinmasdi.
 	interrupted int
 
+	// heard — joriy navbatda foydalanuvchi aytgan gap (transkripsiya
+	// bo'laklari). cancel_order niyat tekshiruvi uchun (intent.go):
+	// ovozda ham bekor qilish faqat foydalanuvchi O'ZI so'raganda.
+	heard strings.Builder
+
 	closeOnce sync.Once
 }
 
@@ -659,6 +664,9 @@ func (l *LiveSession) receive(ctx context.Context) {
 			})
 		}
 		if sc.InputTranscription != nil && sc.InputTranscription.Text != "" {
+			if l.heard.Len() < 2000 {
+				l.heard.WriteString(sc.InputTranscription.Text)
+			}
 			l.emit(LiveEvent{
 				Type: LiveEventUserText,
 				Text: sc.InputTranscription.Text,
@@ -686,6 +694,7 @@ func (l *LiveSession) receive(ctx context.Context) {
 			l.emit(LiveEvent{Type: LiveEventInterrupted})
 		}
 		if sc.TurnComplete {
+			l.heard.Reset()
 			l.emit(LiveEvent{Type: LiveEventTurnEnd})
 		}
 	}
@@ -701,7 +710,7 @@ func (l *LiveSession) handleToolCalls(ctx context.Context,
 		if fc == nil {
 			continue
 		}
-		out, prop := l.svc.runTool(ctx, l.userID, fc.Name, fc.Args, l.disabled)
+		out, prop := l.svc.runTool(withUserMessage(ctx, l.heard.String()), l.userID, fc.Name, fc.Args, l.disabled)
 
 		// ┌─ XATO ENDI KO'RINADI ─────────────────────────────────────┐
 		// Ilgari natija faqat modelga qaytarilardi va u xatoni
