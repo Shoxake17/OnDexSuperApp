@@ -484,7 +484,11 @@ func (s *Service) syncAccess(ctx context.Context, old, m *Member, actorID string
 	m.UserID = uid
 	ev, err := s.newEvent(m, actorID, EventAccessGranted, "", "")
 	if err != nil {
-		_ = s.accounts.Disable(ctx, m.RestaurantID, uid)
+		// bug.md 10: ochilgan kirish yopilmasa — u jimgina ochiq qolmasin.
+		if derr := s.accounts.Disable(ctx, m.RestaurantID, uid); derr != nil {
+			slog.Error("xodim: hodisa yozilmadi va ochilgan kirishni yopib bo'lmadi",
+				"restaurant", m.RestaurantID, "staff", m.ID, "err", derr)
+		}
 		return noop, err
 	}
 	*events = append(*events, ev)

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strings"
@@ -194,7 +195,7 @@ func (r *MongoQurtRepo) Reserve(ctx context.Context, items []qurt.Reservation) e
 	var done []qurt.Reservation
 	for id, qty := range need {
 		if qty <= 0 {
-			_ = r.Release(ctx, done)
+			r.releaseLogged(ctx, done)
 			return qurt.ErrInsufficientStock
 		}
 		res, err := r.col.UpdateOne(ctx, bson.M{
@@ -205,11 +206,11 @@ func (r *MongoQurtRepo) Reserve(ctx context.Context, items []qurt.Reservation) e
 			}},
 		}, bson.M{"$inc": bson.M{"reserved": qty}})
 		if err != nil {
-			_ = r.Release(ctx, done)
+			r.releaseLogged(ctx, done)
 			return err
 		}
 		if res.ModifiedCount == 0 {
-			_ = r.Release(ctx, done)
+			r.releaseLogged(ctx, done)
 			return qurt.ErrInsufficientStock
 		}
 		done = append(done, qurt.Reservation{ProductID: id, Qty: qty})
@@ -237,4 +238,11 @@ func (r *MongoQurtRepo) Release(ctx context.Context, items []qurt.Reservation) e
 		}
 	}
 	return nil
+}
+
+// releaseLogged — qisman olingan zaxirani qaytaradi; xato logga (bug.md 10).
+func (r *MongoQurtRepo) releaseLogged(ctx context.Context, done []qurt.Reservation) {
+	if err := r.Release(context.WithoutCancel(ctx), done); err != nil {
+		slog.Error("qurt: qisman zaxira qaytarilmadi — mahsulot band qolishi mumkin", "err", err)
+	}
 }

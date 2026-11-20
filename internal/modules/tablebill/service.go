@@ -284,7 +284,9 @@ func (s *Service) CreateShare(ctx context.Context, restaurantID string, in Share
 	}
 	link, err := s.d.Payments.StartShare(ctx, sh.ID, in.PayerID, restaurantID, in.Channel)
 	if err != nil {
-		_ = s.d.Store.SetShareStatus(ctx, sh.ID, SharePending, ShareFailed, nil)
+		if serr := s.d.Store.SetShareStatus(ctx, sh.ID, SharePending, ShareFailed, nil); serr != nil {
+			slog.Error("tablebill: ulush 'failed' qilinmadi — pending qolishi mumkin", "share", sh.ID, "err", serr)
+		}
 		return nil, err
 	}
 	return &ShareResult{Share: sh, Pay: link}, nil

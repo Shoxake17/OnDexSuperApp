@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -148,7 +149,11 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 			s.Revoked.Revoke(r.Context(), c.Subject)
 			if s.Identity != nil {
 				// Markaziy sessiyalar ham (137) — o'chirilgan akkaunt hech qaysi qurilmada qolmaydi.
-				_, _ = s.Identity.RevokeAllForUser(r.Context(), c.Subject, "account_deleted")
+				// bug.md 10: bekor qilinmasa jimgina o'tib ketmasin — o'chirilgan
+				// akkaunt sessiyasi qolishi xavfsizlik hodisasi.
+				if _, err := s.Identity.RevokeAllForUser(r.Context(), c.Subject, "account_deleted"); err != nil {
+					slog.Error("akkaunt o'chirildi, lekin markaziy sessiyalar bekor qilinmadi", "user", c.Subject, "err", err)
+				}
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 		}))

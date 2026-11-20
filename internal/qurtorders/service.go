@@ -269,11 +269,11 @@ func (s *Service) Create(ctx context.Context, in CreateInput) ([]*Order, error) 
 
 	out, err := s.buildOrders(in, c)
 	if err != nil {
-		_ = s.Products.Release(ctx, c.reserve)
+		s.releaseLogged(ctx, c.reserve)
 		return nil, err
 	}
 	if err := s.Repo.CreateMany(ctx, out); err != nil {
-		_ = s.Products.Release(ctx, c.reserve)
+		s.releaseLogged(ctx, c.reserve)
 		return nil, err
 	}
 	for _, o := range out {
@@ -601,4 +601,12 @@ func (s *Service) TransitionDate(ctx context.Context, date string, from, to Stat
 		done++
 	}
 	return done, skipped, nil
+}
+
+// releaseLogged — zaxirani bo'shatadi; xato jimgina yo'qolmaydi (bug.md 10):
+// bo'shatilmagan zaxira mahsulotni abadiy "band" (tugagan) ko'rsatardi.
+func (s *Service) releaseLogged(ctx context.Context, r []qurt.Reservation) {
+	if err := s.Products.Release(context.WithoutCancel(ctx), r); err != nil {
+		slog.Error("qurt: zaxira bo'shatilmadi — mahsulot band qolishi mumkin", "err", err)
+	}
 }
