@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requestOrigin } from "@/lib/site";
 import { goFetch } from "@/lib/api";
 import { safeRedirect } from "@/lib/safe-redirect";
 import { setAppShell, setSessionToken } from "@/lib/session";
@@ -30,9 +31,7 @@ function originFrom(req: NextRequest): string {
   // haqidagi ichki taxminni qaytaradi — natijada redirect har doim
   // "localhost"ga ketib, WebView'da host mos kelmasligi xatosiga olib
   // keldi. Manzil doim so'rovning HAQIQIY `Host` header'idan quriladi.
-  const host = req.headers.get("host") ?? req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
-  return `${proto}://${host}`;
+  return requestOrigin(req.headers.get("host"), req.headers.get("x-forwarded-proto"), req.nextUrl.host, req.nextUrl.protocol);
 }
 
 // isSameSiteRequest — so'rov BEGONA saytdan kelmaganini tekshiradi.

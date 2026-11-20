@@ -70,8 +70,10 @@ func (s *Server) registerMeAgentRoutes(mux *http.ServeMux) {
 				PerOrderLimitTiyin int64 `json:"per_order_limit_tiyin"`
 				DailyLimitTiyin    int64 `json:"daily_limit_tiyin"`
 			}
-			// Bo'sh tana ham to'g'ri so'rov: "hamma so'ralgan
-			// ruxsat, chegarasiz rejim" degani.
+			// Bo'sh tana ham to'g'ri so'rov: sherik so'ragan hamma ruxsat
+			// beriladi, PerOrderLimitTiyin = 0 esa ENG QATTIQ rejim — har
+			// bir buyurtma foydalanuvchidan alohida tasdiqlanadi
+			// (`agentapi` requiresUser). "Chegarasiz" EMAS (bug.md 84b).
 			if r.Body != nil {
 				_ = json.NewDecoder(r.Body).Decode(&req)
 			}

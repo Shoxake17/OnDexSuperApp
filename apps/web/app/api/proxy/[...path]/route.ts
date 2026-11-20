@@ -186,3 +186,8 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 export async function DELETE(req: NextRequest, ctx: RouteContext) {
   return handle(req, (await ctx.params).path);
 }
+// bug.md 55d: backend'da PATCH marshrutlari bor — proksi ularni 405 bilan
+// rad etardi. CSRF tekshiruvi (proxy.ts crossOriginWrite) PATCH'ga ham qo'llanadi.
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
+  return handle(req, (await ctx.params).path);
+}

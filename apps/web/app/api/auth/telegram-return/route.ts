@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requestOrigin } from "@/lib/site";
 import { cookies } from "next/headers";
 import { goFetch } from "@/lib/api";
 import { safeRedirect } from "@/lib/safe-redirect";
@@ -21,9 +22,7 @@ import { setClientKind, setSession } from "@/lib/session";
 const COOKIE_NAME = "chust_tg_login";
 
 function originFrom(req: NextRequest): string {
-  const host = req.headers.get("host") ?? req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
-  return `${proto}://${host}`;
+  return requestOrigin(req.headers.get("host"), req.headers.get("x-forwarded-proto"), req.nextUrl.host, req.nextUrl.protocol);
 }
 
 export async function GET(req: NextRequest) {
