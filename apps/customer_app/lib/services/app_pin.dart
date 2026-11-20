@@ -73,6 +73,10 @@ class AppPin {
   /// uzayadi. 120 000 — mobil qurilmada ~0.2–0.5 s.
   static const _iterations = 120000;
 
+  /// Test uchun (bug.md 106): iteratsiya soni kamaytirilmasligi qulflanadi.
+  @visibleForTesting
+  static const iterations = _iterations;
+
   static Future<bool> isSet() async {
     try {
       final h = await _secure.read(key: _kHash);
@@ -263,13 +267,19 @@ class _Pbkdf2Input {
 /// bloklar kerak emas, chunki SHA-256 chiqishi aynan 32 bayt).
 ///
 /// Top-level funksiya: `compute()` faqat shundaylarni qabul qiladi.
-List<int> _pbkdf2Task(_Pbkdf2Input input) {
-  final hmac = Hmac(sha256, utf8.encode(input.pin));
+List<int> _pbkdf2Task(_Pbkdf2Input input) =>
+    pbkdf2Sha256(input.pin, input.salt, input.iterations);
+
+/// Haqiqiy hosila — test AYNAN shu funksiyani RFC vektoriga solishtiradi
+/// (bug.md 106: avval test o'zining nusxasini sinardi).
+@visibleForTesting
+List<int> pbkdf2Sha256(String pin, List<int> salt, int iterations) {
+  final hmac = Hmac(sha256, utf8.encode(pin));
   // T1 = PRF(P, S || INT_32_BE(1))
-  final block = <int>[...input.salt, 0, 0, 0, 1];
+  final block = <int>[...salt, 0, 0, 0, 1];
   var u = hmac.convert(block).bytes;
   final result = List<int>.from(u);
-  for (var i = 1; i < input.iterations; i++) {
+  for (var i = 1; i < iterations; i++) {
     u = hmac.convert(u).bytes;
     for (var j = 0; j < result.length; j++) {
       result[j] ^= u[j];

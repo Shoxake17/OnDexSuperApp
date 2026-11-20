@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chust_customer/services/app_pin.dart';
@@ -50,21 +49,15 @@ void main() {
   });
 
   group('PBKDF2 hosilasi', () {
-    // `AppPin` ichidagi hosila `compute()` orqali ishlaydi va platforma
-    // kanallarini talab qiladi, shuning uchun bu yerda AYNAN o'sha
-    // algoritm mustaqil takrorlanadi va RFC 6070 vektoriga solishtiriladi.
-    List<int> pbkdf2(List<int> password, List<int> salt, int iterations) {
-      final hmac = Hmac(sha256, password);
-      var u = hmac.convert(<int>[...salt, 0, 0, 0, 1]).bytes;
-      final out = List<int>.from(u);
-      for (var i = 1; i < iterations; i++) {
-        u = hmac.convert(u).bytes;
-        for (var j = 0; j < out.length; j++) {
-          out[j] ^= u[j];
-        }
-      }
-      return out;
-    }
+    // bug.md 106: avval bu yerda algoritmning NUSXASI sinalardi. Endi
+    // ilovadagi haqiqiy `pbkdf2Sha256` (AppPin `compute()` orqali
+    // chaqiradigan aynan o'sha funksiya) to'g'ridan-to'g'ri sinaladi.
+    List<int> pbkdf2(List<int> password, List<int> salt, int iterations) =>
+        pbkdf2Sha256(utf8.decode(password), salt, iterations);
+
+    test('iteratsiyalar soni kamaytirilmagan (≥120 000)', () {
+      expect(AppPin.iterations, greaterThanOrEqualTo(120000));
+    });
 
     test('RFC 6070 uslubidagi ma\'lum vektorga mos keladi', () {
       // PBKDF2-HMAC-SHA256, P="password", S="salt", c=1 -> birinchi blok
@@ -96,4 +89,12 @@ void main() {
     // 6 xona = 1 000 000 variant (4 xonada 10 000 edi).
     expect(AppPin.pinLength, 6);
   });
-}
+
+  test('ko\'p iteratsiyali ma\'lum vektor (c=4096)', () {
+    // PBKDF2-HMAC-SHA256, P="password", S="salt", c=4096, dkLen=32
+    final got = pbkdf2Sha256('password', utf8.encode('salt'), 4096);
+    expect(
+      got.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      'c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a',
+    );
+  });}
