@@ -68,6 +68,11 @@ export default function DesktopOrder({
   const cancelled = order.status === "cancelled" || order.status === "rejected";
   const dineIn = order.type === "dine_in";
   const stage = stageOf(order.status, dineIn);
+  // bug.md 73: yakunlangan buyurtmada stageOf -1 qaytaradi va avval BO'SH
+  // progress chizilardi. Yetkazilgan/xizmat ko'rsatilgan — hamma bosqich
+  // bajarilgan; boshqa noma'lum holatda chiziq ko'rsatilmaydi (mobil kabi).
+  const finished = order.status === "delivered" || order.status === "served";
+  const progressStage = stage >= 0 ? stage : finished ? Number.MAX_SAFE_INTEGER : -1;
   const { label, Icon, color } = statusStyleOf(order.status, dineIn);
   const createdAt = new Date(order.created_at);
   const stageTimes = extractStageTimes(createdAt, order.history);
@@ -147,10 +152,10 @@ export default function DesktopOrder({
           )}
 
           {/* ── Bosqichlar ──────────────────────────────────────────── */}
-          {!cancelled && (
+          {!cancelled && progressStage >= 0 && (
             <div className="mt-6">
               <DetailedOrderProgress
-                stage={stage}
+                stage={progressStage}
                 stageTimes={stageTimes}
                 dineIn={dineIn}
               />

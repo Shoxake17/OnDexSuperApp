@@ -525,7 +525,7 @@ jobs:
           # └─────────────────────────────────────────────────────────┘
           build-args: |
             NEXT_PUBLIC_API_URL=https://${{ vars.API_DOMAIN || 'api-ondex.shoxpro.uz' }}
-            NEXT_PUBLIC_SITE_URL=https://${{ vars.WEB_DOMAIN || 'web-ondex.shoxpro.uz' }}
+            NEXT_PUBLIC_SITE_URL=https://${{ vars.WEB_DOMAIN || 'ondex.uz' }}
             NEXT_PUBLIC_WS_URL=wss://${{ vars.API_DOMAIN || 'api-ondex.shoxpro.uz' }}
             NEXT_PUBLIC_MEDIA_ORIGIN=${{ vars.MEDIA_ORIGIN }}
           cache-from: type=gha

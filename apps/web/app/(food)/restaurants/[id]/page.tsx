@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import { notFound } from "next/navigation";
 import { publicFetch } from "@/lib/api";
 import { safeJsonLdHtml } from "@/lib/json-ld";
@@ -57,7 +58,7 @@ export default async function MenuPage({
     "@type": "Restaurant",
     name: restaurant.name,
     address: restaurant.address || undefined,
-    url: `https://app.chustapp.uz/restaurants/${restaurant.id}`,
+    url: `${SITE_URL}/restaurants/${restaurant.id}`,
   };
 
   return (

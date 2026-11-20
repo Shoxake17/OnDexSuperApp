@@ -6,7 +6,7 @@ import type { Restaurant } from "@/lib/types";
 // (Menyu sahifasi 3-bosqichda quriladi, lekin URL strukturasi hoziroq
 // belgilanadi). Savat/Checkout/Active-Order — auth talab qiladi,
 // sitemap'ga kiritilmaydi (indekslashning ma'nosi yo'q).
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.chustapp.uz";
+import { SITE_URL } from "@/lib/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let restaurants: Restaurant[] = [];
