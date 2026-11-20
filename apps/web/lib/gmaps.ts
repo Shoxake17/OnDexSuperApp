@@ -37,7 +37,14 @@ export function loadGoogleMaps(): Promise<void> {
           script.onerror = () => reject(new Error("xarita skripti yuklanmadi"));
           document.head.appendChild(script);
         }),
-    );
+    )
+    // bug.md 74: rad etilgan promise keshda qolsa, bitta tarmoq uzilishidan
+    // keyin sahifa qayta yuklanmaguncha xarita HECH QACHON ochilmasdi.
+    // Xatoda kesh tozalanadi — keyingi chaqiruv qaytadan urinadi.
+    .catch((err: unknown) => {
+      window.__gmapsLoading = undefined;
+      throw err;
+    });
   return window.__gmapsLoading;
 }
 

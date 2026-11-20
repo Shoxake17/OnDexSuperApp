@@ -128,7 +128,7 @@ export default function TelegramAuth({ signedIn }: { signedIn: boolean }) {
 
     if (current.status === "need_contact" && current.botLink) {
       if (wa.openTelegramLink) wa.openTelegramLink(current.botLink);
-      else window.open(current.botLink, "_blank");
+      else window.open(current.botLink, "_blank", "noopener,noreferrer");
     }
     setBusy(false);
   }
