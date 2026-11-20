@@ -461,9 +461,15 @@ func downloadModel(ctx context.Context, rawURL string, maxBytes int64) ([]byte, 
 		return nil, fmt.Errorf("model yuklab olinmadi: HTTP %d", resp.StatusCode)
 	}
 
+	return readModelBody(resp.Body, maxBytes)
+}
+
+// readModelBody — hajm chegarasi va GLB imzosi (`downloadModel` ning
+// tarmoqsiz qismi — testda to'g'ridan-to'g'ri sinaladi, bug.md 103).
+func readModelBody(r io.Reader, maxBytes int64) ([]byte, error) {
 	// maxBytes+1 — chegaradan OSHGANINI aniqlash uchun (aniq maxBytes
 	// o'qilsa, fayl kattaroq bo'lishi ham mumkin edi).
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
 	if err != nil {
 		return nil, err
 	}

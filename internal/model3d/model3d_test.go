@@ -297,19 +297,21 @@ func TestNewService_FillsDefaults(t *testing.T) {
 }
 
 func TestDownloadModel_RejectsOversize(t *testing.T) {
-	// Chegaradan katta "GLB" — hajm tekshiruvi imzo tekshiruvidan
-	// OLDIN ishlashi kerak.
-	big := append([]byte("glTF"), bytes.Repeat([]byte{0}, 100)...)
-	if int64(len(big)) <= 10 {
-		t.Skip()
+	// bug.md 103: avval test `downloadModel` ni umuman chaqirmasdi. Endi
+	// uning tarmoqsiz qismi (hajm + imzo) haqiqiy baytlar bilan sinaladi.
+	glb := func(n int) []byte { return append([]byte("glTF"), bytes.Repeat([]byte{0}, n)...) }
+
+	// Chegaradan katta GLB — imzo to'g'ri bo'lsa ham rad etiladi.
+	if _, err := readModelBody(bytes.NewReader(glb(100)), 64); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("chegaradan katta model: err=%v, kutilgan ErrTooLarge", err)
 	}
-	_ = big
-	// Haqiqiy tarmoq so'rovisiz: chegara mantig'i `downloadModel`
-	// ichida, uni to'liq tekshirish uchun HTTP server kerak bo'lardi.
-	// Bu yerda faqat konfiguratsiya chegarasi mavjudligini qulflaymiz.
-	s := NewService(&fakeGen{}, newFakeStore(), newFakeRepo(), Config{MaxModelBytes: 10}, nil)
-	if s.cfg.MaxModelBytes != 10 {
-		t.Fatal("chegara qiymati saqlanmadi")
+	// Aynan chegarada — qabul qilinadi.
+	if data, err := readModelBody(bytes.NewReader(glb(60)), 64); err != nil || len(data) != 64 {
+		t.Fatalf("chegaradagi model: len=%d err=%v", len(data), err)
+	}
+	// Imzosiz bayt — rad etiladi.
+	if _, err := readModelBody(bytes.NewReader([]byte("<html>not a model")), 64); !errors.Is(err, ErrRejected) {
+		t.Fatalf("imzosiz fayl: err=%v, kutilgan ErrRejected", err)
 	}
 }
 
