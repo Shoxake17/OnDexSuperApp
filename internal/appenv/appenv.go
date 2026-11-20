@@ -216,7 +216,7 @@ var Registry = []Var{
 	// ---------- To'lov (Octo) ----------
 	{Name: "OCTO_SHOP_ID", Effect: "karta orqali to'lov O'CHIQ — faqat naqd", DeployRequired: true},
 	{Name: "OCTO_SECRET", Effect: "karta orqali to'lov o'chiq", DeployRequired: true},
-	{Name: "OCTO_SIGNATURE_KEY", Effect: "callback imzosi tekshirilmaydi", DeployRequired: true},
+	{Name: "OCTO_SIGNATURE_KEY", Effect: "callback imzosi o'rniga to'lov holati har safar Octo API'dan so'raladi (xavfsiz; API javob bermasa to'lov qo'lda ko'rib chiqishga tushadi)", DeployRequired: true},
 	{Name: "OCTO_TEST", Effect: "to'lov SINOV rejimida qoladi — haqiqiy pul olinmaydi (bug.md 43-band)", DeployRequired: true},
 	{Name: "OCTO_RETURN_URL", Effect: "to'lovdan keyin mijoz ilovaga qaytmaydi", DeployRequired: true, Alternatives: []string{"PAYMENT_RETURN_URL"}},
 	// FAQAT DEV: production'da bu bayroq YOQILMASLIGI kerak, shuning
