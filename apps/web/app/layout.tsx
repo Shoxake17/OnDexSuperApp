@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import "./globals.css";
 import TelegramAuth from "./telegram-auth";
 import TableInit from "./table-init";
@@ -38,6 +39,9 @@ export default async function RootLayout({
   // uchun u jimgina chetga chiqadi va mavjud kirish oqimlariga
   // (bridge, SMS) umuman xalaqit bermaydi.
   // └───────────────────────────────────────────────────────────────────┘
+  // CSP nonce (bug.md 6) faqat dinamik render'da qo'yiladi — har sahifa
+  // so'rov vaqtida render bo'lishi SHART (proxy.ts, lib/csp.ts).
+  await connection();
   const signedIn = Boolean(await getSessionToken());
   // Sahifa mijoz ilovasining WebView'i ichidami — QR ko'prigi faqat
   // o'sha yerda ro'yxatdan o'tadi (`app-table-bridge.tsx`).

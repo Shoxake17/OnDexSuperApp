@@ -8,6 +8,7 @@ import {
   expiresWithin,
   refreshSession,
 } from "./lib/central-session";
+import { contentSecurityPolicy, newNonce } from "./lib/csp";
 
 /**
  * Domen bo'yicha marshrutlash: `ondex.uz` — tanishtiruv sahifasi,
@@ -101,10 +102,18 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // CSP nonce (bug.md 6): har so'rovga yangi. Next.js so'rov sarlavhasidagi
+  // CSP'dan nonce'ni oladi va o'z skriptlariga qo'yadi.
+  const nonce = newNonce();
+  const csp = contentSecurityPolicy(nonce);
+  request.headers.set("x-nonce", nonce);
+  request.headers.set("Content-Security-Policy", csp);
+
   const init = { request: { headers: request.headers } };
   const response = landing
     ? NextResponse.rewrite(new URL("/landing", request.url), init)
     : NextResponse.next(init);
+  response.headers.set("Content-Security-Policy", csp);
   if (renewed) {
     response.cookies.set(ACCESS_COOKIE, renewed.access, cookieOptions(CENTRAL_MAX_AGE));
     response.cookies.set(REFRESH_COOKIE, renewed.refresh, cookieOptions(CENTRAL_MAX_AGE));
