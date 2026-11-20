@@ -2,6 +2,7 @@ package books
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -112,8 +113,15 @@ func ExtractPageImages(rs io.ReadSeeker) (pages []PageImage, err error) {
 		return nil
 	}
 
-	if err := api.ExtractImages(rs, nil, digest, conf); err != nil {
-		return nil, fmt.Errorf("sahifa rasmlari ajratilmadi: %w", err)
+	// pdfcpu 0.16+: qo'llab-quvvatlanmaydigan rasm formati (standart
+	// "skip" siyosati) boshqa rasmlar ajratilgandan KEYIN
+	// `*api.UnsupportedResourceError` bilan xabar qilinadi. Avvalgi
+	// versiyadagidek bunday rasm o'tkazib yuboriladi - kitob yo'qolmaydi.
+	if err := api.ExtractImages(context.Background(), rs, nil, digest, conf); err != nil {
+		var unsupported *api.UnsupportedResourceError
+		if !errors.As(err, &unsupported) {
+			return nil, fmt.Errorf("sahifa rasmlari ajratilmadi: %w", err)
+		}
 	}
 	if len(best) == 0 {
 		return nil, ErrNoPageImages
