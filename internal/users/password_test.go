@@ -12,15 +12,15 @@ func tctx() context.Context { return context.Background() }
 
 func TestHashAndVerifyRoundTrip(t *testing.T) {
 	const pw = "juda-yaxshi-parol-2026"
-	h, err := HashPassword(tctx(),pw)
+	h, err := HashPassword(tctx(), pw)
 	if err != nil {
 		t.Fatalf("hash xatosi: %v", err)
 	}
-	ok, err := VerifyPassword(tctx(),pw, h)
+	ok, err := VerifyPassword(tctx(), pw, h)
 	if err != nil || !ok {
 		t.Fatalf("to'g'ri parol qabul qilinishi kerak edi (ok=%v, err=%v)", ok, err)
 	}
-	ok, err = VerifyPassword(tctx(),pw+"x", h)
+	ok, err = VerifyPassword(tctx(), pw+"x", h)
 	if err != nil {
 		t.Fatalf("kutilmagan xato: %v", err)
 	}
@@ -34,15 +34,15 @@ func TestHashAndVerifyRoundTrip(t *testing.T) {
 // oldindan hisoblangan jadval (rainbow table) bilan ikkalasi birdan
 // ochiladi.
 func TestHashIsSaltedUniquely(t *testing.T) {
-	a, _ := HashPassword(tctx(),"bir-xil-parol")
-	b, _ := HashPassword(tctx(),"bir-xil-parol")
+	a, _ := HashPassword(tctx(), "bir-xil-parol")
+	b, _ := HashPassword(tctx(), "bir-xil-parol")
 	if a == b {
 		t.Error("bir xil parol uchun hash'lar bir xil chiqdi — tuz ishlamayapti")
 	}
 }
 
 func TestHashFormatIsPHC(t *testing.T) {
-	h, _ := HashPassword(tctx(),"tekshiruv-paroli")
+	h, _ := HashPassword(tctx(), "tekshiruv-paroli")
 	if !strings.HasPrefix(h, "$argon2id$v=19$m=65536,t=3,p=2$") {
 		t.Errorf("kutilmagan format: %s", h)
 	}
@@ -61,7 +61,7 @@ func TestVerifyRejectsMalformedHash(t *testing.T) {
 		"$argon2id$v=19$m=65536,t=3,p=2$!!!$###",
 	}
 	for _, h := range bad {
-		ok, err := VerifyPassword(tctx(),"istalgan", h)
+		ok, err := VerifyPassword(tctx(), "istalgan", h)
 		if ok {
 			t.Errorf("buzilgan hash qabul qilindi: %q", h)
 		}
@@ -107,5 +107,5 @@ func TestPasswordLengthCountsRunesNotBytes(t *testing.T) {
 // Mavjud bo'lmagan akkaunt uchun ham parol tekshirish ishi bajarilishi
 // kerak (user enumeration'ga qarshi) — funksiya panika qilmasligi shart.
 func TestVerifyAgainstDummyDoesNotPanic(t *testing.T) {
-	VerifyAgainstDummy(tctx(),"istalgan parol")
+	VerifyAgainstDummy(tctx(), "istalgan parol")
 }

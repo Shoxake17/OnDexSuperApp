@@ -262,7 +262,7 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 	// to'g'ridan-to'g'ri R2_PUBLIC_URL orqali, bu serverni chetlab o'tib
 	// ko'rsatiladi). Yozish (yuqoridagi POST) doim himoyalangan.
 	if local, ok := s.ImageStore.(*images.LocalStore); ok {
-		mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(local.Dir))))
+		mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", noDirListing(http.FileServer(http.Dir(local.Dir)))))
 	}
 
 	// ---------- Kuryer amallari ----------
@@ -271,4 +271,19 @@ func (s *Server) registerUploadRoutes(mux *http.ServeMux) {
 	// Kuryer yaratiladi, lekin approved=false: superadmin tasdiqlamaguncha
 	// online bo'la olmaydi va taklif olmaydi. Yangi token qaytariladi
 	// (eski tokenda rol hali "customer" edi).
+}
+
+// noDirListing — `http.FileServer` papka so'ralganda (`/uploads/`,
+// `/uploads/books/`) uning ichidagi BARCHA fayllar ro'yxatini HTML qilib
+// beradi: kimdir boshqa restoranlarning yuklagan fayl nomlarini (va
+// e'lon qilinmagan kitob PDF'larini) ko'rib chiqishi mumkin edi
+// (audit 480). Fayl manzili bilangina ochiladi, ro'yxat — 404.
+func noDirListing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "" || strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

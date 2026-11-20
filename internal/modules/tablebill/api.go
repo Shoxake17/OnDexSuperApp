@@ -2,11 +2,12 @@
 // o'z `tablebill` sxemasi (0078), tashqi dunyo bilan faqat portlar orqali.
 //
 // ┌─ EGASI QARORLARI (2026-11-16) ───────────────────────────────────────┐
-// * Har mehmon tanlaydi: hisobni TENG bo'lish yoki O'Z TAOMLARI.
-// * Aralash: kimdir ilovada (karta) to'laydi, qolganini ofitsiant
-//   "naqd/terminal qabul qildim" deb yopadi.
-// * Ixtiyoriy choy puli 0/5/10% — ofitsiantga (RS-2 da olgan ofitsiant).
-// * Bron zakladi (mijoz keldi -> applied) hisobdan avtomatik ayriladi.
+//   - Har mehmon tanlaydi: hisobni TENG bo'lish yoki O'Z TAOMLARI.
+//   - Aralash: kimdir ilovada (karta) to'laydi, qolganini ofitsiant
+//     "naqd/terminal qabul qildim" deb yopadi.
+//   - Ixtiyoriy choy puli 0/5/10% — ofitsiantga (RS-2 da olgan ofitsiant).
+//   - Bron zakladi (mijoz keldi -> applied) hisobdan avtomatik ayriladi.
+//
 // └──────────────────────────────────────────────────────────────────────┘
 package tablebill
 

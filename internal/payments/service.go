@@ -20,13 +20,13 @@ import (
 // har urinish uchun YANGI ID kerak.
 // └───────────────────────────────────────────────────────────────────┘
 type Payment struct {
-	ID           string `json:"id"`
-	OrderID      string `json:"order_id"`
+	ID      string `json:"id"`
+	OrderID string `json:"order_id"`
 	// ReservationID — stol broni zakladi (RS-3). To'lov buyurtmaga YOKI
 	// bronga tegishli, aynan bittasiga (bazada CHECK payments_one_subject).
 	ReservationID string `json:"reservation_id,omitempty"`
 	// BillShareID — stol hisobi ulushi (RS-5, `billshare.go`).
-	BillShareID string `json:"bill_share_id,omitempty"`
+	BillShareID  string `json:"bill_share_id,omitempty"`
 	CustomerID   string `json:"customer_id"`
 	RestaurantID string `json:"restaurant_id"`
 	Provider     string `json:"provider"`

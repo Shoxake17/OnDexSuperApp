@@ -7,13 +7,14 @@
 // ulaydi.
 //
 // ┌─ EGASI QARORLARI (2026-11-15) ───────────────────────────────────────┐
-// * Zaklad = restoran belgilaydi, KISHI BOSHIGA (zona bo'yicha farq mumkin).
-// * Zaklad to'langach bron AVTOMATIK tasdiqlanadi.
-// * Bron vaqtidan 2+ soat oldin bekor qilinsa — zaklad to'liq qaytadi;
-//   kamroq qolganda yoki kelmasa (15 daq kechikish) — restoranda qoladi.
-// * Kelsa — zaklad yakuniy hisobdan ayriladi (`DepositApplied`).
-// * Restoran bekor qilsa (sabab bilan) — zaklad doim to'liq qaytadi.
-// * To'lov: karta (Octo, restoran hisobiga) yoki OnDex Wallet.
+//   - Zaklad = restoran belgilaydi, KISHI BOSHIGA (zona bo'yicha farq mumkin).
+//   - Zaklad to'langach bron AVTOMATIK tasdiqlanadi.
+//   - Bron vaqtidan 2+ soat oldin bekor qilinsa — zaklad to'liq qaytadi;
+//     kamroq qolganda yoki kelmasa (15 daq kechikish) — restoranda qoladi.
+//   - Kelsa — zaklad yakuniy hisobdan ayriladi (`DepositApplied`).
+//   - Restoran bekor qilsa (sabab bilan) — zaklad doim to'liq qaytadi.
+//   - To'lov: karta (Octo, restoran hisobiga) yoki OnDex Wallet.
+//
 // └──────────────────────────────────────────────────────────────────────┘
 package reservation
 

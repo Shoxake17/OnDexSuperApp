@@ -5,12 +5,12 @@
 // Multicard'ning to'lov sahifasida HOLD YO'Q: mijoz to'lagan zahoti
 // pul restoran hisobiga tushadi. Shuning uchun:
 //
-//	* yaratilgan to'lov `pending` bo'ladi, callback kelgach `paid`;
-//	* `Capture` KERAK EMAS — `ErrNotSupported` qaytaradi va
-//	  `payments.Service` uni faqat `held` holatdagi to'lov uchun
-//	  chaqiradi, bizda esa bunday holat umuman bo'lmaydi;
-//	* buyurtma rad etilsa pul QAYTARILADI (`Refund`), blok
-//	  bo'shatilmaydi.
+//   - yaratilgan to'lov `pending` bo'ladi, callback kelgach `paid`;
+//   - `Capture` KERAK EMAS — `ErrNotSupported` qaytaradi va
+//     `payments.Service` uni faqat `held` holatdagi to'lov uchun
+//     chaqiradi, bizda esa bunday holat umuman bo'lmaydi;
+//   - buyurtma rad etilsa pul QAYTARILADI (`Refund`), blok
+//     bo'shatilmaydi.
 //
 // Octo'ning ikki bosqichli modeli bilan farqi aynan shu. Buyurtma
 // kodi o'zgarmaydi: `payments.Service` `paid` holatda ham

@@ -50,10 +50,10 @@ func TestRegisterByPhoneDoesNotStorePassword(t *testing.T) {
 
 // TestAttackerCannotHijackAccountViaRegister — TO'LIQ hujum stsenariysi.
 //
-//	1. hujumchi qurbonning raqami bilan register qiladi va O'Z parolini
-//	   qo'yadi; SMS qurbonning telefoniga boradi;
-//	2. qurbon kodni kiritadi (o'zi kirmoqchi deb o'ylaydi);
-//	3. hujumchi o'z paroli bilan kirishga uradi — RAD ETILISHI SHART.
+//  1. hujumchi qurbonning raqami bilan register qiladi va O'Z parolini
+//     qo'yadi; SMS qurbonning telefoniga boradi;
+//  2. qurbon kodni kiritadi (o'zi kirmoqchi deb o'ylaydi);
+//  3. hujumchi o'z paroli bilan kirishga uradi — RAD ETILISHI SHART.
 //
 // Tuzatishdan oldin 3-qadam muvaffaqiyatli token qaytarardi.
 func TestAttackerCannotHijackAccountViaRegister(t *testing.T) {
@@ -86,7 +86,7 @@ func TestVerifyClearsLegacyPasswordHash(t *testing.T) {
 	const phone = "+998905556677"
 	ctx := context.Background()
 
-	hash, err := HashPassword(tctx(),"eski-begona-parol-1")
+	hash, err := HashPassword(tctx(), "eski-begona-parol-1")
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestSetPasswordRequiresCurrent(t *testing.T) {
 	s := newTestService()
 	ctx := context.Background()
 	repo := s.users.(*fakeUserRepo)
-	hash, _ := HashPassword(tctx(),okPassword)
+	hash, _ := HashPassword(tctx(), okPassword)
 	repo.data["+998901010101"] = &User{
 		ID: "u1", Phone: "+998901010101", PasswordHash: hash, PhoneVerified: true,
 	}
@@ -377,7 +377,7 @@ func TestSetPasswordWithFreshPhoneProof(t *testing.T) {
 	s := newTestService()
 	ctx := context.Background()
 	repo := s.users.(*fakeUserRepo)
-	hash, _ := HashPassword(tctx(),okPassword)
+	hash, _ := HashPassword(tctx(), okPassword)
 	repo.data["+998901010102"] = &User{
 		ID: "u2", Phone: "+998901010102", PasswordHash: hash, PhoneVerified: true,
 	}
@@ -475,7 +475,7 @@ func TestIsUserFacingHidesInternalErrors(t *testing.T) {
 
 // TestNeedsRehash — hash eski/zaif parametrlar bilan bo'lsa aniqlansin.
 func TestNeedsRehash(t *testing.T) {
-	current, err := HashPassword(tctx(),okPassword)
+	current, err := HashPassword(tctx(), okPassword)
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}

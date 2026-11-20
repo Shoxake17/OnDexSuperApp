@@ -367,4 +367,3 @@ func TestCreate_ConcurrentSameIdempotencyKey(t *testing.T) {
 		t.Fatalf("repo'da aynan 1 ta buyurtma bo'lishi kerak edi, topildi: %d", len(repo.data))
 	}
 }
-

@@ -91,7 +91,7 @@ func newFix(t *testing.T, tables ...Table) *fix {
 	}
 	f := &fix{store: NewMemStore(), pay: &fakePay{}, note: &fakeNotify{},
 		wallet: &fakeWallet{balance: 100_000_000_00, debited: map[string]int64{}, refunded: map[string]int64{}},
-		now: time.Date(2026, 11, 15, 6, 0, 0, 0, time.UTC)} // 11:00 Toshkent
+		now:    time.Date(2026, 11, 15, 6, 0, 0, 0, time.UTC)} // 11:00 Toshkent
 	var seq int64
 	svc, err := New(Deps{Store: f.store, Tables: fakeTables(tables), Payments: f.pay, Wallet: f.wallet,
 		Notifier: f.note, NewID: func() string { return fmt.Sprintf("r%03d", atomic.AddInt64(&seq, 1)) },

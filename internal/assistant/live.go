@@ -86,14 +86,14 @@ type LiveEvent struct {
 
 // Hodisa turlari.
 const (
-	LiveEventReady       = "ready"
-	LiveEventAudio       = "audio"
-	LiveEventText        = "text"
+	LiveEventReady = "ready"
+	LiveEventAudio = "audio"
+	LiveEventText  = "text"
 	// LiveEventUserText — foydalanuvchi AYTGAN gapning matni.
 	// Suhbat oynasida u o'z savolini ham ko'rishi kerak, aks holda
 	// javob nimaga tegishli ekani noaniq bo'lardi.
 	LiveEventUserText = "user_text"
-	LiveEventProposal    = "proposal"
+	LiveEventProposal = "proposal"
 	// LiveEventToolError — amal bajarilmadi (masalan taom topilmadi).
 	//
 	// Ilova buni suhbatda XATO qatori qilib ko'rsatadi. Busiz
@@ -105,9 +105,9 @@ const (
 	// Server BUYURTMA YARATMAYDI: ilova buni olib, checkout
 	// ekranidagi AYNAN o'sha tugmani bosadi (naqd to'lov).
 	LiveEventConfirmOrder = "confirm_order"
-	LiveEventInterrupted = "interrupted"
-	LiveEventTurnEnd     = "turn_end"
-	LiveEventError       = "error"
+	LiveEventInterrupted  = "interrupted"
+	LiveEventTurnEnd      = "turn_end"
+	LiveEventError        = "error"
 )
 
 // LiveConfig — ovozli rejim sozlamasi.
@@ -122,13 +122,13 @@ type LiveConfig struct {
 // Live modellari tez eskiradi. `gemini-2.0-flash-live-001` (Shaddiy
 // hamon shuni yozib qo'ygan) 2026-08-31 da ARTIQ YO'Q:
 //
-//   models/gemini-2.0-flash-live-001 is not found for API version
-//   v1beta, or is not supported for bidiGenerateContent
+//	models/gemini-2.0-flash-live-001 is not found for API version
+//	v1beta, or is not supported for bidiGenerateContent
 //
 // Amaldagi ro'yxatni SO'RANG, eslab qolmang:
 //
-//   GET https://generativelanguage.googleapis.com/v1beta/models
-//   -> supportedGenerationMethods ichida "bidiGenerateContent"
+//	GET https://generativelanguage.googleapis.com/v1beta/models
+//	-> supportedGenerationMethods ichida "bidiGenerateContent"
 //
 // `native-audio` ataylab tanlandi: uning ovozi eng tabiiy (sintez
 // emas), ya'ni funksiyaning butun maqsadi shu.

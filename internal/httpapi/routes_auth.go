@@ -136,11 +136,11 @@ func rateLimitedBoth(w http.ResponseWriter,
 // ommaviy va istalgan odam ularni to'g'ridan-to'g'ri chaqira oladi.
 // Amalda ochiq qolgan narsalar:
 //
-//	* `/auth/email/request-code` — istalgan manzilga xat yuborishga
-//	  majburlash (rate-limit bor, lekin domen obro'si va Resend
-//	  kvotasi baribir yeyiladi);
-//	* `/auth/email/verify` va email rejimidagi `/auth/register` —
-//	  hech bir mijoz ilovasi ishlatmaydigan akkaunt yaratish yo'li.
+//   - `/auth/email/request-code` — istalgan manzilga xat yuborishga
+//     majburlash (rate-limit bor, lekin domen obro'si va Resend
+//     kvotasi baribir yeyiladi);
+//   - `/auth/email/verify` va email rejimidagi `/auth/register` —
+//     hech bir mijoz ilovasi ishlatmaydigan akkaunt yaratish yo'li.
 //
 // Ishlatilmaydigan, lekin ochiq turgan kirish yo'li — bu qarzdorlik.
 // Bayroq uni yopadi, kod esa xodim panellari uchun joyida qoladi.
@@ -567,9 +567,9 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 				link = "https://t.me/" + name
 			}
 			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":     "Raqamingiz hali bog'lanmagan",
-				"need":      "share_contact",
-				"bot_link":  link,
+				"error":      "Raqamingiz hali bog'lanmagan",
+				"need":       "share_contact",
+				"bot_link":   link,
 				"first_name": tgUser.FirstName,
 			})
 			return

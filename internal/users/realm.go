@@ -8,6 +8,7 @@ package users
 //   - merchant — biznes egalari va ularning xodimlari (Merchant panel,
 //     OnDexPro, OnDexGO);
 //   - platform — OnDex egasi (admin).
+//
 // Bir realm akkaunti boshqa realm ilovasiga kira OLMAYDI.
 // └───────────────────────────────────────────────────────────────────────┘
 //

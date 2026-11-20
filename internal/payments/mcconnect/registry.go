@@ -4,8 +4,8 @@
 // "Shu restoran uchun qaysi Multicard klienti?" degan savolga IKKI joy
 // javob berishi kerak:
 //
-//	* HTTP qatlami — Moliya sahifasi tushum reestrini o'qiydi;
-//	* to'lov qatlami — buyurtma uchun to'lov yaratadi.
+//   - HTTP qatlami — Moliya sahifasi tushum reestrini o'qiydi;
+//   - to'lov qatlami — buyurtma uchun to'lov yaratadi.
 //
 // Javob bir xil bo'lishi SHART: bitta restoran reestrni bir kalit
 // bilan, to'lovni boshqa kalit bilan qilsa, pul bir hisobga tushib,

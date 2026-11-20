@@ -8,12 +8,12 @@
 //
 // Shu sabab oqim teskari yo'nalishda quriladi:
 //
-//	1. ilova backenddan bir martalik TOKEN oladi;
-//	2. `t.me/<bot>?start=<token>` havolasi ochiladi;
-//	3. foydalanuvchi Start bosadi -> bot tokenni ko'radi va endi
-//	   `chat_id` ni biladi;
-//	4. bot RAQAMNI ULASHISHNI so'raydi;
-//	5. raqam mos kelsa — kod o'sha chatga yuboriladi.
+//  1. ilova backenddan bir martalik TOKEN oladi;
+//  2. `t.me/<bot>?start=<token>` havolasi ochiladi;
+//  3. foydalanuvchi Start bosadi -> bot tokenni ko'radi va endi
+//     `chat_id` ni biladi;
+//  4. bot RAQAMNI ULASHISHNI so'raydi;
+//  5. raqam mos kelsa — kod o'sha chatga yuboriladi.
 //
 // ── 4-QADAM NEGA MAJBURIY (eng muhim joyi) ─────────────────────────
 // Deep link o'zi telefon raqamini TASDIQLAMAYDI — u faqat "kimdir

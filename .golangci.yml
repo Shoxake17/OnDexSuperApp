@@ -12,6 +12,15 @@
 # └───────────────────────────────────────────────────────────────────────┘
 version: "2"
 
+# gofmt — uslub bahsi emas, Go'ning yagona formati. Audit 480 da 34 fayl
+# formatdan chiqqani topildi (CRLF, izoh ro'yxatlari); endi CI ushlaydi.
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    paths:
+      - node_modules
+
 run:
   timeout: 10m
   tests: true

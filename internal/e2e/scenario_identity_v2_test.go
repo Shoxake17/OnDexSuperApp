@@ -117,7 +117,8 @@ func TestCentralSessionsV2(t *testing.T) {
 		w.Do(t, sso, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 	})
 
-	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
+	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {
+		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
 		if len(list) != 1 {
 			t.Fatal("B egasining sessiyasi yo'q")
 		}

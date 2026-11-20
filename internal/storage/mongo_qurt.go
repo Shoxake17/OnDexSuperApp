@@ -78,7 +78,7 @@ func (r *MongoQurtRepo) Upsert(ctx context.Context, p *qurt.Product) (*qurt.Prod
 		"updated_at": now,
 	}
 	// Qoldiq: POS yuborgan bo'lsa yoziladi; yubormagan bo'lsa mavjud saqlanadi
-	// (yangi hujjatda 0). eserved ni POS HECH QACHON o'zgartirmaydi.
+	// (yangi hujjatda 0). eserved ni POS HECH QACHON o'zgartirmaydi.
 	onInsert := bson.M{"_id": r.newID(), "reserved": 0}
 	if p.StockSet {
 		set["stock"] = p.Stock

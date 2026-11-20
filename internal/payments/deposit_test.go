@@ -13,7 +13,9 @@ type fakeDeposits struct {
 	failed []string
 }
 
-func (f *fakeDeposits) DepositAmountTiyin(context.Context, string) (int64, error) { return f.amount, nil }
+func (f *fakeDeposits) DepositAmountTiyin(context.Context, string) (int64, error) {
+	return f.amount, nil
+}
 func (f *fakeDeposits) OnDepositPaid(_ context.Context, id string) error {
 	f.paid = append(f.paid, id)
 	return nil

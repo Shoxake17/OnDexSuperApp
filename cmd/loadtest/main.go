@@ -17,6 +17,7 @@
 //   - test restorani kuryerlarsiz: kuryer havzasi restoran bo'yicha QAT'IY
 //     (couriers.restaurant_id), demak hech bir haqiqiy kuryerga taklif bormaydi;
 //     xodimi yo'q — hech kimga push/Telegram ketmaydi; to'lov faqat naqd.
+//
 // └────────────────────────────────────────────────────────────────────────┘
 //
 //	loadtest -mode seed    -run r20261112 -n 2000 -confirm-prod  (manifest + tokenlar)

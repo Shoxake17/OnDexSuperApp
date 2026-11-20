@@ -48,6 +48,7 @@ func pgPoolStats(s *pgxpool.Stat) pgPoolStat {
 //   - Asosiy API mux'iga ulanmaydi; Caddy/Cloudflare orqali yetib bo'lmaydi.
 //     Profil faqat konteyner tarmoq nomlar fazosidan olinadi
 //     (`docker run --network container:ondex-api-1 ...`).
+//
 // └────────────────────────────────────────────────────────────────────────┘
 //
 // /debug/pgpool — pgx pool statistikasi (JSON): ulanish olishni kutish soni

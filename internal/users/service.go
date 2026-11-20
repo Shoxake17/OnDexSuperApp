@@ -580,8 +580,8 @@ func emailIsIdentity(u *User) bool { return u.EmailVerified || u.Phone == "" }
 //
 // Bu ma'lumot yo'qotish emas: yozuv bu manzilga egalikni hech qachon
 // isbotlamagan, egaligini isbotlagan odam esa hozir shu yerda turibdi.
-// Bo'shatilgandan keyin manzil haqiqiy egasiga ochiladi (`email <> ''`
-// qisman unikal indeksi bo'sh qiymatlarni to'qnashtirmaydi —
+// Bo'shatilgandan keyin manzil haqiqiy egasiga ochiladi (faqat bo'sh bo'lmagan `email`ga
+// qo'yilgan qisman unikal indeks bo'sh qiymatlarni to'qnashtirmaydi —
 // migration 0026).
 func (s *Service) releaseUnprovenEmail(ctx context.Context, u *User) error {
 	empty := ""
