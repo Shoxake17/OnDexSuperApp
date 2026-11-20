@@ -3,6 +3,7 @@ package orders
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,7 +14,10 @@ import (
 // Avvalgi barcha buyurtma testlari `promotionsRepo` ga `nil` uzatardi,
 // ya'ni pul yo'lining aksiyalar bilan kesishgan qismi UMUMAN
 // sinalmasdi — aynan shu joyda 0 so'mlik buyurtma bug'i yashiringan edi.
-type fakePromoRepo struct{ promos []*promotions.Promotion }
+type fakePromoRepo struct {
+	promos []*promotions.Promotion
+	uses   map[string]int // IncrementUsage chaqiruvlari (bug.md 36)
+}
 
 func (r *fakePromoRepo) ListByRestaurant(context.Context, string) ([]*promotions.Promotion, error) {
 	return r.promos, nil
@@ -26,7 +30,13 @@ func (r *fakePromoRepo) Delete(context.Context, string) error              { ret
 func (r *fakePromoRepo) DeleteByRestaurant(context.Context, string) (int, error) {
 	return 0, nil
 }
-func (r *fakePromoRepo) IncrementUsage(context.Context, string, int64) error { return nil }
+func (r *fakePromoRepo) IncrementUsage(_ context.Context, id string, _ int64) error {
+	if r.uses == nil {
+		r.uses = map[string]int{}
+	}
+	r.uses[id]++
+	return nil
+}
 
 func activePromo(p *promotions.Promotion) *promotions.Promotion {
 	p.Active = true
@@ -397,5 +407,42 @@ func TestCreateExpecting_TotalMismatch_Rejected(t *testing.T) {
 	if _, err := newPricingService().CreateExpecting(
 		context.Background(), order(), 0); err != nil {
 		t.Fatalf("tekshiruvsiz chaqiruv ishlashi kerak edi: %v", err)
+	}
+}
+
+// bug.md 36: to'lanmagan karta buyurtmasi aksiya statistikasini OSHIRMAYDI;
+// to'lov bloklanganda bir marta hisoblanadi; naqd darhol hisoblanadi.
+func TestPromotionUsageCountsOnlyPaidOrders(t *testing.T) {
+	promo := activePromo(&promotions.Promotion{
+		ID: "pr1", Name: "10%", Type: promotions.TypePercent,
+		DiscountUnit: promotions.DiscountUnitPercent, DiscountValue: 10, AppliesToOrders: true,
+	})
+	repo := &fakePromoRepo{promos: []*promotions.Promotion{promo}}
+	seq := 0
+	svc := NewService(newFakeOCCRepo(), nil, func() string { seq++; return fmt.Sprintf("o-%d", seq) }, repo)
+	ctx := context.Background()
+	items := []Item{{ProductID: "p1", Name: "Osh", Qty: 1, PriceTiyin: 1400000}}
+
+	card, err := svc.Create(ctx, &Order{CustomerID: "c1", RestaurantID: "r1", Items: items, PaymentMethod: PaymentCard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.uses["pr1"] != 0 {
+		t.Fatalf("to'lanmagan karta buyurtmasi hisoblandi: %d", repo.uses["pr1"])
+	}
+	if err := svc.OnPaymentHeld(ctx, card.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.OnPaymentHeld(ctx, card.ID); err != nil { // takroriy callback
+		t.Fatal(err)
+	}
+	if repo.uses["pr1"] != 1 {
+		t.Fatalf("to'langan karta buyurtmasi: %d marta, kutilgan 1", repo.uses["pr1"])
+	}
+	if _, err := svc.Create(ctx, &Order{CustomerID: "c2", RestaurantID: "r1", Items: items}); err != nil {
+		t.Fatal(err)
+	}
+	if repo.uses["pr1"] != 2 {
+		t.Fatalf("naqd buyurtma darhol hisoblanmadi: %d", repo.uses["pr1"])
 	}
 }

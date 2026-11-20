@@ -591,7 +591,10 @@ func (s *Service) CreateExpecting(ctx context.Context, o *Order,
 	// O'ZI bergan summa yoziladi — savatning jami chegirmasi emas (aks
 	// holda mahsulot chegirmalari va boshqa aksiyalarning ulushi ham shu
 	// aksiya "savdosi" bo'lib ko'rinardi).
-	if s.promotionsRepo != nil {
+	// bug.md 36: karta buyurtmasi to'lov kutayotganda statistika OSHMAYDI —
+	// mijoz to'lamay chiqib ketsa (buyurtma bekor bo'ladi) aksiya "sotuv"
+	// bo'lib qolardi. U to'lov haqiqatan bloklanganda (OnPaymentHeld) hisoblanadi.
+	if s.promotionsRepo != nil && !o.AwaitingPayment() {
 		for _, ap := range applied.Promotions {
 			if err := s.promotionsRepo.IncrementUsage(ctx, ap.Promotion.ID, ap.DiscountTiyin); err != nil {
 				slog.Error("aksiya statistikasini oshirib bo'lmadi",
@@ -738,6 +741,14 @@ func (s *Service) OnPaymentHeld(ctx context.Context, orderID string) error {
 	o.UpdatedAt = s.now()
 	if err := s.repo.Save(ctx, o); err != nil {
 		return err
+	}
+	// bug.md 36: to'langan karta buyurtmasining aksiyasi SHU YERDA (bir marta)
+	// hisoblanadi. Buyurtmada asosiy aksiya saqlanadi — bir nechta aksiya
+	// tushgan kamdan-kam holatda faqat asosiysi sanaladi (ortiqcha emas, kam).
+	if s.promotionsRepo != nil && o.PromotionID != "" {
+		if err := s.promotionsRepo.IncrementUsage(ctx, o.PromotionID, o.PromotionDiscountTiyin); err != nil {
+			slog.Error("aksiya statistikasini oshirib bo'lmadi", "promotion_id", o.PromotionID, "error", err)
+		}
 	}
 	if s.notifier != nil {
 		s.notifier.OrderCreated(o)
