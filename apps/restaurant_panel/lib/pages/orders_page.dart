@@ -228,6 +228,14 @@ class _OrdersPageState extends State<OrdersPage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Xato: ${e.message}')));
       }
+    } catch (_) {
+      // bug.md 79: tarmoq xatosi (internet uzilgan, server javob bermadi)
+      // avval ushlanmasdi — tugma bosilgan-u, hech narsa bo'lmagandek
+      // ko'rinardi va restoran buyurtma qabul qilindi deb o'ylardi.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Tarmoq xatosi — amal bajarilgan-bajarilmaganini ro''yxatdan tekshiring va kerak bo''lsa qayta urinib ko''ring.')));
+      }
     } finally {
       if (mounted) setState(() => _busy.remove(orderId));
     }

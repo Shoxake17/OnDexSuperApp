@@ -79,12 +79,14 @@ class _DashboardPageState extends State<DashboardPage> {
       _error = null;
     });
     try {
-      final results = await Future.wait([api.orders(), api.myRestaurant()]);
+      final results = await Future.wait(
+          [api.orders(), api.myRestaurant(), _loadWindow(widget.referenceDate)]);
       final list = results[0] as List<dynamic>;
       final rest = results[1] as Map<String, dynamic>;
+      final window = results[2] as List<Map<String, dynamic>>;
       if (!mounted) return;
       setState(() {
-        _orders = list.cast<Map<String, dynamic>>();
+        _orders = _merge(list.cast<Map<String, dynamic>>(), window);
         _rating = (rest['rating'] as num?)?.toDouble() ?? 0;
         _ratingCount = (rest['rating_count'] as num?)?.toInt() ?? 0;
         _loading = false;
@@ -98,6 +100,45 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  // bug.md 61: ko'rsatkichlar avval `api.orders()` dan — ya'ni faqat eng
+  // so'nggi 100 ta buyurtmadan — hisoblanardi. Buyurtmasi ko'p restoranda
+  // 7/30 kunlik grafik, tushum va bekor qilinganlar jimgina KESILIB, yolg'on
+  // raqam chiqardi. Endi grafik davri (31 kun) dagi BARCHA buyurtmalar
+  // sahifalab olinadi (`orders/history`, xuddi shu shakl).
+  static const _windowDays = 31;
+  static const _pageSize = 50;
+  static const _maxPages = 40; // 2000 buyurtma — dashboard uchun yetarli.
+
+  Future<List<Map<String, dynamic>>> _loadWindow(DateTime ref) async {
+    final out = <Map<String, dynamic>>[];
+    final from = DateTime(ref.year, ref.month, ref.day)
+        .subtract(const Duration(days: _windowDays));
+    String? cursor;
+    for (var page = 0; page < _maxPages; page++) {
+      final res = await api.orderHistory(
+          cursor: cursor, limit: _pageSize, from: from, to: ref);
+      final list = (res['orders'] as List?) ?? const [];
+      out.addAll(
+          list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)));
+      cursor = res['next_cursor']?.toString();
+      if (cursor == null || cursor.isEmpty) break;
+    }
+    return out;
+  }
+
+  /// Eng so'nggi ro'yxat (faol buyurtmalar uchun) + davr oynasi — ID bo'yicha
+  /// takrorlarsiz; bir xil buyurtma bo'lsa so'nggi ro'yxatdagisi (yangiroq).
+  static List<Map<String, dynamic>> _merge(
+      List<Map<String, dynamic>> latest, List<Map<String, dynamic>> window) {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final o in window) {
+      byId['${o['id']}'] = o;
+    }
+    for (final o in latest) {
+      byId['${o['id']}'] = o;
+    }
+    return byId.values.toList();
+  }
   @override
   Widget build(BuildContext context) {
     if (_loading) {
