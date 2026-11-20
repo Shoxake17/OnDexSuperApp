@@ -1122,8 +1122,10 @@ jobs:
           # Kod siri qo'yilmagan bo'lsa test kirishi prod'da O'CHIQ (cmd/api
           # testLoginCode) — akkaunt tekshiruvlari o'tkazib yuboriladi.
           ACC=""
-          if [ -n "$TEST_OTP_CODE" ]; then
-            ACC="-waiter +998999999999 -courier +998888888888 -code $TEST_OTP_CODE"
+          # Faqat raqamlar: Windows'dan qo'yilgan sirda \r\n qolishi mumkin.
+          CODE=$(printf '%s' "$TEST_OTP_CODE" | tr -cd '0-9')
+          if [ -n "$CODE" ]; then
+            ACC="-waiter +998999999999 -courier +998888888888 -code $CODE"
           else
             echo "::warning::TEST_OTP_CODE siri yo'q — test akkaunt kirishi tekshirilmadi"
           fi
