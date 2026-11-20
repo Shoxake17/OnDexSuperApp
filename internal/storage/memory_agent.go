@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -286,7 +287,9 @@ func (r *MemoryAgentRepo) SpentSince(_ context.Context, grantID string, since ti
 	defer r.mu.RUnlock()
 	var sum int64
 	for _, d := range r.drafts {
-		if d.GrantID == grantID && d.Status == agentapi.DraftPlaced && !d.CreatedAt.Before(since) {
+		// bug.md 65: sinov kaliti qoralamasi (haqiqiy buyurtma yo'q) chegarani yemaydi.
+		if d.GrantID == grantID && d.Status == agentapi.DraftPlaced && !d.CreatedAt.Before(since) &&
+			!strings.HasPrefix(d.OrderID, "test-") {
 			sum += d.TotalTiyin
 		}
 	}

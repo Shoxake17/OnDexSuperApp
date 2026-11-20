@@ -741,3 +741,28 @@ func TestAuditRecordsWhatAgentDid(t *testing.T) {
 		}
 	}
 }
+
+// bug.md 65: sinov kaliti qoralamalari (haqiqiy buyurtma yo'q) foydalanuvchining
+// kunlik chegarasini YEMAYDI — aks holda integratsiyani sinash jonli agent
+// sarfini to'sib qo'yardi.
+func TestTestDraftsDoNotConsumeDailyLimit(t *testing.T) {
+	f := newFixture(t, 60_000)
+	ctx := context.Background()
+	p, _, err := f.svc.RegisterPartner(ctx, "Sinov", "", agentapi.EnvTest, agentapi.AllScopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, _ := f.link(t, p, "u1", 100_000, 100_000)
+	for i := 0; i < 2; i++ {
+		d, err := f.svc.CreateDraft(ctx, p, g, []catalog.ItemRequest{{ProductID: "p1", Qty: 1}}, "cash")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.RequiresUser {
+			t.Fatalf("%d-sinov qoralamasi kunlik chegarani yeb qo'ydi", i+1)
+		}
+		if _, err := f.svc.ConfirmDraft(ctx, p, g, d.ID, d.TotalTiyin, place("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

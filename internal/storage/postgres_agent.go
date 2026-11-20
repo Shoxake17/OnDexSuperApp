@@ -404,7 +404,8 @@ func (r *PgAgentRepo) SpentSince(ctx context.Context, grantID string, since time
 	var sum int64
 	err := r.pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(total_tiyin), 0) FROM agent_order_drafts
-		WHERE grant_id = $1 AND status = 'placed' AND created_at >= $2`,
+		WHERE grant_id = $1 AND status = 'placed' AND created_at >= $2
+		   AND COALESCE(order_id, '') NOT LIKE 'test-%'`,
 		grantID, since).Scan(&sum)
 	return sum, err
 }
