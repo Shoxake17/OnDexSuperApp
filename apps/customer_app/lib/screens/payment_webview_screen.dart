@@ -48,39 +48,54 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   bool _finished = false;
   String? _error;
 
+  /// `pay_url` faqat `https://` bo'lsa ochiladi (bug.md 85d). Tekshiruv
+  /// SHU YERDA — barcha chaqiruvchilar (checkout, kuzatuv, bron, stol hisobi)
+  /// uchun bitta joy; avval `isAcceptablePayUrl` yozilgan-u hech qayerda
+  /// chaqirilmagan edi.
+  late final bool _urlOk = isAcceptablePayUrl(widget.payUrl);
+
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      // To'lov sahifalari JavaScript'siz ishlamaydi.
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (_) {},
-          onPageStarted: (_) {
-            if (mounted) setState(() => _loading = true);
-          },
-          onPageFinished: (_) {
-            if (mounted) setState(() => _loading = false);
-          },
-          onNavigationRequest: _onNavigation,
-          onWebResourceError: (err) {
-            // Faqat ASOSIY sahifa xatosi ko'rsatiladi. Reklama/analitika
-            // resurslarining yiqilishi to'lovga xalaqit bermaydi va
-            // mijozni bezovta qilmasligi kerak.
-            if (!err.isForMainFrame!) return;
-            if (mounted) {
-              setState(() {
-                _loading = false;
-                _error = 'Sahifa ochilmadi. Internetni tekshiring yoki '
-                    'brauzerda ochib ko\'ring.';
-              });
-            }
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.payUrl));
+    _controller =
+        WebViewController()
+          // To'lov sahifalari JavaScript'siz ishlamaydi.
+          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..setBackgroundColor(Colors.white)
+          ..setNavigationDelegate(
+            NavigationDelegate(
+              onProgress: (_) {},
+              onPageStarted: (_) {
+                if (mounted) setState(() => _loading = true);
+              },
+              onPageFinished: (_) {
+                if (mounted) setState(() => _loading = false);
+              },
+              onNavigationRequest: _onNavigation,
+              onWebResourceError: (err) {
+                // Faqat ASOSIY sahifa xatosi ko'rsatiladi. Reklama/analitika
+                // resurslarining yiqilishi to'lovga xalaqit bermaydi va
+                // mijozni bezovta qilmasligi kerak.
+                if (!err.isForMainFrame!) return;
+                if (mounted) {
+                  setState(() {
+                    _loading = false;
+                    _error =
+                        'Sahifa ochilmadi. Internetni tekshiring yoki '
+                        'brauzerda ochib ko\'ring.';
+                  });
+                }
+              },
+            ),
+          );
+    if (_urlOk) {
+      _controller.loadRequest(Uri.parse(widget.payUrl.trim()));
+    } else {
+      _loading = false;
+      _error =
+          'To\'lov havolasi noto\'g\'ri. Buyurtmani qayta ochib ko\'ring '
+          'yoki qo\'llab-quvvatlash xizmatiga yozing.';
+    }
   }
 
   // Qoida `payment_nav_policy.dart` da (bug.md 85-band) — test bilan
@@ -98,8 +113,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         // ocholmaydi, tizimga uzatamiz.
         final uri = Uri.tryParse(req.url);
         if (uri != null) {
-          launchUrl(uri, mode: LaunchMode.externalApplication)
-              .catchError((_) => false);
+          launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication,
+          ).catchError((_) => false);
         }
         return NavigationDecision.prevent;
       case PayNav.external:
@@ -108,8 +125,10 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         if (req.isMainFrame) {
           final uri = Uri.tryParse(req.url);
           if (uri != null) {
-            launchUrl(uri, mode: LaunchMode.externalApplication)
-                .catchError((_) => false);
+            launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+            ).catchError((_) => false);
           }
           _finish();
         }
@@ -129,8 +148,11 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   /// ochilmasligi mumkin. Bunday holatda mijoz tuzoqda qolmasligi uchun
   /// tashqi brauzerda ochish imkoni qoldirilgan.
   Future<void> _openInBrowser() async {
-    await launchUrl(Uri.parse(widget.payUrl),
-        mode: LaunchMode.externalApplication);
+    if (!_urlOk) return;
+    await launchUrl(
+      Uri.parse(widget.payUrl),
+      mode: LaunchMode.externalApplication,
+    );
     if (mounted) Navigator.of(context).pop(true);
   }
 
@@ -158,28 +180,34 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             onPressed: _finish,
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.open_in_browser),
-              tooltip: 'Brauzerda ochish',
-              onPressed: _openInBrowser,
-            ),
-          ],
-          bottom: _loading
-              ? const PreferredSize(
-                  preferredSize: Size.fromHeight(2),
-                  child: LinearProgressIndicator(minHeight: 2),
-                )
-              : null,
-        ),
-        body: _error != null
-            ? _ErrorView(message: _error!, onOpenBrowser: _openInBrowser)
-            : Stack(
-                children: [
-                  WebViewWidget(controller: _controller),
-                  if (_loading)
-                    const Center(child: CircularProgressIndicator()),
-                ],
+            if (_urlOk)
+              IconButton(
+                icon: const Icon(Icons.open_in_browser),
+                tooltip: 'Brauzerda ochish',
+                onPressed: _openInBrowser,
               ),
+          ],
+          bottom:
+              _loading
+                  ? const PreferredSize(
+                    preferredSize: Size.fromHeight(2),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  )
+                  : null,
+        ),
+        body:
+            _error != null
+                ? _ErrorView(
+                  message: _error!,
+                  onOpenBrowser: _urlOk ? _openInBrowser : null,
+                )
+                : Stack(
+                  children: [
+                    WebViewWidget(controller: _controller),
+                    if (_loading)
+                      const Center(child: CircularProgressIndicator()),
+                  ],
+                ),
       ),
     );
   }
@@ -189,7 +217,7 @@ class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.message, required this.onOpenBrowser});
 
   final String message;
-  final VoidCallback onOpenBrowser;
+  final VoidCallback? onOpenBrowser;
 
   @override
   Widget build(BuildContext context) {
@@ -202,12 +230,13 @@ class _ErrorView extends StatelessWidget {
           const SizedBox(height: 16),
           Text(message, textAlign: TextAlign.center),
           const SizedBox(height: 24),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: kBrand),
-            onPressed: onOpenBrowser,
-            icon: const Icon(Icons.open_in_browser),
-            label: const Text('Brauzerda ochish'),
-          ),
+          if (onOpenBrowser != null)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: kBrand),
+              onPressed: onOpenBrowser,
+              icon: const Icon(Icons.open_in_browser),
+              label: const Text('Brauzerda ochish'),
+            ),
         ],
       ),
     );
