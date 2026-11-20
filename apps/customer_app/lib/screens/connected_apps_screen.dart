@@ -404,7 +404,7 @@ class _ConsentSheetState extends State<_ConsentSheet> {
                 // ma'nosiz — har buyurtma baribir tasdiqlanadi.
                 sub: e.key == 0
                     ? null
-                    : 'Kuniga jami ${formatSum(e.key * 3)} so\'mgacha',
+                    : 'Kuniga jami ${formatSum(e.key * 3)}gacha',
                 selected: _limit == e.key,
                 onTap: () => setState(() => _limit = e.key),
               ),
@@ -718,7 +718,7 @@ class _GrantCard extends StatelessWidget {
                 Text(
                   limit == 0
                       ? '$scopes ta ruxsat · har buyurtma tasdiqlanadi'
-                      : '$scopes ta ruxsat · ${formatSum(limit)} so\'mgacha',
+                      : '$scopes ta ruxsat · ${formatSum(limit)}gacha',
                   style: const TextStyle(
                       fontSize: 12, color: Color(0xFF757575)),
                 ),
@@ -768,7 +768,7 @@ class _DraftCard extends StatelessWidget {
             Text('${it['qty']} × ${it['name']}',
                 style: const TextStyle(fontSize: 13)),
           const SizedBox(height: 8),
-          Text('Jami: ${formatSum(total)} so\'m',
+          Text('Jami: ${formatSum(total)}',
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
