@@ -172,3 +172,27 @@ func TestServiceCitiesMatchWeb(t *testing.T) {
 		}
 	}
 }
+
+// bug.md 90: mobil ilova (mijoz) ham xizmat hududini manzil tanlashda
+// tekshiradi — ro'yxat server bilan AYNAN bir xil bo'lishi shart.
+func TestServiceCitiesMatchMobile(t *testing.T) {
+	path := filepath.Join("..", "..", "apps", "customer_app", "lib", "data", "service_area.dart")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s o'qilmadi: %v", path, err)
+	}
+	re := regexp.MustCompile(`ServiceCity\(\s*name:\s*"([^"]+)",\s*lat:\s*([-\d.]+),\s*lng:\s*([-\d.]+),\s*radiusKm:\s*([\d.]+)\s*\)`)
+	matches := re.FindAllStringSubmatch(string(src), -1)
+	if len(matches) != len(Cities) {
+		t.Fatalf("mobilda %d ta shahar, serverda %d ta", len(matches), len(Cities))
+	}
+	for i, m := range matches {
+		c := Cities[i]
+		lat, _ := strconv.ParseFloat(m[2], 64)
+		lng, _ := strconv.ParseFloat(m[3], 64)
+		r, _ := strconv.ParseFloat(m[4], 64)
+		if m[1] != c.Name || lat != c.Lat || lng != c.Lng || r != c.RadiusKM {
+			t.Errorf("%d-shahar farq qiladi: mobil %v, server %+v", i, m[1:], c)
+		}
+	}
+}

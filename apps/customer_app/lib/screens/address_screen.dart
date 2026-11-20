@@ -7,6 +7,7 @@ import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../api.dart';
 import '../data/address_scope.dart';
+import '../data/service_area.dart';
 import '../map/map_backend.dart';
 import '../map/pan_map.dart';
 import '../widgets/app_text_field.dart';
@@ -307,6 +308,14 @@ class _AddressScreenState extends State<AddressScreen> {
   Future<void> _save() async {
     if (_addressCtrl.text.trim().isEmpty) {
       snack('Manzil aniqlanmadi — xaritada joyni tanlang');
+      return;
+    }
+    // bug.md 90: xizmat hududidan tashqari manzil saqlanmaydi — avval mijoz
+    // buni faqat buyurtma berishning OXIRGI qadamida (server rad etganda)
+    // bilardi. Server baribir tekshiradi; bu — erta ogohlantirish.
+    if (cityFor(_center.latitude, _center.longitude) == null) {
+      snack('Bu manzilga hozircha yetkazmaymiz. Xizmat hududi: '
+          '${serviceCities.map((c) => c.name).join(', ')}.');
       return;
     }
     setState(() => _saving = true);
