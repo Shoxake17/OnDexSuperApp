@@ -109,7 +109,7 @@ var Registry = []Var{
 	{Name: "AUTH_KMS_PUBLISH_DELAY", Effect: "rotatsiyada yangi kalit 15 daqiqadan keyin imzoga o'tadi (standart)"},
 	{Name: "SECRETS_ENC_KEY_WRAPPED", Effect: "SECRETS_ENC_KEY ochiq holda env'dan o'qiladi (KMS bilan o'ralmagan)"},
 	{Name: "SECRETS_KMS_KEY", Effect: "o'ralgan kalit Transit'dagi 'ondex-secrets' bilan ochiladi (standart)"},
-	{Name: "WEBAUTHN_RP_ID", Effect: "passkey RP ID issuer host'idan olinadi (kirish sahifasi boshqa domenda bo'lsa passkey ishlamaydi)"},
+	{Name: "WEBAUTHN_RP_ID", Effect: "RP ID issuer'ning registrable domenidan olinadi (passport.ondex.uz -> ondex.uz) — standart holat to'g'ri"},
 	{Name: "WEBAUTHN_ORIGINS", Effect: "passkey ruxsat etilgan origin faqat issuer origin'i"},
 	// PK-1: native ilovalar (assetlinks.json / apple-app-site-association).
 	{Name: "PASSKEY_ANDROID_APPS", Effect: "standart ro'yxat ishlatiladi (OnDexPro, OnDexGO, mijoz — release imzosi, cmd/api defaultAndroidApps); Play App Signing'ga o'tilsa shu yerga Play kaliti qo'shilsin"},
