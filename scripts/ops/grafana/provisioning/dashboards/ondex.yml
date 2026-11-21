@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: ondex
+    folder: OnDex
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards/ondex

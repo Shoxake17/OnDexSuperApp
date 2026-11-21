@@ -1,0 +1,162 @@
+{
+  "uid": "ondex-api",
+  "title": "OnDex API — endpointlar",
+  "description": "Har endpoint: tezlik, xatolar, yuklama (ONDEXECOSY-481). Manba: ondex-api /metrics.",
+  "tags": ["ondex", "api"],
+  "timezone": "Asia/Tashkent",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "Endpoint",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+        "query": { "query": "label_values(ondex_http_requests_total, route)", "refId": "route" },
+        "definition": "label_values(ondex_http_requests_total, route)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "So'rovlar / soniya",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(ondex_http_requests_total[5m]))" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Server xatolari (5xx)",
+      "description": "So'rovlarning necha foizi server xatosi bilan tugadi (5 daqiqa). 5% dan oshsa Telegram ogohlantirishi.",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "expr": "(sum(rate(ondex_http_requests_total{code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(ondex_http_requests_total[5m])), 1e-9)" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Javob vaqti p95 (umumiy)",
+      "description": "So'rovlarning 95% i shu vaqtdan tez javob oladi. WebSocket kiritilmagan.",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(ondex_http_request_duration_seconds_bucket{route!~\"unmatched|preflight\"}[5m])))" }],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.5 }, { "color": "red", "value": 2 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Bir vaqtdagi so'rovlar",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "expr": "ondex_http_requests_in_flight" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "So'rovlar — status bo'yicha",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(ondex_http_requests_total{code=~\"2..|3..|101\"}[5m]))", "legendFormat": "muvaffaqiyatli" },
+        { "refId": "B", "expr": "sum(rate(ondex_http_requests_total{code=~\"4..\"}[5m]))", "legendFormat": "rad etilgan (4xx)" },
+        { "refId": "C", "expr": "sum(rate(ondex_http_requests_total{code=~\"5..\"}[5m]))", "legendFormat": "server xatosi (5xx)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "server xatosi (5xx)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] },
+          { "matcher": { "id": "byName", "options": "rad etilgan (4xx)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } } ] },
+          { "matcher": { "id": "byName", "options": "muvaffaqiyatli" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+        ] }
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Javob vaqti — p50 / p95 / p99",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(ondex_http_request_duration_seconds_bucket{route!~\"unmatched|preflight\"}[5m])))", "legendFormat": "p50 (odatiy)" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(ondex_http_request_duration_seconds_bucket{route!~\"unmatched|preflight\"}[5m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(ondex_http_request_duration_seconds_bucket{route!~\"unmatched|preflight\"}[5m])))", "legendFormat": "p99 (eng sekin 1%)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 7, "type": "table", "title": "🐢 Eng sekin endpointlar (p95, oxirgi 1 soat)",
+      "description": "So'rovlarning 95% i shu vaqtdan tez. Yuqoridagilar — birinchi optimallashtirish nomzodlari.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "format": "table", "instant": true,
+        "expr": "topk(20, histogram_quantile(0.95, sum by (le, route) (rate(ondex_http_request_duration_seconds_bucket{route!~\"unmatched|preflight\"}[1h]))) > 0)" }],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "route": "Endpoint", "Value": "p95" } } },
+        { "id": "sortBy", "options": { "sort": [ { "field": "p95", "desc": true } ] } } ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 },
+        "overrides": [ { "matcher": { "id": "byName", "options": "p95" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+          { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.5 }, { "color": "red", "value": 2 } ] } } ] } ] }
+    },
+    {
+      "id": 8, "type": "table", "title": "🔥 Eng ko'p chaqiriladigan (so'rov/daqiqa, 1 soat)",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "format": "table", "instant": true,
+        "expr": "topk(20, sum by (route) (rate(ondex_http_requests_total{route!~\"unmatched|preflight\"}[1h])) * 60 > 0)" }],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "route": "Endpoint", "Value": "so'rov/daq" } } },
+        { "id": "sortBy", "options": { "sort": [ { "field": "so'rov/daq", "desc": true } ] } } ],
+      "fieldConfig": { "defaults": { "decimals": 2 }, "overrides": [] }
+    },
+    {
+      "id": 9, "type": "table", "title": "⚠️ Xato beruvchi endpointlar (24 soat)",
+      "description": "4xx — mijoz tomoni (ruxsat yo'q, noto'g'ri ma'lumot); 5xx — server xatosi (tuzatish kerak). 401/404 ko'pi odatiy.",
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "format": "table", "instant": true,
+        "expr": "sort_desc(sum by (route, code) (increase(ondex_http_requests_total{code=~\"4..|5..\"}[24h])) > 0)" }],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "route": "Endpoint", "code": "Kod", "Value": "Soni" } } } ],
+      "fieldConfig": { "defaults": { "decimals": 0 },
+        "overrides": [ { "matcher": { "id": "byName", "options": "Kod" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+          { "id": "mappings", "value": [ { "type": "regex", "options": { "pattern": "5..", "result": { "color": "red" } } }, { "type": "regex", "options": { "pattern": "4..", "result": { "color": "orange" } } } ] } ] } ] }
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Tanlangan endpoint — p95 ($route)",
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 10 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [{ "refId": "A", "legendFormat": "{{route}}",
+        "expr": "histogram_quantile(0.95, sum by (le, route) (rate(ondex_http_request_duration_seconds_bucket{route=~\"$route\"}[5m])))" }],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Ma'lumotlar bazasi ulanishlari",
+      "description": "Navbat (kutish) o'ssa — so'rovlar bazaga ulanish kutib sekinlashadi.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [
+        { "refId": "A", "expr": "ondex_pg_pool_acquired_conns", "legendFormat": "band" },
+        { "refId": "B", "expr": "ondex_pg_pool_idle_conns", "legendFormat": "bo'sh" },
+        { "refId": "C", "expr": "ondex_pg_pool_max_conns", "legendFormat": "chegara" },
+        { "refId": "D", "expr": "rate(ondex_pg_pool_empty_acquire_total[5m]) * 60", "legendFormat": "navbatda kutish / daq" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "API jarayoni — xotira va goroutine",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ondex-prom" },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=\"ondex-api\"}", "legendFormat": "xotira (RSS)" },
+        { "refId": "B", "expr": "go_goroutines{job=\"ondex-api\"}", "legendFormat": "goroutine" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "xotira (RSS)" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+        { "matcher": { "id": "byName", "options": "goroutine" }, "properties": [ { "id": "custom.axisPlacement", "value": "right" } ] } ] }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+apiVersion: 1
+# OnDex API metrikasi (ONDEXECOSY-481). Alohida nom/uid — qo'lda qo'shilgan
+# mavjud manbalar bilan to'qnashmaydi.
+datasources:
+  - name: Prometheus (OnDex)
+    uid: ondex-prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      timeInterval: 30s
