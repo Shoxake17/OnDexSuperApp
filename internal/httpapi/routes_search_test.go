@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/orders"
 	"chustapp/internal/storage"
-	"chustapp/internal/users"
 	"chustapp/internal/ws"
 )
 
@@ -33,7 +31,7 @@ func searchServer(t *testing.T, products ...catalog.Product) http.Handler {
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),
-		Tokens:         users.NewTokenIssuer("test-secret", time.Hour),
+		Identity:       newTestTokens(t).Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,
 			storage.NewMemoryPromotionsRepo()),

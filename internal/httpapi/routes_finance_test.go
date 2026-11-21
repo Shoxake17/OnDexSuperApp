@@ -213,7 +213,7 @@ func financeServerFull(t *testing.T, mc *multicard.Client, baseURL string,
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -245,7 +245,7 @@ func financeServerFull(t *testing.T, mc *multicard.Client, baseURL string,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      orderRepo,
 		TableSvc:       tables.NewService(storage.NewMemoryTableRepo()),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc:       orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
 		Hub:            ws.NewHub(nil),
@@ -1001,7 +1001,7 @@ func TestFinanceConnectNeedsEncryptionKey(t *testing.T) {
 	catalogRepo := storage.NewMemoryCatalogRepo(
 		[]catalog.Restaurant{{ID: testRestA, Name: "Book Cafe", Open: true}}, nil)
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	u := &users.User{ID: "u-x", Phone: "+998900000099", Role: users.RoleRestaurant,
 		EntityID: testRestA, PhoneVerified: true, CreatedAt: time.Now()}
 	if err := userRepo.Create(context.Background(), u); err != nil {
@@ -1015,7 +1015,7 @@ func TestFinanceConnectNeedsEncryptionKey(t *testing.T) {
 	h := New(Deps{
 		UserRepo: userRepo, CatalogRepo: catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(), OrderRepo: orderRepo,
-		TableSvc: tables.NewService(storage.NewMemoryTableRepo()), Tokens: tokens,
+		TableSvc: tables.NewService(storage.NewMemoryTableRepo()), Identity: tokens.Identity(),
 		CatalogSvc: catalog.NewService(catalogRepo),
 		OrderSvc:   orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
 		Hub:        ws.NewHub(nil),

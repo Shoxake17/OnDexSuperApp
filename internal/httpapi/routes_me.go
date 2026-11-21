@@ -93,7 +93,11 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 			// Markaziy sessiyadagi mijoz (137): BARCHA sessiyalar markazda
 			// ham yopiladi va shu qurilmaga YANGI sessiya beriladi —
 			// parolni almashtirgan odam o'zi chiqib ketmaydi.
-			if isCentralRequest(r) && s.Identity != nil && users.RealmForRole(u.Role) == users.RealmCustomer {
+			if s.Identity == nil {
+				httpError(w, http.StatusServiceUnavailable, errors.New("sessiya xizmati sozlanmagan"))
+				return
+			}
+			if users.RealmForRole(u.Role) == users.RealmCustomer {
 				if _, err := s.Identity.RevokeAllForUser(r.Context(), uid, "password_changed"); err != nil {
 					httpError(w, http.StatusInternalServerError, err)
 					return
@@ -109,12 +113,13 @@ func (s *Server) registerMeRoutes(mux *http.ServeMux) {
 					"access_token": tok.AccessToken, "refresh_token": tok.RefreshToken, "expires_at": tok.ExpiresAt})
 				return
 			}
-			token, err := s.Tokens.Issue(u)
-			if err != nil {
+			// Merchant/admin: barcha markaziy sessiyalar yopiladi — o'z ilovasiga
+			// qaytadan kiradi (eski HS256 token endi YO'Q, ONDEXECOSY-483).
+			if _, err := s.Identity.RevokeAllForUser(r.Context(), uid, "password_changed"); err != nil {
 				httpError(w, http.StatusInternalServerError, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "token": token})
+			writeJSON(w, http.StatusOK, map[string]any{"password_set": true, "relogin_required": true})
 		}))
 
 	// POST /me/delete-account — "Akkauntni o'chirish" (Google Play/App

@@ -26,6 +26,7 @@
 package main
 
 import (
+	"chustapp/cmd/internal/toolauth"
 	"context"
 	"encoding/json"
 	"errors"
@@ -151,7 +152,12 @@ func seed(ctx context.Context, pool *pgxpool.Pool, cat catalog.Repository, run s
 	}
 
 	repo := storage.NewPgUserRepo(pool)
-	issuer := users.NewTokenIssuer(mustEnv("JWT_SECRET"), 3*time.Hour)
+	// ONDEXECOSY-483: eski HS256 yo'q — markaziy sessiya (AUTH_SIGNING_KEY_FILE,
+	// AUTH_ISSUER). Access qisqa muddatli: uzoq sinov refresh bilan yangilasin.
+	sessions, err := toolauth.New(pool, repo)
+	if err != nil {
+		fail("sessiya: " + err.Error())
+	}
 	tokens := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("%su%05d", prefix, i)
@@ -171,11 +177,11 @@ func seed(ctx context.Context, pool *pgxpool.Pool, cat catalog.Repository, run s
 		if err := repo.UpdateAddress(ctx, id, addr); err != nil {
 			fail("manzil " + id + ": " + err.Error())
 		}
-		tok, err := issuer.Issue(u)
+		ts, err := sessions.Open(ctx, u)
 		if err != nil {
 			fail("token: " + err.Error())
 		}
-		tokens = append(tokens, tok)
+		tokens = append(tokens, ts.AccessToken)
 	}
 	writeManifest(manifestPath, &m)
 	raw, _ := json.Marshal(tokens)
@@ -201,11 +207,11 @@ func seed(ctx context.Context, pool *pgxpool.Pool, cat catalog.Repository, run s
 		if err := repo.Create(ctx, u); err != nil {
 			fail(s.key + ": " + err.Error())
 		}
-		tok, err := issuer.Issue(u)
+		ts, err := sessions.Open(ctx, u)
 		if err != nil {
 			fail("token: " + err.Error())
 		}
-		staffTok[s.key] = tok
+		staffTok[s.key] = ts.AccessToken
 	}
 	wal := storage.NewPostgresWalletRepo(pool)
 	for i := 0; i < 2 && i < n; i++ {

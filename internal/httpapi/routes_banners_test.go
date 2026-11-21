@@ -27,7 +27,7 @@ func bannerServer(t *testing.T, addrLat, addrLng float64) (http.Handler, string)
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	customer := &users.User{
 		ID: "cust-1", Phone: "+998901234567",
 		Role: users.RoleCustomer, PhoneVerified: true,
@@ -68,7 +68,7 @@ func bannerServer(t *testing.T, addrLat, addrLng float64) (http.Handler, string)
 		UserRepo:    userRepo,
 		CatalogRepo: catalogRepo,
 		BannerRepo:  bannerRepo,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		DevMode:     true,
 	}
 	return New(deps).Routes(nil), jwt

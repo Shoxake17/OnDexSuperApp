@@ -27,7 +27,7 @@ func statsServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, map[stri
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
@@ -62,7 +62,7 @@ func statsServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, map[stri
 		OrderRepo:      orderRepo,
 		StatsSource:    orderRepo,
 		HistorySource:  orderRepo,
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(orderRepo, nil, NewID,
 			storage.NewMemoryPromotionsRepo()),

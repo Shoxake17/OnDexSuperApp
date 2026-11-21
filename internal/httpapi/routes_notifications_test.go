@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
@@ -86,7 +85,7 @@ func pushTestServer(t *testing.T, store *recordingTokenStore) (
 	t.Helper()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	jwts := map[string]string{}
 	for _, id := range []string{"u1", "u2"} {
@@ -104,7 +103,7 @@ func pushTestServer(t *testing.T, store *recordingTokenStore) (
 
 	deps := Deps{
 		UserRepo:      userRepo,
-		Tokens:        tokens,
+		Identity:      tokens.Identity(),
 		Notifications: storage.NewMemoryNotificationStore(),
 		DevMode:       true,
 	}
@@ -287,7 +286,7 @@ func TestPushTokenWithoutStore(t *testing.T) {
 func TestNotificationsAreScopedToUser(t *testing.T) {
 	store := storage.NewMemoryNotificationStore()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwts := map[string]string{}
 	for _, id := range []string{"u1", "u2"} {
 		u := &users.User{ID: id, Phone: "+9989055555" + id[1:],
@@ -297,7 +296,7 @@ func TestNotificationsAreScopedToUser(t *testing.T) {
 		}
 		jwts[id], _ = tokens.Issue(u)
 	}
-	h := New(Deps{UserRepo: userRepo, Tokens: tokens,
+	h := New(Deps{UserRepo: userRepo, Identity: tokens.Identity(),
 		Notifications: store, DevMode: true}).Routes(nil)
 
 	w := do(t, h, "GET", "/notifications", jwts["u2"], "")

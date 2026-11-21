@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"chustapp/internal/identity"
+	"chustapp/internal/users"
 )
 
 // Senariy: MARKAZIY SESSIYA (A2) — JWKS, refresh rotatsiyasi, qurilmalar ro'yxati,
@@ -70,8 +71,9 @@ func TestCentralSessionsV2(t *testing.T) {
 			} `json:"sessions"`
 		}
 		w.Do(t, webOwner, "GET", "/v2/auth/sessions", nil).Expect(t, 200).JSON(t, &out)
-		if len(out.Sessions) != 2 {
-			t.Fatalf("2 ta sessiya kutilgan, keldi %d", len(out.Sessions))
+		// 3: e2e dunyosining o'zi ochgan sessiya (aktyor tokeni, 483) + ondex-pro + merchant-desktop.
+		if len(out.Sessions) != 3 {
+			t.Fatalf("3 ta sessiya kutilgan, keldi %d", len(out.Sessions))
 		}
 		current := 0
 		for _, s := range out.Sessions {
@@ -88,7 +90,7 @@ func TestCentralSessionsV2(t *testing.T) {
 	})
 
 	w.Step(t, "eski HS256 token va tokensiz so'rov — 401", func(t *testing.T) {
-		w.Do(t, w.Owner, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
+		w.Do(t, forgedHS256(t, w.Owner.UserID, users.RoleRestaurant), "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 		w.Do(t, nil, "GET", "/v2/auth/sessions", nil).Expect(t, 401)
 	})
 
@@ -119,7 +121,8 @@ func TestCentralSessionsV2(t *testing.T) {
 
 	w.Step(t, "begona sessiyani yopib bo'lmaydi (404), egasi ishlayveradi", func(t *testing.T) {
 		list, _ := w.Identity.ListSessions(ctx, w.OwnerB.UserID)
-		if len(list) != 1 {
+		// B egasida kamida bitta sessiya (e2e aktyor tokeni + merchant-web, 483).
+		if len(list) == 0 {
 			t.Fatal("B egasining sessiyasi yo'q")
 		}
 		w.Do(t, webOwner, "DELETE", "/v2/auth/sessions/"+list[0].ID, nil).Expect(t, 404)

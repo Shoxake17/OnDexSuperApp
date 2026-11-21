@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 // Bu fayl bitta hodisani qo'riqlaydi: desktop brauzerdan "Telegram
@@ -30,7 +29,7 @@ func newServiceWithSms(sms SmsSender) *Service {
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		sms,
-		NewTokenIssuer("test-secret", time.Hour),
+		"test-secret",
 		func() string { return "id" + string(rune('0'+n.Add(1))) },
 	).WithEmail(&noopEmail{}, true)
 }

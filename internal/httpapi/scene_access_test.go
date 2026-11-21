@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"chustapp/internal/catalog"
+	"chustapp/internal/storage"
 	"chustapp/internal/users"
 )
 
@@ -33,13 +35,19 @@ func sceneTestRestaurant() *catalog.Restaurant {
 
 func sceneTestServer(t *testing.T) (*Server, string) {
 	t.Helper()
-	tokens := users.NewTokenIssuer("test-secret-test-secret-test-sec", time.Hour)
-	tok, err := tokens.Issue(&users.User{ID: "u1", Role: users.RoleCustomer})
+	tokens := newTestTokens(t)
+	ur := storage.NewMemoryUserRepo()
+	u := &users.User{ID: "u1", Phone: "+998900000091", Role: users.RoleCustomer, PhoneVerified: true, CreatedAt: time.Now()}
+	if err := ur.Create(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := tokens.Issue(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{Deps: Deps{
-		Tokens:             tokens,
+		UserRepo:           ur,
+		Identity:           tokens.Identity(),
 		MediaPublicBaseURL: "https://pub-test.r2.dev",
 	}}
 	return s, tok

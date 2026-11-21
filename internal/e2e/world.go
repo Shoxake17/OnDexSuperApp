@@ -146,7 +146,6 @@ type World struct {
 	Couriers *storage.MemoryCourierRepo
 	Catalog  *storage.MemoryCatalogRepo
 	Payments *storage.MemoryPaymentRepo
-	Tokens   *users.TokenIssuer
 	// Identity — markaziy sessiya xizmati (A2). Kirish oqimlari (A3) hali
 	// yo'q, shuning uchun ssenariylar sessiyani shu orqali to'g'ridan-to'g'ri
 	// ochadi (kimlik tekshirilgan deb), qolgan hammasi HTTP orqali.
@@ -243,7 +242,6 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		}
 	})
 	w.Users = storage.NewMemoryUserRepo()
-	w.Tokens = users.NewTokenIssuer("e2e-secret", time.Hour)
 	revoked := revoke.New(nil, time.Hour)
 
 	w.Gateway = NewGateway()
@@ -363,17 +361,21 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	dispatcher := couriers.NewDispatcher(w.Couriers, &offerLog{w: w, next: notifier}, noGoogle{}, offerTTL)
 
+	type pendingActor struct {
+		a *Actor
+		u *users.User
+	}
+	var pending []pendingActor
 	mk := func(name, id string, role users.Role, entity, phone string, addr users.AddressDetails) *Actor {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entity,
 			PhoneVerified: true, CreatedAt: time.Now(), Address: addr}
 		if err := w.Users.Create(ctx, u); err != nil {
 			t.Fatal(err)
 		}
-		tok, err := w.Tokens.Issue(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return &Actor{Name: name, Token: tok, UserID: id, Phone: phone, Entity: entity}
+		// Token identity qurilgach beriladi (pastda `pending`) — eski HS256 yo'q.
+		a := &Actor{Name: name, UserID: id, Phone: phone, Entity: entity}
+		pending = append(pending, pendingActor{a, u})
+		return a
 	}
 	home := users.AddressDetails{Lat: ChustLat + 0.002, Lng: ChustLng + 0.002, Text: "Chust, Navoiy ko'chasi 5"}
 	w.Admin = mk("admin", "e2e-admin", users.RoleAdmin, "", "+998900000001", users.AddressDetails{})
@@ -403,13 +405,16 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, p := range pending {
+		p.a.Token = w.SessionToken(t, p.u)
+	}
 
 	authzStore := authz.NewMemStore()
 	if err := authz.EnsureTemplates(context.Background(), authzStore); err != nil {
 		t.Fatal(err)
 	}
 	w.Authz = authz.New(authzStore)
-	w.AuthSvc = users.NewService(w.Users, storage.NewMemoryCodeStore(), smsLog{}, w.Tokens, httpapi.NewID)
+	w.AuthSvc = users.NewService(w.Users, storage.NewMemoryCodeStore(), smsLog{}, "e2e-secret", httpapi.NewID)
 	w.LoginPrefs = identity.NewMemoryLoginPrefs()
 	mfaBox, err := secretstore.New(strings.Repeat("ab", 32))
 	if err != nil {
@@ -444,7 +449,7 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 		PromotionsRepo: promo, FavoritesRepo: storage.NewMemoryFavoritesRepo(),
 		BannerRepo: storage.NewMemoryBannerRepo(), RatingsRepo: storage.NewMemoryRatingRepo(),
 		Devices: storage.NewMemoryDeviceStore(),
-		Tokens:  w.Tokens, Revoked: revoked, Hub: hub, WsTickets: ws.NewTicketStore(),
+		Revoked: revoked, Hub: hub, WsTickets: ws.NewTicketStore(),
 		StatsSource: w.Orders, HistorySource: w.Orders, TableOrders: w.Orders,
 		AlertsSvc:     alertsSvc,
 		Notifications: notifStore, PushTokens: tokenStore, Notifier: notifSvc,
@@ -740,9 +745,24 @@ func (w *World) LoginAs(t *testing.T, name, phone string) *Actor {
 	if err != nil {
 		t.Fatalf("%s akkaunti topilmadi (%s): %v", name, phone, err)
 	}
-	tok, err := w.Tokens.Issue(u)
-	if err != nil {
-		t.Fatal(err)
+	return &Actor{Name: name, Token: w.SessionToken(t, u), UserID: u.ID, Phone: phone, Entity: u.EntityID}
+}
+
+// SessionToken — akkaunt uchun MARKAZIY sessiya (ONDEXECOSY-483: eski HS256
+// yo'q). Kimlik tekshirilgan deb olinadi; mijoz -> ondex-customer, xodim ->
+// ondex-pro, admin -> admin-web (kuchli ikkinchi omil bilan, A6).
+func (w *World) SessionToken(t *testing.T, u *users.User) string {
+	t.Helper()
+	client, amr := identity.CustomerClientID, []string{users.AMRPassword}
+	switch users.RealmForRole(u.Role) {
+	case users.RealmMerchant:
+		client, amr = "ondex-pro", []string{users.AMROTP}
+	case users.RealmPlatform:
+		client, amr = "admin-web", []string{users.AMRPassword, "totp"}
 	}
-	return &Actor{Name: name, Token: tok, UserID: u.ID, Phone: phone, Entity: u.EntityID}
+	tok, err := w.Identity.Create(context.Background(), identity.CreateInput{UserID: u.ID, ClientID: client, AMR: amr})
+	if err != nil {
+		t.Fatalf("%s sessiyasi ochilmadi: %v", u.ID, err)
+	}
+	return tok.AccessToken
 }

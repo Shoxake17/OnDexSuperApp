@@ -39,7 +39,7 @@ func wsTestServer(t *testing.T) *Server {
 	return New(Deps{
 		OrderRepo: orderRepo,
 		UserRepo:  storage.NewMemoryUserRepo(),
-		Tokens:    users.NewTokenIssuer("test-secret", time.Hour),
+		Identity:  newTestTokens(t).Identity(),
 		DevMode:   true,
 	})
 }

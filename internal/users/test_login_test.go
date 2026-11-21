@@ -79,15 +79,17 @@ func TestTestLoginOpensStaffAccounts(t *testing.T) {
 			if got := sms.calls.Load(); got != 0 {
 				t.Errorf("test raqamiga SMS yuborilmasligi kerak, chaqiruvlar: %d", got)
 			}
-			token, u, err := s.Verify(ctx, phone, TestLoginCode)
-			if err != nil {
-				t.Fatalf("Verify: %v", err)
+			// Xodim ilovalari (OnDexGO/Pro) merchant oqimidan kiradi (`/v2/auth/merchant/otp/verify`
+			// -> `VerifyPhoneCode`); mijozning eski yo'li xodim akkauntiga TEGMAYDI (ONDEXECOSY-483).
+			got, err := s.VerifyPhoneCode(ctx, phone, TestLoginCode)
+			if err != nil || got != phone {
+				t.Fatalf("VerifyPhoneCode: %q %v", got, err)
 			}
-			if token == "" || u.Role != c.role {
-				t.Fatalf("token=%q rol=%q, kutilgan rol %q", token, u.Role, c.role)
+			if u, _ := s.users.GetByPhone(ctx, phone); u == nil || u.Role != c.role {
+				t.Fatalf("xodim akkaunti o'zgarib ketdi: %+v", u)
 			}
 			// Bir martalik: o'sha kod ikkinchi marta o'tmaydi.
-			if _, _, err := s.Verify(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
+			if _, err := s.VerifyPhoneCode(ctx, phone, TestLoginCode); !errors.Is(err, ErrInvalidCode) {
 				t.Fatalf("kod qayta ishlatildi: %v", err)
 			}
 		})

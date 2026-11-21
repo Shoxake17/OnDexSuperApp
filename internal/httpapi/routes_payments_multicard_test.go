@@ -108,7 +108,7 @@ func mcPaymentsServer(t *testing.T, statusFails bool) *mcFixture {
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	customer := &users.User{
 		ID: "cust-mc", Phone: "+998901234567",
 		Role: users.RoleCustomer, PhoneVerified: true,
@@ -170,7 +170,7 @@ func mcPaymentsServer(t *testing.T, statusFails bool) *mcFixture {
 
 	h := New(Deps{
 		UserRepo: userRepo, OrderRepo: orderRepo, CatalogRepo: catalogRepo,
-		Tokens: tokens, CatalogSvc: catalog.NewService(catalogRepo),
+		Identity: tokens.Identity(), CatalogSvc: catalog.NewService(catalogRepo),
 		OrderSvc: orderSvc, Payments: paySvc, MC: reg, DevMode: true,
 	}).Routes(nil)
 

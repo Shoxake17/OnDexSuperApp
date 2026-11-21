@@ -12,7 +12,7 @@ import (
 	"chustapp/internal/users"
 )
 
-// O'tish davri ko'prigi (A4a, AUTH-PHASE-A.md 4-bo'lim "o'tish davri").
+// Markaziy token -> handler claims ko'prigi (A4a; ONDEXECOSY-483 dan YAGONA yo'l).
 //
 // ┌─ NIMA UCHUN ──────────────────────────────────────────────────────────┐
 // OnDexPro va OnDexGO markaziy sessiyaga (EdDSA, 10 daqiqa + refresh)
@@ -26,21 +26,20 @@ import (
 //   - akkaunt HAR SO'ROVDA o'qiladi: xodimning ilovaga kirishi yopilsa
 //     (eski staff moduli rolni mijozga qaytaradi) yoki akkaunt o'chirilsa —
 //     keyingi so'rov 401, refresh'ni kutmasdan;
-//   - hozircha FAQAT merchant realmi (mijoz realmi keyingi bosqichda).
-//
-// A5 da eski marshrutlar `authz` ga o'tganda ko'prik olib tashlanadi.
+//   - uchala realm (customer, merchant, platform).
 // └───────────────────────────────────────────────────────────────────────┘
 
-var errSessionGone = errors.New("sessiya tugagan — qaytadan kiring")
+var (
+	errSessionGone  = errors.New("sessiya tugagan — qaytadan kiring")
+	errTokenInvalid = errors.New("token yaroqsiz — qaytadan kiring")
+)
 
-// parseBearer — eski HS256 yoki yangi EdDSA token. Natija — eski claims.
+// parseBearer — FAQAT markaziy EdDSA token (ONDEXECOSY-483: eski HS256 yo'li
+// butunlay olib tashlandi — u na chiqariladi, na qabul qilinadi). Natija —
+// handlerlar ishlatadigan `users.Claims` (akkauntning HOZIRGI holatidan).
 func (s *Server) parseBearer(ctx context.Context, raw string) (*users.Claims, error) {
-	claims, err := s.Tokens.Parse(raw)
-	if err == nil {
-		return claims, nil
-	}
-	if s.Identity == nil || !isEdDSA(raw) {
-		return nil, err
+	if s.Identity == nil || s.UserRepo == nil || !isEdDSA(raw) {
+		return nil, errTokenInvalid
 	}
 	c, aerr := s.Identity.Authenticate(ctx, raw, users.RealmMerchant, users.RealmPlatform, users.RealmCustomer)
 	if aerr != nil {

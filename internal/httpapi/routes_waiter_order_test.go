@@ -31,7 +31,7 @@ func newWaiterFixture(t *testing.T) *waiterFixture {
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -70,7 +70,7 @@ func newWaiterFixture(t *testing.T) *waiterFixture {
 		CatalogRepo:    catalogRepo,
 		CourierRepo:    storage.NewMemoryCourierRepo(),
 		PromotionsRepo: promos,
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Hub:            ws.NewHub(nil),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc:       orders.NewService(orderRepo, nil, NewID, promos),

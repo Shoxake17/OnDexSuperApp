@@ -140,7 +140,7 @@ func TestAdminLoginV2(t *testing.T) {
 		}
 		w.Do(t, adm, "GET", "/v2/admin/organizations", nil).Expect(t, 200)
 		w.Do(t, w.Owner, "POST", path, map[string]any{"decision": "approve"}).Expect(t, 401)
-		w.Do(t, w.Admin, "GET", "/v2/admin/organizations", nil).Expect(t, 401) // eski HS256 admin tokeni
+		w.Do(t, forgedHS256(t, w.Admin.UserID, users.RoleAdmin), "GET", "/v2/admin/organizations", nil).Expect(t, 401) // eski HS256 admin tokeni
 		w.Do(t, adm, "POST", "/v2/admin/organizations/yoq/verify", map[string]any{"decision": "approve", "stepup_code": "000000"}).Expect(t, 404)
 
 		// Haqiqiy soatda TOTP qadamlari ishlatib bo'lingan — tiklash kodi ham step-up uchun yaraydi.
@@ -161,7 +161,7 @@ func TestAdminLoginV2(t *testing.T) {
 			t.Fatalf("whoami: %+v", who)
 		}
 		w.Do(t, w.Owner, "GET", "/v2/admin/whoami", nil).Expect(t, 401)
-		w.Do(t, w.Admin, "GET", "/v2/admin/whoami", nil).Expect(t, 401)
+		w.Do(t, forgedHS256(t, w.Admin.UserID, users.RoleAdmin), "GET", "/v2/admin/whoami", nil).Expect(t, 401)
 		got, _ := w.Authz.Store().GetOrganization(ctx, org.ID)
 		if got.VerifiedBy != "e2e-a6-admin" || got.VerifiedAt == nil {
 			t.Fatalf("kim tasdiqlagani yozilmadi: %+v", got)

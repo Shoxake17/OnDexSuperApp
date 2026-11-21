@@ -19,7 +19,7 @@ func supportServer(t *testing.T) (http.Handler, *support.Service, map[string]str
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID, PhoneVerified: true, CreatedAt: time.Now()}
@@ -49,7 +49,7 @@ func supportServer(t *testing.T) (http.Handler, *support.Service, map[string]str
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		SupportSvc:     svc,
 		Hub:            hub,
 		DevMode:        true,

@@ -9,16 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"chustapp/internal/e2e/report"
-	"chustapp/internal/identity"
 	"chustapp/internal/users"
 )
 
-// AUD-5: eski HS256 tokenni realm bo'yicha o'chirish (LEGACY_TOKENS_DISABLED).
-// O'chirilgach: eski tokenlar o'ladi, eski ilova 426 (yangilang), yangi ilova
-// markaziy sessiya bilan ishlaydi, eski yo'l merchant akkauntiga TEGMAYDI.
-func TestLegacyTokenCutoff(t *testing.T) {
-	w := NewWorld(t, "Eski tokenni o'chirish (AUD-5)")
+// ONDEXECOSY-483: eski HS256 token UMUMAN yo'q — na chiqariladi, na qabul
+// qilinadi. Mijozning kirish endpointlari (sarlavha bo'lsin-bo'lmasin) HAR DOIM
+// markaziy sessiya beradi; mijoz yo'li merchant akkauntiga TEGMAYDI.
+func TestNoLegacyTokens(t *testing.T) {
+	w := NewWorld(t, "Eski token yo'q — faqat markaziy sessiya (483)")
 	ctx := context.Background()
 
 	post := func(t *testing.T, path string, v2 bool, body any, want int) map[string]any {
@@ -55,49 +56,54 @@ func TestLegacyTokenCutoff(t *testing.T) {
 		return c
 	}
 
-	// Kesishdan OLDIN berilgan tokenlar.
-	oldOwner, oldCustomer := w.Owner.Token, w.Customer.Token
-	w.Do(t, w.Owner, "GET", "/me", nil).Expect(t, 200)
-	ownerCentral, err := w.Identity.Create(ctx, identity.CreateInput{UserID: w.Owner.UserID, ClientID: "merchant-desktop", AMR: []string{"otp"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	w.Step(t, "merchant o'chirildi: eski merchant tokeni o'ladi, markaziy sessiya ishlaydi", func(t *testing.T) {
-		w.Tokens.DisableRealms(users.RealmMerchant)
-		w.Do(t, &Actor{Name: "eski egasi", Token: oldOwner}, "GET", "/me", nil).Expect(t, 401)
-		w.Do(t, &Actor{Name: "markaziy egasi", Token: ownerCentral.AccessToken}, "GET", "/me", nil).Expect(t, 200)
-		w.Do(t, &Actor{Name: "mijoz", Token: oldCustomer}, "GET", "/me", nil).Expect(t, 200)
+	w.Step(t, "HS256 token (hatto server siri bilan imzolangan) RAD etiladi", func(t *testing.T) {
+		for _, role := range []users.Role{users.RoleCustomer, users.RoleRestaurant, users.RoleAdmin} {
+			uid := map[users.Role]string{users.RoleCustomer: w.Customer.UserID,
+				users.RoleRestaurant: w.Owner.UserID, users.RoleAdmin: w.Admin.UserID}[role]
+			w.Do(t, forgedHS256(t, uid, role), "GET", "/me", nil).Expect(t, 401)
+		}
+		// Markaziy sessiyalar odatdagidek ishlaydi.
+		w.Do(t, w.Customer, "GET", "/me", nil).Expect(t, 200)
+		w.Do(t, w.Owner, "GET", "/me", nil).Expect(t, 200)
 	})
 
-	w.Step(t, "restoran raqami bilan eski kirish restoran akkauntiga TEGMAYDI", func(t *testing.T) {
-		// Servis orqali: /auth/verify IP limiti butun e2e paketi uchun umumiy
-		// (httptest = bitta IP) — HTTP yo'li quyida 426/v2 qadamida sinaladi.
-		_, u, err := w.AuthSvc.Verify(ctx, w.Owner.Phone, code(t, w.Owner.Phone))
+	w.Step(t, "eski endpoint sarlavhasiz ham MARKAZIY sessiya beradi", func(t *testing.T) {
+		for i, v2 := range []bool{false, true} {
+			a := []*Actor{w.Customer, w.Other}[i] // kod qayta yuborish oralig'i — har biriga alohida raqam
+			out := post(t, "/auth/verify", v2, map[string]string{"phone": a.Phone, "code": code(t, a.Phone)}, 200)
+			tok, _ := out["access_token"].(string)
+			if tok == "" || out["refresh_token"] == nil || out["token"] != tok {
+				t.Fatalf("v2=%v: markaziy sessiya berilmadi: %v", v2, out)
+			}
+			w.Do(t, &Actor{Name: "mijoz", Token: tok}, "GET", "/me", nil).Expect(t, 200)
+		}
+	})
+
+	w.Step(t, "restoran raqami bilan mijoz kirishi restoran akkauntiga TEGMAYDI", func(t *testing.T) {
+		// Servis orqali: /auth/verify IP limiti butun e2e paketi uchun umumiy.
+		amr, u, err := w.AuthSvc.Verify(ctx, w.Owner.Phone, code(t, w.Owner.Phone))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if u.Role != users.RoleCustomer || u.ID == w.Owner.UserID {
-			t.Fatalf("eski yo'l merchant akkauntini ochdi: %+v", u)
+		if amr != users.AMROTP || u.Role != users.RoleCustomer || u.ID == w.Owner.UserID {
+			t.Fatalf("mijoz yo'li merchant akkauntini ochdi: amr=%q %+v", amr, u)
 		}
 		owner, _ := w.Users.GetByID(ctx, w.Owner.UserID)
 		if owner.Role != users.RoleRestaurant {
 			t.Fatalf("restoran akkaunti o'zgardi: %+v", owner)
 		}
 	})
+}
 
-	w.Step(t, "mijoz o'chirildi: eski ilova 426, yangi ilova markaziy sessiya", func(t *testing.T) {
-		w.Tokens.DisableRealms(users.RealmCustomer)
-		w.Do(t, &Actor{Name: "eski mijoz", Token: oldCustomer}, "GET", "/me", nil).Expect(t, 401)
-		if out := post(t, "/auth/verify", false, map[string]string{"phone": w.Customer.Phone, "code": code(t, w.Customer.Phone)}, 426); out["upgrade_required"] != true {
-			t.Fatalf("426 javobi: %v", out)
-		}
-		// Boshqa mijoz (kod qayta yuborish oralig'i 60 s) — yangi ilova.
-		out := post(t, "/auth/verify", true, map[string]string{"phone": w.Other.Phone, "code": code(t, w.Other.Phone)}, 200)
-		tok, _ := out["access_token"].(string)
-		if tok == "" || out["refresh_token"] == nil {
-			t.Fatalf("markaziy sessiya berilmadi: %v", out)
-		}
-		w.Do(t, &Actor{Name: "yangi mijoz", Token: tok}, "GET", "/me", nil).Expect(t, 200)
-	})
+// forgedHS256 — eski formatdagi (HS256) token: server sirini bilgan hujumchi
+// ham shunday yasay olardi. ONDEXECOSY-483 dan keyin HAMMA joyda 401.
+func forgedHS256(t *testing.T, sub string, role users.Role) *Actor {
+	t.Helper()
+	claims := users.Claims{Role: role, RegisteredClaims: jwt.RegisteredClaims{
+		Subject: sub, IssuedAt: jwt.NewNumericDate(time.Now()), ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("e2e-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Actor{Name: "eski HS256 " + string(role), Token: tok}
 }

@@ -58,7 +58,7 @@ func adminServer(t *testing.T) *adminFixture {
 	orderRepo := storage.NewMemoryOrderRepo()
 	devices := storage.NewMemoryDeviceStore()
 	revoked := revoke.New(nil, time.Hour)
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	mk := func(id string, role users.Role, entityID, phone, name string) *users.User {
 		u := &users.User{ID: id, Phone: phone, Name: name, Role: role,
@@ -88,7 +88,7 @@ func adminServer(t *testing.T) *adminFixture {
 		CourierRepo: courierRepo,
 		CatalogRepo: storage.NewMemoryCatalogRepo(nil, nil),
 		Devices:     devices,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		Revoked:     revoked,
 		// Hub `nil` bo'lsa o'chirish handleri panika qilardi — bu
 		// yerda haqiqiy hub ishlatiladi (ulanish yo'q, `Send` jim

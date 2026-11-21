@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/orders"
@@ -34,7 +33,7 @@ func cityListServerAs(t *testing.T, role users.Role, addrLat, addrLng float64) (
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	customer := &users.User{
 		ID: "cust-1", Phone: "+998901234567",
 		Role: role, PhoneVerified: true,
@@ -62,7 +61,7 @@ func cityListServerAs(t *testing.T, role users.Role, addrLat, addrLng float64) (
 		UserRepo:    userRepo,
 		OrderRepo:   storage.NewMemoryOrderRepo(),
 		CatalogRepo: catalogRepo,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		CatalogSvc:  catalog.NewService(catalogRepo),
 		OrderSvc:    orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID, storage.NewMemoryPromotionsRepo()),
 		DevMode:     true,

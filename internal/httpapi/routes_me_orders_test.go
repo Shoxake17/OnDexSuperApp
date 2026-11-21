@@ -17,7 +17,7 @@ import (
 func TestMeOrdersIncludesOrderNumber(t *testing.T) {
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	u := &users.User{ID: "u-mo", Phone: "+998900000391", Role: users.RoleCustomer,
 		PhoneVerified: true, CreatedAt: time.Now()}
 	if err := userRepo.Create(ctx, u); err != nil {
@@ -46,7 +46,7 @@ func TestMeOrdersIncludesOrderNumber(t *testing.T) {
 		OrderRepo:   orderRepo,
 		OrderSvc:    svc,
 		CatalogRepo: storage.NewMemoryCatalogRepo(nil, nil),
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		DevMode:     true,
 	}).Routes(nil)
 

@@ -67,12 +67,12 @@ func telegramTestServer(t *testing.T, secretRequired bool) (http.Handler, *teleg
 	go v.Run(ctx)
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t).WithUsers(userRepo)
 	s := New(Deps{
 		UserRepo: userRepo,
-		Tokens:   tokens,
+		Identity: tokens.Identity(),
 		AuthSvc: users.NewService(userRepo, storage.NewMemoryCodeStore(),
-			noopSms{}, tokens, NewID),
+			noopSms{}, "test-secret", NewID),
 		Telegram: v,
 		DevMode:  true,
 	})

@@ -3,7 +3,6 @@ package users
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // OTP kodini hashlash (bug.md 48-band).
@@ -16,8 +15,7 @@ import (
 // └────────────────────────────────────────────────────────────────────┘
 
 func otpTestService(secret string) *Service {
-	return NewService(nil, nil, nil,
-		NewTokenIssuer(secret, time.Hour), func() string { return "id" })
+	return NewService(nil, nil, nil, secret, func() string { return "id" })
 }
 
 // ASOSIY REGRESSIYA: hash TUZSIZ SHA-256 BO'LMASLIGI kerak.
@@ -49,7 +47,7 @@ func TestHashCodeDependsOnServerSecret(t *testing.T) {
 // ishlatilsa, birining oqishi ikkinchisini ham ochadi.
 func TestCodePepperIsDerivedNotRawSecret(t *testing.T) {
 	const secret = "test-secret"
-	pepper := NewTokenIssuer(secret, time.Hour).codePepper()
+	pepper := codePepper(secret)
 	if string(pepper) == secret {
 		t.Fatal("pepper — JWT sirining O'ZI")
 	}
@@ -93,5 +91,17 @@ func TestSameCode(t *testing.T) {
 	// BOSHQA nishonning kodi — hash mos kelmasligi kerak.
 	if s.sameCode("+998900000002", "123456", stored) {
 		t.Error("kod boshqa raqam uchun ham ishladi")
+	}
+}
+
+// OLTIN QIYMAT (ONDEXECOSY-483): HS256 olib tashlanganda pepper formulasi
+// AYNAN saqlanishi shart — aks holda deploy paytida Redis'dagi kutilayotgan
+// kodlar yaroqsiz bo'lib, foydalanuvchilar kira olmay qolardi. Qiymat Go
+// kodidan MUSTAQIL hisoblangan (HMAC-SHA256(sha256("ondex-otp-pepper-v1:"+sir),
+// target+"\x00"+kod)).
+func TestHashCodeGoldenValue(t *testing.T) {
+	const want = "e6a5b0e17e130b91b47a74f0c583c73b5f1fc937d74e705e9febcf2f8ae37d82"
+	if got := otpTestService("test-secret").hashCode("+998900000001", "123456"); got != want {
+		t.Fatalf("OTP hash formulasi o'zgardi: %s (kutilgan %s)", got, want)
 	}
 }

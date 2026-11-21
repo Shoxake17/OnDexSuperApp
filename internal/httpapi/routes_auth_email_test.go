@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"chustapp/internal/storage"
 	"chustapp/internal/users"
@@ -18,12 +17,12 @@ import (
 func emailTestServer(t *testing.T, enabled bool) http.Handler {
 	t.Helper()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	s := New(Deps{
 		UserRepo: userRepo,
-		Tokens:   tokens,
+		Identity: tokens.Identity(),
 		AuthSvc: users.NewService(userRepo, storage.NewMemoryCodeStore(),
-			noopSms{}, tokens, NewID),
+			noopSms{}, "test-secret", NewID),
 		DevMode:           true,
 		EmailLoginEnabled: enabled,
 	})

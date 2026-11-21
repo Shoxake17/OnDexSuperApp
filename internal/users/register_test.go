@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"errors"
+	"github.com/golang-jwt/jwt/v5"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ func TestVerifyKeepsStaffAccountName(t *testing.T) {
 	repo := s.users.(*fakeUserRepo)
 	repo.data[phone] = &User{
 		ID: "u_rest1", Phone: phone, Name: "Chust Osh Markazi",
-		Role: RoleRestaurant, EntityID: "r1", PhoneVerified: false,
+		Role: RoleCustomer, PhoneVerified: false,
 	}
 
 	_, code, err := s.RequestCode(ctx, phone)
@@ -142,7 +143,7 @@ func TestVerifyKeepsStaffAccountName(t *testing.T) {
 
 	u, _ := s.users.GetByPhone(ctx, phone)
 	if u.Name != "Chust Osh Markazi" {
-		t.Fatalf("xodim akkaunti nomi buzildi: %q", u.Name)
+		t.Fatalf("akkaunt nomi buzildi: %q", u.Name)
 	}
 }
 
@@ -311,7 +312,7 @@ func TestEmailFlowsBlockedWhenSmtpMissing(t *testing.T) {
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		noopSms{},
-		NewTokenIssuer("test-secret", time.Hour),
+		"test-secret",
 		func() string { return "id" + string(rune('0'+n.Add(1))) },
 	) // WithEmail CHAQIRILMADI
 	ctx := context.Background()
@@ -393,26 +394,19 @@ func TestSetPasswordWithFreshPhoneProof(t *testing.T) {
 // TestPhoneProofExpires — SMS tasdig'i abadiy emas: o'g'irlangan token
 // 15 daqiqadan keyin parolni almashtira olmasligi kerak.
 func TestPhoneProofExpires(t *testing.T) {
-	u := &User{ID: "u3", Role: RoleCustomer}
-	issuer := NewTokenIssuer("test-secret", 30*24*time.Hour)
-	tok, err := issuer.IssuePhoneProven(u)
-	if err != nil {
-		t.Fatalf("IssuePhoneProven: %v", err)
-	}
-	c, err := issuer.Parse(tok)
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if !c.HasFreshPhoneProof(time.Now()) {
+	// Markaziy sessiyada PhoneProven AMR (otp/email) va auth_time'dan quriladi
+	// (`httpapi.parseBearer`); bu yerda Claims qoidasining o'zi sinaladi.
+	now := time.Now()
+	c := &Claims{PhoneProven: true, RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(now)}}
+	if !c.HasFreshPhoneProof(now) {
 		t.Fatal("yangi berilgan token tasdiqlangan deb topilmadi")
 	}
-	if c.HasFreshPhoneProof(time.Now().Add(PhoneProofWindow + time.Minute)) {
+	if c.HasFreshPhoneProof(now.Add(PhoneProofWindow + time.Minute)) {
 		t.Fatal("muddati o'tgan tasdiq hali ham amal qilyapti")
 	}
-	// Oddiy (parol bilan berilgan) tokenda bu imtiyoz UMUMAN bo'lmasligi kerak.
-	plain, _ := issuer.Issue(u)
-	pc, _ := issuer.Parse(plain)
-	if pc.HasFreshPhoneProof(time.Now()) {
+	// Kod bilan kirmagan (parol, Google) sessiyada bu imtiyoz UMUMAN bo'lmasligi kerak.
+	plain := &Claims{RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(now)}}
+	if plain.HasFreshPhoneProof(now) {
 		t.Fatal("oddiy token telefon tasdig'i deb qabul qilindi")
 	}
 }

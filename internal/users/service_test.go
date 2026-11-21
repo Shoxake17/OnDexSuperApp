@@ -358,7 +358,7 @@ func TestVerifyPhoneCodeOnceUnderRace(t *testing.T) {
 		gate: make(chan struct{})}
 	var ids atomic.Int64
 	s := NewService(&fakeUserRepo{data: make(map[string]*User)}, store, noopSms{},
-		NewTokenIssuer("test-secret", time.Hour), func() string { return "id" + string(rune('0'+ids.Add(1))) })
+		"test-secret", func() string { return "id" + string(rune('0'+ids.Add(1))) })
 	ctx := context.Background()
 	phone, code, err := s.IssueCode(ctx, "+998901112233")
 	if err != nil {
@@ -425,7 +425,7 @@ func newTestServiceWithEmail() (*Service, *noopEmail) {
 		&fakeUserRepo{data: make(map[string]*User)},
 		&fakeCodeStore{data: make(map[string]*Code)},
 		noopSms{},
-		NewTokenIssuer("test-secret", time.Hour),
+		"test-secret",
 		func() string { return "id" + string(rune('0'+n.Add(1))) },
 	).WithEmail(mail, true)
 	return s, mail
@@ -506,31 +506,5 @@ func TestResendCooldown(t *testing.T) {
 	}
 	if _, _, err := s.RequestCode(ctx, "+998901234567"); !errors.Is(err, ErrTooSoon) {
 		t.Errorf("qayta so'rash ErrTooSoon berishi kerak, olindi %v", err)
-	}
-}
-
-func TestTokenIssueAndParse(t *testing.T) {
-	issuer := NewTokenIssuer("secret1", time.Hour)
-	u := &User{ID: "u1", Role: RoleCourier, EntityID: "c1"}
-	tok, err := issuer.Issue(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	claims, err := issuer.Parse(tok)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if claims.Subject != "u1" || claims.Role != RoleCourier || claims.EntityID != "c1" {
-		t.Errorf("claims noto'g'ri: %+v", claims)
-	}
-
-	// Boshqa secret bilan imzolangan token rad etiladi
-	other := NewTokenIssuer("secret2", time.Hour)
-	if _, err := other.Parse(tok); err == nil {
-		t.Error("begona secret bilan token qabul qilindi")
-	}
-	// Buzilgan token rad etiladi
-	if _, err := issuer.Parse(strings.TrimSuffix(tok, "=") + "x"); err == nil {
-		t.Error("buzilgan token qabul qilindi")
 	}
 }

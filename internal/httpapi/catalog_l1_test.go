@@ -19,7 +19,7 @@ import (
 func l1Server(t *testing.T) (*Server, http.Handler, string) {
 	t.Helper()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	u := &users.User{ID: "u-a", Phone: "+998900000031", Role: users.RoleRestaurant,
 		EntityID: catTestRestA, PhoneVerified: true, CreatedAt: time.Now()}
 	if err := userRepo.Create(t.Context(), u); err != nil {
@@ -44,7 +44,7 @@ func l1Server(t *testing.T) (*Server, http.Handler, string) {
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,
 			storage.NewMemoryPromotionsRepo()),

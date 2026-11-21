@@ -219,12 +219,13 @@ func TestPlatformCourierRegistration(t *testing.T) {
 		w.Do(t, w.Customer, "POST", "/couriers/register", map[string]any{"name": ""}).Expect(t, 400)
 		r := w.Do(t, w.Customer, "POST", "/couriers/register", map[string]any{"name": "Platforma Jasur", "vehicle_type": "moped"}).Expect(t, 201).Map(t)
 		c, _ := r["courier"].(map[string]any)
-		tok, _ := r["token"].(string)
 		id, _ := c["id"].(string)
-		if id == "" || tok == "" {
-			t.Fatalf("kuryer/token yo'q: %v", r)
+		// Eski token BERILMAYDI (483): kuryer OnDexGO'ga markaziy kirish bilan kiradi.
+		if id == "" || r["token"] != nil || r["relogin_required"] != true {
+			t.Fatalf("kuryer arizasi javobi: %v", r)
 		}
-		courier = &Actor{Name: "platforma-kuryer", Token: tok, Entity: id}
+		courier = w.LoginAs(t, "platforma-kuryer", w.Customer.Phone)
+		courier.Entity = id
 		// Faqat mijoz ro'yxatdan o'ta oladi.
 		w.ExpectDenied(t, w.Owner, "POST", "/couriers/register", map[string]any{"name": "x"})
 	})

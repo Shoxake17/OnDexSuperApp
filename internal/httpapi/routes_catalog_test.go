@@ -37,7 +37,7 @@ func catalogServer(t *testing.T) (http.Handler, string, string) {
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	mk := func(id, entityID, phone string) string {
 		u := &users.User{ID: id, Phone: phone, Role: users.RoleRestaurant,
@@ -75,7 +75,7 @@ func catalogServer(t *testing.T) (http.Handler, string, string) {
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,
 			storage.NewMemoryPromotionsRepo()),

@@ -7,12 +7,13 @@
 // (`scripts/bench.ps1`) yozadi va tokenni o'sha muhitning JWT siri bilan
 // imzolaydi.
 //
-//	go run ./cmd/benchseed -db "postgres://..." -secret "..." -n 2000 -out logs/bench/tokens.json
+//	AUTH_SIGNING_KEY_FILE=... AUTH_ISSUER=... go run ./cmd/benchseed -db "postgres://..." -n 2000 -out logs/bench/tokens.json
 //
 // ⚠️ Production bazasiga ISHLATMANG: u sun'iy akkauntlar yaratadi.
 package main
 
 import (
+	"chustapp/cmd/internal/toolauth"
 	"context"
 	"encoding/json"
 	"flag"
@@ -30,7 +31,6 @@ import (
 
 func main() {
 	dsn := flag.String("db", "", "Postgres DSN (benchmark bazasi)")
-	secret := flag.String("secret", "", "JWT siri (API ishga tushirilgan sir bilan bir xil)")
 	n := flag.Int("n", 1000, "mijozlar soni")
 	out := flag.String("out", filepath.Join("logs", "bench", "tokens.json"), "tokenlar JSON fayli")
 	flag.Parse()
@@ -40,8 +40,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "RAD ETILDI: baza lokal emas — benchseed faqat izolyatsiyalangan benchmark bazasi uchun")
 		os.Exit(2)
 	}
-	if *dsn == "" || *secret == "" || *n <= 0 {
-		fmt.Fprintln(os.Stderr, "-db, -secret va -n majburiy")
+	if *dsn == "" || *n <= 0 {
+		fmt.Fprintln(os.Stderr, "-db va -n majburiy")
 		os.Exit(2)
 	}
 
@@ -54,7 +54,12 @@ func main() {
 	defer pool.Close()
 
 	repo := storage.NewPgUserRepo(pool)
-	issuer := users.NewTokenIssuer(*secret, 24*time.Hour)
+	// ONDEXECOSY-483: eski HS256 yo'q — markaziy sessiya (AUTH_SIGNING_KEY_FILE, AUTH_ISSUER).
+	sessions, err := toolauth.New(pool, repo)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sessiya:", err)
+		os.Exit(1)
+	}
 	tokens := make([]string, 0, *n)
 
 	for i := 0; i < *n; i++ {
@@ -78,12 +83,12 @@ func main() {
 			fmt.Fprintln(os.Stderr, "manzil saqlanmadi:", id, err)
 			os.Exit(1)
 		}
-		tok, err := issuer.Issue(u)
+		tok, err := sessions.Open(ctx, u)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "token:", err)
 			os.Exit(1)
 		}
-		tokens = append(tokens, tok)
+		tokens = append(tokens, tok.AccessToken)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/orders"
@@ -35,7 +34,7 @@ func dineInServer(t *testing.T) (http.Handler, *tables.Service, string) {
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	customer := &users.User{ID: "cust-1", Phone: "+998901234567",
 		Role: users.RoleCustomer, PhoneVerified: true}
@@ -64,7 +63,7 @@ func dineInServer(t *testing.T) (http.Handler, *tables.Service, string) {
 		UserRepo:    userRepo,
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		CatalogSvc:  catalog.NewService(catalogRepo),
 		OrderSvc:    orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
 		TableSvc:    tableSvc,

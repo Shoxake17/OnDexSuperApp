@@ -11,8 +11,8 @@
 //
 // └───────────────────────────────────────────────────────────────────────┘
 //
-// Eski HS256 tokenlar (`users.TokenIssuer`) o'tish davrida ishlashda davom
-// etadi; bu paket ularga tegmaydi.
+// Eski HS256 tokenlar 2026-11-21 da butunlay olib tashlandi (ONDEXECOSY-483):
+// bu paket YAGONA kirish token manbai.
 package identity
 
 import (

@@ -61,7 +61,7 @@ func statsFixture(t *testing.T) (h http.Handler, adminJWT, customerJWT string) {
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	admin := &users.User{ID: "admin-1", Phone: "+998900000001", Name: "Admin", Role: users.RoleAdmin,
 		PhoneVerified: true, CreatedAt: time.Now()}
 	customer := &users.User{ID: "cust-1", Phone: "+998900000002", Name: "Mijoz", Role: users.RoleCustomer,
@@ -121,7 +121,7 @@ func statsFixture(t *testing.T) (h http.Handler, adminJWT, customerJWT string) {
 
 	deps := Deps{
 		UserRepo: userRepo, OrderRepo: orderRepo, CourierRepo: courierRepo, CatalogRepo: catalogRepo,
-		Devices: storage.NewMemoryDeviceStore(), Tokens: tokens, Revoked: revoke.New(nil, time.Hour),
+		Devices: storage.NewMemoryDeviceStore(), Identity: tokens.Identity(), Revoked: revoke.New(nil, time.Hour),
 		Hub: ws.NewHub(nil), WsTickets: ws.NewTicketStore(), DevMode: true,
 	}
 	return New(deps).Routes(nil), adminJWT, customerJWT

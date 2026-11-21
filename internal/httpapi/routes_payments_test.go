@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
-	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/orders"
@@ -122,7 +121,7 @@ func paymentsServer(t *testing.T, statusFails bool) *payFixture {
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	customer := &users.User{
 		ID: "cust-pay", Phone: "+998901234567",
 		Role: users.RoleCustomer, PhoneVerified: true,
@@ -164,7 +163,7 @@ func paymentsServer(t *testing.T, statusFails bool) *payFixture {
 		UserRepo:    userRepo,
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		CatalogSvc:  catalog.NewService(catalogRepo),
 		OrderSvc:    orderSvc,
 		Payments:    paySvc,

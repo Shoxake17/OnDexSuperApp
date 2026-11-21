@@ -25,11 +25,13 @@ const (
 var phoneRe = regexp.MustCompile(`^\+998\d{9}$`)
 
 type Service struct {
-	users  Repository
-	codes  CodeStore
-	sms    SmsSender
-	email  EmailSender
-	tokens *TokenIssuer
+	users Repository
+	codes CodeStore
+	sms   SmsSender
+	email EmailSender
+	// pepper — OTP kodlarini hashlash kaliti (`codePepper`). Token BU YERDA
+	// chiqarilmaydi: sessiyani faqat markaziy identity beradi (ONDEXECOSY-483).
+	pepper []byte
 	idgen  func() string
 	now    func() time.Time
 	// emailConfigured — haqiqiy SMTP ulanganmi. Ulanmagan bo'lsa email
@@ -52,8 +54,10 @@ type Service struct {
 	testCode  string
 }
 
-func NewService(users Repository, codes CodeStore, sms SmsSender, tokens *TokenIssuer, idgen func() string) *Service {
-	return &Service{users: users, codes: codes, sms: sms, tokens: tokens, idgen: idgen, now: time.Now, guard: newCodeGuard()}
+// NewService — `codeSecret` (JWT_SECRET) faqat OTP pepper'ini hosil qilish
+// uchun: kirish tokeni bu paketda umuman chiqarilmaydi.
+func NewService(users Repository, codes CodeStore, sms SmsSender, codeSecret string, idgen func() string) *Service {
+	return &Service{users: users, codes: codes, sms: sms, pepper: codePepper(codeSecret), idgen: idgen, now: time.Now, guard: newCodeGuard()}
 }
 
 // WithEmail — email yuboruvchini ulaydi. `configured=false` bo'lsa
@@ -202,17 +206,18 @@ func (s *Service) RequestCode(ctx context.Context, rawPhone string) (phone, code
 }
 
 // Verify — kod to'g'ri bo'lsa foydalanuvchini topadi (yo'q bo'lsa mijoz sifatida
-// yaratadi) va JWT token qaytaradi.
+// yaratadi). Birinchi qiymat — kirish usuli (AMR, `otp`); sessiyani markaziy
+// identity beradi (ONDEXECOSY-483).
 func (s *Service) Verify(ctx context.Context, rawPhone, code string) (string, *User, error) {
 	phone, testLogin, err := s.checkPhoneCode(ctx, rawPhone, code)
 	if err != nil {
 		return "", nil, err
 	}
-	token, u, err := s.finishPhoneLogin(ctx, phone)
+	amr, u, err := s.finishPhoneLogin(ctx, phone)
 	if err == nil && testLogin {
 		slog.Warn("test akkaunt orqali kirish (TEST_OTP)", "user", u.ID, "role", u.Role)
 	}
-	return token, u, err
+	return amr, u, err
 }
 
 // checkPhoneCode — telefon kodini tekshiradi va ISHLATILGAN qiladi (bir
@@ -420,11 +425,7 @@ func (s *Service) LoginWithTelegramID(ctx context.Context, telegramID int64) (st
 	// damda raqamiga ega ekanining isboti EMAS (telefon o'g'irlangan
 	// yoki Telegram seansi ochiq qolgan bo'lishi mumkin).
 	// └───────────────────────────────────────────────────────────────┘
-	token, err := s.tokens.Issue(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	return AMRTelegram, u, nil
 }
 
 // finishPhoneLogin — raqam TASDIQLANGANDAN keyingi umumiy qism:
@@ -484,42 +485,26 @@ func (s *Service) finishPhoneLogin(ctx context.Context, phone string) (string, *
 	// belgilanadi. Bu FAQAT parolni joriy parolsiz o'rnatishga ruxsat
 	// beradi (parolini unutgan foydalanuvchi uchun) va 15 daqiqadan
 	// keyin kuchini yo'qotadi. Qarang: `Claims.PhoneProven`.
-	token, err := s.tokens.IssuePhoneProven(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	return AMROTP, u, nil
 }
 
-// legacyByPhone — eski kirish (mijoz ilovasi, admin paneli, BFF) uchun shu
-// raqamdagi akkaunt.
+// legacyByPhone — mijoz kirish endpointlari (“/auth/verify“, Firebase va h.k.)
+// uchun shu raqamdagi akkaunt.
 //
-// AUD-5: eski token o'chirilgan realm (`LEGACY_TOKENS_DISABLED`) akkauntiga
-// eski yo'l TEGMAYDI (tasdiqlash, parolni tozalash, tiklash — hech biri):
-// shu raqamda o'chirilmagan realmdagi akkaunt bo'lsa o'sha olinadi, bo'lmasa
-// "topilmadi" — telefon kodi yo'lida yangi MIJOZ akkaunti ochiladi
-// (realmlar ajratilgan, 0069). Kalit o'chiq bo'lsa — avvalgidek.
+// Bu yo'l FAQAT mijoz realmi uchun (merchant va admin o'z “/v2“ kirishiga
+// ega). Raqamda merchant/admin akkaunti bo'lsa — unga TEGILMAYDI
+// (tasdiqlash, parolni tozalash, tiklash yo'q): shu raqamdagi mijoz akkaunti
+// olinadi, bo'lmasa "topilmadi" va yangi mijoz ochiladi (realmlar ajratilgan,
+// 0069).
 func (s *Service) legacyByPhone(ctx context.Context, phone string) (*User, error) {
 	u, err := s.users.GetByPhone(ctx, phone)
-	if err != nil || s.tokens == nil {
+	if err != nil {
 		return u, err
 	}
-	realm := RealmForRole(u.Role)
-	// Mijoz akkaunti — har doim o'zi (realmi o'chirilgan bo'lsa markaziy
-	// sessiya `writeLogin` da ochiladi). O'chirilmagan realm — avvalgidek.
-	if realm == RealmCustomer || !s.tokens.RealmDisabled(realm) {
+	if RealmForRole(u.Role) == RealmCustomer {
 		return u, nil
 	}
-	// Merchant/admin realmi o'chirilgan: eski yo'l unga TEGMAYDI. Avval
-	// o'chirilmagan admin akkaunti, keyin shu raqamdagi mijoz akkaunti.
-	if realm != RealmPlatform && !s.tokens.RealmDisabled(RealmPlatform) {
-		if v, err := s.users.GetByPhoneRealm(ctx, RealmPlatform, phone); err == nil {
-			return v, nil
-		} else if !errors.Is(err, ErrUserNotFound) {
-			return nil, err
-		}
-	}
-	return s.users.GetByPhoneRealm(ctx, RealmCustomer, phone) // yo'q bo'lsa — yangi mijoz yaratiladi
+	return s.users.GetByPhoneRealm(ctx, RealmCustomer, phone)
 }
 
 // reactivateIfDeleted — akkaunt yumshoq o'chirilgan bo'lsa tiklaydi
@@ -668,15 +653,11 @@ func (s *Service) LoginWithGoogle(ctx context.Context, verifiedEmail, fullName s
 		return "", nil, err
 	}
 
-	// Google kirish PAROL O'RNATISH huquqini bermaydi: `Issue`
-	// (`IssuePhoneProven` emas). Aks holda Google hisobiga ega
-	// bo'lgan odam parolni joriy parolsiz almashtira olardi — bu
-	// imtiyoz faqat bir martalik kod bilan tasdiqlanganda beriladi.
-	token, err := s.tokens.Issue(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	// Google kirish PAROL O'RNATISH huquqini bermaydi (AMR `google`, `otp`
+	// emas). Aks holda Google hisobiga ega bo'lgan odam parolni joriy
+	// parolsiz almashtira olardi — bu imtiyoz faqat bir martalik kod bilan
+	// tasdiqlanganda beriladi.
+	return AMRGoogle, u, nil
 }
 
 // splitName — "Shoxrux Turaqulov" -> ("Shoxrux", "Turaqulov").
@@ -840,11 +821,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawEmail, code string) (strin
 
 	// Telefon oqimi bilan bir xil: kod tasdiqlangani parolni joriy
 	// parolsiz o'rnatishga 15 daqiqalik ruxsat beradi.
-	token, err := s.tokens.IssuePhoneProven(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	return AMREmail, u, nil
 }
 
 func randomCode() (string, error) {
@@ -873,7 +850,7 @@ func randomCode() (string, error) {
 //  1. `target` (telefon/email) hashga KIRADI — u har yozuvda boshqa,
 //     ya'ni TUZ vazifasini bajaradi. Bitta jadval endi faqat BITTA
 //     nishonga yaraydi, hammasiga emas.
-//  2. HMAC + server tomonidagi PEPPER (`TokenIssuer.codePepper()`).
+//  2. HMAC + server tomonidagi PEPPER (`codePepper`).
 //     Pepper bazada YO'Q — u faqat serverning xotirasida. Ya'ni
 //     bazani o'qish yolg'iz o'zi yetarli emas.
 //
@@ -883,7 +860,7 @@ func randomCode() (string, error) {
 // bo'lardi. Pepper bir xil himoyani narxsiz beradi.
 // └────────────────────────────────────────────────────────────────────┘
 func (s *Service) hashCode(target, code string) string {
-	mac := hmac.New(sha256.New, s.tokens.codePepper())
+	mac := hmac.New(sha256.New, s.pepper)
 	mac.Write([]byte(target))
 	mac.Write([]byte{0}) // ajratgich: "a"+"bc" va "ab"+"c" bir xil bo'lmasin
 	mac.Write([]byte(code))

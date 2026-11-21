@@ -68,11 +68,11 @@ func TestCustomerCentralSession(t *testing.T) {
 	}
 	actor := func(tok string) *Actor { return &Actor{Name: "mijoz (v2)", Token: tok} }
 
-	w.Step(t, "eski ilova (sarlavhasiz): eski token, o'zgarishsiz", func(t *testing.T) {
+	w.Step(t, "eski ilova (sarlavhasiz) ham MARKAZIY sessiya oladi (483)", func(t *testing.T) {
 		var o loginOut
 		post(t, "/auth/verify", "", false, map[string]string{"phone": phone, "code": code(t)}, 200).JSON(t, &o)
-		if o.Token == "" || o.RefreshToken != "" || strings.Count(o.Token, ".") != 2 || isEdDSAForTest(o.Token) {
-			t.Fatalf("eski javob o'zgardi: %+v", o)
+		if o.Token == "" || o.RefreshToken == "" || o.Token != o.AccessToken || !isEdDSAForTest(o.Token) {
+			t.Fatalf("sarlavhasiz javob markaziy emas: %+v", o)
 		}
 		w.Do(t, actor(o.Token), "GET", "/me", nil).Expect(t, 200)
 	})

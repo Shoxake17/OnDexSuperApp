@@ -309,12 +309,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		if rateLimited(w, loginAccountLimiter, loginKey(req.Login)) {
 			return
 		}
-		token, u, err := s.AuthSvc.LoginWithPassword(r.Context(), req.Login, req.Password)
+		amr, u, err := s.AuthSvc.LoginWithPassword(r.Context(), req.Login, req.Password)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// POST /auth/verify  {"phone":"+998901234567","code":"123456"} -> {token, user}
@@ -342,12 +342,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		token, u, err := s.AuthSvc.Verify(r.Context(), req.Phone, req.Code)
+		amr, u, err := s.AuthSvc.Verify(r.Context(), req.Phone, req.Code)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// POST /auth/telegram/start — Telegram bot orqali kod olish.
@@ -441,12 +441,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, errors.New("tasdiqlash amalga oshmadi"))
 			return
 		}
-		token, u, err := s.AuthSvc.LoginWithFirebasePhone(r.Context(), tok.Phone)
+		amr, u, err := s.AuthSvc.LoginWithFirebasePhone(r.Context(), tok.Phone)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// POST /auth/telegram/login/start — "Telegram bilan kirish".
@@ -558,7 +558,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			return
 		}
 
-		token, u, err := s.AuthSvc.LoginWithTelegramID(r.Context(), tgUser.ID)
+		amr, u, err := s.AuthSvc.LoginWithTelegramID(r.Context(), tgUser.ID)
 		if errors.Is(err, users.ErrTelegramNotLinked) {
 			// 409 — "kirish rad etildi" EMAS, "yana bir qadam kerak".
 			// Klient buni ko'rib botga yo'naltiradi.
@@ -578,7 +578,7 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// GET /auth/telegram/login/status?token=... — ilova shu yerni
@@ -634,12 +634,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		}
 		// Raqam TELEGRAM tomonidan tasdiqlangan — telefon oqimi bilan
 		// bir xil yo'l (akkaunt topiladi yoki yaratiladi).
-		authToken, u, err := s.AuthSvc.LoginWithFirebasePhone(r.Context(), phone)
+		amr, u, err := s.AuthSvc.LoginWithFirebasePhone(r.Context(), phone)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, authToken, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// GET /auth/telegram/return?c=... — botdagi "OnDex'ga qaytish"
@@ -719,12 +719,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 			httpError(w, http.StatusUnauthorized, errors.New("tasdiqlash amalga oshmadi"))
 			return
 		}
-		token, u, err := s.AuthSvc.LoginWithGoogle(r.Context(), tok.Email, tok.Name)
+		amr, u, err := s.AuthSvc.LoginWithGoogle(r.Context(), tok.Email, tok.Name)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// POST /auth/email/request-code — emailga 6 xonali kod.
@@ -787,12 +787,12 @@ func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		token, u, err := s.AuthSvc.VerifyEmail(r.Context(), req.Email, req.Code)
+		amr, u, err := s.AuthSvc.VerifyEmail(r.Context(), req.Email, req.Code)
 		if err != nil {
 			respondAuthError(w, err, http.StatusUnauthorized)
 			return
 		}
-		s.writeLogin(w, r, token, u)
+		s.writeLogin(w, r, amr, u)
 	})
 
 	// POST /auth/logout — HAQIQIY chiqish.

@@ -195,7 +195,7 @@ func (v *Verifier) Verify(ctx context.Context, idToken string) (*Token, error) {
 // Farqi jiddiy:
 //
 //	/auth/google   -> `Issue`             (parol o'rnatish huquqi YO'Q)
-//	/auth/firebase -> `IssuePhoneProven`  (15 daqiqa parolni JORIY
+//	/auth/firebase -> AMR `otp` (markaziy sessiya)  (15 daqiqa parolni JORIY
 //	                                       parolsiz almashtirish huquqi)
 //
 // Ya'ni ochiq qolgan Google sessiyasi parolni almashtirib, keyin

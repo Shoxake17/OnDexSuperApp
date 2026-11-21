@@ -32,10 +32,10 @@ import (
 // chiqib ketgan qurilma maket havolasini olishda davom etardi.
 func (s *Server) hasValidSession(r *http.Request) bool {
 	h := r.Header.Get("Authorization")
-	if !strings.HasPrefix(h, "Bearer ") || s.Tokens == nil {
+	if !strings.HasPrefix(h, "Bearer ") || s.Identity == nil {
 		return false
 	}
-	claims, err := s.Tokens.Parse(strings.TrimPrefix(h, "Bearer "))
+	claims, err := s.verifyBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
 	if err != nil {
 		return false
 	}

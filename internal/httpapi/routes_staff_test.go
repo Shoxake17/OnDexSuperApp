@@ -27,7 +27,7 @@ type staffFixture struct {
 	revoked  *revoke.Store
 	couriers *storage.MemoryCourierRepo
 	orders   *storage.MemoryOrderRepo
-	tokens   *users.TokenIssuer
+	tokens   *testTokens
 }
 
 // staffServer — ikki restoran; tokenlar: "a", "b" (restoran), "admin",
@@ -36,7 +36,7 @@ func staffServer(t *testing.T) staffFixture {
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	revoked := revoke.New(nil, time.Hour)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
@@ -83,7 +83,7 @@ func staffServer(t *testing.T) staffFixture {
 		OrderRepo:      orderRepo,
 		OrderSvc:       orderSvc,
 		CourierRepo:    courierRepo,
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Revoked:        revoked,
 		StaffSvc:       svc,
 		Hub:            ws.NewHub(nil),

@@ -33,7 +33,7 @@ func promoServer(t *testing.T, promos ...*promotions.Promotion) (http.Handler, s
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	mk := func(id string, role users.Role, entityID, phone string) string {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -74,7 +74,7 @@ func promoServer(t *testing.T, promos ...*promotions.Promotion) (http.Handler, s
 		CatalogRepo:    catalogRepo,
 		PromotionsRepo: promoRepo,
 		OrderRepo:      storage.NewMemoryOrderRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,
 			promoRepo),

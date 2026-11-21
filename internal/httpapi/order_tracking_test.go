@@ -74,7 +74,7 @@ func trackingServer(t *testing.T) trackingFixture {
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID, PhoneVerified: true, CreatedAt: time.Now()}
@@ -116,7 +116,7 @@ func trackingServer(t *testing.T) trackingFixture {
 		RouteRepo:      routes,
 		Directions:     dir.fn,
 		Voice:          voice.NewService(tts, storage.NewMemoryClipStore()),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Revoked:        revoke.New(nil, time.Hour),
 		Hub:            ws.NewHub(nil),
 		DevMode:        true,

@@ -29,7 +29,7 @@ func TestParseAdminNets(t *testing.T) {
 // boshqa rollarga ta'sir qilmaydi; cheklov o'chiq — hammasi avvalgidek.
 func TestAdminIPRestriction(t *testing.T) {
 	repo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	mk := func(id string, role users.Role) string {
 		u := &users.User{ID: id, Phone: "+99890000" + id[len(id)-4:], Role: role, PhoneVerified: true, CreatedAt: time.Now()}
 		if err := repo.Create(t.Context(), u); err != nil {
@@ -53,8 +53,8 @@ func TestAdminIPRestriction(t *testing.T) {
 		s.auth(nil, ok)(w, r)
 		return w.Code
 	}
-	on := New(Deps{UserRepo: repo, Tokens: tokens, AdminAllowedNets: nets, DevMode: true})
-	off := New(Deps{UserRepo: repo, Tokens: tokens, DevMode: true})
+	on := New(Deps{UserRepo: repo, Identity: tokens.Identity(), AdminAllowedNets: nets, DevMode: true})
+	off := New(Deps{UserRepo: repo, Identity: tokens.Identity(), DevMode: true})
 
 	if got := try(on, admin, "203.0.113.9"); got != 204 {
 		t.Errorf("ruxsat etilgan tarmoqdan admin: %d", got)

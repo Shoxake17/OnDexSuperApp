@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"chustapp/internal/catalog"
 	"chustapp/internal/delivery"
@@ -24,7 +23,7 @@ func cityOrderServer(t *testing.T, restLat, restLng, addrLat, addrLng float64) (
 	ctx := context.Background()
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	customer := &users.User{
 		ID: "cust-1", Phone: "+998901234567",
 		Role: users.RoleCustomer, PhoneVerified: true,
@@ -50,7 +49,7 @@ func cityOrderServer(t *testing.T, restLat, restLng, addrLat, addrLng float64) (
 		UserRepo:    userRepo,
 		OrderRepo:   orderRepo,
 		CatalogRepo: catalogRepo,
-		Tokens:      tokens,
+		Identity:    tokens.Identity(),
 		CatalogSvc:  catalog.NewService(catalogRepo),
 		OrderSvc:    orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
 		DevMode:     true,

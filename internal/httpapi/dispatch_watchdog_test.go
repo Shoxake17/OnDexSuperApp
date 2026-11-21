@@ -66,7 +66,7 @@ func newWatchFixture(t *testing.T, withDispatcher bool) *watchFixture {
 	}, nil).WithClock(clock.Now)
 
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -94,7 +94,7 @@ func newWatchFixture(t *testing.T, withDispatcher bool) *watchFixture {
 		CatalogRepo: storage.NewMemoryCatalogRepo([]catalog.Restaurant{
 			{ID: testRestA, Name: "Book Cafe", Open: true, Lat: 41.0, Lng: 71.23}}, nil),
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Hub:            ws.NewHub(nil),
 		DevMode:        true,
 	}

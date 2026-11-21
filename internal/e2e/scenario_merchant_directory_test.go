@@ -166,6 +166,6 @@ func TestMerchantDirectoryV2(t *testing.T) {
 		other := signup(t, "+998900000053", "Begona Cafe")
 		w.Do(t, other, "GET", "/v2/merchant/businesses/"+bizID+"/staff", nil).Expect(t, 404)
 		w.Do(t, other, "POST", "/v2/merchant/businesses/"+bizID+"/staff/"+staffMID+"/dismiss", nil).Expect(t, 404)
-		w.Do(t, w.Owner, "GET", "/v2/merchant/me", nil).Expect(t, 401)
+		w.Do(t, forgedHS256(t, w.Owner.UserID, users.RoleRestaurant), "GET", "/v2/merchant/me", nil).Expect(t, 401)
 	})
 }

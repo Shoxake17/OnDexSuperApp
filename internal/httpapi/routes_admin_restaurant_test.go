@@ -33,13 +33,18 @@ func adminRestaurantServer(t *testing.T, userRepo users.Repository) (http.Handle
 	t.Helper()
 	ctx := context.Background()
 
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	admin := &users.User{ID: "u-admin", Phone: "+998900000001",
 		Role: users.RoleAdmin, PhoneVerified: true, CreatedAt: time.Now()}
-	if err := userRepo.Create(ctx, admin); err != nil {
-		// `failingUserRepo` uchun kutilgan — admin tokenini baribir
-		// beramiz (`auth` faqat imzoni tekshiradi).
-		_ = err
+	// Markaziy sessiya akkauntni HAR so'rovda o'qiydi — admin omborda bo'lishi
+	// shart. `failingUserRepo` yangi yozuvni rad etadi, shuning uchun admin
+	// uning ichki (ishlaydigan) omboriga yoziladi.
+	creator := userRepo
+	if f, ok := userRepo.(failingUserRepo); ok {
+		creator = f.Repository
+	}
+	if err := creator.Create(ctx, admin); err != nil {
+		t.Fatal(err)
 	}
 	jwt, err := tokens.Issue(admin)
 	if err != nil {
@@ -53,7 +58,7 @@ func adminRestaurantServer(t *testing.T, userRepo users.Repository) (http.Handle
 		PromotionsRepo: storage.NewMemoryPromotionsRepo(),
 		OrderRepo:      storage.NewMemoryOrderRepo(),
 		CourierRepo:    storage.NewMemoryCourierRepo(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Revoked:        revoke.New(nil, time.Hour),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc: orders.NewService(storage.NewMemoryOrderRepo(), nil, NewID,

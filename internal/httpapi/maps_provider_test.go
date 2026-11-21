@@ -50,7 +50,7 @@ func mapsServer(t *testing.T, mode mapprovider.Mode, od ondexmap.API) (http.Hand
 	t.Helper()
 	ctx := context.Background()
 	repo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	u := &users.User{ID: "u-maps", Phone: "+998900000401", Role: users.RoleCustomer, PhoneVerified: true, CreatedAt: time.Now()}
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func mapsServer(t *testing.T, mode mapprovider.Mode, od ondexmap.API) (http.Hand
 	}
 	h := New(Deps{
 		UserRepo:     repo,
-		Tokens:       tokens,
+		Identity:     tokens.Identity(),
 		Revoked:      revoke.New(nil, time.Hour),
 		Hub:          ws.NewHub(nil),
 		MapMode:      mode,

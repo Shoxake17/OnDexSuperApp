@@ -121,7 +121,6 @@ type Deps struct {
 	HistorySource stats.HistorySource
 
 	Cache      *cache.Cache
-	Tokens     *users.TokenIssuer
 	Revoked    *revoke.Store
 	Hub        *ws.Hub
 	WsTickets  *ws.TicketStore

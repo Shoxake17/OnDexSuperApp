@@ -2,7 +2,6 @@ package users
 
 import (
 	"crypto/sha256"
-	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -40,104 +39,31 @@ func (c *Claims) HasFreshPhoneProof(now time.Time) bool {
 	return d >= 0 && d <= PhoneProofWindow
 }
 
-type TokenIssuer struct {
-	secret []byte
-	ttl    time.Duration
-	// disabled — eski HS256 token QABUL QILINMAYDIGAN realmlar (AUD-5,
-	// `LEGACY_TOKENS_DISABLED`). Bo'sh — hammasi avvalgidek.
-	disabled map[Realm]bool
-}
+// ┌─ ESKI HS256 TOKEN YO'Q (Plane ONDEXECOSY-483, 2026-11-21) ─────────┐
+// Bu paket endi KIRISH TOKENI CHIQARMAYDI va QABUL QILMAYDI. Barcha
+// sessiyalar markaziy identity xizmatida (EdDSA, refresh rotatsiyasi,
+// qurilma bo'yicha bekor qilish). ``Claims`` — middleware markaziy
+// tokendan quradigan ichki ko'rinish (``httpapi.parseBearer``).
+// └───────────────────────────────────────────────────────────────────┘
 
-func NewTokenIssuer(secret string, ttl time.Duration) *TokenIssuer {
-	return &TokenIssuer{secret: []byte(secret), ttl: ttl}
-}
+// Kirish usuli (AMR, RFC 8176 ruhida) — login funksiyalari birinchi qiymat
+// sifatida qaytaradi; markaziy sessiyaga yoziladi.
+const (
+	AMROTP      = "otp"      // telefon kodi yoki Firebase telefon tasdig'i
+	AMREmail    = "email"    // email kodi
+	AMRPassword = "pwd"      // parol
+	AMRGoogle   = "google"   // Google (Firebase) hisobi
+	AMRTelegram = "telegram" // Telegram Mini App initData
+)
 
 // codePepper — OTP kodlarini hashlash uchun SERVER TOMONIDAGI kalit
 // (bug.md 48-band).
 //
 // JWT sirining O'ZI emas, undan HKDF-ga o'xshash yo'l bilan olingan
 // ALOHIDA kalit: bitta sir ikki maqsadda ishlatilsa, birining oqishi
-// ikkinchisini ham ochadi.
-//
-// Alohida `.env` o'zgaruvchisi qo'shilmadi ATAYLAB: u yana bir
-// "unutilsa jimgina zaiflashadi" nuqtasi bo'lardi (42/99-bandlar
-// aynan shu sinf). JWT siri esa production'da allaqachon MAJBURIY.
-func (t *TokenIssuer) codePepper() []byte {
-	sum := sha256.Sum256(append([]byte("ondex-otp-pepper-v1:"), t.secret...))
+// ikkinchisini ham ochadi. Formula O'ZGARMASIN: aks holda deploy paytida
+// kutilayotgan kodlar yaroqsiz bo'lib qoladi.
+func codePepper(secret string) []byte {
+	sum := sha256.Sum256(append([]byte("ondex-otp-pepper-v1:"), []byte(secret)...))
 	return sum[:]
-}
-
-// Issue — oddiy kirish tokeni (parol bilan kirish, admin amallari).
-func (t *TokenIssuer) Issue(u *User) (string, error) {
-	return t.issue(u, false)
-}
-
-// IssuePhoneProven — SMS kod tasdiqlangandan keyingi token. `Verify`
-// dan boshqa joyda ISHLATILMASLIGI kerak (`Claims.PhoneProven` izohiga
-// qarang).
-func (t *TokenIssuer) IssuePhoneProven(u *User) (string, error) {
-	return t.issue(u, true)
-}
-
-func (t *TokenIssuer) issue(u *User, phoneProven bool) (string, error) {
-	now := time.Now()
-	claims := Claims{
-		Role:        u.Role,
-		EntityID:    u.EntityID,
-		PhoneProven: phoneProven,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   u.ID,
-			ExpiresAt: jwt.NewNumericDate(now.Add(t.ttl)),
-			IssuedAt:  jwt.NewNumericDate(now),
-		},
-	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(t.secret)
-}
-
-// ErrLegacyTokenDisabled — bu realm uchun eski token o'chirilgan: faqat
-// markaziy sessiya (ilovaning yangi versiyasi).
-var ErrLegacyTokenDisabled = errors.New("eski kirish o'chirilgan — ilovaning yangi versiyasini o'rnating")
-
-// DisableRealms — shu realmlar uchun eski HS256 token endi QABUL
-// QILINMAYDI (A5 va davomi, AUD-5). Ishga tushishda bir marta chaqiriladi.
-func (t *TokenIssuer) DisableRealms(realms ...Realm) {
-	if t.disabled == nil {
-		t.disabled = map[Realm]bool{}
-	}
-	for _, r := range realms {
-		t.disabled[r] = true
-	}
-}
-
-// RealmDisabled — bu realm uchun eski token o'chirilganmi.
-func (t *TokenIssuer) RealmDisabled(r Realm) bool { return t.disabled[r] }
-
-// Parse — eski token; o'chirilgan realm tokeni (imzosi to'g'ri bo'lsa ham)
-// rad etiladi.
-func (t *TokenIssuer) Parse(tokenStr string) (*Claims, error) {
-	c, err := t.ParseAny(tokenStr)
-	if err != nil {
-		return nil, err
-	}
-	if t.disabled[RealmForRole(c.Role)] {
-		return nil, ErrLegacyTokenDisabled
-	}
-	return c, nil
-}
-
-// ParseAny — imzo va muddat; realm cheklovisiz. FAQAT server ichida, o'zi
-// endigina bergan tokenni o'qish uchun (masalan kirishda "kod bilan kirdi"
-// belgisini markaziy sessiyaga o'tkazish) — HECH QACHON so'rov tokeniga emas.
-func (t *TokenIssuer) ParseAny(tokenStr string) (*Claims, error) {
-	var claims Claims
-	token, err := jwt.ParseWithClaims(tokenStr, &claims, func(tok *jwt.Token) (any, error) {
-		if _, ok := tok.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("kutilmagan imzo algoritmi")
-		}
-		return t.secret, nil
-	})
-	if err != nil || !token.Valid {
-		return nil, errors.New("token yaroqsiz")
-	}
-	return &claims, nil
 }

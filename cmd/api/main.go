@@ -681,36 +681,16 @@ func main() {
 		jwtSecret = "dev-secret-almashtiring" //nolint:gosec // faqat dev rejimida; production'da JWT_SECRET majburiy
 		slog.Warn("JWT_SECRET berilmagan — FAQAT dev uchun mo'ljallangan standart kalit ishlatilyapti")
 	}
-	const tokenTTL = 30 * 24 * time.Hour
-	tokens := users.NewTokenIssuer(jwtSecret, tokenTTL)
-	// AUD-5: eski HS256 tokenni realm bo'yicha o'chirish (relizlardan keyin,
-	// bosqichma-bosqich): "merchant", "platform" (yoki "admin"), "customer".
-	// Noto'g'ri qiymat — server TO'XTAYDI (jimgina ochiq qolmasin). Qaytarish:
-	// o'zgaruvchini olib tashlab qayta ishga tushirish.
-	if raw := strings.TrimSpace(os.Getenv("LEGACY_TOKENS_DISABLED")); raw != "" {
-		var realms []users.Realm
-		for _, p := range strings.Split(raw, ",") {
-			switch strings.ToLower(strings.TrimSpace(p)) {
-			case "":
-			case "merchant":
-				realms = append(realms, users.RealmMerchant)
-			case "platform", "admin":
-				realms = append(realms, users.RealmPlatform)
-			case "customer":
-				realms = append(realms, users.RealmCustomer)
-			default:
-				slog.Error("LEGACY_TOKENS_DISABLED: noma'lum realm — server to'xtatildi", "qiymat", p)
-				os.Exit(1)
-			}
-		}
-		tokens.DisableRealms(realms...)
-		slog.Info("rejim: eski HS256 token o'chirilgan realmlar", "realmlar", realms)
-	}
-	// revoked — muddatidan oldin bekor qilingan sessiyalar (chiqish,
-	// akkaunt o'chirilishi, kuryer tasdig'ining bekor qilinishi).
-	// Qarang: internal/revoke.
-	revokedSessions := revoke.New(redisClient, tokenTTL)
-
+	// JWT_SECRET endi KIRISH TOKENI uchun ishlatilmaydi (eski HS256 butunlay
+	// olib tashlandi, ONDEXECOSY-483) — faqat undan olinadigan yordamchi
+	// kalitlar: OTP pepper (`users.NewService`), AI tarixi imzosi va h.k.
+	//
+	// revoked — foydalanuvchi darajasida bekor qilish (chiqish, parol
+	// almashtirish, akkaunt o'chirilishi, kuryer tasdig'i olinishi). Yozuv
+	// ENG UZUN markaziy sessiya (mijoz: 180 kun mutlaq) yashaguncha turishi
+	// SHART: aks holda undan oldin ochilgan sessiya yozuv o'chgach tirilardi.
+	const revokeTTL = 180 * 24 * time.Hour
+	revokedSessions := revoke.New(redisClient, revokeTTL)
 	// Tezlik cheklovi mijoz IP'siga tayanadi. `X-Forwarded-For` FAQAT
 	// shu ro'yxatdagi manbalardan qabul qilinadi — aks holda istalgan
 	// mijoz sarlavhani o'zi yozib, barcha IP cheklovlarini (SMS, login,
@@ -894,7 +874,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	authSvc := users.NewService(userRepo, codeStore, smsSender, tokens, httpapi.NewID)
+	authSvc := users.NewService(userRepo, codeStore, smsSender, jwtSecret, httpapi.NewID)
 	if smsDisabled {
 		// `/auth/request-code` endi kod yaratmasdan ANIQ xato beradi
 		// ("Telegram bot orqali davom eting") — 500 emas. Izoh:
@@ -1125,6 +1105,13 @@ func main() {
 		slog.Info("rejim: admin faqat ruxsat etilgan tarmoqlardan", "tarmoqlar", len(adminNets))
 	}
 	identitySvc := buildIdentity(devMode, pgPool, userRepo)
+	// ONDEXECOSY-483: markaziy sessiya — YAGONA kirish yo'li (eski HS256 yo'q).
+	// Usiz hech kim kira olmaydi: production'da jim ishlab turish o'rniga
+	// darhol to'xtaymiz (sabab yuqoridagi ERROR'da).
+	if identitySvc == nil && !devMode {
+		slog.Error("markaziy sessiya xizmati qurilmadi — kirish imkonsiz, server to'xtatildi")
+		os.Exit(1)
+	}
 	// Yangi qurilmadan kirish — egasining Telegram'iga xabar (135).
 	wireNewDeviceAlerts(identitySvc, tgClient, userRepo, os.Getenv("AUTH_ISSUER"))
 	// Merchant ruxsatlari (A3): rol shablonlari koddan bazaga yoziladi.
@@ -1562,7 +1549,6 @@ func main() {
 		RouteRepo:          routeRepo,
 		Voice:              voiceSvc,
 		Cache:              redisCache,
-		Tokens:             tokens,
 		Revoked:            revokedSessions,
 		Hub:                hub,
 		WsTickets:          wsTickets,

@@ -169,7 +169,7 @@ func TestRequirePhoneRejectsTokenWithoutPhone(t *testing.T) {
 // `/auth/firebase` ga yuborish mumkin edi. Farqi jiddiy:
 //
 //	/auth/google   -> `Issue`             (parol o'rnatish huquqi YO'Q)
-//	/auth/firebase -> `IssuePhoneProven`  (15 daqiqa parolni JORIY
+//	/auth/firebase -> AMR `otp` (markaziy sessiya)  (15 daqiqa parolni JORIY
 //	                                       parolsiz almashtirish huquqi)
 //
 // Ya'ni o'g'irlangan/ochiq qolgan Google sessiyasi parolni almashtirib,

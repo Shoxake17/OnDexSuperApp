@@ -129,7 +129,7 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 	userRepo := storage.NewMemoryUserRepo()
 	courierRepo := storage.NewMemoryCourierRepo(
 		couriers.Courier{ID: "cour-ent-1", Name: "Kuryer", Approved: true})
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 
 	mk := func(id string, role users.Role, entityID, phone string) *users.User {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -175,14 +175,14 @@ func authzServer(t *testing.T) (http.Handler, map[users.Role]string) {
 		BannerRepo:     storage.NewMemoryBannerRepo(),
 		RatingsRepo:    storage.NewMemoryRatingRepo(),
 		Devices:        storage.NewMemoryDeviceStore(),
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		Revoked:        revoke.New(nil, time.Hour),
 		Hub:            ws.NewHub(nil),
 		WsTickets:      ws.NewTicketStore(),
 		Dispatcher:     couriers.NewDispatcher(courierRepo, nil, nil, time.Second),
 		// Parol o'zgartirish endpointi shunga murojaat qiladi.
 		AuthSvc: users.NewService(userRepo, storage.NewMemoryCodeStore(),
-			nil, tokens, func() string { return "gen-id" }),
+			nil, "test-secret", func() string { return "gen-id" }),
 		// Buyurtma o'qish/o'tkazish endpointlari shunga murojaat qiladi.
 		OrderSvc: orders.NewService(orderRepo, nil,
 			func() string { return "ord-1" }, promoRepo),
@@ -353,7 +353,7 @@ func TestTenancyMatrix(t *testing.T) {
 // Begona kalit bilan imzolangan token rad etilishi kerak.
 func TestProtectedRoutesRejectForgedToken(t *testing.T) {
 	h, _ := authzServer(t)
-	other := users.NewTokenIssuer("boshqa-kalit", time.Hour)
+	other := newTestTokens(t)
 	forged, err := other.Issue(&users.User{
 		ID: "u-admin", Role: users.RoleAdmin, PhoneVerified: true})
 	if err != nil {

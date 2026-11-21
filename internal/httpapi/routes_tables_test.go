@@ -21,7 +21,7 @@ func tablesServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, *tables
 	t.Helper()
 	ctx := context.Background()
 	userRepo := storage.NewMemoryUserRepo()
-	tokens := users.NewTokenIssuer("test-secret", time.Hour)
+	tokens := newTestTokens(t)
 	jwt := map[string]string{}
 	mk := func(key, id string, role users.Role, entityID, phone string) {
 		u := &users.User{ID: id, Phone: phone, Role: role, EntityID: entityID,
@@ -51,7 +51,7 @@ func tablesServer(t *testing.T) (http.Handler, *storage.MemoryOrderRepo, *tables
 		OrderRepo:      orderRepo,
 		TableSvc:       tableSvc,
 		TableOrders:    orderRepo,
-		Tokens:         tokens,
+		Identity:       tokens.Identity(),
 		CatalogSvc:     catalog.NewService(catalogRepo),
 		OrderSvc:       orders.NewService(orderRepo, nil, NewID, storage.NewMemoryPromotionsRepo()),
 		Hub:            ws.NewHub(nil),

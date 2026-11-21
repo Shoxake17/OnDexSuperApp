@@ -66,11 +66,6 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 			}
 			u.Role = users.RoleCourier
 			u.EntityID = c.ID
-			newToken, err := s.Tokens.Issue(u)
-			if err != nil {
-				httpError(w, http.StatusInternalServerError, err)
-				return
-			}
 			// Superadmin paneliga jonli xabar: ariza TASDIQ KUTMOQDA.
 			//
 			// Bu yerda kutish narxi yuqori — kuryer tasdiqlanmaguncha
@@ -80,22 +75,13 @@ func (s *Server) registerCourierRoutes(mux *http.ServeMux) {
 				"type":       "courier_registered",
 				"courier_id": c.ID,
 			})
-			// AUD-5: merchant realmi uchun eski token o'chirilgan bo'lsa token
-			// berilmaydi (u baribir qabul qilinmasdi) — kuryer OnDexGO'ga
-			// markaziy kirish orqali kiradi.
-			if s.Tokens.RealmDisabled(users.RealmMerchant) {
-				s.Revoked.Revoke(r.Context(), u.ID)
-				writeJSON(w, http.StatusCreated, map[string]any{
-					"courier":          c,
-					"relogin_required": true,
-					"message":          "Ariza qabul qilindi. OnDexGO ilovasiga shu raqam bilan kiring — admin tasdiqlagach ishlay boshlaysiz.",
-				})
-				return
-			}
+			// Rol endi kuryer (merchant realmi): mijoz sessiyasi yaroqsiz — kuryer
+			// OnDexGO'ga markaziy kirish orqali kiradi (eski token YO'Q, ONDEXECOSY-483).
+			s.Revoked.Revoke(r.Context(), u.ID)
 			writeJSON(w, http.StatusCreated, map[string]any{
-				"courier": c,
-				"token":   newToken,
-				"message": "Ariza qabul qilindi. Admin tasdiqlagach ishlay boshlaysiz.",
+				"courier":          c,
+				"relogin_required": true,
+				"message":          "Ariza qabul qilindi. OnDexGO ilovasiga shu raqam bilan kiring — admin tasdiqlagach ishlay boshlaysiz.",
 			})
 		}))
 

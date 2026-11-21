@@ -319,11 +319,7 @@ func (s *Service) LoginWithPassword(ctx context.Context, login, password string)
 	if err != nil {
 		return "", nil, err
 	}
-	token, err := s.tokens.Issue(u)
-	if err != nil {
-		return "", nil, err
-	}
-	return token, u, nil
+	return AMRPassword, u, nil
 }
 
 // AuthenticatePassword — `LoginWithPassword` ning tekshiruv qismi: parol
