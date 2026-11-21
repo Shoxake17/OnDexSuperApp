@@ -112,7 +112,7 @@ var Registry = []Var{
 	{Name: "WEBAUTHN_RP_ID", Effect: "passkey RP ID issuer host'idan olinadi (kirish sahifasi boshqa domenda bo'lsa passkey ishlamaydi)"},
 	{Name: "WEBAUTHN_ORIGINS", Effect: "passkey ruxsat etilgan origin faqat issuer origin'i"},
 	// PK-1: native ilovalar (assetlinks.json / apple-app-site-association).
-	{Name: "PASSKEY_ANDROID_APPS", Effect: "Android ilovalarda (OnDexPro, OnDexGO, mijoz) passkey ishlamaydi — 'paket=SHA256,...'"},
+	{Name: "PASSKEY_ANDROID_APPS", Effect: "standart ro'yxat ishlatiladi (OnDexPro, OnDexGO, mijoz — release imzosi, cmd/api defaultAndroidApps); Play App Signing'ga o'tilsa shu yerga Play kaliti qo'shilsin"},
 	{Name: "PASSKEY_APPLE_APP_IDS", Effect: "iOS ilovalarda passkey ishlamaydi — 'TEAMID.bundle.id,...'"},
 	{Name: "PPROF_ADDR", Effect: "profiler o'chiq (faqat loopback, masalan 127.0.0.1:6060; yuklama testida yoqiladi)"},
 	{Name: "METRICS_ADDR", Effect: "Prometheus metrikasi o'chiq — endpoint vaqti/xatolari kuzatilmaydi (prod: :9464, faqat monitoring tarmog'i)"},
