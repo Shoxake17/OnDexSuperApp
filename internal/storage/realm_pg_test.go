@@ -179,3 +179,64 @@ func TestMemberships_Constraints(t *testing.T) {
 	must(`INSERT INTO memberships (id, user_id, org_id, business_id, role_id, apps) VALUES ('mtest_m_staff', 'mtest_staff', 'mtest_org', 'mtest_biz', 'mtest_role', '{pro}')`)
 	mustFail("bir biznesda ikki a'zolik", `INSERT INTO memberships (id, user_id, org_id, business_id, role_id) VALUES ('mtest_dup', 'mtest_staff', 'mtest_org', 'mtest_biz', 'mtest_role')`)
 }
+
+// PromoteToAdmin (BOOTSTRAP_ADMIN_PHONE) bir raqamda bir nechta realm
+// akkaunti bo'lsa ham FAQAT bittasiga tegadi (2026-11-21 prod hodisasi:
+// hammasi platform'ga o'tmoqchi bo'lib, API ishga tushmagan edi).
+func TestPromoteToAdmin_MultiRealmPhone(t *testing.T) {
+	pool := realmTestPool(t)
+	ctx := context.Background()
+	const phone = "+998987650077"
+	cleanup := func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id LIKE 'promotest_%'`) }
+	cleanup()
+	t.Cleanup(cleanup)
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, q, args...); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	roleOf := func(id string) string {
+		t.Helper()
+		var r string
+		if err := pool.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&r); err != nil {
+			t.Fatalf("role %s: %v", id, err)
+		}
+		return r
+	}
+
+	// 1) Admin (platform) + mijoz bir raqamda — faqat admin tegiladi, xato YO'Q.
+	exec(`INSERT INTO users (id, phone, role) VALUES ('promotest_admin', $1, 'admin'), ('promotest_cust', $1, 'customer')`, phone)
+	if _, err := PromoteToAdmin(ctx, pool, phone); err != nil {
+		t.Fatalf("platform akkaunti bor — xato bo'lmasligi kerak: %v", err)
+	}
+	if r := roleOf("promotest_cust"); r != "customer" {
+		t.Fatalf("mijoz akkaunti %q ga o'zgardi — tegilmasligi kerak edi", r)
+	}
+
+	// 2) Faqat bitta akkaunt (mijoz) — u ko'tariladi.
+	cleanup()
+	exec(`INSERT INTO users (id, phone, role) VALUES ('promotest_only', $1, 'customer')`, phone)
+	if ok, err := PromoteToAdmin(ctx, pool, phone); err != nil || !ok {
+		t.Fatalf("yagona akkaunt ko'tarilishi kerak: ok=%v err=%v", ok, err)
+	}
+	if r := roleOf("promotest_only"); r != "admin" {
+		t.Fatalf("yagona akkaunt roli %q", r)
+	}
+
+	// 3) Bir nechta, hech biri platform emas — taxmin qilinmaydi.
+	cleanup()
+	exec(`INSERT INTO users (id, phone, role) VALUES ('promotest_c', $1, 'customer'), ('promotest_w', $1, 'waiter')`, phone)
+	if _, err := PromoteToAdmin(ctx, pool, phone); err == nil {
+		t.Fatal("noaniq holatda xato kutilgan edi")
+	}
+	if roleOf("promotest_c") != "customer" || roleOf("promotest_w") != "waiter" {
+		t.Fatal("noaniq holatda hech narsa o'zgarmasligi kerak")
+	}
+
+	// 4) Raqam yo'q — false, xatosiz.
+	cleanup()
+	if ok, err := PromoteToAdmin(ctx, pool, phone); ok || err != nil {
+		t.Fatalf("akkaunt yo'q: ok=%v err=%v", ok, err)
+	}
+}

@@ -551,10 +551,58 @@ func SeedDemoUsers(ctx context.Context, pool *pgxpool.Pool) error {
 // `entity_id` bo'shatiladi: admin butun tizimga tegishli, biror
 // restoran/kuryerga bog'lanmaydi. Avval restoran bo'lgan foydalanuvchi
 // ko'tarilsa, eski bog'lanish qolib ketmasligi kerak.
+//
+// ┌─ FAQAT BITTA AKKAUNT (2026-11-21 PROD HODISASI) ──────────────────┐
+// Avval `UPDATE ... WHERE phone = $1` — shu raqamli HAMMA akkaunt admin
+// bo'lardi. Realm roldan hisoblanadi (trigger 0063), telefon esa realm
+// ichida yagona: egasi shu raqam bilan mijoz ilovasiga ham kirgach
+// ikkala akkaunt bir vaqtda `platform` ga o'tmoqchi bo'ldi ->
+// `idx_users_realm_phone` buzildi -> API ishga tushmadi (~5 daqiqa 502).
+//
+// Endi: platform realmidagi akkaunt bo'lsa — FAQAT u; bo'lmasa raqamdagi
+// YAGONA faol akkaunt. Bir nechta bo'lsa — taxmin qilinmaydi (xato):
+// mijoz akkauntini jimgina adminga aylantirish ham noto'g'ri bo'lardi.
+// └───────────────────────────────────────────────────────────────────┘
 func PromoteToAdmin(ctx context.Context, pool *pgxpool.Pool, phone string) (bool, error) {
-	tag, err := pool.Exec(ctx,
-		`UPDATE users SET role = 'admin', entity_id = '' WHERE phone = $1`, phone)
+	tx, err := pool.Begin(ctx)
 	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var id string
+	err = tx.QueryRow(ctx, `SELECT id FROM users
+		WHERE phone = $1 AND realm = 'platform' AND deleted_at IS NULL
+		ORDER BY created_at LIMIT 1`, phone).Scan(&id)
+	switch {
+	case err == nil:
+	case errors.Is(err, pgx.ErrNoRows):
+		rows, qerr := tx.Query(ctx, `SELECT id FROM users
+			WHERE phone = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 2`, phone)
+		if qerr != nil {
+			return false, qerr
+		}
+		ids, cerr := pgx.CollectRows(rows, pgx.RowTo[string])
+		if cerr != nil {
+			return false, cerr
+		}
+		switch len(ids) {
+		case 0:
+			return false, nil
+		case 1:
+			id = ids[0]
+		default:
+			return false, fmt.Errorf("raqamda %d+ akkaunt bor va hech biri platform realmida emas — qaysi biri admin bo'lishini taxmin qilmaymiz", len(ids))
+		}
+	default:
+		return false, err
+	}
+
+	tag, err := tx.Exec(ctx, `UPDATE users SET role = 'admin', entity_id = '' WHERE id = $1`, id)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil

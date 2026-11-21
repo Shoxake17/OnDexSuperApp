@@ -316,8 +316,11 @@ func main() {
 			promoted, err := storage.PromoteToAdmin(ctx, pool, phone)
 			switch {
 			case err != nil:
-				slog.Error("BOOTSTRAP_ADMIN_PHONE qo'llanmadi", "err", err)
-				os.Exit(1)
+				// TO'XTATILMAYDI (2026-11-21): bu yerdagi baza xatosi butun
+				// API'ni yiqitib, ~5 daqiqa 502 berdi. Admin roli bazada
+				// allaqachon turadi — xizmat ishlashda davom etadi, xato
+				// esa ERROR sifatida ogohlantirishga tushadi.
+				slog.Error("BOOTSTRAP_ADMIN_PHONE qo'llanmadi — admin roli o'zgartirilmadi, API ishlayveradi", "err", err)
 			case promoted:
 				// WARN darajasi ataylab: huquq berish hodisasi
 				// oddiy loglar orasida ko'zdan qochmasligi kerak.
