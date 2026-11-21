@@ -674,7 +674,18 @@ jobs:
       # └─────────────────────────────────────────────────────────────────┘
       - name: Start API (ZAP skaneri uchun vaqtinchalik konteyner)
         run: |
+          # ONDEXECOSY-483: markaziy sessiya YAGONA kirish yo'li — production'da
+          # imzolash kaliti bo'lmasa server to'xtaydi. ZAP uchun VAQTINCHALIK
+          # Ed25519 kalitlari (asosiy + alohida admin), job tugashi bilan yo'qoladi.
+          mkdir -p "$RUNNER_TEMP/ci-keys"
+          openssl genpkey -algorithm ed25519 -out "$RUNNER_TEMP/ci-keys/auth_ed25519.pem"
+          openssl genpkey -algorithm ed25519 -out "$RUNNER_TEMP/ci-keys/auth_platform_ed25519.pem"
+          chmod 644 "$RUNNER_TEMP"/ci-keys/*.pem   # distroless nonroot (65532) o'qiy olsin
           docker run -d --name ondex-api --network host \
+            -v "$RUNNER_TEMP/ci-keys:/run/secrets:ro" \
+            -e AUTH_SIGNING_KEY_FILE=/run/secrets/auth_ed25519.pem \
+            -e AUTH_PLATFORM_KEY_FILE=/run/secrets/auth_platform_ed25519.pem \
+            -e AUTH_ISSUER="http://localhost:8080" \
             -e APP_ENV=production \
             -e JWT_SECRET="$(openssl rand -hex 32)" \
             -e ALLOWED_ORIGINS="https://app.ondex.uz" \
