@@ -12,7 +12,6 @@ import (
 	"chustapp/internal/images"
 	"chustapp/internal/qurt"
 	"chustapp/internal/ratelimit"
-	"chustapp/internal/sso"
 	"chustapp/internal/users"
 )
 
@@ -53,38 +52,55 @@ func qurtIDs(m map[string]string) []string {
 	return ids
 }
 
-// merchantQurtStore — POS serveri qurt do'koni nomidan chaqirganini tekshiradi.
+// qurtStore — qurt do'koni egasi (markaziy merchant sessiyasidan).
+type qurtStore struct {
+	UserID   string
+	EntityID string
+}
+
+// merchantQurtStore — so'rov qurt do'koni EGASINING markaziy sessiyasi bilan
+// kelganini tekshiradi.
 //
-// Brauzer BU YERGA kelmaydi: POS serveri klient SIRI bilan (SSO klienti kabi)
-// va do'kon egasining OnDex ID'si bilan murojaat qiladi. OnDex egasi haqiqatan
-// QURT kategoriyasidagi do'kon ekanini O'ZI tekshiradi (POS yuborgan
-// "men qurtman" ga ishonilmaydi): kategoriya o'zgarsa, ruxsat ham darhol yo'qoladi.
-//
-// Sarlavhalar: X-Client-Id, X-Client-Secret, X-Store-User.
-func (s *Server) merchantQurtStore(w http.ResponseWriter, r *http.Request) (*sso.Identity, bool) {
-	if s.SSO == nil || s.QurtRepo == nil {
+// ┌─ ESKI YO'L OLIB TASHLANDI (Plane ONDEXECOSY-482, 2026-11-21) ───────┐
+// Avval POS SERVERI umumiy klient siri (`X-Client-Id/Secret`) va
+// `X-Store-User` sarlavhasi bilan chaqirardi — ya'ni bitta sir egasi
+// istalgan do'kon nomidan ish ko'ra olardi va bu markaziy auth'dan
+// tashqarida edi. Endi FAQAT do'kon egasining OnDex ID sessiyasi
+// (Bearer, `verifyBearer`: imzo + bekor qilinganlik). Do'kon QURT ekani va
+// akkaunt o'chirilmagani har so'rovda bazadan qayta tekshiriladi:
+// kategoriya o'zgarsa ruxsat darhol yo'qoladi.
+// └───────────────────────────────────────────────────────────────────┘
+func (s *Server) merchantQurtStore(w http.ResponseWriter, r *http.Request) (*qurtStore, bool) {
+	if s.QurtRepo == nil || s.UserRepo == nil {
 		httpError(w, http.StatusServiceUnavailable, errors.New("qurt xizmati sozlanmagan"))
 		return nil, false
 	}
 	if rateLimited(w, qurtMerchantLimiter, clientIP(r)) {
 		return nil, false
 	}
-	id, err := s.SSO.Lookup(r.Context(),
-		r.Header.Get("X-Client-Id"), r.Header.Get("X-Client-Secret"), r.Header.Get("X-Store-User"))
-	if err != nil {
-		if ssoStatus(err) != http.StatusInternalServerError {
-			slog.Warn("qurt: merchant so'rovi rad etildi", "ip", clientIP(r), "err", err)
-		}
-		httpError(w, ssoStatus(err), err)
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		httpError(w, http.StatusUnauthorized, errors.New("Authorization: Bearer <token> talab qilinadi"))
 		return nil, false
 	}
-	if id.Role != string(users.RoleStore) || id.StoreCategory != string(users.StoreCategoryQurt) || id.EntityID == "" {
+	claims, err := s.verifyBearer(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, err)
+		return nil, false
+	}
+	if claims.Role != users.RoleStore {
 		httpError(w, http.StatusForbidden, errors.New("bu akkaunt qurt do'koni emas"))
 		return nil, false
 	}
-	return id, true
+	u, err := s.UserRepo.GetByID(r.Context(), claims.Subject)
+	if err != nil || u.DeletedAt != nil || u.Role != users.RoleStore ||
+		u.StoreCategory != users.StoreCategoryQurt || u.EntityID == "" {
+		httpError(w, http.StatusForbidden, errors.New("bu akkaunt qurt do'koni emas"))
+		return nil, false
+	}
+	s.recordDevice(r, claims.Subject)
+	return &qurtStore{UserID: u.ID, EntityID: u.EntityID}, true
 }
-
 func (s *Server) registerQurtRoutes(mux *http.ServeMux) {
 	const maxUploadSize = 5 << 20 // 5MB
 	allowedImageExt := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}

@@ -55,7 +55,6 @@ import (
 	"chustapp/internal/ratings"
 	"chustapp/internal/revoke"
 	"chustapp/internal/scenes"
-	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/support"
@@ -205,12 +204,6 @@ type Deps struct {
 	// `GET /wallet` 503 qaytaradi, checkout'da "wallet" to'lov usuli
 	// `orders.Service`da xuddi shunday yopiq bo'ladi.
 	WalletSvc *wallet.Service
-
-	// SSO — yagona kirish manbai (`internal/sso`): boshqa xizmatlar
-	// (OnDex Merchant Panel) foydalanuvchini OnDex orqali tekshiradi.
-	// `nil` bo'lsa `/sso/*` 503 qaytaradi va qolgan API o'zgarishsiz
-	// ishlaydi (`SSO_MERCHANT_SECRET` sozlanmagan holat).
-	SSO *sso.Service
 
 	// Identity — MARKAZIY sessiya va token xizmati (`internal/identity`, A2):
 	// Ed25519 tokenlar, JWKS, refresh rotatsiyasi. `nil` bo'lsa `/v2/auth/*`
@@ -532,7 +525,6 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerPromotionRoutes(mux)
 	s.registerPaymentRoutes(mux)
 	s.registerWalletRoutes(mux)
-	s.registerSSORoutes(mux)
 	s.registerAdminRoutes(mux)
 	s.registerAdminStoreRoutes(mux)
 	s.registerQurtRoutes(mux)

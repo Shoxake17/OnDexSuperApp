@@ -15,11 +15,6 @@ import (
 func TestQurtOrderFlow(t *testing.T) {
 	w := NewWorld(t, "Qurt buyurtmasi: mijoz -> do'kon -> logistika")
 
-	merchant := func(userID string) *Actor {
-		return &Actor{Name: "POS serveri", Headers: map[string]string{
-			"X-Client-Id": SSOClientID, "X-Client-Secret": SSOClientSecret, "X-Store-User": userID,
-		}}
-	}
 	newStore := func(name, phone string) (userID string) {
 		r := w.Do(t, w.Admin, "POST", "/admin/stores", map[string]any{
 			"name": name, "phone": phone, "category": "qurt",
@@ -31,8 +26,11 @@ func TestQurtOrderFlow(t *testing.T) {
 		}
 		return userID
 	}
-	posA := merchant(newStore("Urgut qurtlari", "+998905552001"))
-	posB := merchant(newStore("Chust qurtlari", "+998905552002"))
+	newStore("Urgut qurtlari", "+998905552001")
+	newStore("Chust qurtlari", "+998905552002")
+	// Do'kon egalari — markaziy sessiya (ONDEXECOSY-482).
+	posA := w.LoginAs(t, "Urgut qurtlari", "+998905552001")
+	posB := w.LoginAs(t, "Chust qurtlari", "+998905552002")
 
 	put := func(pos *Actor, sku string, price int, stock int) {
 		w.Do(t, pos, "PUT", "/merchant/qurt/products/"+sku, map[string]any{
@@ -222,7 +220,7 @@ func TestQurtOrderFlow(t *testing.T) {
 
 	w.Step(t, "do'kon faqat o'z buyurtmasini ko'radi — mijoz ma'lumotisiz", func(t *testing.T) {
 		w.Do(t, nil, "GET", "/merchant/qurt/orders", nil).Expect(t, 401)
-		w.Do(t, w.Customer, "GET", "/merchant/qurt/orders", nil).Expect(t, 401) // JWT bu yo'lda yaramaydi
+		w.Do(t, w.Customer, "GET", "/merchant/qurt/orders", nil).Expect(t, 403) // mijoz akkaunti — do'kon emas (markaziy sessiya, ONDEXECOSY-482)
 		r := w.Do(t, posA, "GET", "/merchant/qurt/orders?status=new", nil).Expect(t, 200)
 		var m struct {
 			Orders []map[string]any `json:"orders"`

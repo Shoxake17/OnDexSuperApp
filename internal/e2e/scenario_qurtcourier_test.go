@@ -28,9 +28,7 @@ func TestQurtCourierFlow(t *testing.T) {
 		if uid == "" {
 			t.Fatalf("do'kon yaratilmadi: %v", r)
 		}
-		return &Actor{Name: name, Headers: map[string]string{
-			"X-Client-Id": SSOClientID, "X-Client-Secret": SSOClientSecret, "X-Store-User": uid,
-		}}
+		return w.LoginAs(t, name, phone)
 	}
 	pos := newPOS("Kuryer sinovi qurtlari", "+998905553001")
 	posB := newPOS("Boshqa do'kon", "+998905553002")
@@ -86,7 +84,7 @@ func TestQurtCourierFlow(t *testing.T) {
 	w.Step(t, "do'kon o'z kuryerini qo'shadi (begona akkauntga tegmaydi)", func(t *testing.T) {
 		body := map[string]any{"phone": "+998905553101", "name": "Qurt Kuryer"}
 		w.Do(t, nil, "POST", "/merchant/qurt/couriers", body).Expect(t, 401)
-		w.Do(t, w.Customer, "POST", "/merchant/qurt/couriers", body).Expect(t, 401) // JWT bu yo'lda yaramaydi
+		w.Do(t, w.Customer, "POST", "/merchant/qurt/couriers", body).Expect(t, 403) // mijoz akkaunti — do'kon emas (markaziy sessiya, ONDEXECOSY-482)
 		w.Do(t, pos, "POST", "/merchant/qurt/couriers", map[string]any{"phone": "+998905553101", "name": "x"}).Expect(t, 400)
 		w.Do(t, pos, "POST", "/merchant/qurt/couriers", map[string]any{"phone": "123", "name": "Qurt Kuryer"}).Expect(t, 400)
 		// Restoran egasining raqami — boshqa rol: aylantirilmaydi.

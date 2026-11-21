@@ -199,7 +199,7 @@ func TestPanelWebBFFCSRFAndDenied(t *testing.T) {
 	if w := f.do("POST", "/r/api/v2/echo", "{}", "", map[string]string{"Origin": "", "Sec-Fetch-Site": "same-origin"}); w.Code != 200 {
 		t.Fatalf("same-origin: %d", w.Code)
 	}
-	for _, p := range []string{"/r/api/v2/auth/admin/otp/verify", "/r/api/v2/oauth/token", "/r/api/sso/identity", "/r/api/agent/v1/x"} {
+	for _, p := range []string{"/r/api/v2/auth/admin/otp/verify", "/r/api/v2/oauth/token", "/r/api/agent/v1/x"} {
 		if w := f.do("POST", p, "{}", "", nil); w.Code != 404 {
 			t.Fatalf("%s: %d", p, w.Code)
 		}

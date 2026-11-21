@@ -55,7 +55,6 @@ import (
 	"chustapp/internal/scenes"
 	"chustapp/internal/search"
 	"chustapp/internal/secretstore"
-	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/stats"
 	"chustapp/internal/storage"
@@ -1114,41 +1113,6 @@ func main() {
 	}
 	walletSvc := wallet.NewService(walletRepo, httpapi.NewID)
 
-	// Yagona kirish (SSO): OnDex Merchant Panel foydalanuvchini OnDex orqali
-	// tekshiradi (`internal/sso`). Sir bo'lmasa funksiya O'CHIQ (`nil`, `/sso/*`
-	// 503). Sozlama NOTO'G'RI bo'lsa (zaif sir, xavfsiz bo'lmagan manzil)
-	// ham o'chiq qoladi, lekin API ishga tushishda davom etadi: ixtiyoriy
-	// funksiya butun serverni yiqitmasligi kerak.
-	var ssoSvc *sso.Service
-	if secret := os.Getenv("SSO_MERCHANT_SECRET"); secret != "" {
-		name := strings.TrimSpace(os.Getenv("SSO_MERCHANT_NAME"))
-		if name == "" {
-			name = "OnDex Merchant Panel"
-		}
-		svc, err := sso.New([]sso.Client{{
-			ID:           "merchant",
-			Name:         name,
-			Secret:       secret,
-			RedirectURIs: sso.ParseRedirectURIs(os.Getenv("SSO_MERCHANT_REDIRECT_URIS")),
-		}}, userRepo)
-		if err != nil {
-			slog.Error("yagona kirish (SSO) YOQILMADI: sozlama noto'g'ri", "err", err)
-		} else {
-			// Restoran nomi Mongo katalogida: POS paneli do'kon hisobini
-			// ochganda akkaunt ismi emas, restoran nomi chiqsin.
-			svc.WithEntityNamer(func(ctx context.Context, _ users.Role, entityID string) string {
-				if rest, err := catalogRepo.GetRestaurant(ctx, entityID); err == nil && rest != nil {
-					return rest.Name
-				}
-				return ""
-			})
-			ssoSvc = svc
-			slog.Info("rejim: yagona kirish (SSO) yoqilgan", "client", "merchant")
-		}
-	} else {
-		slog.Warn("yagona kirish (SSO) O'CHIQ (SSO_MERCHANT_SECRET yo'q) — /sso/* 503 qaytaradi")
-	}
-
 	// Markaziy sessiya va token xizmati (A2): Ed25519 + JWKS + refresh rotatsiyasi.
 	// CC-0.2: admin faqat ruxsat etilgan tarmoqlardan (ixtiyoriy). Noto'g'ri qiymat —
 	// server ishga TUSHMAYDI: cheklov jimgina "hammaga ochiq" bo'lib qolmasin.
@@ -1618,7 +1582,6 @@ func main() {
 		OctoClient:         octoClient,
 		MC:                 mcRegistry,
 		WalletSvc:          walletSvc,
-		SSO:                ssoSvc,
 		Identity:           identitySvc,
 		AdminAllowedNets:   adminNets,
 		Authz:              authzSvc,

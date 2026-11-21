@@ -14,11 +14,6 @@ import (
 func TestQurtFlow(t *testing.T) {
 	w := NewWorld(t, "Qurt: POS -> mijoz ilovasi")
 
-	merchant := func(secret, userID string) *Actor {
-		return &Actor{Name: "POS serveri", Headers: map[string]string{
-			"X-Client-Id": SSOClientID, "X-Client-Secret": secret, "X-Store-User": userID,
-		}}
-	}
 	newStore := func(t *testing.T, name, phone, category string) (userID, entity string) {
 		t.Helper()
 		r := w.Do(t, w.Admin, "POST", "/admin/stores", map[string]any{
@@ -36,7 +31,10 @@ func TestQurtFlow(t *testing.T) {
 
 	qurtUser, qurtStore := newStore(t, "Urgut qurtlari", "+998905551001", "qurt")
 	otherUser, _ := newStore(t, "Oddiy do'kon", "+998905551002", "store")
-	pos := merchant(SSOClientSecret, qurtUser)
+	// Do'kon egasi Merchant panelga OnDex ID (markaziy sessiya) bilan kiradi.
+	pos := w.LoginAs(t, "Urgut qurtlari", "+998905551001")
+	_ = otherUser
+	other := w.LoginAs(t, "Oddiy do'kon", "+998905551002")
 
 	body := func(extra map[string]any) map[string]any {
 		m := map[string]any{
@@ -61,15 +59,16 @@ func TestQurtFlow(t *testing.T) {
 		}
 	})
 
-	w.Step(t, "POS serveri faqat klient siri va qurt do'koni bilan kiradi", func(t *testing.T) {
+	w.Step(t, "faqat qurt do'koni egasining markaziy sessiyasi kiradi", func(t *testing.T) {
 		put := func(a *Actor) *Resp { return w.Do(t, a, "PUT", "/merchant/qurt/products/sku-1", body(nil)) }
-		put(nil).Expect(t, 401)                                                         // sarlavhasiz
-		put(merchant("noto'g'ri-sir-noto'g'ri-sir-noto'g'ri", qurtUser)).Expect(t, 401) // noto'g'ri sir
-		put(merchant(SSOClientSecret, "yoq-foydalanuvchi")).Expect(t, 400)              // noma'lum foydalanuvchi
-		put(merchant(SSOClientSecret, otherUser)).Expect(t, 403)                        // qurt EMAS
-		put(merchant(SSOClientSecret, w.Customer.UserID)).Expect(t, 403)                // oddiy mijoz
-		// Mijoz tokeni (JWT) bu yo'lda hech narsa bermaydi.
-		w.Do(t, w.Customer, "PUT", "/merchant/qurt/products/sku-1", body(nil)).Expect(t, 401)
+		put(nil).Expect(t, 401)                                         // sarlavhasiz
+		put(&Actor{Name: "soxta token", Token: "a.b.c"}).Expect(t, 401) // imzosiz/soxta token
+		// Eski server siri sarlavhalari endi HECH NARSA bermaydi (ONDEXECOSY-482).
+		put(&Actor{Name: "eski POS siri", Headers: map[string]string{
+			"X-Client-Id": "merchant", "X-Client-Secret": "istalgan", "X-Store-User": qurtUser,
+		}}).Expect(t, 401)
+		put(other).Expect(t, 403)      // do'kon, lekin qurt EMAS
+		put(w.Customer).Expect(t, 403) // mijoz akkaunti
 	})
 
 	var imageURL string

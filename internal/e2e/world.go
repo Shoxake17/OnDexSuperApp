@@ -39,7 +39,6 @@ import (
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/revoke"
 	"chustapp/internal/secretstore"
-	"chustapp/internal/sso"
 	"chustapp/internal/staff"
 	"chustapp/internal/storage"
 	"chustapp/internal/support"
@@ -66,9 +65,6 @@ const (
 	encKey = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 
 	// Yagona kirish (SSO) test klienti.
-	SSOClientID     = "merchant"
-	SSOClientSecret = "e2e-sso-secret-e2e-sso-secret-e2e-sso-secret-0123456789"
-	SSORedirectURI  = "https://merchant.ondex.uz/auth/callback"
 
 	// OnDex OIDC (A4c) test klienti — Merchant web BFF.
 	OIDCClientSecret = "e2e-oidc-bff-secret-e2e-oidc-bff-secret-0123456789"
@@ -386,14 +382,6 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	w.Owner = mk("restoran-A", "e2e-owner-a", users.RoleRestaurant, RestA, "+998900000004", users.AddressDetails{})
 	w.OwnerB = mk("restoran-B", "e2e-owner-b", users.RoleRestaurant, RestB, "+998900000005", users.AddressDetails{})
 
-	ssoSvc, ssoErr := sso.New([]sso.Client{{
-		ID: SSOClientID, Name: "OnDex Merchant Panel", Secret: SSOClientSecret,
-		RedirectURIs: []string{SSORedirectURI},
-	}}, w.Users)
-	if ssoErr != nil {
-		t.Fatalf("SSO sozlamasi: %v", ssoErr)
-	}
-
 	idKey, err := identity.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
@@ -444,7 +432,6 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 
 	qurtProducts := storage.NewMemoryQurtRepo()
 	api := httpapi.New(httpapi.Deps{
-		SSO:          ssoSvc,
 		Identity:     w.Identity,
 		Authz:        w.Authz,
 		MerchantAuth: w.MerchantAuth,

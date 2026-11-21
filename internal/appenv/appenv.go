@@ -266,14 +266,11 @@ var Registry = []Var{
 	{Name: "ONDEXMAP_ADMIN_URL", Effect: "admin web OnDexMap proksisi https://maps.ondex.uz/admin ga ulanadi"},
 
 	// ---------- Yagona kirish (SSO, `internal/sso`) ----------
-	{Name: "SSO_MERCHANT_SECRET", Effect: "OnDex Merchant Panel OnDex orqali kira olmaydi (/sso/* → 503)", DeployRequired: true},
-	{Name: "SSO_MERCHANT_REDIRECT_URIS", Effect: "yagona kirish YOQILMAYDI (ruxsat etilgan qaytish manzili yo'q)", DeployRequired: true},
 	{Name: "QURT_POS_WEBHOOK_URL", Effect: "qurt buyurtmasi do'kon panelida jonli signalsiz qoladi (panel davriy so'raydi)"},
 	{Name: "QURT_POS_WEBHOOK_SECRET", Effect: "qurt buyurtmasi do'kon panelida jonli signalsiz qoladi (panel davriy so'raydi)"},
 	{Name: "QURT_DELIVERY_DAYS", Effect: "qurt reys kunlari standart (seshanba va juma) bo'ladi"},
 	{Name: "QURT_ORDER_CUTOFF_HOUR", Effect: "qurt buyurtma qabul qilish muddati standart (reysdan bir kun oldin 18:00) bo'ladi"},
 	{Name: "QURT_NEW_ORDER_TTL_HOURS", Effect: "do'kon qabul qilmagan qurt buyurtmasi standart 24 soatdan keyin avtomatik bekor qilinadi (1..168)"},
-	{Name: "SSO_MERCHANT_NAME", Effect: "tasdiqlash sahifasida standart nom (OnDex Merchant Panel) ko'rsatiladi", DeployRequired: true},
 
 	// ---------- 3D model (Tripo) ----------
 	{Name: "TRIPO_API_KEY", Effect: "rasmdan 3D model yaratish o'chiq (endpointlar 503)", DeployRequired: true},

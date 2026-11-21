@@ -108,8 +108,8 @@ func (s *Server) registerAdminStoreRoutes(mux *http.ServeMux) {
 	// POST /admin/stores/{id} — do'kon nomi va/yoki kategoriyasini o'zgartirish.
 	//
 	// Kategoriya POS panelida qaysi sahifa/API ochiq ekanligini belgilaydi.
-	// O'zgarish POS (ShoxPos) ga u tokenini yangilaganda yetib boradi
-	// (`POST /sso/identity`), ya'ni qayta kirish shart emas.
+	// O'zgarish keyingi so'rovdayoq kuchga kiradi: qurt/do'kon endpointlari
+	// kategoriyani har safar bazadan o'qiydi (`merchantQurtStore`).
 	mux.HandleFunc("POST /admin/stores/{id}", s.auth([]users.Role{users.RoleAdmin},
 		func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue("id")

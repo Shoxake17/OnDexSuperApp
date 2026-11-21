@@ -86,7 +86,7 @@ var merchantWebBFF = webBFF{
 		"/v2/auth/passkey/options":     true,
 		"/v2/auth/passkey/login":       true,
 	},
-	denied: []string{"/v2/auth/admin/", "/v2/oauth/", "/sso/", "/agent/"},
+	denied: []string{"/v2/auth/admin/", "/v2/oauth/", "/agent/"},
 }
 
 var adminWebBFF = webBFF{
@@ -111,7 +111,7 @@ var adminWebBFF = webBFF{
 		"/v2/auth/passkey/login":    true,
 	},
 	// Admin web — faqat admin. Merchant kirishi va boshqa tashqi yuzalar yopiq.
-	denied: []string{"/v2/auth/merchant/", "/v2/oauth/", "/sso/", "/agent/"},
+	denied: []string{"/v2/auth/merchant/", "/v2/oauth/", "/agent/"},
 }
 
 // panelWebAccessCache — cookie bo'yicha chiqarilgan access token (har
