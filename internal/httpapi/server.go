@@ -558,5 +558,9 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 
 	// RS-7: /r/api/* — merchant web panel BFF (cookie -> token), qolganlari
 	// o'zgarishsiz (`panelweb_bff.go`).
-	return withBodyLimit(withCORS(s.withPanelWebBFF(mux), allowedOrigins, s.DevMode))
+	//
+	// Metrika (ONDEXECOSY-481): `withMetrics` ENG TASHQIDA — preflight va
+	// rad etilgan so'rovlar ham hisoblanadi; `captureRoute` mux'ning o'zini
+	// o'raydi va u tanlagan pattern'ni yorliq qiladi (`metrics.go`).
+	return withMetrics(withBodyLimit(withCORS(s.withPanelWebBFF(captureRoute(mux)), allowedOrigins, s.DevMode)))
 }

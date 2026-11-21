@@ -65,6 +65,19 @@ func TestMain(m *testing.M) {
 
 	// Ratchet FAQAT to'liq yugurishda: `-run` bilan bitta ssenariy
 	// ishlatilganda qamrov tabiiy ravishda to'liq emas.
+	// Har urilgan endpoint metrikada ko'rinishi SHART (ONDEXECOSY-481).
+	if code == 0 {
+		if mp := metricsCoverageProblems(Routes, Rec.Outcomes()); len(mp) > 0 {
+			fmt.Fprintln(os.Stderr, "\nMETRIKA QAMROVI buzildi:")
+			for _, p := range mp {
+				fmt.Fprintln(os.Stderr, "  -", p)
+			}
+			code = 1
+		} else {
+			fmt.Println("Metrika qamrovi: har chaqirilgan endpoint ondex_http_requests_total da bor")
+		}
+	}
+
 	if code == 0 && fullRun() && len(problems) > 0 {
 		fmt.Fprintln(os.Stderr, "\nE2E QAMROV RATCHETI buzildi:")
 		for _, p := range problems {

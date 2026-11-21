@@ -1773,6 +1773,7 @@ func main() {
 	}
 
 	startPprof(pgPool)
+	startMetrics(pgPool)
 
 	addr := listenAddr
 	// ANIQ timeout'lar — `http.ListenAndServe` nol-qiymatli serverdan
