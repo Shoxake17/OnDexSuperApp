@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# OnDex — SIRLAR VA SOZLAMALAR zaxirasi (.env, secrets/, docker-compose.yml,
+# OnDex Ã¢â‚¬â€ SIRLAR VA SOZLAMALAR zaxirasi (.env, secrets/, docker-compose.yml,
 # crontab), SHIFRLANGAN holda R2 `secrets/` ga.
 #
-# ┌─ NEGA KERAK ────────────────────────────────────────────────────────┐
+# Ã¢â€Å’Ã¢â€â‚¬ NEGA KERAK Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â
 # Bazalar zaxirada, lekin `.env` (JWT siri, Octo/Multicard/R2 kalitlari)
 # va `secrets/fcm.json` YO'Q edi. Server butunlay yo'qolsa bazani
 # tiklash mumkin, lekin JWT siri ketadi (hamma sessiya yaroqsiz bo'ladi),
 # to'lov provayderlari kalitlarini qaytadan olish kerak bo'ladi.
-# └─────────────────────────────────────────────────────────────────────┘
+# Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ
 #
-# ┌─ SHIFRLASH: NEGA ASIMMETRIK ────────────────────────────────────────┐
+# Ã¢â€Å’Ã¢â€â‚¬ SHIFRLASH: NEGA ASIMMETRIK Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Â
 # Parol (simmetrik kalit) serverda tursa, serverni qo'lga kiritgan odam
 # zaxirani ham ochadi - shifrlashning foydasi yo'q. Shuning uchun
 # serverda FAQAT OCHIQ SERTIFIKAT (`~/ondex/backup-cert.pem`) turadi:
 # u bilan shifrlash mumkin, ochish mumkin EMAS. Maxfiy kalit (`.key.pem`)
 # FAQAT sizda: parol menejerida / flesh-diskda, serverda va repoda YO'Q.
-# └─────────────────────────────────────────────────────────────────────┘
+# Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€Ëœ
 #
 # KALIT JUFTINI YARATISH (o'z kompyuteringizda, bir marta):
 #   openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
@@ -80,9 +80,32 @@ else
     exit 1
 fi
 
+# Imzolash kalitlari (ONDEXECOSY-485): KMS'ga o'tish tugaguncha — orqaga qaytish
+# yo'li ochiq tursin. KMS'dan keyin fayllar yo'q va bu qadam jim o'tadi.
+for k in auth_ed25519.pem auth_platform_ed25519.pem; do
+    docker cp "ondex-api-1:/run/secrets/$k" "$WORK/stage/ondex/secrets/$k" 2>/dev/null || true
+done
+
+# KMS (OpenBao): seal kaliti, tiklash kalitlari, AppRole, o'ralgan DEK va Raft
+# snapshot. USIZ OpenBao ma'lumoti yo'qolsa: barcha sessiya kalitlari va
+# SECRETS_ENC_KEY (bazadagi shifrlangan sirlar) qaytarib bo'lmas yo'qoladi.
+KMS_ARGS=()
+if sudo -n test -d /root/ondex-kms 2>/dev/null; then
+    sudo -n tar -C /root -cf - ondex-kms | tar -C "$WORK/stage" -xf -
+    if [ -x "$ONDEX_DIR/openbao/snapshot.sh" ]; then
+        if sudo -n "$ONDEX_DIR/openbao/snapshot.sh" > "$WORK/stage/ondex-kms/raft.snap" 2>"$WORK/snap.err"; then
+            :
+        else
+            log "XATO: OpenBao snapshot olinmadi: $(head -c 300 "$WORK/snap.err")"
+            exit 1
+        fi
+    fi
+    KMS_ARGS=(-C "$WORK/stage" ondex-kms)
+fi
+
 # Ochiq tar diskka YOZILMAYDI: to'g'ridan-to'g'ri shifrlovchiga uzatiladi.
 tar -czf - -C "$HOME" ondex/.env ondex/docker-compose.yml \
-        -C "$WORK/stage" ondex/secrets -C "$WORK" crontab.txt \
+        -C "$WORK/stage" ondex/secrets "${KMS_ARGS[@]}" -C "$WORK" crontab.txt \
     | openssl cms -encrypt -binary -aes256 -outform DER -out "$FILE" "$CERT"
 
 size=$(stat -c%s "$FILE")
