@@ -35,11 +35,15 @@ func TestShopPOSFlow(t *testing.T) {
 			t.Fatalf("me: %v", m)
 		}
 		secs, _ := m["sections"].([]any)
-		if len(secs) != 3 {
-			t.Fatalf("oddiy do'konda 3 bo'lim (apteka yo'q): %v", secs)
+		if len(secs) != 4 {
+			t.Fatalf("oddiy do'konda 4 bo'lim (apteka yo'q): %v", secs)
+		}
+		qm := w.Do(t, qurtS, "GET", "/merchant/shop/me", nil).Expect(t, 200).Map(t)
+		if qs, _ := qm["sections"].([]any); len(qs) != 3 {
+			t.Fatalf("qurtda kassa va dorixona yo'q: %v", qm)
 		}
 		pm := w.Do(t, pharm, "GET", "/merchant/shop/me", nil).Expect(t, 200).Map(t)
-		if ps, _ := pm["sections"].([]any); len(ps) != 4 {
+		if ps, _ := pm["sections"].([]any); len(ps) != 5 {
 			t.Fatalf("dorixonada 4 bo'lim: %v", pm)
 		}
 	})
@@ -187,6 +191,11 @@ func TestShopPOSFlow(t *testing.T) {
 			t.Fatalf("mijoz katalogi (ulgurji narx chiqmasligi kerak): %s", m.Body)
 		}
 		w.Do(t, qurtS, "GET", "/merchant/shop/pharm", nil).Expect(t, 403) // qurt — dorixona emas
+		// ShoxPos QURT_ALLOW: kassa (sell-product, scan-product) yo'q.
+		w.Do(t, qurtS, "POST", "/merchant/shop/sales", map[string]any{"items": []map[string]any{
+			{"barcode": "q-001", "name": "Sho'r qurt", "quantity": 1, "price_tiyin": 1500000}}}).Expect(t, 403)
+		w.Do(t, qurtS, "GET", "/merchant/shop/products/scan?barcode=q-001", nil).Expect(t, 403)
+		w.Do(t, qurtS, "GET", "/merchant/shop/sales", nil).Expect(t, 200)
 		w.Do(t, qurtS, "DELETE", "/merchant/shop/products/q-001", nil).Expect(t, 200)
 		m = w.Do(t, nil, "GET", "/qurt/products", nil).Expect(t, 200)
 		if strings.Contains(string(m.Body), "Sho'r qurt") {

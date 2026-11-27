@@ -75,14 +75,13 @@ func TestQurtWeightRequiredAndKept(t *testing.T) {
 	if len(changed) != 2 || changed[0] != "qurt-1/q1/false" {
 		t.Fatalf("qurt katalogi xabari: %v", changed)
 	}
-	// Sotuv ham katalogni yangilaydi (qoldiq/available).
-	if _, err := s.Sell(ctx, qurt, []SellLine{{Barcode: "q1", Name: "Qurt", Quantity: 1, PriceTiyin: 1600000}}, "cash"); err != nil {
-		t.Fatal(err)
+	// Qurt kassadan sotmaydi (ShoxPos QURT_ALLOW'da /sell-product, /scan-product yo'q).
+	if _, err := s.Sell(ctx, qurt, []SellLine{{Barcode: "q1", Name: "Qurt", Quantity: 1, PriceTiyin: 1600000}}, "cash"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("qurt kassasi yopiq bo'lishi kerak: %v", err)
 	}
-	if len(changed) != 3 || changed[2] != "qurt-1/q1/false" {
-		t.Fatalf("sotuvdan keyin qurt katalogi yangilanmadi: %v", changed)
+	if _, err := s.Scan(ctx, qurt, "q1", ""); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("qurt skaneri yopiq bo'lishi kerak: %v", err)
 	}
-	changed = changed[:2]
 	// Oddiy do'konda qurt maydonlari umuman yozilmaydi.
 	p, _ = s.Upsert(ctx, storeA, UpsertInput{Barcode: "s1", Name: "X", WeightGrams: &w})
 	if p.WeightGrams != 0 || len(changed) != 2 {

@@ -134,7 +134,7 @@ func (s *Server) registerShopRoutes(mux *http.ServeMux) {
 	// GET /merchant/shop/me — do'kon turi va ochiq bo'limlar (sidebar shu bo'yicha).
 	mux.HandleFunc("GET /merchant/shop/me", s.shopRoute(func(w http.ResponseWriter, r *http.Request, st shop.Store) {
 		sections := []string{}
-		for _, sec := range []shop.Section{shop.SecProducts, shop.SecSales, shop.SecDebts, shop.SecPharmacy} {
+		for _, sec := range []shop.Section{shop.SecProducts, shop.SecCheckout, shop.SecSales, shop.SecDebts, shop.SecPharmacy} {
 			if st.Allowed(sec) {
 				sections = append(sections, string(sec))
 			}

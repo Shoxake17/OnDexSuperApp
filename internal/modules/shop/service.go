@@ -75,14 +75,20 @@ const (
 	SecSales    Section = "sales"
 	SecDebts    Section = "debts"
 	SecPharmacy Section = "pharmacy"
+	// SecCheckout — kassa (sotish, skaner). ShoxPos'da qurt uchun /sell-product va
+	// /scan-product QURT_ALLOW'da yo'q: qurt kassadan sotmaydi (buyurtmalar orqali).
+	SecCheckout Section = "checkout"
 )
 
-// Allowed — ShoxPos QURT_ALLOW bilan 1:1: qurt — mahsulot, sotuv, qarz;
-// apteka bo'limi faqat apteka do'koniga.
+// Allowed — ShoxPos QURT_ALLOW bilan 1:1: qurt — mahsulot, sotuvlar ro'yxati,
+// qarz (kassa yo'q); apteka bo'limi faqat apteka do'koniga (ShoxPos backendi
+// buni tekshirmasdi — menyuda ko'rinmasa ham API ochiq edi).
 func (st Store) Allowed(sec Section) bool {
 	switch sec {
 	case SecPharmacy:
 		return st.Category == CategoryPharmacy
+	case SecCheckout:
+		return st.Category != CategoryQurt
 	default:
 		return true
 	}
@@ -171,7 +177,7 @@ type ScanResult struct {
 // Scan — ShoxPos scan-product 1:1: avval do'kon mahsuloti, keyin global baza;
 // shtrix-kod yoki nom bo'yicha.
 func (s *Service) Scan(ctx context.Context, st Store, barcode, name string) (*ScanResult, error) {
-	if err := s.need(st, SecProducts); err != nil {
+	if err := s.need(st, SecCheckout); err != nil {
 		return nil, err
 	}
 	barcode, name = strings.TrimSpace(barcode), cut(name, 200)
@@ -453,7 +459,7 @@ type SellLine struct {
 //     va jami = miqdor * oxirgi narx;
 //   - har qator "Sotilganlar" ro'yxatiga yoziladi.
 func (s *Service) Sell(ctx context.Context, st Store, lines []SellLine, payment string) ([]Sale, error) {
-	if err := s.need(st, SecSales); err != nil {
+	if err := s.need(st, SecCheckout); err != nil {
 		return nil, err
 	}
 	if len(lines) == 0 || len(lines) > 500 {
@@ -479,20 +485,6 @@ func (s *Service) Sell(ctx context.Context, st Store, lines []SellLine, payment 
 	})
 	if err != nil {
 		return nil, err
-	}
-	// Qurt do'konida qoldiq mijoz katalogida ham yangilanadi (ShoxPos'da model
-	// hook'i har o'zgarishda qurtSync'ni chaqirardi — sotuv ham shunga kiradi).
-	if st.Category == CategoryQurt && s.OnQurtChange != nil {
-		done := map[string]bool{}
-		for _, sl := range saved {
-			if done[sl.Barcode] {
-				continue
-			}
-			done[sl.Barcode] = true
-			if p, err := s.repo.GetProduct(ctx, st.ID, sl.Barcode); err == nil {
-				s.qurtChanged(ctx, st, p, false)
-			}
-		}
 	}
 	return saved, nil
 }
