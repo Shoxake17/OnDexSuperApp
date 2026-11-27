@@ -9,7 +9,7 @@ import 'panel_prefs.dart';
 import 'printing/receipt_printer.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
-import 'screens/store_home_screen.dart';
+import 'shop/store_shell.dart';
 import 'theme.dart';
 
 void main() async {
@@ -197,7 +197,7 @@ class _RootState extends State<_Root> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (_isStore) {
-      return StoreHomeScreen(name: _storeName, phone: _storePhone);
+      return StoreShell(name: _storeName, phone: _storePhone);
     }
     return _loggedIn ? const RestaurantShell() : const RestaurantLoginScreen();
   }

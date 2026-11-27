@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api.dart';
 import '../widgets/password_field.dart';
 import 'shell.dart';
-import 'store_home_screen.dart';
+import '../shop/store_shell.dart';
 
 /// OnDex Merchant ilovasining klient identifikatori (server `DefaultClients`).
 /// Web'da (merchant.ondex.uz/r/) — BFF klienti: token brauzerga tushmaydi,
@@ -221,7 +221,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
     if (user['role'] == 'store') {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => StoreHomeScreen(
+        builder: (_) => StoreShell(
           name: (user['name'] as String?) ?? '',
           phone: (user['phone'] as String?) ?? '',
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'service_switcher.dart';
 
 class _NavEntry {
   final IconData icon;
@@ -74,6 +75,8 @@ class Sidebar extends StatelessWidget {
         children: [
           const _BrandHeader(),
           const Divider(height: 1, color: Color(0x22FFFFFF)),
+          // Xizmat bloklari: Restoran | Do'kon (admin paneldagi kabi).
+          const ServiceSwitcher(active: MerchantService.restaurant),
           const SizedBox(height: 12),
           Expanded(
             child: ListView.builder(
