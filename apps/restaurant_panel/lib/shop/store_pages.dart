@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'pages/add_product_page.dart';
+import 'pages/debts_page.dart';
+import 'pages/incoming_page.dart';
 import 'pages/products_page.dart';
+import 'pages/reports_page.dart';
+import 'pages/sales_page.dart';
 import 'pages/scanner_page.dart';
 
 /// Do'kon panelining sahifalari (ShoxPos marshrutlari bilan 1:1).
@@ -59,6 +63,10 @@ Widget buildStorePage(StorePage p, StoreContext ctx) {
     StorePage.products => ProductsPage(ctx: ctx),
     StorePage.addProduct => AddProductPage(ctx: ctx),
     StorePage.scanner => ScannerPage(ctx: ctx),
+    StorePage.sales => SalesPage(ctx: ctx),
+    StorePage.debts || StorePage.pharmDebts => DebtsPage(ctx: ctx),
+    StorePage.reports => ReportsPage(ctx: ctx),
+    StorePage.incoming => IncomingPage(ctx: ctx),
     _ => PortingPlaceholder(page: p),
   };
 }

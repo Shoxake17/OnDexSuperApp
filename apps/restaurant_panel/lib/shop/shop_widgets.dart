@@ -321,3 +321,55 @@ Future<String?> pickCategory(BuildContext context, List<String> cats, String sel
     ),
   );
 }
+
+/// Joyida tahrirlash maydoni: Enter yoki fokus chiqqanda bir marta saqlaydi.
+class CommitField extends StatefulWidget {
+  const CommitField({super.key, required this.initial, required this.onCommit, this.width = 110});
+  final String initial;
+  final ValueChanged<String> onCommit;
+  final double width;
+
+  @override
+  State<CommitField> createState() => _CommitFieldState();
+}
+
+class _CommitFieldState extends State<CommitField> {
+  late final _c = TextEditingController(text: widget.initial);
+  final _f = FocusNode();
+  late String _last = widget.initial;
+
+  @override
+  void initState() {
+    super.initState();
+    _f.addListener(() {
+      if (!_f.hasFocus) _commit();
+    });
+  }
+
+  void _commit() {
+    final v = _c.text.trim();
+    if (v.isEmpty || v == _last) return;
+    _last = v;
+    widget.onCommit(v);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _f.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: widget.width,
+        child: TextField(
+          controller: _c,
+          focusNode: _f,
+          inputFormatters: kNumberInput,
+          textAlign: TextAlign.center,
+          onSubmitted: (_) => _commit(),
+          decoration: shopInput('0').copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+        ),
+      );
+}
