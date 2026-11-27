@@ -41,6 +41,7 @@ import (
 	"chustapp/internal/model3d"
 	"chustapp/internal/modules/flow"
 	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/shop"
 	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/notify"
 	"chustapp/internal/ondexmap"
@@ -164,6 +165,11 @@ type Deps struct {
 
 	// TableBillSvc — stolda hisobni bo'lish (RS-5, `internal/modules/tablebill`).
 	TableBillSvc *tablebill.Service
+	// ShopSvc — OnDex POS: do'kon/qurt/dorixona (POS-1, `internal/modules/shop`).
+	// nil — `/merchant/shop/*` 503.
+	ShopSvc *shop.Service
+	// ProductLookup — shtrix-kod bo'yicha tashqi nom (nil = OpenFoodFacts; testda soxta).
+	ProductLookup func(ctx context.Context, barcode string) (string, error)
 	// TableOrders — joylar holati (band/bo'sh) uchun stol buyurtmalari.
 	// `nil` bo'lsa holatlar buyurtmasiz hisoblanadi (hamma joy "bo'sh").
 	TableOrders tables.OrdersSource
@@ -517,6 +523,7 @@ func (s *Server) Routes(allowedOrigins []string) http.Handler {
 	s.registerFlowRoutes(mux)
 	s.registerPickupRoutes(mux)
 	s.registerTableBillRoutes(mux)
+	s.registerShopRoutes(mux)
 	s.registerAdminLiveRoutes(mux)
 	s.registerBookRoutes(mux)
 	s.registerWaiterRoutes(mux)

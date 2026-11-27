@@ -36,6 +36,7 @@ import (
 	"chustapp/internal/model3d"
 	"chustapp/internal/modules/flow"
 	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/shop"
 	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/notify"
 	"chustapp/internal/ondexmap"
@@ -1722,6 +1723,55 @@ func main() {
 				cancel()
 			}
 		})
+	}
+
+	// ── OnDex POS: do'kon/qurt/dorixona (POS-1, modul: internal/modules/shop) ──
+	// ShoxPos (Node+Mongo) o'rnida. Qurt mahsulotlari mijoz katalogiga
+	// jarayon ichida o'tadi (eski HTTP qurtSync va umumiy klient siri yo'q).
+	{
+		var shopRepo shop.Repo
+		if pgPool != nil {
+			shopRepo = shop.NewPGRepo(pgPool)
+		} else {
+			shopRepo = shop.NewMemRepo()
+		}
+		tz, err := time.LoadLocation("Asia/Tashkent")
+		if err != nil {
+			tz = time.FixedZone("UZT", 5*3600)
+		}
+		shopSvc := shop.NewService(shopRepo, httpapi.NewID, tz)
+		qs := &httpapi.ShopQurtSync{Repo: qurtRepo, Shop: shopSvc, Stores: api.ShopQurtStoreIDs}
+		shopSvc.OnQurtChange = qs.Push
+		api.ShopSvc = shopSvc
+		safego.Go("shop.qurtsync", func() {
+			time.Sleep(5 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			qs.ResyncAll(ctx)
+			cancel()
+			t := time.NewTicker(2 * time.Minute)
+			defer t.Stop()
+			for range t.C {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				qs.Retry(ctx)
+				cancel()
+			}
+		})
+		// "Sotilganlar" qatorlari 30 kundan keyin o'chadi (ShoxPos TTL bilan 1:1).
+		if pg, ok := shopRepo.(*shop.PGRepo); ok {
+			safego.Go("shop.purge", func() {
+				t := time.NewTicker(6 * time.Hour)
+				defer t.Stop()
+				for ; ; <-t.C {
+					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					if n, err := pg.PurgeSaleLines(ctx, time.Now().Add(-shop.SaleLineRetention)); err != nil {
+						slog.Warn("shop purge", "err", err)
+					} else if n > 0 {
+						slog.Info("shop: eski sotuv qatorlari o'chirildi", "n", n)
+					}
+					cancel()
+				}
+			})
+		}
 	}
 
 	startPprof(pgPool)

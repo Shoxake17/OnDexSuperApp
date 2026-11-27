@@ -29,6 +29,7 @@ import (
 	"chustapp/internal/images"
 	"chustapp/internal/modules/flow"
 	"chustapp/internal/modules/reservation"
+	"chustapp/internal/modules/shop"
 	"chustapp/internal/modules/tablebill"
 	"chustapp/internal/notify"
 	"chustapp/internal/orders"
@@ -481,6 +482,19 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	}
 	api.TableBillSvc = tbSvc
 	paySvc.SetBillSink(tbSvc)
+	// OnDex POS (POS-1): xotira ombori, global bazada bitta mahsulot; qurt
+	// o'zgarishlari xuddi prod'dagidek jarayon ichida mijoz katalogiga o'tadi.
+	shopSvc := shop.NewService(shop.NewMemRepo(shop.BaseProduct{Barcode: "4600000000017", Name: "Global choy", Category: "Choy", PriceTiyin: 1200000}),
+		httpapi.NewID, time.UTC).WithClock(w.now)
+	shopSync := &httpapi.ShopQurtSync{Repo: qurtProducts, Shop: shopSvc, Stores: api.ShopQurtStoreIDs}
+	shopSvc.OnQurtChange = shopSync.Push
+	api.ShopSvc = shopSvc
+	api.ProductLookup = func(_ context.Context, bc string) (string, error) {
+		if bc == "5449000000996" {
+			return "Coca-Cola 0.33L", nil
+		}
+		return "", nil
+	}
 	// OnDexFlow (o'z OTA yangilanishi): xotira ombori, fayllar vaqtinchalik papkada.
 	flowSvc, err := flow.New(flow.Deps{Store: flow.NewMemStore(), Blobs: httpapi.FlowBlobs(images.NewLocalStore(t.TempDir())), NewID: httpapi.NewID})
 	if err != nil {
