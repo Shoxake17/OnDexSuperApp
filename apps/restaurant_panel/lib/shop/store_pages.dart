@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'pages/add_product_page.dart';
 import 'pages/products_page.dart';
+import 'pages/scanner_page.dart';
 
 /// Do'kon panelining sahifalari (ShoxPos marshrutlari bilan 1:1).
 enum StorePage {
@@ -57,6 +58,7 @@ Widget buildStorePage(StorePage p, StoreContext ctx) {
   return switch (p) {
     StorePage.products => ProductsPage(ctx: ctx),
     StorePage.addProduct => AddProductPage(ctx: ctx),
+    StorePage.scanner => ScannerPage(ctx: ctx),
     _ => PortingPlaceholder(page: p),
   };
 }
