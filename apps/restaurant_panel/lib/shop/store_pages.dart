@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'pages/add_product_page.dart';
+import 'pages/products_page.dart';
 
 /// Do'kon panelining sahifalari (ShoxPos marshrutlari bilan 1:1).
 enum StorePage {
   // Oddiy do'kon / qurt
   dashboard, // /menu
-  products, // /products (+ /add-product)
+  products, // /products
+  addProduct, // /add-product (?edit=<shtrix-kod> — qurt tahriri)
   orders, // /orders (qurt)
   logistics, // /logistics (qurt)
   scanner, // /scanner
@@ -29,15 +32,19 @@ enum StorePage {
 
 /// Sahifalarga beriladigan umumiy holat.
 class StoreContext {
-  const StoreContext({required this.category, required this.name, required this.phone, required this.go});
+  const StoreContext(
+      {required this.category, required this.name, required this.phone, required this.go, this.arg});
 
   /// `store` | `qurt` | `pharmacy`.
   final String category;
   final String name;
   final String phone;
 
-  /// Boshqa sahifaga o'tish (masalan bosh sahifadagi tezkor tugmalar).
-  final ValueChanged<StorePage> go;
+  /// Boshqa sahifaga o'tish; [arg] — sahifa parametri (masalan tahrir uchun shtrix-kod).
+  final void Function(StorePage page, {String? arg}) go;
+
+  /// Joriy sahifa parametri (go(..., arg:) dan).
+  final String? arg;
 
   bool get isQurt => category == 'qurt';
   bool get isPharmacy => category == 'pharmacy';
@@ -48,6 +55,8 @@ class StoreContext {
 /// qolmasligi `store_pages_test.dart` bilan tekshiriladi).
 Widget buildStorePage(StorePage p, StoreContext ctx) {
   return switch (p) {
+    StorePage.products => ProductsPage(ctx: ctx),
+    StorePage.addProduct => AddProductPage(ctx: ctx),
     _ => PortingPlaceholder(page: p),
   };
 }

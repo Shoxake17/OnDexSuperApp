@@ -69,6 +69,7 @@ class _StoreShellState extends State<StoreShell> {
   String _category = '';
   Object? _error;
   StorePage? _page;
+  String? _arg;
 
   List<_Entry> get _menu => switch (_category) {
         'qurt' => _qurtMenu,
@@ -113,7 +114,10 @@ class _StoreShellState extends State<StoreShell> {
     );
   }
 
-  void _go(StorePage p) => setState(() => _page = p);
+  void _go(StorePage p, {String? arg}) => setState(() {
+        _page = p;
+        _arg = arg;
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -136,13 +140,17 @@ class _StoreShellState extends State<StoreShell> {
     if (page == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final entry = _menu.firstWhere((e) => e.page == page, orElse: () => _menu.first);
-    final ctx = StoreContext(category: _category, name: widget.name, phone: widget.phone, go: _go);
+    // Menyuda yo'q sahifa (masalan Mahsulot qo'shish) — sarlavha o'zidan.
+    final entry = page == StorePage.addProduct
+        ? (page: page, icon: Icons.add, label: _arg == null ? 'Mahsulot qo\'shish' : 'Mahsulotni tahrirlash')
+        : _menu.firstWhere((e) => e.page == page, orElse: () => _menu.first);
+    final menuPage = page == StorePage.addProduct ? StorePage.products : page;
+    final ctx = StoreContext(category: _category, name: widget.name, phone: widget.phone, go: _go, arg: _arg);
     return LayoutBuilder(builder: (context, c) {
       final narrow = c.maxWidth < 900;
       final sidebar = _StoreSidebar(
         menu: _menu,
-        selected: page,
+        selected: menuPage,
         storeLabel: _storeLabel,
         name: widget.name,
         phone: widget.phone,
@@ -165,7 +173,7 @@ class _StoreShellState extends State<StoreShell> {
                 children: [
                   if (!narrow) _TopBar(title: entry.label, name: widget.name),
                   Expanded(
-                    child: KeyedSubtree(key: ValueKey(page), child: buildStorePage(page, ctx)),
+                    child: KeyedSubtree(key: ValueKey('$page/$_arg'), child: buildStorePage(page, ctx)),
                   ),
                 ],
               ),
