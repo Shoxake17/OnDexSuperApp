@@ -32,10 +32,11 @@ func TestQurtOrderFlow(t *testing.T) {
 	posA := w.LoginAs(t, "Urgut qurtlari", "+998905552001")
 	posB := w.LoginAs(t, "Chust qurtlari", "+998905552002")
 
+	// Mahsulot POS'da (do'kon omborida) yaratiladi va mijoz katalogiga o'zi o'tadi;
+	// qoldiq 0 — "mavjud emas".
 	put := func(pos *Actor, sku string, price int, stock int) {
-		w.Do(t, pos, "PUT", "/merchant/qurt/products/"+sku, map[string]any{
-			"name": "Qurt " + sku, "category": "Sho'r", "price_tiyin": price, "weight_grams": 200,
-			"available": stock > 0, "stock": stock,
+		w.Do(t, pos, "PUT", "/merchant/shop/products/"+sku, map[string]any{
+			"name": "Qurt " + sku, "category": "Sho'r", "price_tiyin": price, "weight_grams": 200, "quantity": stock,
 		}).Expect(t, 200)
 	}
 	put(posA, "a1", 1200000, 10)
@@ -94,9 +95,7 @@ func TestQurtOrderFlow(t *testing.T) {
 		w.Do(t, nil, "GET", "/qurt/products?ids="+strings.Repeat("a,", 60)+"a", nil).Expect(t, 400)
 		w.Do(t, nil, "GET", "/qurt/products?ids=bad%20id", nil).Expect(t, 400)
 		// Sotuvdan chiqqan mahsulot javobda yo'q.
-		w.Do(t, posB, "PUT", "/merchant/qurt/products/b1", map[string]any{
-			"name": "Qurt b1", "category": "Sho'r", "price_tiyin": 1500000, "weight_grams": 200,
-			"available": false, "stock": 0}).Expect(t, 200)
+		put(posB, "b1", 1500000, 0)
 		w.Do(t, nil, "GET", "/qurt/products?ids="+pb.ID, nil).Expect(t, 200).JSON(t, &m)
 		if len(m.Items) != 0 {
 			t.Fatalf("sotuvda yo'q mahsulot qaytdi: %+v", m.Items)
@@ -259,8 +258,10 @@ func TestQurtOrderFlow(t *testing.T) {
 		tr(posA, oa.ID, "delivered", "").Expect(t, 409)
 		tr(posA, oa.ID, "bogus", "").Expect(t, 409)
 		tr(posA, oa.ID, "confirmed", "").Expect(t, 200)
-		if p := products(); p["Qurt a1"].StockLeft != 10 {
-			t.Fatalf("tasdiqlangach band qaytishi kerak (POS qoldiqni o'zi kamaytiradi): %+v", p)
+		// Tasdiqda katalog bandi qaytadi VA POS ombordan 2 dona ayiradi (jarayon ichida
+		// katalogga sinxronlanadi): 10 - 2 = 8.
+		if p := products(); p["Qurt a1"].StockLeft != 8 {
+			t.Fatalf("tasdiqlangach qoldiq 8 bo'lishi kerak: %+v", p)
 		}
 		tr(posA, oa.ID, "packed", "").Expect(t, 200)
 

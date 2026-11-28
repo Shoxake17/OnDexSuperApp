@@ -375,9 +375,23 @@ func (s *Server) registerQurtOrderRoutes(mux *http.ServeMux) {
 		if !decodeJSON(w, r, &req) {
 			return
 		}
-		o, err := s.QurtOrderSvc.Transition(r.Context(), r.PathValue("id"), qurtorders.Status(req.To),
+		to := qurtorders.Status(req.To)
+		// Tasdiq: avval POS ombordan atomik ayiriladi (yetmasa tasdiqlanmaydi), OnDex
+		// holati o'tmasa qaytariladi — ShoxPos services/storeOrders.js bilan 1:1.
+		var undo func()
+		if to == qurtorders.StatusConfirmed && s.ShopSvc != nil {
+			u, ok := s.reserveQurtOrder(w, r, id, r.PathValue("id"))
+			if !ok {
+				return
+			}
+			undo = u
+		}
+		o, err := s.QurtOrderSvc.Transition(r.Context(), r.PathValue("id"), to,
 			qurtorders.ActorStore, id.UserID, req.Reason, ownStoreOrder(id.EntityID))
 		if err != nil {
+			if undo != nil {
+				undo()
+			}
 			qurtOrderError(w, err)
 			return
 		}

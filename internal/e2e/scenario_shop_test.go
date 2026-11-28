@@ -203,6 +203,72 @@ func TestShopPOSFlow(t *testing.T) {
 		}
 	})
 
+	w.Step(t, "qurt buyurtmasi: tasdiq ombordan ayiradi, yetmasa 409, bekorda bir marta qaytadi", func(t *testing.T) {
+		w.Do(t, qurtS, "PUT", "/merchant/shop/products/q-002", map[string]any{"name": "Achchiq qurt", "category": "Achchiq",
+			"price_tiyin": 1000000, "quantity": 5, "weight_grams": 200}).Expect(t, 200)
+		var cat struct {
+			Items []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"items"`
+		}
+		w.Do(t, nil, "GET", "/qurt/products", nil).Expect(t, 200).JSON(t, &cat)
+		pid := ""
+		for _, it := range cat.Items {
+			if it.Name == "Achchiq qurt" {
+				pid = it.ID
+			}
+		}
+		if pid == "" {
+			t.Fatalf("qurt katalogda yo'q: %+v", cat)
+		}
+		order := func(qty int) string {
+			var m struct {
+				Orders []struct {
+					ID string `json:"id"`
+				} `json:"orders"`
+			}
+			w.Do(t, w.Customer, "POST", "/qurt/orders", map[string]any{"items": []map[string]any{{"product_id": pid, "qty": qty}},
+				"address": map[string]any{"text": "Chust, Navoiy 1", "lat": 41.0, "lng": 71.2}, "phone": "+998901234567"}).
+				Expect(t, 201).JSON(t, &m)
+			return m.Orders[0].ID
+		}
+		shopQty := func() float64 {
+			m := w.Do(t, qurtS, "GET", "/merchant/shop/products", nil).Expect(t, 200)
+			var list []map[string]any
+			m.JSON(t, &list)
+			for _, p := range list {
+				if p["barcode"] == "q-002" {
+					return p["quantity"].(float64)
+				}
+			}
+			return -1
+		}
+		o1 := order(3)
+		// Qoldiq POS'da 1 gacha tushirildi — tasdiq rad etiladi, buyurtma yangi qoladi.
+		w.Do(t, qurtS, "PATCH", "/merchant/shop/products/q-002", map[string]any{"field": "quantity", "value": 1}).Expect(t, 200)
+		r := w.Do(t, qurtS, "POST", "/merchant/qurt/orders/"+o1+"/transition", map[string]any{"to": "confirmed"}).Expect(t, 409)
+		if !strings.Contains(string(r.Body), "yetarli emas") {
+			t.Fatalf("xabar: %s", r.Body)
+		}
+		if shopQty() != 1 {
+			t.Fatal("rad etilgan tasdiq qoldiqni o'zgartirdi")
+		}
+		w.Do(t, qurtS, "PATCH", "/merchant/shop/products/q-002", map[string]any{"field": "quantity", "value": 5}).Expect(t, 200)
+		w.Do(t, qurtS, "POST", "/merchant/qurt/orders/"+o1+"/transition", map[string]any{"to": "confirmed"}).Expect(t, 200)
+		if q := shopQty(); q != 2 {
+			t.Fatalf("tasdiqdan keyin POS qoldig'i 2 bo'lishi kerak: %v", q)
+		}
+		// Tasdiqlangan buyurtmani admin bekor qiladi — qoldiq aynan bir marta qaytadi.
+		w.Do(t, w.Admin, "POST", "/admin/qurt/orders/"+o1+"/transition", map[string]any{"to": "cancelled", "reason": "mijoz rad etdi"}).Expect(t, 200)
+		if q := shopQty(); q != 5 {
+			t.Fatalf("bekordan keyin qoldiq qaytishi kerak: %v", q)
+		}
+		w.Do(t, w.Admin, "POST", "/admin/qurt/orders/"+o1+"/transition", map[string]any{"to": "cancelled", "reason": "yana"}).Expect(t, 409)
+		if q := shopQty(); q != 5 {
+			t.Fatalf("ikkinchi bekor qoldiqni o'zgartirdi: %v", q)
+		}
+	})
 	w.Step(t, "dorixona: bo'lim faqat dorixonaga, chek atomik", func(t *testing.T) {
 		w.Do(t, shopA, "GET", "/merchant/shop/pharm", nil).Expect(t, 403)
 		w.Do(t, shopA, "POST", "/merchant/shop/pharm/sales", map[string]any{"items": []any{}}).Expect(t, 403)

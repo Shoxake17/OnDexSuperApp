@@ -32,8 +32,9 @@ func TestQurtCourierFlow(t *testing.T) {
 	}
 	pos := newPOS("Kuryer sinovi qurtlari", "+998905553001")
 	posB := newPOS("Boshqa do'kon", "+998905553002")
-	w.Do(t, pos, "PUT", "/merchant/qurt/products/k1", map[string]any{
-		"name": "Qurt k1", "category": "Sho'r", "price_tiyin": 1200000, "weight_grams": 200, "available": true, "stock": 20,
+	// Mahsulot POS'da (do'kon omborida) yaratiladi va mijoz katalogiga o'zi o'tadi.
+	w.Do(t, pos, "PUT", "/merchant/shop/products/k1", map[string]any{
+		"name": "Qurt k1", "category": "Sho'r", "price_tiyin": 1200000, "weight_grams": 200, "quantity": 20,
 	}).Expect(t, 200)
 	var prods struct {
 		Items []struct {

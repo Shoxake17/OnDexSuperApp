@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'pages/add_product_page.dart';
+import 'pages/dashboard_page.dart';
 import 'pages/debts_page.dart';
 import 'pages/incoming_page.dart';
 import 'pages/products_page.dart';
+import 'pages/qurt_orders_page.dart';
 import 'pages/reports_page.dart';
 import 'pages/sales_page.dart';
 import 'pages/scanner_page.dart';
+import 'pages/settings_page.dart';
 
 /// Do'kon panelining sahifalari (ShoxPos marshrutlari bilan 1:1).
 enum StorePage {
@@ -67,6 +70,9 @@ Widget buildStorePage(StorePage p, StoreContext ctx) {
     StorePage.debts || StorePage.pharmDebts => DebtsPage(ctx: ctx),
     StorePage.reports => ReportsPage(ctx: ctx),
     StorePage.incoming => IncomingPage(ctx: ctx),
+    StorePage.dashboard || StorePage.pharmDashboard => DashboardPage(ctx: ctx),
+    StorePage.settings => StoreSettingsPage(ctx: ctx),
+    StorePage.orders => QurtOrdersPage(ctx: ctx),
     _ => PortingPlaceholder(page: p),
   };
 }

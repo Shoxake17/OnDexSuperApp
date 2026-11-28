@@ -185,3 +185,42 @@ func TestPGBaseSearchEscaping(t *testing.T) {
 		t.Fatalf("trigram indekslari: %d", n)
 	}
 }
+
+// Oxirgi donani ikki tasdiq bir vaqtda ololmaydi; bekor qilish bir marta qaytaradi.
+func TestPGReserveOrderConcurrent(t *testing.T) {
+	s, repo := pgSvc(t)
+	ctx := context.Background()
+	st := uniqStore(shop.CategoryQurt)
+	w := 200
+	if _, err := s.Upsert(ctx, st, shop.UpsertInput{Barcode: "q1", Name: "Qurt", Category: "Sho'r", PriceTiyin: 100000, Quantity: 1, WeightGrams: &w}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var okN, failN atomic.Int64
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := s.ReserveOrder(ctx, st, fmt.Sprintf("%s-o%d", st.ID, i), []shop.OrderItem{{Barcode: "q1", Qty: 1}}); err == nil {
+				okN.Add(1)
+			} else if errors.Is(err, shop.ErrInsufficient) {
+				failN.Add(1)
+			} else {
+				t.Error(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	p, _ := repo.GetProduct(ctx, st.ID, "q1")
+	if okN.Load() != 1 || failN.Load() != 7 || p.Quantity != 0 {
+		t.Fatalf("faqat bitta tasdiq o'tishi kerak: ok=%d fail=%d qty=%v", okN.Load(), failN.Load(), p.Quantity)
+	}
+	for i := 0; i < 8; i++ {
+		_, _ = s.RestoreForOrder(ctx, fmt.Sprintf("%s-o%d", st.ID, i))
+		_, _ = s.RestoreForOrder(ctx, fmt.Sprintf("%s-o%d", st.ID, i))
+	}
+	p, _ = repo.GetProduct(ctx, st.ID, "q1")
+	if p.Quantity != 1 {
+		t.Fatalf("qaytarish bir marta bo'lishi kerak: %v", p.Quantity)
+	}
+}

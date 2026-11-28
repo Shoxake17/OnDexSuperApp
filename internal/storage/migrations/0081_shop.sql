@@ -164,3 +164,14 @@ CREATE TABLE IF NOT EXISTS shop.pharm_sales (
     sold_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS shop_pharm_sales_store_time ON shop.pharm_sales (store_id, sold_at DESC);
+
+-- Qurt buyurtmasi uchun ombordan ayirilgan qoldiq (ShoxPos QurtOrderLedger):
+-- do'kon buyurtmani TASDIQLAGANDA yoziladi, bekor qilinsa aynan BIR MARTA qaytadi.
+CREATE TABLE IF NOT EXISTS shop.qurt_order_ledger (
+    order_id   TEXT        PRIMARY KEY,
+    store_id   TEXT        NOT NULL,
+    items      JSONB       NOT NULL,
+    state      TEXT        NOT NULL CHECK (state IN ('reserved', 'restored')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -135,7 +135,7 @@ extension ShopApi on RestaurantApi {
 
   // ── Qurt buyurtmalari va logistika (`routes_qurt*.go`) ──
   Future<List<Map<String, dynamic>>> qurtOrders({String status = ''}) async {
-    final r = await send('GET', '/merchant/qurt/orders${status.isEmpty ? '' : '?status=${Uri.encodeQueryComponent(status)}'}');
+    final r = await send('GET', '/merchant/qurt/orders?limit=200${status.isEmpty ? '' : '&status=${Uri.encodeQueryComponent(status)}'}');
     return _list(r is Map ? r['items'] ?? r['orders'] : r);
   }
 
@@ -150,6 +150,26 @@ extension ShopApi on RestaurantApi {
     final r = await send('GET', '/merchant/qurt/couriers');
     return _list(r is Map ? r['items'] ?? r['couriers'] : r);
   }
+
+  Future<void> qurtAddCourier(String name, String phone) =>
+      send('POST', '/merchant/qurt/couriers', {'name': name, 'phone': phone});
+
+  Future<void> qurtRemoveCourier(String id) => send('DELETE', '/merchant/qurt/couriers/${Uri.encodeComponent(id)}');
+
+  /// Kuryer topshirgan naqd pulni qabul qilish: `{orders, total_tiyin}`.
+  Future<Map<String, dynamic>> qurtSettle(String id) async => Map<String, dynamic>.from(
+      await send('POST', '/merchant/qurt/couriers/${Uri.encodeComponent(id)}/settle', <String, dynamic>{}) as Map);
+
+  /// Reysni ([date]) yoki tanlangan buyurtmalarni kuryerga biriktiradi: `{assigned, skipped}`.
+  Future<Map<String, dynamic>> qurtAssign(String courierId, {String? date, List<String>? orderIds}) async =>
+      Map<String, dynamic>.from(await send('POST', '/merchant/qurt/assign', {
+        'courier_id': courierId,
+        if (date != null) 'date': date,
+        if (orderIds != null) 'order_ids': orderIds,
+      }) as Map);
+
+  Future<void> qurtUnassign(String orderId) =>
+      send('POST', '/merchant/qurt/orders/${Uri.encodeComponent(orderId)}/unassign', <String, dynamic>{});
 }
 
 String _range(DateTime? from, DateTime? to) {

@@ -263,4 +263,29 @@ type Repo interface {
 	SavePharmSale(ctx context.Context, storeID string, s *PharmSale) error
 	ListPharmSales(ctx context.Context, storeID string, limit int) ([]PharmSale, error)
 	PharmSaleTotals(ctx context.Context, storeID string) (count int, totalTiyin int64, err error)
+
+	// Qurt buyurtmasi ombor bandi
+	GetOrderLedger(ctx context.Context, orderID string) (*OrderLedger, error)
+	SaveOrderLedger(ctx context.Context, l *OrderLedger) error
+	DeleteOrderLedger(ctx context.Context, orderID string) error
+}
+
+// OrderItem — qurt buyurtmasidagi pozitsiya (do'kon shtrix-kodi + dona).
+type OrderItem struct {
+	Barcode string `json:"barcode"`
+	Qty     int    `json:"qty"`
+}
+
+// Ledger holatlari.
+const (
+	LedgerReserved = "reserved"
+	LedgerRestored = "restored"
+)
+
+// OrderLedger — tasdiqlangan qurt buyurtmasi uchun ombordan ayirilgan miqdor.
+type OrderLedger struct {
+	OrderID string
+	StoreID string
+	Items   []OrderItem
+	State   string
 }

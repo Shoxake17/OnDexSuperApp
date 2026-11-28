@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -993,4 +994,130 @@ func (s *Service) AddPharmBase(ctx context.Context, st Store, b PharmBase) (*Pha
 // QurtProductOf — bitta mahsulot (katalog sinxronini qayta urinish uchun).
 func (s *Service) QurtProductOf(ctx context.Context, storeID, barcode string) (*Product, error) {
 	return s.repo.GetProduct(ctx, storeID, barcode)
+}
+
+// ── Qurt buyurtmasi: ombor bandi (ShoxPos services/storeOrders.js bilan 1:1) ──
+
+func mergeItems(items []OrderItem) ([]OrderItem, error) {
+	idx := map[string]int{}
+	var out []OrderItem
+	for _, it := range items {
+		bc, err := cleanBarcode(it.Barcode)
+		if err != nil || it.Qty < 1 {
+			return nil, fmt.Errorf("%w: buyurtmadagi mahsulot kaliti noto'g'ri — OnDex ma'muriga murojaat qiling", ErrConflict)
+		}
+		if i, ok := idx[bc]; ok {
+			out[i].Qty += it.Qty
+			continue
+		}
+		idx[bc] = len(out)
+		out = append(out, OrderItem{Barcode: bc, Qty: it.Qty})
+	}
+	return out, nil
+}
+
+// ReserveOrder — do'kon buyurtmani TASDIQLASHIDAN oldin: har pozitsiya qoldig'i
+// yetarli bo'lsa ayiriladi (hammasi yoki hech biri) va ledger "reserved" yoziladi.
+// Ledger allaqachon "reserved" bo'lsa (avvalgi tasdiq urinishi) — qayta ayirilmaydi,
+// `already=true`. Yetmasa ErrInsufficient (mahsulot nomi va miqdorlari bilan).
+func (s *Service) ReserveOrder(ctx context.Context, st Store, orderID string, items []OrderItem) (already bool, err error) {
+	merged, err := mergeItems(items)
+	if err != nil {
+		return false, err
+	}
+	var touched []*Product
+	err = s.repo.Tx(ctx, func(r Repo) error {
+		touched = touched[:0]
+		if l, gerr := r.GetOrderLedger(ctx, orderID); gerr == nil && l.State == LedgerReserved {
+			already = true
+			return nil
+		} else if gerr != nil && !errors.Is(gerr, ErrNotFound) {
+			return gerr
+		}
+		for _, it := range merged {
+			p, gerr := r.GetProduct(ctx, st.ID, it.Barcode)
+			if errors.Is(gerr, ErrNotFound) {
+				return fmt.Errorf("%w: mahsulot omborda topilmadi (%s). Buyurtmani rad eting", ErrInsufficient, it.Barcode)
+			} else if gerr != nil {
+				return gerr
+			}
+			if p.Quantity < float64(it.Qty) {
+				return fmt.Errorf("%w: «%s» omborda yetarli emas (bor: %s, kerak: %d). Avval qoldiqni to'ldiring yoki buyurtmani rad eting",
+					ErrInsufficient, p.Name, strconv.FormatFloat(p.Quantity, 'f', -1, 64), it.Qty)
+			}
+			p.Quantity = math.Round((p.Quantity-float64(it.Qty))*1000) / 1000
+			p.UpdatedAt = s.now()
+			if err := r.SaveProduct(ctx, st.ID, p); err != nil {
+				return err
+			}
+			touched = append(touched, p)
+		}
+		return r.SaveOrderLedger(ctx, &OrderLedger{OrderID: orderID, StoreID: st.ID, Items: merged, State: LedgerReserved})
+	})
+	if err != nil {
+		return false, err
+	}
+	for _, p := range touched {
+		s.qurtChanged(ctx, st, p, false)
+	}
+	return already, nil
+}
+
+// UndoReserve — tasdiq OnDex'da o'tmasa: ayirilgan qoldiq qaytadi va ledger o'chadi.
+func (s *Service) UndoReserve(ctx context.Context, st Store, orderID string) error {
+	return s.giveBack(ctx, orderID, func(r Repo, _ *OrderLedger) error { return r.DeleteOrderLedger(ctx, orderID) })
+}
+
+// RestoreForOrder — tasdiqlangan buyurtma keyin bekor qilinganda: qoldiq aynan BIR
+// MARTA qaytadi (ledger "restored"). Ledger yo'q yoki qaytarilgan bo'lsa — false.
+func (s *Service) RestoreForOrder(ctx context.Context, orderID string) (bool, error) {
+	done := false
+	err := s.giveBack(ctx, orderID, func(r Repo, l *OrderLedger) error {
+		done = true
+		l.State = LedgerRestored
+		return r.SaveOrderLedger(ctx, l)
+	})
+	return done, err
+}
+
+func (s *Service) giveBack(ctx context.Context, orderID string, finish func(r Repo, l *OrderLedger) error) error {
+	var (
+		storeID string
+		touched []*Product
+	)
+	err := s.repo.Tx(ctx, func(r Repo) error {
+		touched = touched[:0]
+		l, err := r.GetOrderLedger(ctx, orderID)
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if l.State != LedgerReserved {
+			return nil
+		}
+		storeID = l.StoreID
+		for _, it := range l.Items {
+			p, err := r.GetProduct(ctx, l.StoreID, it.Barcode)
+			if errors.Is(err, ErrNotFound) {
+				continue // mahsulot o'chirilgan — qaytaradigan joy yo'q
+			} else if err != nil {
+				return err
+			}
+			p.Quantity = math.Round((p.Quantity+float64(it.Qty))*1000) / 1000
+			p.UpdatedAt = s.now()
+			if err := r.SaveProduct(ctx, l.StoreID, p); err != nil {
+				return err
+			}
+			touched = append(touched, p)
+		}
+		return finish(r, l)
+	})
+	if err != nil {
+		return err
+	}
+	for _, p := range touched {
+		s.qurtChanged(ctx, Store{ID: storeID, Category: CategoryQurt}, p, false)
+	}
+	return nil
 }

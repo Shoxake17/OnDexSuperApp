@@ -15,6 +15,7 @@ import (
 
 	"chustapp/internal/modules/shop"
 	"chustapp/internal/qurt"
+	"chustapp/internal/qurtorders"
 	"chustapp/internal/ratelimit"
 	"chustapp/internal/users"
 )
@@ -749,4 +750,40 @@ func (s *Server) ShopQurtStoreIDs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return qurtIDs(m), nil
+}
+
+// reserveQurtOrder — qurt buyurtmasini tasdiqlashdan oldin do'kon omboridan
+// qoldiqni band qiladi. Qaytaradi: tasdiq yiqilsa chaqiriladigan `undo` (avval
+// band qilingan bo'lsa — nil). Javob yozilgan bo'lsa ok=false.
+func (s *Server) reserveQurtOrder(w http.ResponseWriter, r *http.Request, id *qurtStore, orderID string) (func(), bool) {
+	o, err := s.QurtOrderSvc.Repo.Get(r.Context(), orderID)
+	if err == nil && o.StoreID != id.EntityID {
+		err = qurtorders.ErrNotFound // begona buyurtma mavjudligi oshkor qilinmaydi
+	}
+	if err != nil {
+		qurtOrderError(w, err)
+		return nil, false
+	}
+	if o.Status != qurtorders.StatusNew {
+		httpError(w, http.StatusConflict, errors.New("buyurtma allaqachon ko'rib chiqilgan"))
+		return nil, false
+	}
+	items := make([]shop.OrderItem, 0, len(o.Items))
+	for _, it := range o.Items {
+		items = append(items, shop.OrderItem{Barcode: it.ExternalID, Qty: it.Qty})
+	}
+	st := shop.Store{ID: id.EntityID, Category: shop.CategoryQurt}
+	already, err := s.ShopSvc.ReserveOrder(r.Context(), st, orderID, items)
+	if err != nil {
+		shopFail(w, err)
+		return nil, false
+	}
+	if already {
+		return nil, true
+	}
+	return func() {
+		if err := s.ShopSvc.UndoReserve(context.WithoutCancel(r.Context()), st, orderID); err != nil {
+			slog.Error("qurt: ombor bandini qaytarib bo'lmadi", "order", orderID, "err", err)
+		}
+	}, true
 }

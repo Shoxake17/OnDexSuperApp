@@ -489,6 +489,16 @@ func NewWorldWith(t *testing.T, scenario string, opts Options) *World {
 	shopSync := &httpapi.ShopQurtSync{Repo: qurtProducts, Shop: shopSvc, Stores: api.ShopQurtStoreIDs}
 	shopSvc.OnQurtChange = shopSync.Push
 	api.ShopSvc = shopSvc
+	qurtOrderSvc := api.QurtOrderSvc
+	prevQurtEvent := qurtOrderSvc.OnEvent
+	qurtOrderSvc.OnEvent = func(ctx context.Context, event string, o *qurtorders.Order) {
+		if event == string(qurtorders.StatusCancelled) {
+			_, _ = shopSvc.RestoreForOrder(ctx, o.ID)
+		}
+		if prevQurtEvent != nil {
+			prevQurtEvent(ctx, event, o)
+		}
+	}
 	api.ProductLookup = func(_ context.Context, bc string) (string, error) {
 		if bc == "5449000000996" {
 			return "Coca-Cola 0.33L", nil

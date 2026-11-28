@@ -50,7 +50,7 @@ class ServiceSwitcher extends StatelessWidget {
                   ? null
                   : enabled
                       ? () => onSwitch?.call(s)
-                      : () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      : () => (ScaffoldMessenger.of(context)..hideCurrentSnackBar()).showSnackBar(SnackBar(
                             content: Text('Bu akkauntga ${s == MerchantService.restaurant ? 'restoran' : 'do\'kon'} '
                                 'ulanmagan. Ulash uchun OnDex administratoriga murojaat qiling.'),
                           )),

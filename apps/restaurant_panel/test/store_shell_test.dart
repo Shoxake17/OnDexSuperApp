@@ -37,6 +37,7 @@ Future<void> _open(WidgetTester tester, String category, Future<void> Function()
       if (r.url.path == '/merchant/shop/me') {
         return _json({'store_id': 's1', 'category': category, 'shop_type': 'x', 'sections': []});
       }
+      if (r.url.path.endsWith('base-count')) return _json({'count': 0});
       return _json([]);
     }),
   );

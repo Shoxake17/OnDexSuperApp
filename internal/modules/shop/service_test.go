@@ -230,3 +230,51 @@ func TestPharmacyAtomicSellAndAccess(t *testing.T) {
 		t.Fatalf("pharm-info: %+v %v", found, err)
 	}
 }
+
+func TestQurtOrderReserveRestoreOnce(t *testing.T) {
+	s, _ := newTestSvc(t)
+	w := 250
+	_, _ = s.Upsert(ctx, qurt, UpsertInput{Barcode: "q1", Name: "Sho'r qurt", Category: "Sho'r", PriceTiyin: 1500000, Quantity: 5, WeightGrams: &w})
+	_, _ = s.Upsert(ctx, qurt, UpsertInput{Barcode: "q2", Name: "Shirin qurt", Category: "Shirin", PriceTiyin: 1500000, Quantity: 1, WeightGrams: &w})
+	qty := func(bc string) float64 { p, _ := s.repo.GetProduct(ctx, qurt.ID, bc); return p.Quantity }
+
+	// Yetmasa — hech narsa ayirilmaydi.
+	if _, err := s.ReserveOrder(ctx, qurt, "o1", []OrderItem{{Barcode: "q1", Qty: 2}, {Barcode: "q2", Qty: 2}}); !errors.Is(err, ErrInsufficient) {
+		t.Fatalf("yetmagan buyurtma: %v", err)
+	}
+	if qty("q1") != 5 || qty("q2") != 1 {
+		t.Fatal("muvaffaqiyatsiz band qoldiqni o'zgartirdi")
+	}
+	// Bir xil shtrix-kod qatorlari qo'shiladi: 1+2 = 3.
+	already, err := s.ReserveOrder(ctx, qurt, "o1", []OrderItem{{Barcode: "q1", Qty: 1}, {Barcode: "q1", Qty: 2}})
+	if err != nil || already || qty("q1") != 2 {
+		t.Fatalf("band: %v %v %v", already, err, qty("q1"))
+	}
+	// Qayta urinish (OnDex xatosidan keyin) — ikkinchi marta ayirilmaydi.
+	already, _ = s.ReserveOrder(ctx, qurt, "o1", []OrderItem{{Barcode: "q1", Qty: 3}})
+	if !already || qty("q1") != 2 {
+		t.Fatalf("takror band: %v %v", already, qty("q1"))
+	}
+	// Bekor — aynan bir marta qaytadi.
+	if ok, _ := s.RestoreForOrder(ctx, "o1"); !ok || qty("q1") != 5 {
+		t.Fatalf("qaytarish: %v %v", ok, qty("q1"))
+	}
+	if ok, _ := s.RestoreForOrder(ctx, "o1"); ok || qty("q1") != 5 {
+		t.Fatal("ikkinchi marta qaytarildi")
+	}
+	// UndoReserve: tasdiq o'tmasa — qaytadi va ledger o'chadi (keyin yana band qilish mumkin).
+	_, _ = s.ReserveOrder(ctx, qurt, "o2", []OrderItem{{Barcode: "q2", Qty: 1}})
+	if err := s.UndoReserve(ctx, qurt, "o2"); err != nil || qty("q2") != 1 {
+		t.Fatalf("undo: %v %v", err, qty("q2"))
+	}
+	if already, _ := s.ReserveOrder(ctx, qurt, "o2", []OrderItem{{Barcode: "q2", Qty: 1}}); already || qty("q2") != 0 {
+		t.Fatal("undo'dan keyin qayta band qilinmadi")
+	}
+	// Ledger yo'q buyurtma — hech narsa.
+	if ok, _ := s.RestoreForOrder(ctx, "yoq"); ok {
+		t.Fatal("ledgersiz qaytarish")
+	}
+	if _, err := s.ReserveOrder(ctx, qurt, "o3", []OrderItem{{Barcode: "", Qty: 1}}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("noto'g'ri kalit: %v", err)
+	}
+}

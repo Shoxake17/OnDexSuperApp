@@ -524,3 +524,38 @@ func (p *PGRepo) PharmSaleTotals(ctx context.Context, storeID string) (int, int6
 		storeID).Scan(&n, &sum)
 	return n, sum, err
 }
+
+// ── Qurt buyurtmasi ledger ──
+
+func (p *PGRepo) GetOrderLedger(ctx context.Context, orderID string) (*OrderLedger, error) {
+	var (
+		l   OrderLedger
+		raw []byte
+	)
+	err := p.db.QueryRow(ctx, `SELECT order_id, store_id, items, state FROM shop.qurt_order_ledger
+		WHERE order_id = $1`+p.lockSuffix(), orderID).Scan(&l.OrderID, &l.StoreID, &raw, &l.State)
+	if err != nil {
+		return nil, noRows(err)
+	}
+	if err := json.Unmarshal(raw, &l.Items); err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+func (p *PGRepo) SaveOrderLedger(ctx context.Context, l *OrderLedger) error {
+	items, err := json.Marshal(l.Items)
+	if err != nil {
+		return err
+	}
+	_, err = p.db.Exec(ctx, `INSERT INTO shop.qurt_order_ledger (order_id, store_id, items, state)
+		VALUES ($1,$2,$3,$4)
+		ON CONFLICT (order_id) DO UPDATE SET items = EXCLUDED.items, state = EXCLUDED.state, updated_at = now()`,
+		l.OrderID, l.StoreID, items, l.State)
+	return err
+}
+
+func (p *PGRepo) DeleteOrderLedger(ctx context.Context, orderID string) error {
+	_, err := p.db.Exec(ctx, `DELETE FROM shop.qurt_order_ledger WHERE order_id = $1`, orderID)
+	return err
+}

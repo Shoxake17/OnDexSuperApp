@@ -27,6 +27,7 @@ type memData struct {
 	pharm      map[string]map[string]PharmProduct
 	pharmBase  map[string]PharmBase
 	pharmSales map[string][]PharmSale
+	ledger     map[string]OrderLedger
 }
 
 type memSale struct {
@@ -39,7 +40,8 @@ func NewMemRepo(base ...BaseProduct) *MemRepo {
 	d := &memData{products: map[string]map[string]Product{}, base: map[string]BaseProduct{},
 		storeCats: map[string]map[string]bool{}, typeCats: map[string]map[string]bool{},
 		sales: map[string]map[string]memSale{}, lines: map[string][]SaleLine{}, debts: map[string]map[string]Debt{},
-		pharm: map[string]map[string]PharmProduct{}, pharmBase: map[string]PharmBase{}, pharmSales: map[string][]PharmSale{}}
+		pharm: map[string]map[string]PharmProduct{}, pharmBase: map[string]PharmBase{}, pharmSales: map[string][]PharmSale{},
+		ledger: map[string]OrderLedger{}}
 	for _, b := range base {
 		d.base[b.Barcode] = b
 	}
@@ -73,7 +75,8 @@ func (d *memData) clone() *memData {
 	c := &memData{products: map[string]map[string]Product{}, base: d.base,
 		storeCats: map[string]map[string]bool{}, typeCats: map[string]map[string]bool{},
 		sales: map[string]map[string]memSale{}, lines: map[string][]SaleLine{}, debts: map[string]map[string]Debt{},
-		pharm: map[string]map[string]PharmProduct{}, pharmBase: map[string]PharmBase{}, pharmSales: map[string][]PharmSale{}}
+		pharm: map[string]map[string]PharmProduct{}, pharmBase: map[string]PharmBase{}, pharmSales: map[string][]PharmSale{},
+		ledger: map[string]OrderLedger{}}
 	for k, v := range d.products {
 		c.products[k] = map[string]Product{}
 		for kk, vv := range v {
@@ -118,6 +121,9 @@ func (d *memData) clone() *memData {
 	}
 	for k, v := range d.pharmSales {
 		c.pharmSales[k] = append([]PharmSale(nil), v...)
+	}
+	for k, v := range d.ledger {
+		c.ledger[k] = v
 	}
 	return c
 }
@@ -532,4 +538,30 @@ func (m *MemRepo) PharmSaleTotals(_ context.Context, storeID string) (int, int64
 		sum += s.TotalTiyin
 	}
 	return len(m.d.pharmSales[storeID]), sum, nil
+}
+
+// ── Qurt buyurtmasi ledger ──
+
+func (m *MemRepo) GetOrderLedger(_ context.Context, orderID string) (*OrderLedger, error) {
+	defer m.lock()()
+	l, ok := m.d.ledger[orderID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	l.Items = append([]OrderItem(nil), l.Items...)
+	return &l, nil
+}
+
+func (m *MemRepo) SaveOrderLedger(_ context.Context, l *OrderLedger) error {
+	defer m.lock()()
+	c := *l
+	c.Items = append([]OrderItem(nil), l.Items...)
+	m.d.ledger[l.OrderID] = c
+	return nil
+}
+
+func (m *MemRepo) DeleteOrderLedger(_ context.Context, orderID string) error {
+	defer m.lock()()
+	delete(m.d.ledger, orderID)
+	return nil
 }

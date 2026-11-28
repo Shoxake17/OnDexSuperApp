@@ -1743,6 +1743,18 @@ func main() {
 		qs := &httpapi.ShopQurtSync{Repo: qurtRepo, Shop: shopSvc, Stores: api.ShopQurtStoreIDs}
 		shopSvc.OnQurtChange = qs.Push
 		api.ShopSvc = shopSvc
+		// Tasdiqlangan qurt buyurtmasi bekor qilinsa — ombordan ayirilgan qoldiq bir marta qaytadi.
+		prevQurtEvent := qurtOrderSvc.OnEvent
+		qurtOrderSvc.OnEvent = func(ctx context.Context, event string, o *qurtorders.Order) {
+			if event == string(qurtorders.StatusCancelled) {
+				if _, err := shopSvc.RestoreForOrder(ctx, o.ID); err != nil {
+					slog.Error("qurt: bekor qilingan buyurtma qoldig'i qaytmadi", "order", o.ID, "err", err)
+				}
+			}
+			if prevQurtEvent != nil {
+				prevQurtEvent(ctx, event, o)
+			}
+		}
 		safego.Go("shop.qurtsync", func() {
 			time.Sleep(5 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
