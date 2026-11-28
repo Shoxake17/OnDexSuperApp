@@ -18,7 +18,7 @@ import (
 // Flutter web panellar API'ni o'z domenidagi prefiks orqali chaqiradi
 // (Caddy -> shu jarayon). Har panel — alohida instansiya (`webBFF`):
 //
-//	merchant.ondex.uz/r/api  cookie __Host-ondex_panel  klient merchant-panel-web
+//	merchant.ondex.uz/api    cookie __Host-ondex_panel  klient merchant-panel-web (+ eski /r/api)
 //	admin.ondex.uz/a/api     cookie __Host-ondex_admin  klient admin-panel-web
 //
 // Bu qatlam:
@@ -43,8 +43,11 @@ const (
 	panelWebBodyMax = 64 << 10
 
 	// Merchant panel (RS-7) — testlar va boshqa fayllar shu nomlarga tayanadi.
-	panelWebPrefix     = "/r/api"
-	panelWebCookieName = "__Host-ondex_panel"
+	// POS-5: panel merchant.ondex.uz ILDIZIDA, BFF `/api` da (ShoxPos ketdi).
+	// `/r/api` — eski build ochiq qolgan brauzerlar uchun o'tish davri.
+	panelWebPrefix       = "/api"
+	panelWebLegacyPrefix = "/r/api"
+	panelWebCookieName   = "__Host-ondex_panel"
 
 	adminWebPrefix     = "/a/api"
 	adminWebCookieName = "__Host-ondex_admin"
@@ -53,7 +56,7 @@ const (
 // webBFF — bitta web panel BFF sozlamasi.
 type webBFF struct {
 	name        string // log va xatolar uchun
-	prefix      string
+	prefixes    []string
 	cookieName  string
 	clientID    string
 	cookieAge   time.Duration
@@ -65,7 +68,7 @@ type webBFF struct {
 
 var merchantWebBFF = webBFF{
 	name:       "merchant",
-	prefix:     panelWebPrefix,
+	prefixes:   []string{panelWebPrefix, panelWebLegacyPrefix},
 	cookieName: panelWebCookieName,
 	clientID:   identity.PanelWebClientID,
 	cookieAge:  7 * 24 * time.Hour, // sessiya 7 kun (idle = abs)
@@ -91,7 +94,7 @@ var merchantWebBFF = webBFF{
 
 var adminWebBFF = webBFF{
 	name:       "admin",
-	prefix:     adminWebPrefix,
+	prefixes:   []string{adminWebPrefix},
 	cookieName: adminWebCookieName,
 	clientID:   identity.AdminPanelWebClientID,
 	cookieAge:  12 * time.Hour, // sessiya mutlaq 12 soat (idle 30 daq — server)
@@ -162,21 +165,23 @@ func (s *Server) cacheFor(b *webBFF) *panelWebAccessCache {
 	return &s.panelWebCache
 }
 
-// withPanelWebBFF — /r/api/* va /a/api/* so'rovlarini mos BFF orqali
+// withPanelWebBFF — /api/* (+ eski /r/api/*) va /a/api/* so'rovlarini mos BFF orqali
 // `next` ga uzatadi, qolganlari o'zgarishsiz o'tadi.
 func (s *Server) withPanelWebBFF(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, b := range []*webBFF{&merchantWebBFF, &adminWebBFF} {
-			if r.URL.Path == b.prefix || strings.HasPrefix(r.URL.Path, b.prefix+"/") {
-				s.serveWebBFF(b, w, r, next)
-				return
+			for _, prefix := range b.prefixes {
+				if r.URL.Path == prefix || strings.HasPrefix(r.URL.Path, prefix+"/") {
+					s.serveWebBFF(b, prefix, w, r, next)
+					return
+				}
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) serveWebBFF(b *webBFF, w http.ResponseWriter, r *http.Request, next http.Handler) {
+func (s *Server) serveWebBFF(b *webBFF, prefix string, w http.ResponseWriter, r *http.Request, next http.Handler) {
 	w.Header().Set("Cache-Control", "no-store")
 	if s.Identity == nil {
 		panelWebErr(w, http.StatusServiceUnavailable, "panel kirishi sozlanmagan")
@@ -188,7 +193,7 @@ func (s *Server) serveWebBFF(b *webBFF, w http.ResponseWriter, r *http.Request, 
 		panelWebErr(w, http.StatusForbidden, errAdminIPDenied.Error())
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, b.prefix)
+	path := strings.TrimPrefix(r.URL.Path, prefix)
 	if path == "" {
 		path = "/"
 	}

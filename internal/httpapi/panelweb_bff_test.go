@@ -233,3 +233,34 @@ func TestPanelWebBFFRejectsForeignClientSession(t *testing.T) {
 		t.Fatalf("begona klient sessiyasi: %d %s", w.Code, w.Body)
 	}
 }
+
+// POS-5: panel ildizda, BFF /api da; eski /r/api ham o'tish davrida ishlaydi
+// (bitta cookie, bitta sessiya). Metrikada ikkalasi ham "panel_web".
+func TestPanelWebBFFRootPrefixAndLegacy(t *testing.T) {
+	f := newBFFFixture(t)
+	w := f.do("POST", "/api/v2/auth/merchant/password", `{"phone":"+998900000001","password":"x"}`, "", nil)
+	if w.Code != 200 {
+		t.Fatalf("kirish (/api): %d %s", w.Code, w.Body)
+	}
+	c := panelCookieOf(t, w)
+	if c == nil {
+		t.Fatal("cookie yo'q")
+	}
+	for _, p := range []string{"/api/v2/me", "/r/api/v2/me"} {
+		w = f.do("GET", p, "", c.Value, nil)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "u_bff00001") {
+			t.Fatalf("%s: %d %s", p, w.Code, w.Body)
+		}
+	}
+	if w := f.do("POST", "/api/v2/auth/admin/otp/verify", `{}`, "", nil); w.Code != 404 {
+		t.Fatalf("/api orqali admin kirishi yopiq bo'lishi kerak: %d", w.Code)
+	}
+	for _, p := range []string{"/api/v2/me", "/r/api/v2/me", "/api"} {
+		if metricSurface(p) != "panel_web" {
+			t.Fatalf("metrika yuzasi %s", p)
+		}
+	}
+	if metricSurface("/apix") != "api" || metricSurface("/v2/me") != "api" {
+		t.Fatal("BFF tashqarisi api bo'lishi kerak")
+	}
+}

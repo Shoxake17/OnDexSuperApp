@@ -131,8 +131,10 @@ func withMetrics(next http.Handler) http.Handler {
 
 // metricSurface — so'rov qaysi yuzadan kelgan (BFF yoki to'g'ridan-to'g'ri).
 func metricSurface(path string) string {
-	if path == "/r/api" || strings.HasPrefix(path, "/r/api/") {
-		return "panel_web"
+	for _, p := range merchantWebBFF.prefixes {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return "panel_web"
+		}
 	}
 	return "api"
 }
