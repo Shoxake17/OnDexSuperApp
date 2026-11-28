@@ -1149,6 +1149,18 @@ jobs:
             $ACC -out /tmp/smoke.prom
           echo "### Smoke: hammasi o'tdi" >> "$GITHUB_STEP_SUMMARY"
 
+      # ONDEXECOSY-505: prod'ga chiqqan "Tugadi: ONDEXECOSY-N" vazifalari
+      # Review -> Done. Plane yetib bo'lmasa deploy YIQILMAYDI.
+      - name: Plane - deploy qilingan vazifalarni yopish
+        if: success()
+        continue-on-error: true
+        env:
+          PLANE_API_KEY: ${{ secrets.PLANE_API_KEY }}
+        run: |
+          [ -n "$PLANE_API_KEY" ] || { echo "PLANE_API_KEY siri yo'q - o'tkazildi"; exit 0; }
+          git fetch --quiet --deepen=400 origin "$GITHUB_SHA" || true
+          go run ./cmd/planesync deploy --sha "$GITHUB_SHA" --what "API+web"
+
       - name: Smoke natijasi (yiqilganda)
         if: failure() && steps.smoke.outcome == 'failure'
         run: |

@@ -1,0 +1,42 @@
+# ONDEXECOSY-505: commit -> Plane vazifa holati avtomatik.
+#   commit'da ONDEXECOSY-N      -> izoh (commit havolasi) + Todo/Backlog bo'lsa "In Progress"
+#   "Tugadi: ONDEXECOSY-N"      -> "Review" (kod tayyor, prod kutilmoqda)
+#   deploy.yml muvaffaqiyatli   -> Review -> "Done"
+# Plane yetib bo'lmasa hech narsa yiqilmaydi (faqat ogohlantirish).
+name: Plane sync
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plane-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Commit'lar -> Plane
+        continue-on-error: true
+        env:
+          PLANE_API_KEY: ${{ secrets.PLANE_API_KEY }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          [ -n "$PLANE_API_KEY" ] || { echo "PLANE_API_KEY siri yo'q - o'tkazildi"; exit 0; }
+          case "$BEFORE" in 0000000*|"") RANGE="$AFTER~1..$AFTER" ;; *) RANGE="$BEFORE..$AFTER" ;; esac
+          go run ./cmd/planesync commits --range "$RANGE"
