@@ -12,7 +12,8 @@ import 'package:http/testing.dart';
 //  1. Menyu ShoxPos bilan 1:1 kategoriya bo'yicha: qurtda kassa va
 //     boshqaruv paneli YO'Q, Buyurtmalar/Logistika FAQAT qurtda,
 //     dorixona menyusi alohida;
-//  2. Sidebar tepasida Restoran | Do'kon bloklari; ulanmagan xizmat qulf;
+//  2. Xizmat almashtirish (Restoran | Do'kon) pastki profil kartasi menyusida
+//     (admin paneldagi kabi); ulanmagan xizmat qulf; Chiqish shu menyuda;
 //  3. Kategoriya serverdan (`/merchant/shop/me`) olinadi.
 // └────────────────────────────────────────────────────────────────────┘
 
@@ -76,17 +77,22 @@ void main() {
     });
   });
 
-  testWidgets('xizmat bloklari: Do\'kon faol, Restoran qulf', (tester) async {
+  testWidgets('xizmat almashtirish pastki kartada: Do\'kon faol, Restoran qulf, Chiqish', (tester) async {
     await _open(tester, 'store', () async {
+      // Tepada blok yo'q — faqat pastki karta menyusida.
+      expect(find.byKey(const ValueKey('service-restaurant')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('account-menu')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('service-restaurant')), findsOneWidget);
       expect(find.byKey(const ValueKey('service-store')), findsOneWidget);
+      expect(find.byKey(const ValueKey('menu-logout')), findsOneWidget);
       expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      expect(find.text('Ulanmagan'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('service-restaurant')));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.textContaining('restoran ulanmagan'), findsWidgets);
     });
   });
-
   testWidgets('bo\'limlar orasida o\'tish', (tester) async {
     await _open(tester, 'store', () async {
       await tester.tap(find.byKey(const ValueKey('store-nav-debts')));

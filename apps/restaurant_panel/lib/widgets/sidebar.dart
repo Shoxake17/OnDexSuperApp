@@ -75,8 +75,6 @@ class Sidebar extends StatelessWidget {
         children: [
           const _BrandHeader(),
           const Divider(height: 1, color: Color(0x22FFFFFF)),
-          // Xizmat bloklari: Restoran | Do'kon (admin paneldagi kabi).
-          const ServiceSwitcher(active: MerchantService.restaurant),
           const SizedBox(height: 12),
           Expanded(
             child: ListView.builder(
@@ -277,25 +275,14 @@ class _RestaurantCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: PopupMenuButton<String>(
-        tooltip: '',
+        key: const ValueKey('account-menu'),
+        tooltip: 'Xizmat va chiqish',
         offset: const Offset(0, -8),
         color: OnDexColors.cardBg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onSelected: (v) {
-          if (v == 'logout') onLogout();
-        },
-        itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: 'logout',
-            child: Row(
-              children: [
-                Icon(Icons.logout_rounded, size: 18, color: OnDexColors.danger),
-                SizedBox(width: 10),
-                Text('Chiqish', style: TextStyle(color: OnDexColors.danger)),
-              ],
-            ),
-          ),
-        ],
+        // Admin paneldagi kabi: xizmatni almashtirish (Restoran | Do'kon) va Chiqish.
+        onSelected: (v) => handleMerchantMenu(context, v, active: MerchantService.restaurant, onLogout: onLogout),
+        itemBuilder: (context) => merchantMenuItems(active: MerchantService.restaurant),
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(

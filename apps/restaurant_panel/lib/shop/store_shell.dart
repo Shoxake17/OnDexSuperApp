@@ -267,7 +267,6 @@ class _StoreSidebar extends StatelessWidget {
             ]),
           ),
           const Divider(height: 1, color: Color(0x22FFFFFF)),
-          ServiceSwitcher(active: MerchantService.store, storeLabel: storeLabel),
           const SizedBox(height: 12),
           Expanded(
             child: ListView(
@@ -310,21 +309,12 @@ class _StoreSidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             child: PopupMenuButton<String>(
-              tooltip: '',
+              key: const ValueKey('account-menu'),
+              tooltip: 'Xizmat va chiqish',
               offset: const Offset(0, -8),
-              onSelected: (v) {
-                if (v == 'logout') onLogout();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'logout',
-                  child: Row(children: [
-                    Icon(Icons.logout_rounded, size: 18, color: OnDexColors.danger),
-                    SizedBox(width: 10),
-                    Text('Chiqish', style: TextStyle(color: OnDexColors.danger)),
-                  ]),
-                ),
-              ],
+              // Admin paneldagi kabi: xizmatni almashtirish (Restoran | Do'kon) va Chiqish.
+              onSelected: (v) => handleMerchantMenu(context, v, active: MerchantService.store, onLogout: onLogout),
+              itemBuilder: (_) => merchantMenuItems(active: MerchantService.store, storeLabel: storeLabel),
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
