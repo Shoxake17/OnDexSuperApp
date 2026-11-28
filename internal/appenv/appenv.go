@@ -75,6 +75,11 @@ type Var struct {
 	// funksiya haqida yolg'on ogohlantirish chiqardi (audit 480:
 	// PAYMENT_RETURN_URL yo'q, lekin OCTO_RETURN_URL bor edi).
 	Alternatives []string
+
+	// ToolOnly — faqat `cmd/` dagi bir martalik vosita o'qiydi (masalan
+	// `cmd/migrateshop`), API server EMAS: server ishga tushganda yo'qligi
+	// haqida ogohlantirilmaydi va compose'ga kirmaydi.
+	ToolOnly bool
 }
 
 // Registry — API server o'qiydigan barcha o'zgaruvchilar.
@@ -139,6 +144,9 @@ var Registry = []Var{
 	{Name: "REDIS_PASSWORD", Effect: "Redis'ga ulanib bo'lmaydi", DeployRequired: true},
 	{Name: "MONGODB_URI", Effect: "server ishga tushmaydi (katalog faqat Mongo'da)", ProdRequired: true, DeployRequired: true},
 	{Name: "MONGODB_DB", Effect: "standart baza nomi ishlatiladi", DeployRequired: true},
+	// Faqat cmd/migrateshop (ShoxPos Mongo -> shop, bir martalik ko'chirish).
+	{Name: "SHOXPOS_MONGO_URI", Effect: "migrateshop ishlamaydi (ShoxPos Mongo manzili)", ToolOnly: true},
+	{Name: "SHOXPOS_MONGO_DB", Effect: "migrateshop ishlamaydi (ShoxPos baza nomi)", ToolOnly: true},
 
 	// ---------- Media (R2) ----------
 	{Name: "R2_BUCKET", Effect: "server ishga tushmaydi (media ombori yo'q)", ProdRequired: true, DeployRequired: true},
@@ -303,7 +311,7 @@ func (v Var) set() bool {
 func Missing() []Var {
 	var out []Var
 	for _, v := range Registry {
-		if !v.set() {
+		if !v.ToolOnly && !v.set() {
 			out = append(out, v)
 		}
 	}
