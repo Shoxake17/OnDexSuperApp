@@ -23,9 +23,9 @@ go 1.26.11
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
-	github.com/aws/aws-sdk-go-v2/config v1.33.18
-	github.com/aws/aws-sdk-go-v2/credentials v1.21.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.10
+	github.com/aws/aws-sdk-go-v2/config v1.33.21
+	github.com/aws/aws-sdk-go-v2/credentials v1.21.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
@@ -34,12 +34,12 @@ require (
 	github.com/mayahiro/go-webp v0.4.0
 	github.com/pdfcpu/pdfcpu v0.16.4
 	github.com/prometheus/client_golang v1.25.0
-	github.com/redis/go-redis/v9 v9.23.0
+	github.com/redis/go-redis/v9 v9.24.0
 	go.mongodb.org/mongo-driver v1.17.10
 	golang.org/x/crypto v0.59.0
-	golang.org/x/image v0.47.0
-	golang.org/x/net v0.62.0
-	google.golang.org/genai v1.77.0
+	golang.org/x/image v0.48.0
+	golang.org/x/net v0.63.0
+	google.golang.org/genai v1.79.1
 	rsc.io/qr v0.2.0
 )
 
