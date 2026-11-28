@@ -88,7 +88,7 @@ func run(apply bool) error {
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('shop.qurt_order_ledger')::text`).Scan(&ready); err != nil || ready == nil {
 		return errors.New("shop sxemasi yo'q — avval yangi API'ni ishga tushiring (0081 migratsiyasi)")
 	}
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(muri))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(muri).SetRegistry(lenientRegistry()))
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func load(ctx context.Context, db *mongo.Database) (*source, error) {
 		defer cur.Close(ctx)
 		for cur.Next(ctx) {
 			var h withID
-			_ = bson.Unmarshal(cur.Current, &h)
+			_ = decodeLenient(cur.Current, &h)
 			if err := each(cur.Current, "sx-"+h.ID.Hex()); err != nil {
 				return fmt.Errorf("%s: %w", coll, err)
 			}
@@ -240,7 +240,7 @@ func load(ctx context.Context, db *mongo.Database) (*source, error) {
 	}
 	if err := read("sales", func(raw bson.Raw, id string) error {
 		var v mSale
-		if err := bson.Unmarshal(raw, &v); err != nil {
+		if err := decodeLenient(raw, &v); err != nil {
 			return err
 		}
 		v.ID = id
@@ -251,7 +251,7 @@ func load(ctx context.Context, db *mongo.Database) (*source, error) {
 	}
 	if err := read("debts", func(raw bson.Raw, id string) error {
 		var v mDebt
-		if err := bson.Unmarshal(raw, &v); err != nil {
+		if err := decodeLenient(raw, &v); err != nil {
 			return err
 		}
 		v.ID = id
@@ -262,7 +262,7 @@ func load(ctx context.Context, db *mongo.Database) (*source, error) {
 	}
 	if err := read("pharmsales", func(raw bson.Raw, id string) error {
 		var v mPharmSale
-		if err := bson.Unmarshal(raw, &v); err != nil {
+		if err := decodeLenient(raw, &v); err != nil {
 			return err
 		}
 		v.ID = id
@@ -276,7 +276,7 @@ func load(ctx context.Context, db *mongo.Database) (*source, error) {
 			Login string `bson:"login"`
 			Data  []byte `bson:"data"`
 		}
-		if err := bson.Unmarshal(raw, &b); err != nil {
+		if err := decodeLenient(raw, &b); err != nil {
 			return err
 		}
 		arr, ok := decodeBucket(b.Data)
