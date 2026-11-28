@@ -79,12 +79,14 @@ class ScannerPageState extends State<ScannerPage> {
 
   Future<void> _loadProducts() async {
     try {
-      final list = await api.shopProducts();
+      final list = _pharm ? await api.pharmProducts() : await api.shopProducts();
       if (mounted) setState(() => _products = list);
     } catch (_) {
       // Mahalliy kesh bo'lmasa ham server qidiruvi ishlaydi.
     }
   }
+
+  bool get _pharm => widget.ctx.isPharmacy;
 
   int get totalTiyin => cart.fold(0, (s, l) => s + l.totalTiyin);
 
@@ -105,7 +107,8 @@ class ScannerPageState extends State<ScannerPage> {
       return !barcodeMode && ((p['name'] as String?) ?? '').toLowerCase().contains(q);
     }).firstOrNull;
     if (local != null) return (local, false);
-    final hits = await api.shopSearch(query.trim().replaceAll(RegExp(r'\s+'), ' '));
+    final q2 = query.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final hits = _pharm ? await api.pharmSearch(q2) : await api.shopSearch(q2);
     if (hits.isEmpty) return null;
     final found = hits.first;
     if (found['is_global'] == true) return (found, true);
@@ -128,7 +131,19 @@ class ScannerPageState extends State<ScannerPage> {
       }
       price = v;
       try {
-        if (global) {
+        if (_pharm && global) {
+          // ShoxPos PharmScanner: global dori add-pharm bilan qo'shiladi (qoldiq += miqdor).
+          await api.pharmAdd({
+            'barcode': barcode,
+            'name': name,
+            'category': ((p['category'] as String?) ?? '').isEmpty ? 'Dorilar' : p['category'],
+            'price_tiyin': price,
+            'base_price_tiyin': intOf(p['base_price_tiyin']),
+            'quantity': count,
+          });
+        } else if (_pharm) {
+          await api.pharmUpdate(barcode, {'price_tiyin': price});
+        } else if (global) {
           // ShoxPos: global mahsulot shu narx va sotilayotgan miqdor bilan do'konga yoziladi.
           await api.shopUpsert(barcode,
               name: name,
@@ -211,23 +226,30 @@ class ScannerPageState extends State<ScannerPage> {
     }
     setState(() => _busy = true);
     try {
-      await api.shopSell([
-        for (final l in cart)
-          {
-            'barcode': l.barcode,
-            'name': l.name,
-            'quantity': l.count,
-            'price_tiyin': l.priceTiyin,
-            'total_tiyin': l.totalTiyin,
-            'category': l.category,
-          }
-      ], payment);
+      if (_pharm) {
+        // Dorixona: hammasi yoki hech narsa — qoldiq yetmasa server 409 qaytaradi.
+        await api.pharmSell([
+          for (final l in cart) {'barcode': l.barcode, 'name': l.name, 'quantity': l.count, 'price_tiyin': l.priceTiyin}
+        ], payment);
+      } else {
+        await api.shopSell([
+          for (final l in cart)
+            {
+              'barcode': l.barcode,
+              'name': l.name,
+              'quantity': l.count,
+              'price_tiyin': l.priceTiyin,
+              'total_tiyin': l.totalTiyin,
+              'category': l.category,
+            }
+        ], payment);
+      }
       if (!mounted) return;
       setState(() => cart.clear());
       _say('Sotuv amalga oshirildi');
       await _loadProducts();
       await Future<void>.delayed(const Duration(seconds: 1));
-      if (mounted) widget.ctx.go(StorePage.sales);
+      if (mounted) widget.ctx.go(_pharm ? StorePage.pharmSales : StorePage.sales);
     } catch (e) {
       if (mounted) _say(errText(e), error: true);
     } finally {

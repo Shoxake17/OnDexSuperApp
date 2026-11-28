@@ -13,6 +13,7 @@ import '../store_pages.dart';
 /// qidiruv (nom yoki shtrix-kod); davr: Barchasi, Kunlik, Haftalik
 /// (oxirgi 7 kun), Oylik (joriy oy); yangisi birinchi; kichik ekranda
 /// kunlar bo'yicha guruh ("Bugun", "Kecha") va to'lov turi belgisi.
+/// Dorixonada (ShoxPos PharmSale.tsx) — oxirgi 100 chek qatorlari.
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key, required this.ctx, this.now});
   final StoreContext ctx;
@@ -67,7 +68,7 @@ class _SalesPageState extends State<SalesPage> {
 
   Future<void> _load() async {
     try {
-      final l = await api.shopSoldLines();
+      final l = widget.ctx.isPharmacy ? await api.pharmSaleLines() : await api.shopSoldLines();
       if (mounted) setState(() => _lines = l);
     } catch (e) {
       if (mounted) toast(context, errText(e), error: true);

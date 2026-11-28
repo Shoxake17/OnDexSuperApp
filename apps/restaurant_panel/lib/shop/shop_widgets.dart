@@ -117,15 +117,17 @@ class ShopCard extends StatelessWidget {
   final EdgeInsets padding;
   final Color? color;
 
+  /// `Material` (Container emas): ichidagi ListTile/InkWell bosish effekti va
+  /// foni karta ustida ko'rinadi.
   @override
-  Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color ?? OnDexColors.cardBg,
+  Widget build(BuildContext context) => Material(
+        color: color ?? OnDexColors.cardBg,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: OnDexColors.cardBorder),
+          side: const BorderSide(color: OnDexColors.cardBorder),
         ),
-        child: child,
+        clipBehavior: Clip.antiAlias,
+        child: Padding(padding: padding, child: child),
       );
 }
 

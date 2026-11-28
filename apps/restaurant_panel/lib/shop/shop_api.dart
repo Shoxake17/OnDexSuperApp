@@ -130,6 +130,19 @@ extension ShopApi on RestaurantApi {
 
   Future<List<Map<String, dynamic>>> pharmSales() async => _list(await send('GET', '/merchant/shop/pharm/sales'));
 
+  /// Dorixona cheklari qatorlarga yoyilgan — Sotuvlar/Statistika/Kirim sahifalari
+  /// do'kon sotuv qatorlari bilan bir xil ko'rinishda o'qiydi.
+  Future<List<Map<String, dynamic>>> pharmSaleLines() async => [
+        for (final s in await pharmSales())
+          for (final it in (s['items'] as List? ?? const []))
+            {
+              ...Map<String, dynamic>.from(it as Map),
+              'payment_method': s['payment_method'],
+              'sold_at': s['sold_at'],
+              'category': '',
+            },
+      ];
+
   Future<Map<String, dynamic>> pharmStats() async =>
       Map<String, dynamic>.from(await send('GET', '/merchant/shop/pharm/stats') as Map);
 

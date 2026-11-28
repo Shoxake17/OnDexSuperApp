@@ -14,7 +14,8 @@ import '../store_pages.dart';
 /// filtri: Barchasi, Bugun, Hafta, Oy); grafiklar — barcha sotuvlar tarixi
 /// (kunlar bo'yicha), oxirgi 7 kun, kategoriyalar bo'yicha, top 10 (dona)
 /// va top 10 (summa). Grafiklar ShoxPos'dagidek BUTUN tarix bo'yicha;
-/// davr filtri faqat kartalarga ta'sir qiladi.
+/// davr filtri faqat kartalarga ta'sir qiladi. Dorixonada (PharmHisobotlar.tsx)
+/// — cheklar qatorlari bo'yicha.
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.ctx, this.now});
   final StoreContext ctx;
@@ -41,7 +42,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Future<void> _load() async {
     try {
-      final s = await api.shopSales();
+      final s = widget.ctx.isPharmacy ? await api.pharmSaleLines() : await api.shopSales();
       if (mounted) setState(() => _sales = s);
     } catch (e) {
       if (mounted) toast(context, errText(e), error: true);

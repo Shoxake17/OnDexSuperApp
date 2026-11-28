@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../theme.dart';
 import 'pages/add_product_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/debts_page.dart';
 import 'pages/incoming_page.dart';
+import 'pages/logistics_page.dart';
+import 'pages/pharm_add_page.dart';
+import 'pages/pharm_base_page.dart';
+import 'pages/pharm_info_page.dart';
 import 'pages/products_page.dart';
 import 'pages/qurt_orders_page.dart';
 import 'pages/reports_page.dart';
@@ -58,37 +61,23 @@ class StoreContext {
   bool get isPharmacy => category == 'pharmacy';
 }
 
-/// Sahifa vidjeti. Hali ko'chirilmagan sahifa — aniq belgilangan bo'sh joy
-/// (POS-3 davomida bittalab almashtiriladi; deploy'dan oldin bittasi ham
-/// qolmasligi `store_pages_test.dart` bilan tekshiriladi).
+/// Sahifa vidjeti. `switch` TO'LIQ (`_` yo'q): yangi [StorePage] qo'shilsa,
+/// uning sahifasi yozilmaguncha kompilyatsiya o'tmaydi — joy egasi qolmaydi.
 Widget buildStorePage(StorePage p, StoreContext ctx) {
   return switch (p) {
     StorePage.products => ProductsPage(ctx: ctx),
     StorePage.addProduct => AddProductPage(ctx: ctx),
-    StorePage.scanner => ScannerPage(ctx: ctx),
-    StorePage.sales => SalesPage(ctx: ctx),
+    StorePage.scanner || StorePage.pharmScanner => ScannerPage(ctx: ctx),
+    StorePage.sales || StorePage.pharmSales => SalesPage(ctx: ctx),
     StorePage.debts || StorePage.pharmDebts => DebtsPage(ctx: ctx),
-    StorePage.reports => ReportsPage(ctx: ctx),
-    StorePage.incoming => IncomingPage(ctx: ctx),
+    StorePage.reports || StorePage.pharmReports => ReportsPage(ctx: ctx),
+    StorePage.incoming || StorePage.pharmIncoming => IncomingPage(ctx: ctx),
+    StorePage.pharmAdd => PharmAddPage(ctx: ctx),
+    StorePage.pharmBase => PharmBasePage(ctx: ctx),
+    StorePage.pharmInfo => PharmInfoPage(ctx: ctx),
     StorePage.dashboard || StorePage.pharmDashboard => DashboardPage(ctx: ctx),
     StorePage.settings => StoreSettingsPage(ctx: ctx),
     StorePage.orders => QurtOrdersPage(ctx: ctx),
-    _ => PortingPlaceholder(page: p),
+    StorePage.logistics => LogisticsPage(ctx: ctx),
   };
-}
-
-class PortingPlaceholder extends StatelessWidget {
-  const PortingPlaceholder({super.key, required this.page});
-  final StorePage page;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.construction_rounded, size: 48, color: OnDexColors.inkFaint),
-        const SizedBox(height: 12),
-        Text('Bo\'lim ko\'chirilmoqda: ${page.name}', style: const TextStyle(color: OnDexColors.inkDim)),
-      ]),
-    );
-  }
 }
