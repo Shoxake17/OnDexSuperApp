@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api.dart';
 import '../widgets/password_field.dart';
 import 'shell.dart';
+import '../merchant_route.dart';
 import '../shop/store_shell.dart';
 
 /// OnDex Merchant ilovasining klient identifikatori (server `DefaultClients`).
@@ -218,7 +219,8 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
   /// Restoran -> panel; do'kon -> do'kon bosh ekrani; boshqalar rad etiladi.
   Future<void> _afterSession() async {
     final user = await api.me();
-    if (user['role'] == 'store') {
+    final home = merchantHomeFor(user);
+    if (home == MerchantHome.store) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => StoreShell(
@@ -228,8 +230,7 @@ class _RestaurantLoginScreenState extends State<RestaurantLoginScreen> {
       ));
       return;
     }
-    if (user['role'] != 'restaurant' ||
-        (user['entity_id'] as String? ?? '').isEmpty) {
+    if (home != MerchantHome.restaurant) {
       await api.logout(); // markazda ochilgan sessiya ochiq qolmasin
       await api.clearSession();
       setState(() {

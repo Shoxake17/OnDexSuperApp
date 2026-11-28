@@ -9,6 +9,7 @@ import 'panel_prefs.dart';
 import 'printing/receipt_printer.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
+import 'merchant_route.dart';
 import 'shop/store_shell.dart';
 import 'theme.dart';
 
@@ -149,14 +150,14 @@ class _RootState extends State<_Root> {
     // └───────────────────────────────────────────────────────────────┘
     try {
       final user = await api.me();
-      final role = user['role'] as String? ?? '';
-      final entityId = user['entity_id'] as String? ?? '';
-      if (role == 'restaurant' && entityId.isNotEmpty) {
+      final home = merchantHomeFor(user);
+      if (home == MerchantHome.restaurant) {
+        final entityId = user['entity_id'] as String;
         api.rid = entityId;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('rest_rid', entityId);
         _loggedIn = true;
-      } else if (role == 'store') {
+      } else if (home == MerchantHome.store) {
         // Do'kon egasi: restoran paneli o'rniga do'kon bosh ekrani.
         _storeName = user['name'] as String? ?? '';
         _storePhone = user['phone'] as String? ?? '';

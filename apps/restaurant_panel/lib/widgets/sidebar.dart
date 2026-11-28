@@ -155,22 +155,29 @@ class _BrandHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Ondex',
-                  style: TextStyle(
-                      color: OnDexColors.sidebarText,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      height: 1.1)),
-              Text('Restoran paneli',
-                  style: TextStyle(
-                      color: OnDexColors.sidebarTextDim,
-                      fontSize: 11.5,
-                      height: 1.3)),
-            ],
+          // Flexible: katta shrift/masshtabda sarlavha sidebar'dan toshmasin.
+          const Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Ondex',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: OnDexColors.sidebarText,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        height: 1.1)),
+                Text('Restoran paneli',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: OnDexColors.sidebarTextDim,
+                        fontSize: 11.5,
+                        height: 1.3)),
+              ],
+            ),
           ),
         ],
       ),
@@ -218,11 +225,9 @@ class _NavItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: selected
-                          ? Colors.white
-                          : OnDexColors.sidebarTextDim,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
+                      color:
+                          selected ? Colors.white : OnDexColors.sidebarTextDim,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       fontSize: 13.5,
                     ),
                   ),
@@ -281,8 +286,10 @@ class _RestaurantCard extends StatelessWidget {
         color: OnDexColors.cardBg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         // Admin paneldagi kabi: xizmatni almashtirish (Restoran | Do'kon) va Chiqish.
-        onSelected: (v) => handleMerchantMenu(context, v, active: MerchantService.restaurant, onLogout: onLogout),
-        itemBuilder: (context) => merchantMenuItems(active: MerchantService.restaurant),
+        onSelected: (v) => handleMerchantMenu(context, v,
+            active: MerchantService.restaurant, onLogout: onLogout),
+        itemBuilder: (context) =>
+            merchantMenuItems(active: MerchantService.restaurant),
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -328,8 +335,7 @@ class _RestaurantCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              color: OnDexColors.sidebarTextDim,
-                              fontSize: 11)),
+                              color: OnDexColors.sidebarTextDim, fontSize: 11)),
                   ],
                 ),
               ),
